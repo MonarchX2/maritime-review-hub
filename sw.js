@@ -2,8 +2,7 @@ const CACHE_NAME = 'mrh-v1';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
-    './manifest.json',
-    'https://cdn.tailwindcss.com'
+    './manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
