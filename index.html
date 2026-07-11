@@ -481,142 +481,105 @@ async function syncDatabase() {
 
         // --- SESSION ENGINE ---
         function renderQuestion() {
-    const q = state.session.questions[state.session.currentIndex];
-    const isExam = state.session.type === 'exam';
-    const userAnswer = state.session.userAnswers[state.session.currentIndex];
-    
-    // Top Bar Progress
-    document.getElementById('q-current-num').innerText = state.session.currentIndex + 1;
-    document.getElementById('q-total-num').innerText = state.session.questions.length;
-    document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / state.session.questions.length) * 100}%`;
-    
-    // Text Content
-    document.getElementById('q-subject').innerText = q.Subject || 'General';
-    document.getElementById('q-id').innerText = q.ID || `Q-${state.session.currentIndex}`;
-    document.getElementById('q-text').innerText = q.Question;
-    
-    // Image handling
-    const imgEl = document.getElementById('q-image');
-    if(q.ImageURL && q.ImageURL.trim() !== "") {
-        imgEl.src = q.ImageURL; imgEl.classList.remove('hidden');
-    } else {
-        imgEl.classList.add('hidden');
-    }
-
-    // --- BULLETPROOF SHUFFLE LOGIC ---
-    // Only shuffle if we haven't already shuffled this specific question
-    if (!q.shuffledOptions) {
-        let opts = [
-            { letter: 'A', text: q.ChoiceA },
-            { letter: 'B', text: q.ChoiceB },
-            { letter: 'C', text: q.ChoiceC },
-            { letter: 'D', text: q.ChoiceD }
-        ];
-        
-        // Fisher-Yates shuffle built directly into the function
-        for (let i = opts.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [opts[i], opts[j]] = [opts[j], opts[i]];
-        }
-        
-        // Save the shuffled order to the question so it doesn't change if we hit "Previous"
-        q.shuffledOptions = opts; 
-    }
-
-    const options = q.shuffledOptions;
-    // ---------------------------------
-
-    const buttonKeys = ['a', 'b', 'c', 'd'];
-    buttonKeys.forEach((key, index) => {
-        const option = options[index]; // Grab the locked-in shuffled option
-        const btn = document.querySelector(`.choice-btn[data-choice="${key.toUpperCase()}"]`);
-        
-        // Update text
-        document.getElementById(`choice-${key}-text`).innerText = option.text;
-        
-        // IMPORTANT: Save the original letter so the submit function can read it
-        btn.dataset.originalLetter = option.letter;
-        
-        // Reset styling
-        btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium";
-        
-        if(isExam) {
-            btn.onclick = () => selectExamAnswer(option.letter);
-            if(userAnswer === option.letter) btn.classList.add('exam-selected');
-        } else {
-            btn.onclick = () => submitPracticeAnswer(option.letter, q.Answer);
+            const q = state.session.questions[state.session.currentIndex];
+            const isExam = state.session.type === 'exam';
+            const userAnswer = state.session.userAnswers[state.session.currentIndex];
             
-            // If already answered in this practice session
-            if(userAnswer) {
-                btn.onclick = null;
-                if(userAnswer === option.letter) {
-                    if(option.letter === q.Answer) btn.classList.add('selected-correct');
-                    else btn.classList.add('selected-wrong');
-                } else if (option.letter === q.Answer) {
-                    btn.classList.add('selected-correct'); // Highlight the right one
+            // Top Bar Progress
+            document.getElementById('q-current-num').innerText = state.session.currentIndex + 1;
+            document.getElementById('q-total-num').innerText = state.session.questions.length;
+            document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / state.session.questions.length) * 100}%`;
+            
+            // Text Content
+            document.getElementById('q-subject').innerText = q.Subject || 'General';
+            document.getElementById('q-id').innerText = q.ID || `Q-${state.session.currentIndex}`;
+            document.getElementById('q-text').innerText = q.Question;
+            
+            // Image handling
+            const imgEl = document.getElementById('q-image');
+            if(q.ImageURL && q.ImageURL.trim() !== "") {
+                imgEl.src = q.ImageURL; imgEl.classList.remove('hidden');
+            } else {
+                imgEl.classList.add('hidden');
+            }
+
+            // Choices
+            const choices = ['A', 'B', 'C', 'D'];
+            choices.forEach(ch => {
+                document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = q[`Choice${ch}`];
+                const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
+                
+                // Reset styling
+                btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium";
+                
+                if(isExam) {
+                    btn.onclick = () => selectExamAnswer(ch);
+                    if(userAnswer === ch) btn.classList.add('exam-selected');
                 } else {
-                    btn.classList.add('dimmed');
+                    btn.onclick = () => submitPracticeAnswer(ch, q.Answer);
+                    // If already answered in this practice session
+                    if(userAnswer) {
+                        btn.onclick = null;
+                        if(ch === q.Answer) btn.classList.add('selected-correct');
+                        else if(ch === userAnswer) btn.classList.add('selected-wrong');
+                        else btn.classList.add('dimmed');
+                    }
+                }
+            });
+            
+            // Explanation & Nav logic
+            const expBox = document.getElementById('q-explanation-box');
+            const btnNext = document.getElementById('btn-next');
+            const btnPrev = document.getElementById('btn-prev');
+            const btnSubmit = document.getElementById('btn-submit-exam');
+
+            if(isExam) {
+                expBox.classList.add('hidden');
+                btnPrev.classList.remove('hidden');
+                btnPrev.disabled = state.session.currentIndex === 0;
+                btnPrev.style.opacity = state.session.currentIndex === 0 ? '0.3' : '1';
+                
+                if(state.session.currentIndex === state.session.questions.length - 1) {
+                    btnNext.classList.add('hidden');
+                    btnSubmit.classList.remove('hidden');
+                } else {
+                    btnNext.classList.remove('hidden');
+                    btnSubmit.classList.add('hidden');
+                }
+            } else {
+                btnPrev.classList.add('hidden');
+                btnSubmit.classList.add('hidden');
+                if(userAnswer) {
+                    showExplanation(q);
+                    btnNext.classList.remove('hidden');
+                } else {
+                    expBox.classList.add('hidden');
+                    btnNext.classList.add('hidden');
                 }
             }
+            
+            updateIcons(q.ID);
         }
-    });
-    
-    // Explanation & Nav logic
-    const expBox = document.getElementById('q-explanation-box');
-    const btnNext = document.getElementById('btn-next');
-    const btnPrev = document.getElementById('btn-prev');
-    const btnSubmit = document.getElementById('btn-submit-exam');
-
-    if(isExam) {
-        expBox.classList.add('hidden');
-        btnPrev.classList.remove('hidden');
-        btnPrev.disabled = state.session.currentIndex === 0;
-        btnPrev.style.opacity = state.session.currentIndex === 0 ? '0.3' : '1';
-        
-        if(state.session.currentIndex === state.session.questions.length - 1) {
-            btnNext.classList.add('hidden');
-            btnSubmit.classList.remove('hidden');
-        } else {
-            btnNext.classList.remove('hidden');
-            btnSubmit.classList.add('hidden');
-        }
-    } else {
-        btnPrev.classList.add('hidden');
-        btnSubmit.classList.add('hidden');
-        if(userAnswer) {
-            showExplanation(q);
-            btnNext.classList.remove('hidden');
-        } else {
-            expBox.classList.add('hidden');
-            btnNext.classList.add('hidden');
-        }
-    }
-    
-    updateIcons(q.ID);
-}
 
         // Practice Mode Answer Logic
         function submitPracticeAnswer(selected, correct) {
-    const q = state.session.questions[state.session.currentIndex];
-    state.session.userAnswers[state.session.currentIndex] = selected; // Mark answered
-    
-    trackStats(q, selected === correct);
+            const q = state.session.questions[state.session.currentIndex];
+            state.session.userAnswers[state.session.currentIndex] = selected; // Mark answered
+            
+            trackStats(q, selected === correct);
 
-    // UI Update - Checking the original letter of the shuffled button
-    document.querySelectorAll('.choice-btn').forEach(btn => {
-        btn.onclick = null;
-        
-        const letter = btn.dataset.originalLetter; // Retrieve the real identity
-        
-        if(letter === correct) btn.classList.add('selected-correct');
-        else if (letter === selected) btn.classList.add('selected-wrong');
-        else btn.classList.add('dimmed');
-    });
+            // UI Update
+            document.querySelectorAll('.choice-btn').forEach(btn => {
+                btn.onclick = null;
+                if(btn.dataset.choice === correct) btn.classList.add('selected-correct');
+                else if (btn.dataset.choice === selected) btn.classList.add('selected-wrong');
+                else btn.classList.add('dimmed');
+            });
 
-    showExplanation(q);
-    document.getElementById('btn-next').classList.remove('hidden');
-    document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
-}
+            showExplanation(q);
+            document.getElementById('btn-next').classList.remove('hidden');
+            document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
+        }
 
         function showExplanation(q) {
             document.getElementById('q-explanation-text').innerText = q.Explanation || "No explanation provided in database.";
@@ -862,7 +825,7 @@ async function syncDatabase() {
     localStorage.removeItem('mrh_saved_session');
 }
 
-        function shuffleArray(array) {
+function shuffleArray(array) {
     for (let i = array.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [array[i], array[j]] = [array[j], array[i]];
