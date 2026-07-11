@@ -2,7 +2,7 @@
 function openSearch() {
     navigate('search');
 }
-
+a
 function executeSearch() {
     const query = document.getElementById('search-input').value.toLowerCase().trim();
     const resultsContainer = document.getElementById('search-results');
