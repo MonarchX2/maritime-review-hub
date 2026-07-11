@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Maritime Review Hub</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1e3a8a">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { colors: { brand: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 900: '#1e3a8a' } } } }
+        }
+    </script>
+    <style>
+        body { -webkit-tap-highlight-color: transparent; }
+        .view-section { display: none; animation: fadeIn 0.3s ease-in-out; }
+        .view-section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Practice Mode Colors */
+        .choice-btn.selected-correct { background-color: #22c55e !important; color: white !important; border-color: #16a34a !important; }
+        .choice-btn.selected-wrong { background-color: #ef4444 !important; color: white !important; border-color: #dc2626 !important; }
+        .choice-btn.dimmed { opacity: 0.5; pointer-events: none; }
+        
+        /* Exam Mode Colors */
+        .choice-btn.exam-selected { background-color: #3b82f6 !important; color: white !important; border-color: #2563eb !important; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col md:flex-row">
+
+    <header class="md:hidden bg-brand-900 text-white p-4 flex justify-between items-center shadow-md sticky top-0 z-50">
+        <h1 class="font-bold text-lg"><i class="fa-solid fa-anchor mr-2"></i> Hub v1.1</h1>
+        <div class="flex items-center gap-3">
+            <span class="text-sm font-semibold text-orange-400"><i class="fa-solid fa-fire"></i> <span class="streak-display">0</span></span>
+        </div>
+    </header>
+
+    <nav class="bg-white dark:bg-gray-800 border-t md:border-t-0 md:border-r border-gray-200 dark:border-gray-700 fixed md:sticky bottom-0 md:top-0 w-full md:w-64 h-16 md:h-screen z-40 flex md:flex-col justify-around md:justify-start px-2 md:p-4 transition-colors">
+        <div class="hidden md:block mb-8 mt-4 text-center">
+            <h1 class="text-2xl font-extrabold text-brand-900 dark:text-brand-500"><i class="fa-solid fa-anchor"></i> MRH</h1>
+            <p class="text-[10px] text-gray-500 font-bold mt-1 tracking-widest">REVIEW HUB</p>
+        </div>
+        
+        <button onclick="openSearch()" class="nav-btn flex flex-col md:flex-row items-center md:py-3 md:px-4 rounded-lg text-gray-500 hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-gray-700 dark:hover:text-brand-400 md:mb-2 w-full justify-center md:justify-start gap-1 md:gap-3">
+            <i class="fa-solid fa-magnifying-glass text-xl md:text-lg"></i> <span class="text-[10px] md:text-sm font-medium">Search</span>
+        </button>
+        <button onclick="renderAchievements()" class="nav-btn flex flex-col md:flex-row items-center md:py-3 md:px-4 rounded-lg text-gray-500 hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-gray-700 dark:hover:text-brand-400 md:mb-2 w-full justify-center md:justify-start gap-1 md:gap-3">
+            <i class="fa-solid fa-medal text-xl md:text-lg"></i> <span class="text-[10px] md:text-sm font-medium">Awards</span>
+        </button>
+        <button onclick="navigate('dashboard')" class="nav-btn flex flex-col md:flex-row items-center md:py-3 md:px-4 rounded-lg text-gray-500 hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-gray-700 dark:hover:text-brand-400 md:mb-2 w-full justify-center md:justify-start gap-1 md:gap-3">
+            <i class="fa-solid fa-house text-xl md:text-lg"></i> <span class="text-[10px] md:text-sm font-medium">Home</span>
+        </button>
+        <button onclick="navigate('practice')" class="nav-btn flex flex-col md:flex-row items-center md:py-3 md:px-4 rounded-lg text-gray-500 hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-gray-700 dark:hover:text-brand-400 md:mb-2 w-full justify-center md:justify-start gap-1 md:gap-3">
+            <i class="fa-solid fa-book-open text-xl md:text-lg"></i> <span class="text-[10px] md:text-sm font-medium">Practice</span>
+        </button>
+        <button onclick="startExamSetup()" class="nav-btn flex flex-col md:flex-row items-center md:py-3 md:px-4 rounded-lg text-gray-500 hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-gray-700 dark:hover:text-brand-400 md:mb-2 w-full justify-center md:justify-start gap-1 md:gap-3">
+            <i class="fa-solid fa-file-signature text-xl md:text-lg"></i> <span class="text-[10px] md:text-sm font-medium">Exam</span>
+        </button>
+        <button onclick="navigate('stats')" class="nav-btn flex flex-col md:flex-row items-center md:py-3 md:px-4 rounded-lg text-gray-500 hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-gray-700 dark:hover:text-brand-400 md:mb-2 w-full justify-center md:justify-start gap-1 md:gap-3">
+            <i class="fa-solid fa-chart-pie text-xl md:text-lg"></i> <span class="text-[10px] md:text-sm font-medium">Stats</span>
+        </button>
+        <button onclick="navigate('settings')" class="nav-btn flex flex-col md:flex-row items-center md:py-3 md:px-4 rounded-lg text-gray-500 hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-gray-700 dark:hover:text-brand-400 md:mt-auto w-full justify-center md:justify-start gap-1 md:gap-3">
+            <i class="fa-solid fa-gear text-xl md:text-lg"></i> <span class="text-[10px] md:text-sm font-medium">Settings</span>
+        </button>
+    </nav>
+
+    <main class="flex-1 p-4 md:p-8 pb-24 md:pb-8 overflow-y-auto w-full max-w-5xl mx-auto">
+        <section id="view-search" class="view-section">
+    <h2 class="text-2xl font-bold mb-6">Global Search</h2>
+    <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-6">
+        <div class="flex gap-2">
+            <input type="text" id="search-input" onkeyup="executeSearch()" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Search by ID, keyword, rule...">
+        </div>
+    </div>
+    <div id="search-results" class="space-y-4">
+        <p class="text-gray-500 text-center mt-10">Type above to search the entire database.</p>
+    </div>
+</section>
+
+<section id="view-achievements" class="view-section">
+    <h2 class="text-2xl font-bold mb-2">Trophy Room</h2>
+    <p class="text-gray-500 mb-6">Track your milestones and unlocked badges.</p>
+    
+    <div id="achievement-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        </div>
+</section>
+        <section id="view-dashboard" class="view-section active">
+            <div class="flex justify-between items-end mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold">Welcome Back, Cadet.</h2>
+                    <p class="text-gray-500 dark:text-gray-400">Ready to conquer the boards?</p>
+                </div>
+                <div class="hidden md:block text-right">
+                    <div class="text-2xl font-black text-orange-500"><i class="fa-solid fa-fire"></i> <span class="streak-display">0</span> Days</div>
+                    <p class="text-xs text-gray-400">Current Streak</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                    <p class="text-sm text-gray-500"><i class="fa-solid fa-bullseye text-blue-500 mr-1"></i> Accuracy</p>
+                    <p class="text-2xl font-bold mt-1" id="dash-accuracy">0%</p>
+                </div>
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                    <p class="text-sm text-gray-500"><i class="fa-solid fa-check-double text-green-500 mr-1"></i> Answered</p>
+                    <p class="text-2xl font-bold mt-1" id="dash-answered">0</p>
+                </div>
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                    <p class="text-sm text-gray-500"><i class="fa-solid fa-bookmark text-yellow-500 mr-1"></i> Bookmarks</p>
+                    <p class="text-2xl font-bold mt-1" id="dash-bookmarks">0</p>
+                </div>
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                    <p class="text-sm text-gray-500"><i class="fa-solid fa-triangle-exclamation text-red-500 mr-1"></i> Mistakes</p>
+                    <p class="text-2xl font-bold mt-1" id="dash-mistakes">0</p>
+                </div>
+            </div>
+
+            <h3 class="text-lg font-bold mb-4">Quick Start</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button onclick="startPractice('all')" class="bg-brand-600 hover:bg-brand-700 text-white p-6 rounded-2xl shadow-md text-left transition-transform transform hover:-translate-y-1">
+                    <h4 class="text-xl font-bold"><i class="fa-solid fa-infinity mr-2"></i> Unlimited Practice</h4>
+                    <p class="text-brand-100 text-sm mt-1">Shuffle all available questions with instant explanations.</p>
+                </button>
+                <button onclick="startPractice('mistakes')" class="bg-red-500 hover:bg-red-600 text-white p-6 rounded-2xl shadow-md text-left transition-transform transform hover:-translate-y-1">
+                    <h4 class="text-xl font-bold"><i class="fa-solid fa-hammer mr-2"></i> Review Mistakes</h4>
+                    <p class="text-red-100 text-sm mt-1">Target your weak points. Only uncorrected mistakes.</p>
+                </button>
+            </div>
+        </section>
+
+        <section id="view-practice" class="view-section">
+            <div id="session-setup">
+                <h2 class="text-2xl font-bold mb-6" id="setup-title">Setup Session</h2>
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm">
+                    <label class="block text-sm font-semibold mb-2">Subject Filter</label>
+                    <select id="filter-subject" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white mb-4">
+                        <option value="ALL">All Subjects</option>
+                    </select>
+
+                    <div id="exam-options" class="hidden mb-4 border-t dark:border-gray-700 pt-4">
+                        <label class="block text-sm font-semibold mb-2">Number of Questions</label>
+                        <select id="exam-count" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white mb-4">
+                            <option value="20">20 Questions (20 mins)</option>
+                            <option value="50">50 Questions (50 mins)</option>
+                            <option value="100">100 Questions (100 mins)</option>
+                        </select>
+                    </div>
+                    
+                    <button onclick="initSession()" class="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 shadow-md">Start <i class="fa-solid fa-play ml-2"></i></button>
+                </div>
+            </div>
+
+            <div id="session-active" class="hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <button onclick="endSession(false)" class="text-gray-500 hover:text-red-500 font-semibold"><i class="fa-solid fa-xmark mr-1"></i> Exit</button>
+                    
+                    <div id="exam-timer-display" class="hidden text-xl font-mono font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-1 rounded-md border border-red-200">
+                        00:00
+                    </div>
+
+                    <div class="flex gap-4 items-center">
+                        <div class="text-sm font-bold text-gray-500"><span id="q-current-num">1</span> / <span id="q-total-num">50</span></div>
+                        <button onclick="toggleBookmark()" class="text-gray-400 hover:text-yellow-500" id="btn-bookmark"><i class="fa-solid fa-bookmark text-xl"></i></button>
+                        <button onclick="toggleFlag()" class="hidden text-gray-400 hover:text-orange-500" id="btn-flag"><i class="fa-solid fa-flag text-xl"></i></button>
+                    </div>
+                </div>
+                
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-8">
+                    <div class="bg-brand-500 h-2 rounded-full transition-all duration-300" id="session-progress" style="width: 0%"></div>
+                </div>
+
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6">
+                    <div class="flex gap-2 mb-3 flex-wrap">
+                        <span class="bg-brand-100 text-brand-800 text-xs px-2 py-1 rounded font-semibold dark:bg-brand-900 dark:text-brand-200" id="q-subject">Subject</span>
+                        <span class="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded font-semibold dark:bg-gray-700 dark:text-gray-300" id="q-id">ID</span>
+                    </div>
+                    <h3 class="text-xl font-medium mb-4" id="q-text">Loading question...</h3>
+                    
+                    <img id="q-image" src="" alt="Reference" class="hidden w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border">
+
+                    <div class="grid gap-3 mt-6" id="q-choices">
+                        <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium" data-choice="A">A) <span id="choice-a-text"></span></button>
+                        <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium" data-choice="B">B) <span id="choice-b-text"></span></button>
+                        <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium" data-choice="C">C) <span id="choice-c-text"></span></button>
+                        <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium" data-choice="D">D) <span id="choice-d-text"></span></button>
+                    </div>
+                </div>
+
+                <div id="q-explanation-box" class="hidden bg-blue-50 dark:bg-gray-800 border-l-4 border-blue-500 p-4 rounded-r-xl mb-6 shadow-sm">
+                    <h4 class="font-bold text-blue-800 dark:text-blue-300 mb-1"><i class="fa-solid fa-lightbulb"></i> Explanation</h4>
+                    <p class="text-gray-700 dark:text-gray-300 text-sm mb-2" id="q-explanation-text"></p>
+                    <p class="text-xs font-mono text-gray-500 dark:text-gray-400">Ref: <span id="q-ref-text"></span></p>
+                </div>
+
+                <div class="flex gap-4">
+                    <button id="btn-prev" onclick="prevQuestion()" class="hidden flex-1 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white py-4 rounded-xl font-bold shadow-md hover:bg-gray-300"><i class="fa-solid fa-arrow-left mr-2"></i> Prev</button>
+                    <button id="btn-next" onclick="nextQuestion()" class="hidden flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800">Next <i class="fa-solid fa-arrow-right ml-2"></i></button>
+                    <button id="btn-submit-exam" onclick="submitExam()" class="hidden flex-1 bg-green-600 text-white py-4 rounded-xl font-bold shadow-md hover:bg-green-700"><i class="fa-solid fa-check-double mr-2"></i> Submit Exam</button>
+                </div>
+            </div>
+            
+            <div id="exam-results" class="hidden text-center mt-10">
+                <div id="result-icon" class="text-6xl mb-4"></div>
+                <h2 class="text-3xl font-black mb-2" id="result-title">Exam Complete</h2>
+                <p class="text-gray-500 mb-6" id="result-subtitle">Here is how you did.</p>
+                
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm inline-block w-full max-w-sm mb-8 border border-gray-100 dark:border-gray-700">
+                    <p class="text-sm font-bold text-gray-400 uppercase tracking-wide">Final Score</p>
+                    <p class="text-5xl font-black text-brand-600 my-2" id="result-score">0%</p>
+                    <p class="text-sm font-medium" id="result-fraction">0 / 0 correct</p>
+                </div>
+
+                <div>
+                    <button onclick="navigate('dashboard')" class="bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white px-6 py-3 rounded-lg font-bold mr-2 hover:bg-gray-300">Back Home</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="view-stats" class="view-section">
+            <h2 class="text-2xl font-bold mb-6">Performance Analytics</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                    <h3 class="font-bold text-center mb-4 text-gray-600 dark:text-gray-300">Accuracy by Subject</h3>
+                    <div class="relative h-64 w-full">
+                        <canvas id="chart-accuracy"></canvas>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col justify-center">
+                    <h3 class="font-bold mb-4 text-gray-600 dark:text-gray-300"><i class="fa-solid fa-trophy text-yellow-500 mr-2"></i> Milestones</h3>
+                    <ul class="space-y-4">
+                        <li class="flex justify-between items-center border-b dark:border-gray-700 pb-2">
+                            <span>Total Questions Encountered</span>
+                            <span class="font-bold text-brand-600" id="stat-total">0</span>
+                        </li>
+                        <li class="flex justify-between items-center border-b dark:border-gray-700 pb-2">
+                            <span>Total Correct Answers</span>
+                            <span class="font-bold text-green-500" id="stat-correct">0</span>
+                        </li>
+                        <li class="flex justify-between items-center pb-2">
+                            <span>Current Fire Streak</span>
+                            <span class="font-bold text-orange-500"><span class="streak-display">0</span> Days</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <section id="view-settings" class="view-section">
+            <h2 class="text-2xl font-bold mb-6">Settings</h2>
+            
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-6 border border-gray-100 dark:border-gray-700">
+                <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-database text-brand-500 mr-2"></i> Database Sync</h3>
+                <p class="text-sm text-gray-500 mb-4">Paste your Google Sheets link here. We will automatically format it to download the questions.</p>
+                <input type="text" id="setting-csv-url" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white mb-3" placeholder="https://docs.google.com/spreadsheets/d/.../edit">
+                
+                <button onclick="syncDatabase()" class="bg-green-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-green-700 shadow-sm w-full md:w-auto" id="btn-sync"><i class="fa-solid fa-cloud-arrow-down mr-2"></i> Sync Questions</button>
+                <p id="sync-status" class="text-sm mt-3 font-medium bg-gray-50 dark:bg-gray-700 p-3 rounded-lg hidden"></p>
+                
+                <p class="text-xs text-gray-400 mt-4">Current Database Size: <span id="db-size-display" class="font-bold">0</span> questions.</p>
+            </div>
+
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-paint-roller text-brand-500 mr-2"></i> Preferences</h3>
+                <div class="flex justify-between items-center mb-4">
+                    <span class="font-medium">Dark Mode</span>
+                    <button onclick="toggleDarkMode()" class="bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-white px-4 py-2 rounded-lg font-bold shadow-sm"><i class="fa-solid fa-moon mr-2"></i> Toggle</button>
+                </div>
+                <div class="flex justify-between items-center border-t dark:border-gray-700 pt-4 mt-4">
+                    <span class="font-medium text-red-500">Danger Zone</span>
+                    <button onclick="resetProgress()" class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 transition-colors">Reset Local Progress</button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // --- STATE & VARIABLES ---
+        let state = {
+            db: [],
+            stats: { totalAnswered: 0, correct: 0, mistakes: [], bookmarks: [], streak: 0, lastStudyDate: null, subjectAccuracy: {} },
+            prefs: { darkMode: false, csvUrl: '' },
+            session: { active: false, type: 'practice', questions: [], currentIndex: 0, userAnswers: {}, flags: [] }
+        };
+        
+        let examTimerInterval;
+        let examTimeRemaining = 0;
+        let chartInstance = null;
+
+        // --- INITIALIZATION ---
+        function loadState() {
+            const savedStats = localStorage.getItem('mrh_stats');
+            const savedPrefs = localStorage.getItem('mrh_prefs');
+            const savedDb = localStorage.getItem('mrh_db');
+            
+            if (savedStats) state.stats = JSON.parse(savedStats);
+            if (savedPrefs) state.prefs = JSON.parse(savedPrefs);
+            if (savedDb) state.db = JSON.parse(savedDb);
+
+            if (!state.stats.subjectAccuracy) state.stats.subjectAccuracy = {};
+
+            if (state.prefs.darkMode) document.documentElement.classList.add('dark');
+            document.getElementById('setting-csv-url').value = state.prefs.csvUrl;
+            document.getElementById('db-size-display').innerText = state.db.length;
+            
+            updateDashboard();
+        }
+
+        function saveState() {
+            localStorage.setItem('mrh_stats', JSON.stringify(state.stats));
+            localStorage.setItem('mrh_prefs', JSON.stringify(state.prefs));
+            updateDashboard();
+        }
+
+        function updateDashboard() {
+            const accuracy = state.stats.totalAnswered === 0 ? 0 : Math.round((state.stats.correct / state.stats.totalAnswered) * 100);
+            document.getElementById('dash-accuracy').innerText = `${accuracy}%`;
+            document.getElementById('dash-answered').innerText = state.stats.totalAnswered;
+            document.getElementById('dash-mistakes').innerText = state.stats.mistakes.length;
+            document.getElementById('dash-bookmarks').innerText = state.stats.bookmarks.length;
+            
+            document.querySelectorAll('.streak-display').forEach(el => el.innerText = state.stats.streak);
+            
+            // Update Stats View
+            document.getElementById('stat-total').innerText = state.stats.totalAnswered;
+            document.getElementById('stat-correct').innerText = state.stats.correct;
+        }
+
+        // --- NAVIGATION ---
+        function navigate(viewId) {
+            if(state.session.active && !confirm("You have an active session. Are you sure you want to leave? Progress will be lost.")) return;
+            endSession(true); // silent abort
+
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            document.getElementById(`view-${viewId}`).classList.add('active');
+            
+            if(viewId === 'stats') renderCharts();
+        }
+
+        // --- ROBUST DATABASE SYNC ---
+        async function syncDatabase() {
+            let url = document.getElementById('setting-csv-url').value.trim();
+            const statusEl = document.getElementById('sync-status');
+            statusEl.classList.remove('hidden');
+            
+            if (!url) {
+                statusEl.innerText = "Please enter a valid Google Sheets URL.";
+                statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+                return;
+            }
+
+            // AUTO-FIX: Convert standard /edit URLs to /export?format=csv
+            if (url.includes('/edit')) {
+                try {
+                    const sheetId = url.match(/\/d\/(.*?)(\/|$)/)[1];
+                    url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
+                    document.getElementById('setting-csv-url').value = url; // Show the user we fixed it
+                } catch(e) {
+                    console.log("Could not auto-format URL, trying as-is.");
+                }
+            }
+            
+            state.prefs.csvUrl = url;
+            saveState();
+            
+            statusEl.innerText = "Fetching and parsing data... Please wait.";
+            statusEl.className = "text-sm mt-3 font-medium bg-blue-50 text-blue-600 p-3 rounded-lg";
+
+            Papa.parse(url, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    const validData = results.data.filter(q => q.Question && q.Answer); // Require basic fields
+                    if(validData.length > 0) {
+                        state.db = validData;
+                        localStorage.setItem('mrh_db', JSON.stringify(state.db));
+                        document.getElementById('db-size-display').innerText = state.db.length;
+                        
+                        statusEl.innerHTML = `<i class="fa-solid fa-check-circle mr-1"></i> Success! Loaded ${state.db.length} questions.`;
+                        statusEl.className = "text-sm mt-3 font-medium bg-green-50 text-green-600 p-3 rounded-lg";
+                    } else {
+                        statusEl.innerText = "Error: Sheet found, but no valid questions. Check column headers (Question, Answer, etc).";
+                        statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+                    }
+                },
+                error: function(err) {
+                    statusEl.innerText = "Connection Error. Make sure the sheet is public or published to the web.";
+                    statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+                }
+            });
+        }
+
+        // --- SESSION SETUP (Practice & Exam) ---
+        function populateFilters() {
+            const select = document.getElementById('filter-subject');
+            const subjects = [...new Set(state.db.map(q => q.Subject).filter(Boolean))];
+            select.innerHTML = '<option value="ALL">All Subjects (Randomized)</option>' + 
+                subjects.map(s => `<option value="${s}">${s}</option>`).join('');
+        }
+
+        function startPractice(filterType) {
+            if (state.db.length === 0) { alert("Please sync the database in Settings first."); return; }
+            navigate('practice');
+            document.getElementById('session-setup').classList.remove('hidden');
+            document.getElementById('session-active').classList.add('hidden');
+            document.getElementById('exam-results').classList.add('hidden');
+            document.getElementById('exam-options').classList.add('hidden');
+            
+            state.session.type = 'practice';
+            document.getElementById('setup-title').innerText = "Setup Practice";
+            
+            populateFilters();
+            if(filterType === 'mistakes') {
+                if(state.stats.mistakes.length === 0) {
+                    alert("You have no mistakes to review! Good job.");
+                    navigate('dashboard'); return;
+                }
+                document.getElementById('filter-subject').innerHTML = '<option value="MISTAKES">Review Mistakes Only</option>';
+            }
+        }
+
+        function startExamSetup() {
+            if (state.db.length === 0) { alert("Please sync the database in Settings first."); return; }
+            navigate('practice');
+            document.getElementById('session-setup').classList.remove('hidden');
+            document.getElementById('session-active').classList.add('hidden');
+            document.getElementById('exam-results').classList.add('hidden');
+            document.getElementById('exam-options').classList.remove('hidden');
+            
+            state.session.type = 'exam';
+            document.getElementById('setup-title').innerText = "Configure Examination";
+            populateFilters();
+        }
+
+        function initSession() {
+            const subject = document.getElementById('filter-subject').value;
+            let pool = [];
+
+            // 1. Build Pool
+            if(subject === 'MISTAKES') {
+                pool = state.db.filter(q => state.stats.mistakes.includes(q.ID));
+            } else {
+                pool = subject === 'ALL' ? state.db : state.db.filter(q => q.Subject === subject);
+            }
+
+            if(pool.length === 0) { alert("No questions found for this filter."); return; }
+
+            // 2. Shuffle Pool
+            pool = pool.sort(() => Math.random() - 0.5);
+
+            // 3. Slice for Exam
+            if(state.session.type === 'exam') {
+                const count = parseInt(document.getElementById('exam-count').value);
+                pool = pool.slice(0, count);
+                startExamTimer(pool.length * 60); // 1 minute per question
+            }
+            
+            state.session = { 
+                active: true, type: state.session.type, questions: pool, 
+                currentIndex: 0, userAnswers: {}, flags: [] 
+            };
+            
+            // UI Toggles
+            document.getElementById('session-setup').classList.add('hidden');
+            document.getElementById('session-active').classList.remove('hidden');
+            
+            if(state.session.type === 'exam') {
+                document.getElementById('exam-timer-display').classList.remove('hidden');
+                document.getElementById('btn-flag').classList.remove('hidden');
+            } else {
+                document.getElementById('exam-timer-display').classList.add('hidden');
+                document.getElementById('btn-flag').classList.add('hidden');
+            }
+            
+            renderQuestion();
+        }
+
+        // --- SESSION ENGINE ---
+        function renderQuestion() {
+            const q = state.session.questions[state.session.currentIndex];
+            const isExam = state.session.type === 'exam';
+            const userAnswer = state.session.userAnswers[state.session.currentIndex];
+            
+            // Top Bar Progress
+            document.getElementById('q-current-num').innerText = state.session.currentIndex + 1;
+            document.getElementById('q-total-num').innerText = state.session.questions.length;
+            document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / state.session.questions.length) * 100}%`;
+            
+            // Text Content
+            document.getElementById('q-subject').innerText = q.Subject || 'General';
+            document.getElementById('q-id').innerText = q.ID || `Q-${state.session.currentIndex}`;
+            document.getElementById('q-text').innerText = q.Question;
+            
+            // Image handling
+            const imgEl = document.getElementById('q-image');
+            if(q.ImageURL && q.ImageURL.trim() !== "") {
+                imgEl.src = q.ImageURL; imgEl.classList.remove('hidden');
+            } else {
+                imgEl.classList.add('hidden');
+            }
+
+            // Choices
+            const choices = ['A', 'B', 'C', 'D'];
+            choices.forEach(ch => {
+                document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = q[`Choice${ch}`];
+                const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
+                
+                // Reset styling
+                btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium";
+                
+                if(isExam) {
+                    btn.onclick = () => selectExamAnswer(ch);
+                    if(userAnswer === ch) btn.classList.add('exam-selected');
+                } else {
+                    btn.onclick = () => submitPracticeAnswer(ch, q.Answer);
+                    // If already answered in this practice session
+                    if(userAnswer) {
+                        btn.onclick = null;
+                        if(ch === q.Answer) btn.classList.add('selected-correct');
+                        else if(ch === userAnswer) btn.classList.add('selected-wrong');
+                        else btn.classList.add('dimmed');
+                    }
+                }
+            });
+            
+            // Explanation & Nav logic
+            const expBox = document.getElementById('q-explanation-box');
+            const btnNext = document.getElementById('btn-next');
+            const btnPrev = document.getElementById('btn-prev');
+            const btnSubmit = document.getElementById('btn-submit-exam');
+
+            if(isExam) {
+                expBox.classList.add('hidden');
+                btnPrev.classList.remove('hidden');
+                btnPrev.disabled = state.session.currentIndex === 0;
+                btnPrev.style.opacity = state.session.currentIndex === 0 ? '0.3' : '1';
+                
+                if(state.session.currentIndex === state.session.questions.length - 1) {
+                    btnNext.classList.add('hidden');
+                    btnSubmit.classList.remove('hidden');
+                } else {
+                    btnNext.classList.remove('hidden');
+                    btnSubmit.classList.add('hidden');
+                }
+            } else {
+                btnPrev.classList.add('hidden');
+                btnSubmit.classList.add('hidden');
+                if(userAnswer) {
+                    showExplanation(q);
+                    btnNext.classList.remove('hidden');
+                } else {
+                    expBox.classList.add('hidden');
+                    btnNext.classList.add('hidden');
+                }
+            }
+            
+            updateIcons(q.ID);
+        }
+
+        // Practice Mode Answer Logic
+        function submitPracticeAnswer(selected, correct) {
+            const q = state.session.questions[state.session.currentIndex];
+            state.session.userAnswers[state.session.currentIndex] = selected; // Mark answered
+            
+            trackStats(q, selected === correct);
+
+            // UI Update
+            document.querySelectorAll('.choice-btn').forEach(btn => {
+                btn.onclick = null;
+                if(btn.dataset.choice === correct) btn.classList.add('selected-correct');
+                else if (btn.dataset.choice === selected) btn.classList.add('selected-wrong');
+                else btn.classList.add('dimmed');
+            });
+
+            showExplanation(q);
+            document.getElementById('btn-next').classList.remove('hidden');
+            document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
+        }
+
+        function showExplanation(q) {
+            document.getElementById('q-explanation-text').innerText = q.Explanation || "No explanation provided in database.";
+            document.getElementById('q-ref-text').innerText = q.Reference || "N/A";
+            document.getElementById('q-explanation-box').classList.remove('hidden');
+        }
+
+        // Exam Mode Answer Logic
+        function selectExamAnswer(selected) {
+            state.session.userAnswers[state.session.currentIndex] = selected;
+            document.querySelectorAll('.choice-btn').forEach(btn => {
+                if(btn.dataset.choice === selected) btn.classList.add('exam-selected');
+                else btn.classList.remove('exam-selected');
+            });
+        }
+
+        function nextQuestion() {
+            if(state.session.currentIndex < state.session.questions.length - 1) {
+                state.session.currentIndex++;
+                renderQuestion();
+            } else if (state.session.type === 'practice') {
+                alert("Practice Session Complete! Great job.");
+                endSession(false);
+            }
+        }
+
+        function prevQuestion() {
+            if(state.session.currentIndex > 0) {
+                state.session.currentIndex--;
+                renderQuestion();
+            }
+        }
+
+        // --- STATS TRACKING ---
+        function trackStats(q, isCorrect) {
+            state.stats.totalAnswered++;
+            
+            // Subject Accuracy Tracking
+            const subj = q.Subject || "General";
+            if(!state.stats.subjectAccuracy[subj]) state.stats.subjectAccuracy[subj] = { total: 0, correct: 0 };
+            state.stats.subjectAccuracy[subj].total++;
+
+            if (isCorrect) {
+                state.stats.correct++;
+                state.stats.subjectAccuracy[subj].correct++;
+                state.stats.mistakes = state.stats.mistakes.filter(id => id !== q.ID); // Remove from mistakes
+            } else {
+                if(!state.stats.mistakes.includes(q.ID)) state.stats.mistakes.push(q.ID);
+            }
+
+            // Streak check
+            const today = new Date().toDateString();
+            if(state.stats.lastStudyDate !== today) {
+                state.stats.streak++;
+                state.stats.lastStudyDate = today;
+            }
+            saveState();
+        }
+
+        // --- EXAM LOGIC ---
+        function startExamTimer(seconds) {
+            clearInterval(examTimerInterval);
+            examTimeRemaining = seconds;
+            updateTimerUI();
+            
+            examTimerInterval = setInterval(() => {
+                examTimeRemaining--;
+                updateTimerUI();
+                if(examTimeRemaining <= 0) {
+                    clearInterval(examTimerInterval);
+                    alert("Time's up! Submitting exam automatically.");
+                    submitExam();
+                }
+            }, 1000);
+        }
+
+        function updateTimerUI() {
+            const m = Math.floor(examTimeRemaining / 60).toString().padStart(2, '0');
+            const s = (examTimeRemaining % 60).toString().padStart(2, '0');
+            document.getElementById('exam-timer-display').innerText = `${m}:${s}`;
+        }
+
+        function submitExam() {
+            clearInterval(examTimerInterval);
+            
+            // Calculate Score & Track Stats bulk
+            let score = 0;
+            state.session.questions.forEach((q, index) => {
+                const userAns = state.session.userAnswers[index];
+                if(userAns) {
+                    const isCorrect = userAns === q.Answer;
+                    if(isCorrect) score++;
+                    trackStats(q, isCorrect);
+                }
+            });
+
+            const percentage = Math.round((score / state.session.questions.length) * 100);
+            const passed = percentage >= 70; // 70% Passing grade assumption
+            
+            document.getElementById('session-active').classList.add('hidden');
+            const resDiv = document.getElementById('exam-results');
+            resDiv.classList.remove('hidden');
+            
+            document.getElementById('result-score').innerText = `${percentage}%`;
+            document.getElementById('result-fraction').innerText = `${score} / ${state.session.questions.length} Correct`;
+            
+            const icon = document.getElementById('result-icon');
+            const title = document.getElementById('result-title');
+            
+            if(passed) {
+                icon.innerHTML = '<i class="fa-solid fa-medal text-yellow-400"></i>';
+                title.innerText = "Passed!";
+                title.className = "text-3xl font-black mb-2 text-green-500";
+            } else {
+                icon.innerHTML = '<i class="fa-solid fa-circle-xmark text-red-400"></i>';
+                title.innerText = "Failed";
+                title.className = "text-3xl font-black mb-2 text-red-500";
+            }
+
+            state.session.active = false;
+        }
+
+        function endSession(silent = false) {
+            clearInterval(examTimerInterval);
+            state.session.active = false;
+            if(!silent) navigate('dashboard');
+        }
+
+        // --- ICONS (Bookmarks & Flags) ---
+        function toggleBookmark() {
+            if(!state.session.active) return;
+            const qId = state.session.questions[state.session.currentIndex].ID;
+            
+            if(state.stats.bookmarks.includes(qId)) state.stats.bookmarks = state.stats.bookmarks.filter(id => id !== qId);
+            else state.stats.bookmarks.push(qId);
+            
+            saveState(); updateIcons(qId);
+        }
+
+        function toggleFlag() {
+            if(!state.session.active) return;
+            const index = state.session.currentIndex;
+            
+            if(state.session.flags.includes(index)) state.session.flags = state.session.flags.filter(i => i !== index);
+            else state.session.flags.push(index);
+            
+            updateIcons(state.session.questions[index].ID);
+        }
+
+        function updateIcons(qId) {
+            const bBtn = document.getElementById('btn-bookmark');
+            if(state.stats.bookmarks.includes(qId)) bBtn.innerHTML = '<i class="fa-solid fa-bookmark text-xl text-yellow-500"></i>';
+            else bBtn.innerHTML = '<i class="fa-regular fa-bookmark text-xl"></i>';
+
+            if(state.session.type === 'exam') {
+                const fBtn = document.getElementById('btn-flag');
+                if(state.session.flags.includes(state.session.currentIndex)) fBtn.innerHTML = '<i class="fa-solid fa-flag text-xl text-orange-500"></i>';
+                else fBtn.innerHTML = '<i class="fa-regular fa-flag text-xl"></i>';
+            }
+        }
+
+        // --- CHARTS & SETTINGS ---
+        function renderCharts() {
+            if(chartInstance) chartInstance.destroy(); // clear old chart
+            
+            const ctx = document.getElementById('chart-accuracy').getContext('2d');
+            
+            const subjects = Object.keys(state.stats.subjectAccuracy);
+            if(subjects.length === 0) {
+                // Dummy data if no history
+                subjects.push("COLREG", "Navigation", "Meteorology");
+                state.stats.subjectAccuracy = {
+                    "COLREG": {total: 10, correct: 0}, "Navigation": {total: 10, correct: 0}, "Meteorology": {total: 10, correct: 0}
+                };
+            }
+
+            const labels = subjects;
+            const data = subjects.map(s => {
+                const d = state.stats.subjectAccuracy[s];
+                return d.total === 0 ? 0 : Math.round((d.correct / d.total) * 100);
+            });
+
+            chartInstance = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Accuracy %',
+                        data: data,
+                        backgroundColor: 'rgba(59, 130, 246, 0.2)', // Brand blue
+                        borderColor: 'rgba(59, 130, 246, 1)',
+                        pointBackgroundColor: 'rgba(59, 130, 246, 1)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { r: { beginAtZero: true, max: 100, ticks: { stepSize: 20 } } },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        function toggleDarkMode() {
+            state.prefs.darkMode = !state.prefs.darkMode;
+            document.documentElement.classList.toggle('dark', state.prefs.darkMode);
+            saveState();
+        }
+
+        function resetProgress() {
+            if(confirm("Are you sure? This deletes streaks, mistakes, and all statistics.")) {
+                state.stats = { totalAnswered: 0, correct: 0, mistakes: [], bookmarks: [], streak: 0, lastStudyDate: null, subjectAccuracy: {} };
+                saveState(); alert("Progress Reset.");
+                if(document.getElementById('view-stats').classList.contains('active')) renderCharts();
+            }
+        }
+
+        // Boot
+        window.onload = () => {
+            loadState();
+            if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+        };
+    </script>
+    <script src="features.js"></script>
+</body>
+</html>

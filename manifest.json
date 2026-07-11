@@ -1,0 +1,16 @@
+{
+  "name": "Maritime Review Hub",
+  "short_name": "MRH",
+  "description": "Professional Maritime Examination Reviewer",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1e3a8a",
+  "icons": [
+    {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Anchor_pictogram.svg/512px-Anchor_pictogram.svg.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
