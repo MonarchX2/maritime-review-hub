@@ -503,20 +503,32 @@ async function syncDatabase() {
         imgEl.classList.add('hidden');
     }
 
-    // --- SHUFFLED CHOICES LOGIC ---
-    let options = [
-        { letter: 'A', text: q.ChoiceA },
-        { letter: 'B', text: q.ChoiceB },
-        { letter: 'C', text: q.ChoiceC },
-        { letter: 'D', text: q.ChoiceD }
-    ];
+    // --- BULLETPROOF SHUFFLE LOGIC ---
+    // Only shuffle if we haven't already shuffled this specific question
+    if (!q.shuffledOptions) {
+        let opts = [
+            { letter: 'A', text: q.ChoiceA },
+            { letter: 'B', text: q.ChoiceB },
+            { letter: 'C', text: q.ChoiceC },
+            { letter: 'D', text: q.ChoiceD }
+        ];
+        
+        // Fisher-Yates shuffle built directly into the function
+        for (let i = opts.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [opts[i], opts[j]] = [opts[j], opts[i]];
+        }
+        
+        // Save the shuffled order to the question so it doesn't change if we hit "Previous"
+        q.shuffledOptions = opts; 
+    }
 
-    // Mix them up!
-    options = shuffleOptions(options);
+    const options = q.shuffledOptions;
+    // ---------------------------------
 
     const buttonKeys = ['a', 'b', 'c', 'd'];
     buttonKeys.forEach((key, index) => {
-        const option = options[index]; // Grab a shuffled option
+        const option = options[index]; // Grab the locked-in shuffled option
         const btn = document.querySelector(`.choice-btn[data-choice="${key.toUpperCase()}"]`);
         
         // Update text
