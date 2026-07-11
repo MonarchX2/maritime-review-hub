@@ -348,58 +348,50 @@
         }
 
         // --- ROBUST DATABASE SYNC ---
-        async function syncDatabase() {
-            let url = document.getElementById('setting-csv-url').value.trim();
-            const statusEl = document.getElementById('sync-status');
-            statusEl.classList.remove('hidden');
-            
-            if (!url) {
-                statusEl.innerText = "Please enter a valid Google Sheets URL.";
-                statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
-                return;
-            }
+// --- ROBUST DATABASE SYNC (API VERSION) ---
+async function syncDatabase() {
+    let url = document.getElementById('setting-csv-url').value.trim();
+    const statusEl = document.getElementById('sync-status');
+    statusEl.classList.remove('hidden');
+    
+    if (!url) {
+        statusEl.innerText = "Please enter your Google Web App API URL.";
+        statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+        return;
+    }
+    
+    state.prefs.csvUrl = url;
+    saveState();
+    
+    statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Fetching data from all subjects...';
+    statusEl.className = "text-sm mt-3 font-medium bg-blue-50 text-blue-600 p-3 rounded-lg";
 
-            // AUTO-FIX: Convert standard /edit URLs to /export?format=csv
-            if (url.includes('/edit')) {
-                try {
-                    const sheetId = url.match(/\/d\/(.*?)(\/|$)/)[1];
-                    url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
-                    document.getElementById('setting-csv-url').value = url; // Show the user we fixed it
-                } catch(e) {
-                    console.log("Could not auto-format URL, trying as-is.");
-                }
-            }
-            
-            state.prefs.csvUrl = url;
-            saveState();
-            
-            statusEl.innerText = "Fetching and parsing data... Please wait.";
-            statusEl.className = "text-sm mt-3 font-medium bg-blue-50 text-blue-600 p-3 rounded-lg";
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Network response failed");
+        
+        const data = await response.json();
 
-            Papa.parse(url, {
-                download: true,
-                header: true,
-                skipEmptyLines: true,
-                complete: function(results) {
-                    const validData = results.data.filter(q => q.Question && q.Answer); // Require basic fields
-                    if(validData.length > 0) {
-                        state.db = validData;
-                        localStorage.setItem('mrh_db', JSON.stringify(state.db));
-                        document.getElementById('db-size-display').innerText = state.db.length;
-                        
-                        statusEl.innerHTML = `<i class="fa-solid fa-check-circle mr-1"></i> Success! Loaded ${state.db.length} questions.`;
-                        statusEl.className = "text-sm mt-3 font-medium bg-green-50 text-green-600 p-3 rounded-lg";
-                    } else {
-                        statusEl.innerText = "Error: Sheet found, but no valid questions. Check column headers (Question, Answer, etc).";
-                        statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
-                    }
-                },
-                error: function(err) {
-                    statusEl.innerText = "Connection Error. Make sure the sheet is public or published to the web.";
-                    statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
-                }
-            });
+        if (data && data.length > 0) {
+            state.db = data;
+            localStorage.setItem('mrh_db', JSON.stringify(state.db));
+            document.getElementById('db-size-display').innerText = state.db.length;
+            
+            // Re-populate filters instantly so the new subjects appear in the Practice setup
+            if (typeof populateFilters === "function") populateFilters();
+            
+            statusEl.innerHTML = `<i class="fa-solid fa-check-circle mr-1"></i> Success! Loaded ${state.db.length} questions across all sheets.`;
+            statusEl.className = "text-sm mt-3 font-medium bg-green-50 text-green-600 p-3 rounded-lg";
+        } else {
+            statusEl.innerText = "Error: Connected, but no valid questions found. Check your sheet formatting.";
+            statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
         }
+    } catch (err) {
+        console.error(err);
+        statusEl.innerText = "Connection Error. Ensure you deployed the Apps Script as a Web App accessible to 'Anyone'.";
+        statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+    }
+}
 
         // --- SESSION SETUP (Practice & Exam) ---
         function populateFilters() {
