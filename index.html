@@ -476,6 +476,7 @@ async function syncDatabase() {
             }
             
             renderQuestion();
+            saveSessionProgress();
         }
 
         // --- SESSION ENGINE ---
@@ -603,6 +604,7 @@ async function syncDatabase() {
                 alert("Practice Session Complete! Great job.");
                 endSession(false);
             }
+            saveSessionProgress();
         }
 
         function prevQuestion() {
@@ -610,6 +612,7 @@ async function syncDatabase() {
                 state.session.currentIndex--;
                 renderQuestion();
             }
+            saveSessionProgress();
         }
 
         // --- STATS TRACKING ---
@@ -699,12 +702,14 @@ async function syncDatabase() {
             }
 
             state.session.active = false;
+            clearSessionProgress();
         }
 
         function endSession(silent = false) {
             clearInterval(examTimerInterval);
             state.session.active = false;
             if(!silent) navigate('dashboard');
+            clearSessionProgress();
         }
 
         // --- ICONS (Bookmarks & Flags) ---
@@ -802,6 +807,23 @@ async function syncDatabase() {
             loadState();
             if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
         };
+
+        // --- RESUME FEATURE LOGIC ---
+
+function saveSessionProgress() {
+    // We save the current index, the mode, and the selected filter
+    const progressData = {
+        index: state.currentQuestionIndex || 0,
+        type: state.session.type, // 'practice' or 'exam'
+        subjectFilter: document.getElementById('filter-subject') ? document.getElementById('filter-subject').value : 'ALL'
+    };
+    localStorage.setItem('mrh_saved_session', JSON.stringify(progressData));
+}
+
+function clearSessionProgress() {
+    // Call this when the user finishes all questions so it doesn't loop forever
+    localStorage.removeItem('mrh_saved_session');
+}
     </script>
     <script src="features.js"></script>
 </body>
