@@ -815,15 +815,15 @@ window.onload = () => {
 };
         // --- RESUME FEATURE LOGIC ---
 
-        function saveSessionProgress() {
-            // We save the current index, the mode, and the selected filter
-            const progressData = {
-                index: state.currentQuestionIndex || 0,
-                type: state.session.type, // 'practice' or 'exam'
-                subjectFilter: document.getElementById('filter-subject') ? document.getElementById('filter-subject').value : 'ALL'
-            };
-            localStorage.setItem('mrh_saved_session', JSON.stringify(progressData));
-        }
+function saveSessionProgress() {
+    // We save the current index, the mode, and the selected filter
+    const progressData = {
+        index: state.session.currentIndex || 0, // <-- Updated this variable name!
+        type: state.session.type, // 'practice' or 'exam'
+        subjectFilter: document.getElementById('filter-subject') ? document.getElementById('filter-subject').value : 'ALL'
+    };
+    localStorage.setItem('mrh_saved_session', JSON.stringify(progressData));
+}
 
         function clearSessionProgress() {
     // Call this when the user finishes all questions so it doesn't loop forever
