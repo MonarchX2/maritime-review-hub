@@ -262,7 +262,6 @@
                 <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-database text-brand-500 mr-2"></i> Database Sync</h3>
                 <p class="text-sm text-gray-500 mb-4">No need to manually sync. Questions will be automatically fetched from the database.</p>
                 
-                <button onclick="syncDatabase()" class="bg-green-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-green-700 shadow-sm w-full md:w-auto" id="btn-sync"><i class="fa-solid fa-cloud-arrow-down mr-2"></i> Sync Questions</button>
                 <p id="sync-status" class="text-sm mt-3 font-medium bg-gray-50 dark:bg-gray-700 p-3 rounded-lg hidden"></p>
                 
                 <p class="text-xs text-gray-400 mt-4">Current Database Size: <span id="db-size-display" class="font-bold">0</span> questions.</p>
@@ -801,12 +800,17 @@ async function syncDatabase() {
         // Boot
 window.onload = () => {
     loadState();
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+    
+    // Register the service worker AND force it to check for updates
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').then(registration => {
+            registration.update(); // This pulls the latest files if sw.js changed
+        });
+    }
     
     // Trigger the hardcoded sync automatically
     syncDatabase();
 };
-
         // --- RESUME FEATURE LOGIC ---
 
         function saveSessionProgress() {
