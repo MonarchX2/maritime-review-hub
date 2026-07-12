@@ -359,9 +359,34 @@ async function syncDatabase() {
     state.prefs.csvUrl = url;
     saveState();
     
-    // ... rest of your existing fetch logic ...
-    statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Syncing...';
-    // ...
+    statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Fetching data from all subjects...';
+    statusEl.className = "text-sm mt-3 font-medium bg-blue-50 text-blue-600 p-3 rounded-lg";
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Network response failed");
+        
+        const data = await response.json();
+
+        if (data && data.length > 0) {
+            state.db = data;
+            localStorage.setItem('mrh_db', JSON.stringify(state.db));
+            document.getElementById('db-size-display').innerText = state.db.length;
+            
+            // Re-populate filters instantly so the new subjects appear in the Practice setup
+            if (typeof populateFilters === "function") populateFilters();
+            
+            statusEl.innerHTML = `<i class="fa-solid fa-check-circle mr-1"></i> Success! Loaded ${state.db.length} questions.`;
+            statusEl.className = "text-sm mt-3 font-medium bg-green-50 text-green-600 p-3 rounded-lg";
+        } else {
+            statusEl.innerText = "Error: Connected, but no valid questions found. Check your sheet formatting.";
+            statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+        }
+    } catch (err) {
+        console.error(err);
+        statusEl.innerText = "Connection Error. Ensure you deployed the Apps Script as a Web App accessible to 'Anyone'.";
+        statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+    }
 }
 
         // --- SESSION SETUP (Practice & Exam) ---
