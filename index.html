@@ -8,10 +8,18 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1e3a8a">
     
+    <!-- Dark Mode Memory Fix to avoid white flash -->
+    <script>
+        try {
+            const prefs = JSON.parse(localStorage.getItem('mrh_prefs') || '{"darkMode":false}');
+            if (prefs.darkMode) document.documentElement.classList.add('dark');
+        } catch (e) {}
+    </script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Deferred Chart.js for faster initial paint -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
 
     <script>
         tailwind.config = {
@@ -25,19 +33,16 @@
         .view-section.active { display: block; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         
-        /* Practice Mode Colors */
         .choice-btn.selected-correct { background-color: #22c55e !important; color: white !important; border-color: #16a34a !important; }
         .choice-btn.selected-wrong { background-color: #ef4444 !important; color: white !important; border-color: #dc2626 !important; }
         .choice-btn.dimmed { opacity: 0.5; pointer-events: none; }
-        
-        /* Exam Mode Colors */
         .choice-btn.exam-selected { background-color: #3b82f6 !important; color: white !important; border-color: #2563eb !important; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col md:flex-row">
 
     <header class="md:hidden bg-brand-900 text-white p-4 flex justify-between items-center shadow-md sticky top-0 z-50">
-        <h1 class="font-bold text-lg"><i class="fa-solid fa-anchor mr-2"></i> Hub v1.1</h1>
+        <h1 class="font-bold text-lg"><i class="fa-solid fa-anchor mr-2"></i> Hub v2.0</h1>
         <div class="flex items-center gap-3">
             <span class="text-sm font-semibold text-orange-400"><i class="fa-solid fa-fire"></i> <span class="streak-display">0</span></span>
         </div>
@@ -58,9 +63,9 @@
         <button onclick="navigate('dashboard')" class="nav-btn flex flex-col md:flex-row items-center md:py-3 md:px-4 rounded-lg text-gray-500 hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-gray-700 dark:hover:text-brand-400 md:mb-2 w-full justify-center md:justify-start gap-1 md:gap-3">
             <i class="fa-solid fa-house text-xl md:text-lg"></i> <span class="text-[10px] md:text-sm font-medium">Home</span>
         </button>
-<button onclick="startPractice()" class="nav-btn flex flex-col md:flex-row items-center md:py-3 md:px-4 rounded-lg text-gray-500 hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-gray-700 dark:hover:text-brand-400 md:mb-2 w-full justify-center md:justify-start gap-1 md:gap-3">
-    <i class="fa-solid fa-book-open text-xl md:text-lg"></i> <span class="text-[10px] md:text-sm font-medium">Practice</span>
-</button>
+        <button onclick="startPractice()" class="nav-btn flex flex-col md:flex-row items-center md:py-3 md:px-4 rounded-lg text-gray-500 hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-gray-700 dark:hover:text-brand-400 md:mb-2 w-full justify-center md:justify-start gap-1 md:gap-3">
+            <i class="fa-solid fa-book-open text-xl md:text-lg"></i> <span class="text-[10px] md:text-sm font-medium">Practice</span>
+        </button>
         <button onclick="startExamSetup()" class="nav-btn flex flex-col md:flex-row items-center md:py-3 md:px-4 rounded-lg text-gray-500 hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-gray-700 dark:hover:text-brand-400 md:mb-2 w-full justify-center md:justify-start gap-1 md:gap-3">
             <i class="fa-solid fa-file-signature text-xl md:text-lg"></i> <span class="text-[10px] md:text-sm font-medium">Exam</span>
         </button>
@@ -73,25 +78,25 @@
     </nav>
 
     <main class="flex-1 p-4 md:p-8 pb-24 md:pb-8 overflow-y-auto w-full max-w-5xl mx-auto">
+        
         <section id="view-search" class="view-section">
-    <h2 class="text-2xl font-bold mb-6">Global Search</h2>
-    <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-6">
-        <div class="flex gap-2">
-            <input type="text" id="search-input" onkeyup="executeSearch()" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Search by ID, keyword, rule...">
-        </div>
-    </div>
-    <div id="search-results" class="space-y-4">
-        <p class="text-gray-500 text-center mt-10">Type above to search the entire database.</p>
-    </div>
-</section>
+            <h2 class="text-2xl font-bold mb-6">Global Search</h2>
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-6">
+                <div class="flex gap-2">
+                    <input type="text" id="search-input" onkeyup="executeSearch()" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Search by ID, keyword, rule...">
+                </div>
+            </div>
+            <div id="search-results" class="space-y-4">
+                <p class="text-gray-500 text-center mt-10">Type above to search the entire database.</p>
+            </div>
+        </section>
 
-<section id="view-achievements" class="view-section">
-    <h2 class="text-2xl font-bold mb-2">Trophy Room</h2>
-    <p class="text-gray-500 mb-6">Track your milestones and unlocked badges.</p>
-    
-    <div id="achievement-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        </div>
-</section>
+        <section id="view-achievements" class="view-section">
+            <h2 class="text-2xl font-bold mb-2">Trophy Room</h2>
+            <p class="text-gray-500 mb-6">Track your milestones and unlocked badges.</p>
+            <div id="achievement-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+        </section>
+
         <section id="view-dashboard" class="view-section active">
             <div class="flex justify-between items-end mb-6">
                 <div>
@@ -140,7 +145,7 @@
             <div id="session-setup">
                 <h2 class="text-2xl font-bold mb-6" id="setup-title">Setup Session</h2>
                 <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm">
-                    <label class="block text-sm font-semibold mb-2">Subject Filter</label>
+                    <label class="block text-sm font-semibold mb-2">Subject / Tag Filter</label>
                     <select id="filter-subject" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white mb-4">
                         <option value="ALL">All Subjects</option>
                     </select>
@@ -160,7 +165,10 @@
 
             <div id="session-active" class="hidden">
                 <div class="flex justify-between items-center mb-4">
-                    <button onclick="endSession(false)" class="text-gray-500 hover:text-red-500 font-semibold"><i class="fa-solid fa-xmark mr-1"></i> Exit</button>
+                    <div>
+                        <button onclick="endSession(false)" class="text-gray-500 hover:text-red-500 font-semibold"><i class="fa-solid fa-xmark mr-1"></i> Exit</button>
+                        <button onclick="togglePauseExam()" id="btn-pause-exam" class="hidden text-gray-500 hover:text-blue-500 font-semibold ml-4"><i class="fa-solid fa-pause mr-1"></i> Pause</button>
+                    </div>
                     
                     <div id="exam-timer-display" class="hidden text-xl font-mono font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-1 rounded-md border border-red-200">
                         00:00
@@ -261,10 +269,19 @@
             <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-6 border border-gray-100 dark:border-gray-700">
                 <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-database text-brand-500 mr-2"></i> Database Sync</h3>
                 <p class="text-sm text-gray-500 mb-4">No need to manually sync. Questions will be automatically fetched from the database.</p>
-                
                 <p id="sync-status" class="text-sm mt-3 font-medium bg-gray-50 dark:bg-gray-700 p-3 rounded-lg hidden"></p>
-                
                 <p class="text-xs text-gray-400 mt-4">Current Database Size: <span id="db-size-display" class="font-bold">0</span> questions.</p>
+            </div>
+
+            <!-- New Backup & Restore Section -->
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-6 border border-gray-100 dark:border-gray-700">
+                <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-floppy-disk text-brand-500 mr-2"></i> Backup & Restore</h3>
+                <p class="text-sm text-gray-500 mb-4">Export your statistics and save them to a file, or restore a previous backup.</p>
+                <div class="flex gap-4">
+                    <button onclick="exportData()" class="flex-1 bg-brand-100 text-brand-700 dark:bg-brand-900 dark:text-brand-300 px-4 py-2 rounded-lg font-bold hover:bg-brand-200 transition-colors"><i class="fa-solid fa-download mr-1"></i> Export</button>
+                    <button onclick="document.getElementById('import-file').click()" class="flex-1 bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-lg font-bold hover:bg-gray-300 transition-colors"><i class="fa-solid fa-upload mr-1"></i> Import</button>
+                    <input type="file" id="import-file" class="hidden" accept=".json" onchange="importData(event)">
+                </div>
             </div>
 
             <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
@@ -284,7 +301,7 @@
 
     <script>
         const DB_URL = "https://script.google.com/macros/s/AKfycbw9B0Ny93yn3W8tE4e0Kvfamdwk_YCn0AUol67NqjPbtYljF3V-7uPha7Z0Snyw8sw_/exec";
-        // --- STATE & VARIABLES ---
+        
         let state = {
             db: [],
             stats: { totalAnswered: 0, correct: 0, mistakes: [], bookmarks: [], streak: 0, lastStudyDate: null, subjectAccuracy: {} },
@@ -294,28 +311,24 @@
         
         let examTimerInterval;
         let examTimeRemaining = 0;
+        let examPaused = false; // New Pause State
         let chartInstance = null;
 
-        // --- INITIALIZATION ---
-function loadState() {
-    const savedStats = localStorage.getItem('mrh_stats');
-    const savedPrefs = localStorage.getItem('mrh_prefs');
-    const savedDb = localStorage.getItem('mrh_db');
-    
-    if (savedStats) state.stats = JSON.parse(savedStats);
-    if (savedPrefs) state.prefs = JSON.parse(savedPrefs);
-    if (savedDb) state.db = JSON.parse(savedDb);
+        function loadState() {
+            const savedStats = localStorage.getItem('mrh_stats');
+            const savedPrefs = localStorage.getItem('mrh_prefs');
+            const savedDb = localStorage.getItem('mrh_db');
+            
+            if (savedStats) state.stats = JSON.parse(savedStats);
+            if (savedPrefs) state.prefs = JSON.parse(savedPrefs);
+            if (savedDb) state.db = JSON.parse(savedDb);
 
-    if (!state.stats.subjectAccuracy) state.stats.subjectAccuracy = {};
-
-    if (state.prefs.darkMode) document.documentElement.classList.add('dark');
-    
-    // REMOVED: document.getElementById('setting-csv-url').value = state.prefs.csvUrl;
-    
-    document.getElementById('db-size-display').innerText = state.db.length;
-    
-    updateDashboard();
-}
+            if (!state.stats.subjectAccuracy) state.stats.subjectAccuracy = {};
+            if (state.prefs.darkMode) document.documentElement.classList.add('dark');
+            
+            document.getElementById('db-size-display').innerText = state.db.length;
+            updateDashboard();
+        }
 
         function saveState() {
             localStorage.setItem('mrh_stats', JSON.stringify(state.stats));
@@ -332,15 +345,13 @@ function loadState() {
             
             document.querySelectorAll('.streak-display').forEach(el => el.innerText = state.stats.streak);
             
-            // Update Stats View
             document.getElementById('stat-total').innerText = state.stats.totalAnswered;
             document.getElementById('stat-correct').innerText = state.stats.correct;
         }
 
-        // --- NAVIGATION ---
         function navigate(viewId) {
             if(state.session.active && !confirm("You have an active session. Are you sure you want to leave? Progress will be lost.")) return;
-            endSession(true); // silent abort
+            endSession(true);
 
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
             document.getElementById(`view-${viewId}`).classList.add('active');
@@ -348,54 +359,68 @@ function loadState() {
             if(viewId === 'stats') renderCharts();
         }
 
-        // --- ROBUST DATABASE SYNC ---
-// --- ROBUST DATABASE SYNC (API VERSION) ---
-async function syncDatabase() {
-    // We ignore the input field and use our constant
-    const url = DB_URL; 
-    const statusEl = document.getElementById('sync-status');
-    statusEl.classList.remove('hidden');
-    
-    // Update state prefs automatically
-    state.prefs.csvUrl = url;
-    saveState();
-    
-    statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Fetching data from all subjects...';
-    statusEl.className = "text-sm mt-3 font-medium bg-blue-50 text-blue-600 p-3 rounded-lg";
-
-    try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error("Network response failed");
-        
-        const data = await response.json();
-
-        if (data && data.length > 0) {
-            state.db = data;
-            localStorage.setItem('mrh_db', JSON.stringify(state.db));
-            document.getElementById('db-size-display').innerText = state.db.length;
+        async function syncDatabase() {
+            const url = DB_URL; 
+            const statusEl = document.getElementById('sync-status');
+            statusEl.classList.remove('hidden');
             
-            // Re-populate filters instantly so the new subjects appear in the Practice setup
-            if (typeof populateFilters === "function") populateFilters();
+            state.prefs.csvUrl = url;
+            saveState();
             
-            statusEl.innerHTML = `<i class="fa-solid fa-check-circle mr-1"></i> Success! Loaded ${state.db.length} questions.`;
-            statusEl.className = "text-sm mt-3 font-medium bg-green-50 text-green-600 p-3 rounded-lg";
-        } else {
-            statusEl.innerText = "Error: Connected, but no valid questions found. Check your sheet formatting.";
-            statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+            statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Fetching data from all subjects...';
+            statusEl.className = "text-sm mt-3 font-medium bg-blue-50 text-blue-600 p-3 rounded-lg";
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error("Network response failed");
+                const data = await response.json();
+
+                if (data && data.length > 0) {
+                    state.db = data;
+                    localStorage.setItem('mrh_db', JSON.stringify(state.db));
+                    document.getElementById('db-size-display').innerText = state.db.length;
+                    
+                    if (typeof populateFilters === "function") populateFilters();
+                    
+                    statusEl.innerHTML = `<i class="fa-solid fa-check-circle mr-1"></i> Success! Loaded ${state.db.length} questions.`;
+                    statusEl.className = "text-sm mt-3 font-medium bg-green-50 text-green-600 p-3 rounded-lg";
+                } else {
+                    statusEl.innerText = "Error: Connected, but no valid questions found. Check your sheet formatting.";
+                    statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+                }
+            } catch (err) {
+                console.error(err);
+                statusEl.innerText = "Connection Error. Ensure you deployed the Apps Script as a Web App accessible to 'Anyone'.";
+                statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+            }
         }
-    } catch (err) {
-        console.error(err);
-        statusEl.innerText = "Connection Error. Ensure you deployed the Apps Script as a Web App accessible to 'Anyone'.";
-        statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
-    }
-}
 
-        // --- SESSION SETUP (Practice & Exam) ---
+        // Updated for Subject and Tag filtering
         function populateFilters() {
             const select = document.getElementById('filter-subject');
             const subjects = [...new Set(state.db.map(q => q.Subject).filter(Boolean))];
-            select.innerHTML = '<option value="ALL">All Subjects (Randomized)</option>' + 
-                subjects.map(s => `<option value="${s}">${s}</option>`).join('');
+            
+            let tags = new Set();
+            state.db.forEach(q => {
+                if (q.Tags) {
+                    q.Tags.split(',').map(t => t.trim()).forEach(t => tags.add(t));
+                }
+            });
+            tags = [...tags];
+
+            let html = '<option value="ALL">All Subjects (Randomized)</option>';
+            if(subjects.length > 0) {
+                html += '<optgroup label="Subjects">';
+                html += subjects.map(s => `<option value="SUBJ:${s}">${s}</option>`).join('');
+                html += '</optgroup>';
+            }
+            if(tags.length > 0) {
+                html += '<optgroup label="Tags">';
+                html += tags.map(t => `<option value="TAG:${t}">${t}</option>`).join('');
+                html += '</optgroup>';
+            }
+            
+            select.innerHTML = html;
         }
 
         function startPractice(filterType) {
@@ -433,26 +458,28 @@ async function syncDatabase() {
         }
 
         function initSession() {
-            const subject = document.getElementById('filter-subject').value;
+            const filterVal = document.getElementById('filter-subject').value;
             let pool = [];
 
-            // 1. Build Pool
-            if(subject === 'MISTAKES') {
+            if(filterVal === 'MISTAKES') {
                 pool = state.db.filter(q => state.stats.mistakes.includes(q.ID));
+            } else if (filterVal.startsWith('SUBJ:')) {
+                const subj = filterVal.replace('SUBJ:', '');
+                pool = state.db.filter(q => q.Subject === subj);
+            } else if (filterVal.startsWith('TAG:')) {
+                const tag = filterVal.replace('TAG:', '');
+                pool = state.db.filter(q => q.Tags && q.Tags.includes(tag));
             } else {
-                pool = subject === 'ALL' ? state.db : state.db.filter(q => q.Subject === subject);
+                pool = state.db;
             }
 
             if(pool.length === 0) { alert("No questions found for this filter."); return; }
-
-            // 2. Shuffle Pool
             pool = pool.sort(() => Math.random() - 0.5);
 
-            // 3. Slice for Exam
             if(state.session.type === 'exam') {
                 const count = parseInt(document.getElementById('exam-count').value);
                 pool = pool.slice(0, count);
-                startExamTimer(pool.length * 60); // 1 minute per question
+                startExamTimer(pool.length * 60); 
             }
             
             state.session = { 
@@ -460,39 +487,59 @@ async function syncDatabase() {
                 currentIndex: 0, userAnswers: {}, flags: [] 
             };
             
-            // UI Toggles
             document.getElementById('session-setup').classList.add('hidden');
             document.getElementById('session-active').classList.remove('hidden');
             
             if(state.session.type === 'exam') {
                 document.getElementById('exam-timer-display').classList.remove('hidden');
                 document.getElementById('btn-flag').classList.remove('hidden');
+                document.getElementById('btn-pause-exam').classList.remove('hidden'); // Show Pause
             } else {
                 document.getElementById('exam-timer-display').classList.add('hidden');
                 document.getElementById('btn-flag').classList.add('hidden');
+                document.getElementById('btn-pause-exam').classList.add('hidden');
             }
             
+            examPaused = false;
             renderQuestion();
             saveSessionProgress();
         }
 
-        // --- SESSION ENGINE ---
+        // --- NEW: EXAM PAUSE LOGIC ---
+        function togglePauseExam() {
+            examPaused = !examPaused;
+            const btn = document.getElementById('btn-pause-exam');
+            const content = document.getElementById('q-choices');
+            const qText = document.getElementById('q-text');
+            const qImg = document.getElementById('q-image');
+            
+            if (examPaused) {
+                clearInterval(examTimerInterval);
+                btn.innerHTML = '<i class="fa-solid fa-play mr-1"></i> Resume';
+                content.classList.add('hidden');
+                qText.innerText = "Exam Paused";
+                qImg.classList.add('hidden');
+            } else {
+                startExamTimer(examTimeRemaining);
+                btn.innerHTML = '<i class="fa-solid fa-pause mr-1"></i> Pause';
+                content.classList.remove('hidden');
+                renderQuestion(); 
+            }
+        }
+
         function renderQuestion() {
             const q = state.session.questions[state.session.currentIndex];
             const isExam = state.session.type === 'exam';
             const userAnswer = state.session.userAnswers[state.session.currentIndex];
             
-            // Top Bar Progress
             document.getElementById('q-current-num').innerText = state.session.currentIndex + 1;
             document.getElementById('q-total-num').innerText = state.session.questions.length;
             document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / state.session.questions.length) * 100}%`;
             
-            // Text Content
             document.getElementById('q-subject').innerText = q.Subject || 'General';
             document.getElementById('q-id').innerText = q.ID || `Q-${state.session.currentIndex}`;
             document.getElementById('q-text').innerText = q.Question;
             
-            // Image handling
             const imgEl = document.getElementById('q-image');
             if(q.ImageURL && q.ImageURL.trim() !== "") {
                 imgEl.src = q.ImageURL; imgEl.classList.remove('hidden');
@@ -500,13 +547,10 @@ async function syncDatabase() {
                 imgEl.classList.add('hidden');
             }
 
-            // Choices
             const choices = ['A', 'B', 'C', 'D'];
             choices.forEach(ch => {
                 document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = q[`Choice${ch}`];
                 const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
-                
-                // Reset styling
                 btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium";
                 
                 if(isExam) {
@@ -514,7 +558,6 @@ async function syncDatabase() {
                     if(userAnswer === ch) btn.classList.add('exam-selected');
                 } else {
                     btn.onclick = () => submitPracticeAnswer(ch, q.Answer);
-                    // If already answered in this practice session
                     if(userAnswer) {
                         btn.onclick = null;
                         if(ch === q.Answer) btn.classList.add('selected-correct');
@@ -524,7 +567,6 @@ async function syncDatabase() {
                 }
             });
             
-            // Explanation & Nav logic
             const expBox = document.getElementById('q-explanation-box');
             const btnNext = document.getElementById('btn-next');
             const btnPrev = document.getElementById('btn-prev');
@@ -558,14 +600,12 @@ async function syncDatabase() {
             updateIcons(q.ID);
         }
 
-        // Practice Mode Answer Logic
         function submitPracticeAnswer(selected, correct) {
             const q = state.session.questions[state.session.currentIndex];
-            state.session.userAnswers[state.session.currentIndex] = selected; // Mark answered
+            state.session.userAnswers[state.session.currentIndex] = selected;
             
             trackStats(q, selected === correct);
 
-            // UI Update
             document.querySelectorAll('.choice-btn').forEach(btn => {
                 btn.onclick = null;
                 if(btn.dataset.choice === correct) btn.classList.add('selected-correct');
@@ -584,7 +624,6 @@ async function syncDatabase() {
             document.getElementById('q-explanation-box').classList.remove('hidden');
         }
 
-        // Exam Mode Answer Logic
         function selectExamAnswer(selected) {
             state.session.userAnswers[state.session.currentIndex] = selected;
             document.querySelectorAll('.choice-btn').forEach(btn => {
@@ -612,11 +651,9 @@ async function syncDatabase() {
             saveSessionProgress();
         }
 
-        // --- STATS TRACKING ---
         function trackStats(q, isCorrect) {
             state.stats.totalAnswered++;
             
-            // Subject Accuracy Tracking
             const subj = q.Subject || "General";
             if(!state.stats.subjectAccuracy[subj]) state.stats.subjectAccuracy[subj] = { total: 0, correct: 0 };
             state.stats.subjectAccuracy[subj].total++;
@@ -624,12 +661,11 @@ async function syncDatabase() {
             if (isCorrect) {
                 state.stats.correct++;
                 state.stats.subjectAccuracy[subj].correct++;
-                state.stats.mistakes = state.stats.mistakes.filter(id => id !== q.ID); // Remove from mistakes
+                state.stats.mistakes = state.stats.mistakes.filter(id => id !== q.ID); 
             } else {
                 if(!state.stats.mistakes.includes(q.ID)) state.stats.mistakes.push(q.ID);
             }
 
-            // Streak check
             const today = new Date().toDateString();
             if(state.stats.lastStudyDate !== today) {
                 state.stats.streak++;
@@ -638,7 +674,6 @@ async function syncDatabase() {
             saveState();
         }
 
-        // --- EXAM LOGIC ---
         function startExamTimer(seconds) {
             clearInterval(examTimerInterval);
             examTimeRemaining = seconds;
@@ -664,7 +699,6 @@ async function syncDatabase() {
         function submitExam() {
             clearInterval(examTimerInterval);
             
-            // Calculate Score & Track Stats bulk
             let score = 0;
             state.session.questions.forEach((q, index) => {
                 const userAns = state.session.userAnswers[index];
@@ -676,7 +710,7 @@ async function syncDatabase() {
             });
 
             const percentage = Math.round((score / state.session.questions.length) * 100);
-            const passed = percentage >= 70; // 70% Passing grade assumption
+            const passed = percentage >= 70; 
             
             document.getElementById('session-active').classList.add('hidden');
             const resDiv = document.getElementById('exam-results');
@@ -709,7 +743,6 @@ async function syncDatabase() {
             clearSessionProgress();
         }
 
-        // --- ICONS (Bookmarks & Flags) ---
         function toggleBookmark() {
             if(!state.session.active) return;
             const qId = state.session.questions[state.session.currentIndex].ID;
@@ -742,15 +775,13 @@ async function syncDatabase() {
             }
         }
 
-        // --- CHARTS & SETTINGS ---
         function renderCharts() {
-            if(chartInstance) chartInstance.destroy(); // clear old chart
+            if(chartInstance) chartInstance.destroy(); 
             
             const ctx = document.getElementById('chart-accuracy').getContext('2d');
-            
             const subjects = Object.keys(state.stats.subjectAccuracy);
+            
             if(subjects.length === 0) {
-                // Dummy data if no history
                 subjects.push("COLREG", "Navigation", "Meteorology");
                 state.stats.subjectAccuracy = {
                     "COLREG": {total: 10, correct: 0}, "Navigation": {total: 10, correct: 0}, "Meteorology": {total: 10, correct: 0}
@@ -770,7 +801,7 @@ async function syncDatabase() {
                     datasets: [{
                         label: 'Accuracy %',
                         data: data,
-                        backgroundColor: 'rgba(59, 130, 246, 0.2)', // Brand blue
+                        backgroundColor: 'rgba(59, 130, 246, 0.2)', 
                         borderColor: 'rgba(59, 130, 246, 1)',
                         pointBackgroundColor: 'rgba(59, 130, 246, 1)',
                         borderWidth: 2
@@ -799,44 +830,68 @@ async function syncDatabase() {
             }
         }
 
-        // Boot
-window.onload = () => {
-    loadState();
-    
-    // Register the service worker AND force it to check for updates
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js').then(registration => {
-            registration.update(); // This pulls the latest files if sw.js changed
-        });
-    }
-    
-    // Trigger the hardcoded sync automatically
-    syncDatabase();
-};
-        // --- RESUME FEATURE LOGIC ---
+        // --- NEW: BACKUP & RESTORE LOGIC ---
+        function exportData() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
+            const dlAnchorElem = document.createElement('a');
+            dlAnchorElem.setAttribute("href", dataStr);
+            dlAnchorElem.setAttribute("download", "mrh_backup.json");
+            dlAnchorElem.click();
+        }
 
-function saveSessionProgress() {
-    // We save the current index, the mode, and the selected filter
-    const progressData = {
-        index: state.session.currentIndex || 0, // <-- Updated this variable name!
-        type: state.session.type, // 'practice' or 'exam'
-        subjectFilter: document.getElementById('filter-subject') ? document.getElementById('filter-subject').value : 'ALL'
-    };
-    localStorage.setItem('mrh_saved_session', JSON.stringify(progressData));
-}
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedState = JSON.parse(e.target.result);
+                    if (importedState && importedState.stats && importedState.db) {
+                        state = importedState;
+                        saveState();
+                        localStorage.setItem('mrh_db', JSON.stringify(state.db));
+                        alert("Data successfully restored!");
+                        window.location.reload();
+                    } else {
+                        alert("Invalid backup file.");
+                    }
+                } catch(err) {
+                    alert("Error reading file.");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        window.onload = () => {
+            loadState();
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('sw.js').then(registration => {
+                    registration.update(); 
+                });
+            }
+            syncDatabase();
+        };
+
+        function saveSessionProgress() {
+            const progressData = {
+                index: state.session.currentIndex || 0,
+                type: state.session.type,
+                subjectFilter: document.getElementById('filter-subject') ? document.getElementById('filter-subject').value : 'ALL'
+            };
+            localStorage.setItem('mrh_saved_session', JSON.stringify(progressData));
+        }
 
         function clearSessionProgress() {
-    // Call this when the user finishes all questions so it doesn't loop forever
-    localStorage.removeItem('mrh_saved_session');
-}
+            localStorage.removeItem('mrh_saved_session');
+        }
 
-function shuffleArray(array) {
-    for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
-    }
-    return array;
-}
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
     </script>
     <script src="features.js"></script>
 </body>

@@ -1,7 +1,8 @@
-const CACHE_NAME = 'mrh-v2';
+const CACHE_NAME = 'mrh-v3';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
+    './features.js',
     './manifest.json'
 ];
 
