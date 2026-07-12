@@ -260,8 +260,7 @@
             
             <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-6 border border-gray-100 dark:border-gray-700">
                 <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-database text-brand-500 mr-2"></i> Database Sync</h3>
-                <p class="text-sm text-gray-500 mb-4">Paste your Google Sheets link here. We will automatically format it to download the questions.</p>
-                <input type="text" id="setting-csv-url" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white mb-3" placeholder="https://docs.google.com/spreadsheets/d/.../edit">
+                <p class="text-sm text-gray-500 mb-4">No need to manually sync. Questions will be automatically fetched from the database.</p>
                 
                 <button onclick="syncDatabase()" class="bg-green-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-green-700 shadow-sm w-full md:w-auto" id="btn-sync"><i class="fa-solid fa-cloud-arrow-down mr-2"></i> Sync Questions</button>
                 <p id="sync-status" class="text-sm mt-3 font-medium bg-gray-50 dark:bg-gray-700 p-3 rounded-lg hidden"></p>
