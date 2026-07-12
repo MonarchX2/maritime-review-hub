@@ -297,23 +297,25 @@
         let chartInstance = null;
 
         // --- INITIALIZATION ---
-        function loadState() {
-            const savedStats = localStorage.getItem('mrh_stats');
-            const savedPrefs = localStorage.getItem('mrh_prefs');
-            const savedDb = localStorage.getItem('mrh_db');
-            
-            if (savedStats) state.stats = JSON.parse(savedStats);
-            if (savedPrefs) state.prefs = JSON.parse(savedPrefs);
-            if (savedDb) state.db = JSON.parse(savedDb);
+function loadState() {
+    const savedStats = localStorage.getItem('mrh_stats');
+    const savedPrefs = localStorage.getItem('mrh_prefs');
+    const savedDb = localStorage.getItem('mrh_db');
+    
+    if (savedStats) state.stats = JSON.parse(savedStats);
+    if (savedPrefs) state.prefs = JSON.parse(savedPrefs);
+    if (savedDb) state.db = JSON.parse(savedDb);
 
-            if (!state.stats.subjectAccuracy) state.stats.subjectAccuracy = {};
+    if (!state.stats.subjectAccuracy) state.stats.subjectAccuracy = {};
 
-            if (state.prefs.darkMode) document.documentElement.classList.add('dark');
-            document.getElementById('setting-csv-url').value = state.prefs.csvUrl;
-            document.getElementById('db-size-display').innerText = state.db.length;
-            
-            updateDashboard();
-        }
+    if (state.prefs.darkMode) document.documentElement.classList.add('dark');
+    
+    // REMOVED: document.getElementById('setting-csv-url').value = state.prefs.csvUrl;
+    
+    document.getElementById('db-size-display').innerText = state.db.length;
+    
+    updateDashboard();
+}
 
         function saveState() {
             localStorage.setItem('mrh_stats', JSON.stringify(state.stats));
