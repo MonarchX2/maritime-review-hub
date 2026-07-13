@@ -527,74 +527,78 @@
             }
         }
 
-function renderQuestion() {
-    const q = state.session.questions[state.session.currentIndex];
-    const userAnswer = state.session.userAnswers[state.session.currentIndex];
-    
-    document.getElementById('q-current-num').innerText = state.session.currentIndex + 1;
-    document.getElementById('q-total-num').innerText = state.session.questions.length;
-    document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / state.session.questions.length) * 100}%`;
-    
-    // Hide original ID and Subject badges since they are removed
-    document.getElementById('q-subject').classList.add('hidden');
-    document.getElementById('q-id').classList.add('hidden');
-    document.getElementById('q-text').innerText = q.Question;
-    
-    // Fixed: Maps directly to your 'URL' column to stop 404 errors
-    const imgEl = document.getElementById('q-image');
-    if(q.URL && q.URL.trim() !== "") {
-        imgEl.src = q.URL; 
-        imgEl.classList.remove('hidden');
-    } else {
-        imgEl.src = "";
-        imgEl.classList.add('hidden');
-    }
+        function renderQuestion() {
+            const q = state.session.questions[state.session.currentIndex];
+            const isExam = state.session.type === 'exam';
+            const userAnswer = state.session.userAnswers[state.session.currentIndex];
+            
+            document.getElementById('q-current-num').innerText = state.session.currentIndex + 1;
+            document.getElementById('q-total-num').innerText = state.session.questions.length;
+            document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / state.session.questions.length) * 100}%`;
+            
+            document.getElementById('q-subject').innerText = q.Subject || 'General';
+            document.getElementById('q-id').innerText = q.ID || `Q-${state.session.currentIndex}`;
+            document.getElementById('q-text').innerText = q.Question;
+            
+            const imgEl = document.getElementById('q-image');
+            if(q.ImageURL && q.ImageURL.trim() !== "") {
+                imgEl.src = q.ImageURL; imgEl.classList.remove('hidden');
+            } else {
+                imgEl.classList.add('hidden');
+            }
 
-    const choices = ['A', 'B', 'C', 'D'];
-    choices.forEach(ch => {
-        document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = q[`Choice${ch}`];
-        const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
-        btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium";
-        
-        // Simplified selection layout (No correct/wrong checking since Answer column is gone)
-        btn.onclick = () => {
-            state.session.userAnswers[state.session.currentIndex] = ch;
-            document.querySelectorAll('.choice-btn').forEach(b => {
-                b.onclick = null;
-                if(b.dataset.choice === ch) b.classList.add('exam-selected');
-                else b.classList.add('dimmed');
+            const choices = ['A', 'B', 'C', 'D'];
+            choices.forEach(ch => {
+                document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = q[`Choice${ch}`];
+                const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
+                btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium";
+                
+                if(isExam) {
+                    btn.onclick = () => selectExamAnswer(ch);
+                    if(userAnswer === ch) btn.classList.add('exam-selected');
+                } else {
+                    btn.onclick = () => submitPracticeAnswer(ch, q.Answer);
+                    if(userAnswer) {
+                        btn.onclick = null;
+                        if(ch === q.Answer) btn.classList.add('selected-correct');
+                        else if(ch === userAnswer) btn.classList.add('selected-wrong');
+                        else btn.classList.add('dimmed');
+                    }
+                }
             });
-            document.getElementById('btn-next').classList.remove('hidden');
-        };
+            
+            const expBox = document.getElementById('q-explanation-box');
+            const btnNext = document.getElementById('btn-next');
+            const btnPrev = document.getElementById('btn-prev');
+            const btnSubmit = document.getElementById('btn-submit-exam');
 
-        if(userAnswer) {
-            btn.onclick = null;
-            if(ch === userAnswer) btn.classList.add('exam-selected');
-            else btn.classList.add('dimmed');
+            if(isExam) {
+                expBox.classList.add('hidden');
+                btnPrev.classList.remove('hidden');
+                btnPrev.disabled = state.session.currentIndex === 0;
+                btnPrev.style.opacity = state.session.currentIndex === 0 ? '0.3' : '1';
+                
+                if(state.session.currentIndex === state.session.questions.length - 1) {
+                    btnNext.classList.add('hidden');
+                    btnSubmit.classList.remove('hidden');
+                } else {
+                    btnNext.classList.remove('hidden');
+                    btnSubmit.classList.add('hidden');
+                }
+            } else {
+                btnPrev.classList.add('hidden');
+                btnSubmit.classList.add('hidden');
+                if(userAnswer) {
+                    showExplanation(q);
+                    btnNext.classList.remove('hidden');
+                } else {
+                    expBox.classList.add('hidden');
+                    btnNext.classList.add('hidden');
+                }
+            }
+            
+            updateIcons(q.ID);
         }
-    });
-    
-    // Hide explanation box entirely since Reference/Explanation columns are removed
-    document.getElementById('q-explanation-box').classList.add('hidden');
-    
-    const btnNext = document.getElementById('btn-next');
-    if(userAnswer || state.session.type === 'exam') {
-        btnNext.classList.remove('hidden');
-    } else {
-        btnNext.classList.add('hidden');
-    }
-}
-
-// Bypasses scoring restrictions safely so data operations don't crash
-function trackStats(q, isCorrect) {
-    state.stats.totalAnswered++;
-    const today = new Date().toDateString();
-    if(state.stats.lastStudyDate !== today) {
-        state.stats.streak++;
-        state.stats.lastStudyDate = today;
-    }
-    saveState();
-}
 
         function submitPracticeAnswer(selected, correct) {
             const q = state.session.questions[state.session.currentIndex];
