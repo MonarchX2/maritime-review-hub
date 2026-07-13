@@ -12,12 +12,9 @@ function executeSearch() {
         return;
     }
 
-    // Search through ID, Subject, Tags, and the Question text itself
+    // Search strictly through the Question text itself
     const results = state.db.filter(q => 
-        (q.ID && q.ID.toLowerCase().includes(query)) ||
-        (q.Subject && q.Subject.toLowerCase().includes(query)) ||
-        (q.Question && q.Question.toLowerCase().includes(query)) ||
-        (q.Tags && q.Tags.toLowerCase().includes(query))
+        q.Question && q.Question.toLowerCase().includes(query)
     );
 
     if (results.length === 0) {
@@ -25,16 +22,11 @@ function executeSearch() {
         return;
     }
 
-    // Render results
+    // Render results cleanly without missing data fields
     resultsContainer.innerHTML = results.map(q => `
         <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg border border-gray-200 dark:border-gray-600 mb-3">
-            <div class="flex gap-2 mb-2">
-                <span class="text-xs bg-brand-100 text-brand-800 px-2 py-1 rounded font-bold">${q.ID || 'N/A'}</span>
-                <span class="text-xs bg-gray-200 text-gray-800 px-2 py-1 rounded font-bold">${q.Subject || 'General'}</span>
-                <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded font-bold">Ans: ${q.Answer}</span>
-            </div>
             <p class="font-medium text-sm mb-2">${q.Question}</p>
-            <p class="text-xs text-gray-500 dark:text-gray-400"><b>Explanation:</b> ${q.Explanation || 'None'}</p>
+            ${q.URL ? `<img src="${q.URL}" class="w-24 h-auto rounded border mt-2 max-h-20 object-cover" alt="Preview"/>` : ''}
         </div>
     `).join('');
 }
