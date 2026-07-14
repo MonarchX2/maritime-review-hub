@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mrh-v6';
+const CACHE_NAME = 'mrh-v7';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
