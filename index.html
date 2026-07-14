@@ -103,7 +103,14 @@
                     <p class="text-2xl font-bold mt-1" id="dash-mistakes">0</p>
                 </div>
             </div>
-
+<!-- Add this inside the dashboard section, right above <h3 class="text-lg font-bold mb-4">Quick Start</h3> -->
+<div id="resume-container" class="hidden mb-8">
+    <h3 class="text-lg font-bold mb-4 text-yellow-600 dark:text-yellow-400">Continue Learning</h3>
+    <button onclick="resumeSession()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white p-6 rounded-2xl shadow-md text-left transition-transform transform hover:-translate-y-1">
+        <h4 class="text-xl font-bold"><i class="fa-solid fa-clock-rotate-left mr-2"></i> Resume Previous Session</h4>
+        <p class="text-yellow-100 text-sm mt-1">Pick up exactly where you left off.</p>
+    </button>
+</div>
             <h3 class="text-lg font-bold mb-4">Quick Start</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <button onclick="startPractice('all')" class="bg-brand-600 hover:bg-brand-700 text-white p-6 rounded-2xl shadow-md text-left transition-transform transform hover:-translate-y-1">
@@ -322,6 +329,7 @@
             
             document.getElementById('stat-total').innerText = state.stats.totalAnswered;
             document.getElementById('stat-correct').innerText = state.stats.correct;
+            if (typeof checkSavedSession === 'function') checkSavedSession();
         }
 
         function navigate(viewId) {
@@ -846,14 +854,53 @@
             syncDatabase();
         };
 
-        function saveSessionProgress() {
-            const progressData = {
-                index: state.session.currentIndex || 0,
-                type: state.session.type,
-                subjectFilter: document.getElementById('filter-subject') ? document.getElementById('filter-subject').value : 'ALL'
-            };
-            localStorage.setItem('mrh_saved_session', JSON.stringify(progressData));
-        }
+// --- REPLACE your existing saveSessionProgress with this ---
+function saveSessionProgress() {
+    if (!state.session.active) return;
+    // Save the entire session object so the randomized pool and user answers remain intact
+    localStorage.setItem('mrh_saved_session', JSON.stringify(state.session));
+}
+
+// --- ADD these new functions ---
+function checkSavedSession() {
+    const saved = localStorage.getItem('mrh_saved_session');
+    const resumeContainer = document.getElementById('resume-container');
+    
+    if (saved && resumeContainer) {
+        resumeContainer.classList.remove('hidden');
+    } else if (resumeContainer) {
+        resumeContainer.classList.add('hidden');
+    }
+}
+
+function resumeSession() {
+    const saved = localStorage.getItem('mrh_saved_session');
+    if (!saved) return;
+
+    // Load the saved session state
+    state.session = JSON.parse(saved);
+
+    // Switch to the practice view
+    navigate('practice');
+    document.getElementById('session-setup').classList.add('hidden');
+    document.getElementById('session-active').classList.remove('hidden');
+    document.getElementById('exam-results').classList.add('hidden');
+
+    // Configure UI based on session type
+    if(state.session.type === 'exam') {
+        document.getElementById('exam-timer-display').classList.remove('hidden');
+        document.getElementById('btn-flag').classList.remove('hidden');
+        document.getElementById('btn-pause-exam').classList.remove('hidden');
+        // Note: For a strict exam, you might also want to save/resume examTimeRemaining
+    } else {
+        document.getElementById('exam-timer-display').classList.add('hidden');
+        document.getElementById('btn-flag').classList.add('hidden');
+        document.getElementById('btn-pause-exam').classList.add('hidden');
+    }
+
+    examPaused = false;
+    renderQuestion();
+}
 
         function clearSessionProgress() {
             localStorage.removeItem('mrh_saved_session');
