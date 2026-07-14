@@ -332,15 +332,20 @@
             if (typeof checkSavedSession === 'function') checkSavedSession();
         }
 
-        function navigate(viewId) {
-            if(state.session.active && !confirm("You have an active session. Are you sure you want to leave? Progress will be lost.")) return;
-            endSession(true);
+function navigate(viewId) {
+    if(state.session.active && !confirm("You have an active session. Do you want to pause and return to the dashboard? Your progress will be saved.")) return;
+    
+    if (state.session.active) {
+        clearInterval(examTimerInterval);
+        state.session.active = false;
+        saveSessionProgress(); // Ensure the latest state is saved before leaving
+    }
 
-            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-            document.getElementById(`view-${viewId}`).classList.add('active');
-            
-            if(viewId === 'stats') renderCharts();
-        }
+    document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+    document.getElementById(`view-${viewId}`).classList.add('active');
+    
+    if(viewId === 'stats') renderCharts();
+}
 
         async function syncDatabase() {
             const url = DB_URL; 
@@ -718,12 +723,12 @@
             clearSessionProgress();
         }
 
-        function endSession(silent = false) {
-            clearInterval(examTimerInterval);
-            state.session.active = false;
-            if(!silent) navigate('dashboard');
-            clearSessionProgress();
-        }
+function endSession(silent = false) {
+    clearInterval(examTimerInterval);
+    state.session.active = false;
+    saveSessionProgress(); // Save instead of clearing
+    if(!silent) navigate('dashboard');
+}
 
         function toggleBookmark() {
             if(!state.session.active) return;
