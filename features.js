@@ -43,9 +43,15 @@ function executeSearch() {
 // --- ACHIEVEMENT SYSTEM ---
 const ACHIEVEMENTS = [
     { id: 'first_blood', icon: 'fa-droplet', color: 'text-red-500', name: 'First Blood', desc: 'Answer your first question.', condition: () => state.stats.totalAnswered >= 1 },
-    { id: 'getting_started', icon: 'fa-thumbs-up', color: 'text-blue-500', name: 'Warming Up', desc: 'Answer 50 questions.', condition: () => state.stats.totalAnswered >= 50 },
+    { id: 'getting_started', icon: 'fa-thumbs-up', color: 'text-blue-500', name: 'Warming Up 1', desc: 'Answer 50 questions.', condition: () => state.stats.totalAnswered >= 50 },
+    { id: 'getting_started', icon: 'fa-thumbs-up', color: 'text-blue-500', name: 'Warming Up 2', desc: 'Answer 100 questions.', condition: () => state.stats.totalAnswered >= 100 },
+    { id: 'century', icon: 'fa-crown', color: 'text-yellow-500', name: 'Half-Centurion', desc: 'Get 50 questions correct.', condition: () => state.stats.correct >= 50 },
     { id: 'century', icon: 'fa-crown', color: 'text-yellow-500', name: 'Century Mark', desc: 'Get 100 questions correct.', condition: () => state.stats.correct >= 100 },
-    { id: 'streak_3', icon: 'fa-fire', color: 'text-orange-500', name: 'Consistent Cadet', desc: 'Reach a 3-day streak.', condition: () => state.stats.streak >= 3 }
+    { id: 'streak_3', icon: 'fa-fire', color: 'text-orange-500', name: '2400H*2', desc: 'Reach a 2-day streak.', condition: () => state.stats.streak >= 3 },
+    { id: 'streak_6', icon: 'fa-fire', color: 'text-orange-500', name: '2400H*3', desc: 'Reach a 3-day streak.', condition: () => state.stats.streak >= 6 },
+    { id: 'streak_3', icon: 'fa-fire', color: 'text-orange-500', name: '2400H*4', desc: 'Reach a 4-day streak.', condition: () => state.stats.streak >= 4 },
+    { id: 'streak_3', icon: 'fa-fire', color: 'text-orange-500', name: '2400H*5', desc: 'Reach a 5-day streak.', condition: () => state.stats.streak >= 5 }
+
 ];
 
 // We hook into the existing trackStats function without rewriting index.html
