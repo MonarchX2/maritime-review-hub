@@ -465,6 +465,43 @@ if (data && data.length > 0) {
             populateFilters();
         }
 
+        function prepareSessionPool(pool) {
+            // 1. Shuffle the order of the questions using your existing shuffleArray function
+            let randomizedPool = shuffleArray([...pool]); 
+            
+            // 2. Shuffle the choices inside each question
+            return randomizedPool.map(originalQ => {
+                let q = { ...originalQ }; // Clone so we don't alter the main database
+                
+                // Gather only the choices that actually have text
+                let validChoices = [];
+                if (q.ChoiceA && q.ChoiceA.trim() !== "") validChoices.push(q.ChoiceA);
+                if (q.ChoiceB && q.ChoiceB.trim() !== "") validChoices.push(q.ChoiceB);
+                if (q.ChoiceC && q.ChoiceC.trim() !== "") validChoices.push(q.ChoiceC);
+                if (q.ChoiceD && q.ChoiceD.trim() !== "") validChoices.push(q.ChoiceD);
+                
+                // Remember the actual text of the correct answer before we mix them up
+                let correctText = q[`Choice${q.Answer}`]; 
+                
+                // Mix up the choices array
+                validChoices = shuffleArray(validChoices);
+                
+                // Put the shuffled text back into the A, B, C, D slots
+                q.ChoiceA = validChoices[0] || "";
+                q.ChoiceB = validChoices[1] || "";
+                q.ChoiceC = validChoices[2] || "";
+                q.ChoiceD = validChoices[3] || "";
+                
+                // Update the correct answer letter to match wherever the correct text landed
+                if (q.ChoiceA === correctText) q.Answer = 'A';
+                else if (q.ChoiceB === correctText) q.Answer = 'B';
+                else if (q.ChoiceC === correctText) q.Answer = 'C';
+                else if (q.ChoiceD === correctText) q.Answer = 'D';
+                
+                return q;
+            });
+        }
+
         function initSession() {
             const filterVal = document.getElementById('filter-subject').value;
             let pool = [];
@@ -481,8 +518,8 @@ if (data && data.length > 0) {
                 pool = state.db;
             }
 
-            if(pool.length === 0) { alert("No questions found for this filter."); return; }
-            pool = pool.sort(() => Math.random() - 0.5);
+if(pool.length === 0) { alert("No questions found for this filter."); return; }
+            pool = prepareSessionPool(pool);
 
             if(state.session.type === 'exam') {
                 const count = parseInt(document.getElementById('exam-count').value);
@@ -554,11 +591,21 @@ if (data && data.length > 0) {
             } else {
                 imgEl.classList.add('hidden');
             }
-
-            const choices = ['A', 'B', 'C', 'D'];
+const choices = ['A', 'B', 'C', 'D'];
             choices.forEach(ch => {
-                document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = q[`Choice${ch}`];
+                const choiceText = q[`Choice${ch}`];
                 const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
+                
+                // If a choice is completely blank, hide the button and skip the rest
+                if (!choiceText || choiceText.trim() === "") {
+                    btn.classList.add('hidden');
+                    return; 
+                }
+                
+                // Otherwise, show it and render the text
+                btn.classList.remove('hidden');
+                document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = choiceText;
+                
                 btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium";
                 
                 if(isExam) {
@@ -701,8 +748,8 @@ function startCustomSession(pool) {
     document.getElementById('exam-results').classList.add('hidden'); 
     document.getElementById('exam-options').classList.add('hidden'); 
     
-    pool = pool.sort(() => Math.random() - 0.5);
-    
+pool = prepareSessionPool(pool);
+
     state.session = { 
         active: true, type: 'practice', questions: pool, 
         currentIndex: 0, userAnswers: {}, flags: [] 
