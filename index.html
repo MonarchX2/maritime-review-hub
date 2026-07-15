@@ -152,10 +152,15 @@
                 </div>
             </div>
 
-            <div id="session-active" class="hidden">
-                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-8">
-                    <div class="bg-brand-500 h-2 rounded-full transition-all duration-300" id="session-progress" style="width: 0%"></div>
-                </div>
+<div id="session-active" class="hidden">
+    <!-- Card Progress Counter on Top -->
+    <div class="flex justify-between items-center mb-2">
+        <span class="text-sm font-semibold text-gray-500 dark:text-gray-400">Card Progress</span>
+        <span class="text-sm font-bold text-brand-600 dark:text-brand-400" id="session-progress-text">0 / 0</span>
+    </div>
+    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-8">
+        <div class="bg-brand-500 h-2 rounded-full transition-all duration-300" id="session-progress" style="width: 0%"></div>
+    </div>
 
                 <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6">
                     <div class="flex gap-2 mb-3 flex-wrap">
@@ -190,10 +195,6 @@
     
     <button id="btn-next" onclick="nextQuestion()" class="flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
         <span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2"></i>
-    </button>
-    
-    <button id="btn-submit-exam" onclick="submitExam()" class="flex-1 bg-green-600 text-white py-4 rounded-xl font-bold shadow-md hover:bg-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-        <i class="fa-solid fa-check-double md:mr-2"></i> <span class="hidden md:inline">Submit</span>
     </button>
 </div>
             </div>
@@ -575,7 +576,11 @@ function renderQuestion() {
     const isExam = state.session.type === 'exam';
     const userAnswer = state.session.userAnswers[state.session.currentIndex];
     
-    document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / state.session.questions.length) * 100}%`;
+    // 1. Update Card Progress Number and Progress Bar
+    const currentCard = state.session.currentIndex + 1;
+    const totalCards = state.session.questions.length;
+    document.getElementById('session-progress-text').innerText = `${currentCard} / ${totalCards}`;
+    document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / totalCards) * 100}%`;
     
     document.getElementById('q-subject').innerText = q.Subject || 'General';
     document.getElementById('q-id').innerText = q.ID || `Q-${state.session.currentIndex}`;
@@ -593,25 +598,19 @@ function renderQuestion() {
         const choiceText = q[`Choice${ch}`];
         const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
         
-        // If a choice is completely blank, hide the button and skip the rest
         if (!choiceText || choiceText.trim() === "") {
             btn.classList.add('hidden');
             return; 
         }
         
-        // Otherwise, show it and render the text
         btn.classList.remove('hidden');
         document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = choiceText;
         
-        // FIX: Re-added the click handler that got accidentally deleted
         btn.onclick = () => isExam ? selectExamAnswer(ch) : submitPracticeAnswer(ch, q.Answer);
-        
-        // Reset to default styling
         btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium";
         
-        // FIX: Retain selected answer states if returning to a previous question
         if (userAnswer) {
-            btn.onclick = null; // Disable clicking again
+            btn.onclick = null;
             if (isExam) {
                 if (userAnswer === ch) btn.classList.add('exam-selected');
             } else {
@@ -622,46 +621,48 @@ function renderQuestion() {
         }
     });
     
-const expBox = document.getElementById('q-explanation-box');
+    const expBox = document.getElementById('q-explanation-box');
     const btnNext = document.getElementById('btn-next');
     const btnPrev = document.getElementById('btn-prev');
     const btnReveal = document.getElementById('btn-reveal');
-    const btnSubmit = document.getElementById('btn-submit-exam');
+
+    const isLastQuestion = state.session.currentIndex === totalCards - 1;
 
     if (isExam) {
         expBox.classList.add('hidden');
-        
-        btnReveal.disabled = true; // Reveal is never allowed in exams
+        btnReveal.disabled = true;
         btnPrev.disabled = state.session.currentIndex === 0;
-        
-        // Toggle Next vs Submit based on if we are at the last question
-        if (state.session.currentIndex === state.session.questions.length - 1) {
-            btnNext.disabled = true;
-            btnSubmit.disabled = false;
+        btnNext.disabled = false; // Always allow navigation in exam mode
+
+        // Dynamically style and rename "Next" on the last question
+        if (isLastQuestion) {
+            btnNext.innerHTML = `<span class="hidden md:inline">Submit Exam</span> <i class="fa-solid fa-check-double md:ml-2"></i>`;
+            btnNext.className = "flex-1 bg-green-600 text-white py-4 rounded-xl font-bold shadow-md hover:bg-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
         } else {
-            btnNext.disabled = false;
-            btnSubmit.disabled = true;
+            btnNext.innerHTML = `<span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2"></i>`;
+            btnNext.className = "flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
         }
     } else {
         // Practice Mode Logic
-        btnSubmit.disabled = true; // Submit is never used in practice
         btnPrev.disabled = state.session.currentIndex === 0;
         
+        // Reset button style to standard Next button
+        btnNext.innerHTML = `<span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2"></i>`;
+        btnNext.className = "flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
+        
         if (userAnswer) {
-            // Question is answered or revealed
             showExplanation(q);
             btnNext.disabled = false;
-            btnReveal.disabled = true; // Disable reveal if already answered
+            btnReveal.disabled = true;
         } else {
-            // Question is NOT answered
             expBox.classList.add('hidden');
-            btnNext.disabled = true; // Lock Next until answered
-            btnReveal.disabled = false; 
+            btnNext.disabled = true;
+            btnReveal.disabled = false;
         }
     }
     
     updateIcons(q.ID);
-} // End of renderQuestion function
+}
 
 // --- CATEGORY PROGRESS SYSTEM ---
 
@@ -828,13 +829,15 @@ function nextQuestion() {
         state.session.currentIndex++;
         renderQuestion();
         saveSessionProgress();
-    } else if (state.session.type === 'practice') {
-        alert("Practice Session Complete! Great job.");
-        
-        // NEW: This wipes the finished session from local storage
-        clearSessionProgress(); 
-        
-        endSession(false);
+    } else {
+        // Handle when user hits "Next" on the final question
+        if (state.session.type === 'exam') {
+            submitExam();
+        } else if (state.session.type === 'practice') {
+            alert("Practice Session Complete! Great job.");
+            clearSessionProgress(); 
+            endSession(false);
+        }
     }
 }
 
