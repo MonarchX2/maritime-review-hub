@@ -153,22 +153,23 @@
             </div>
 
             <div id="session-active" class="hidden">
-                <div class="flex justify-between items-center mb-4">
-                    <div>
-                        <button onclick="endSession(false)" class="text-gray-500 hover:text-red-500 font-semibold"><i class="fa-solid fa-xmark mr-1"></i> Exit</button>
-                        <button onclick="togglePauseExam()" id="btn-pause-exam" class="hidden text-gray-500 hover:text-blue-500 font-semibold ml-4"><i class="fa-solid fa-pause mr-1"></i> Pause</button>
-                    </div>
-                    
-                    <div id="exam-timer-display" class="hidden text-xl font-mono font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-1 rounded-md border border-red-200">
-                        00:00
-                    </div>
-
-                    <div class="flex gap-4 items-center">
-                        <div class="text-sm font-bold text-gray-500"><span id="q-current-num">1</span> / <span id="q-total-num">50</span></div>
-                        <button onclick="toggleBookmark()" class="text-gray-400 hover:text-yellow-500" id="btn-bookmark"><i class="fa-solid fa-bookmark text-xl"></i></button>
-                        <button onclick="toggleFlag()" class="hidden text-gray-400 hover:text-orange-500" id="btn-flag"><i class="fa-solid fa-flag text-xl"></i></button>
-                    </div>
-                </div>
+<div class="flex gap-2 md:gap-4">
+    <button id="btn-prev" onclick="prevQuestion()" class="hidden flex-1 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white py-4 rounded-xl font-bold shadow-md hover:bg-gray-300 transition-all">
+        <i class="fa-solid fa-arrow-left md:mr-2"></i> <span class="hidden md:inline">Prev</span>
+    </button>
+    
+    <button id="btn-reveal" onclick="revealAnswer()" class="hidden flex-1 bg-yellow-500 text-white py-4 rounded-xl font-bold shadow-md hover:bg-yellow-600 transition-all">
+        <i class="fa-solid fa-eye md:mr-2"></i> <span class="hidden md:inline">Reveal</span>
+    </button>
+    
+    <button id="btn-next" onclick="nextQuestion()" class="hidden flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+        <span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2"></i>
+    </button>
+    
+    <button id="btn-submit-exam" onclick="submitExam()" class="hidden flex-1 bg-green-600 text-white py-4 rounded-xl font-bold shadow-md hover:bg-green-700 transition-all">
+        <i class="fa-solid fa-check-double md:mr-2"></i> Submit Exam
+    </button>
+</div>
                 
                 <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-8">
                     <div class="bg-brand-500 h-2 rounded-full transition-all duration-300" id="session-progress" style="width: 0%"></div>
@@ -629,13 +630,16 @@ function renderQuestion() {
         }
     });
     
-    const expBox = document.getElementById('q-explanation-box');
+const expBox = document.getElementById('q-explanation-box');
     const btnNext = document.getElementById('btn-next');
     const btnPrev = document.getElementById('btn-prev');
+    const btnReveal = document.getElementById('btn-reveal');
     const btnSubmit = document.getElementById('btn-submit-exam');
 
     if(isExam) {
         expBox.classList.add('hidden');
+        btnReveal.classList.add('hidden'); // Hide reveal in exam mode
+        
         btnPrev.classList.remove('hidden');
         btnPrev.disabled = state.session.currentIndex === 0;
         btnPrev.style.opacity = state.session.currentIndex === 0 ? '0.3' : '1';
@@ -645,10 +649,12 @@ function renderQuestion() {
             btnSubmit.classList.remove('hidden');
         } else {
             btnNext.classList.remove('hidden');
+            btnNext.disabled = false; // Always clickable in exam mode
+            btnNext.classList.remove('opacity-50', 'cursor-not-allowed');
             btnSubmit.classList.add('hidden');
         }
     } else {
-        // Show the Previous button in practice mode if we aren't on question 1
+        // Practice Mode Logic
         if (state.session.currentIndex > 0) {
             btnPrev.classList.remove('hidden');
             btnPrev.disabled = false;
@@ -658,19 +664,25 @@ function renderQuestion() {
         }
 
         btnSubmit.classList.add('hidden');
+        btnNext.classList.remove('hidden'); // Next button always occupies space side-to-side
         
-        // Control Next button and Explanation box visibility
         if(userAnswer) {
+            // Question is answered or revealed
             showExplanation(q);
-            btnNext.classList.remove('hidden');
+            btnNext.disabled = false;
+            btnNext.classList.remove('opacity-50', 'cursor-not-allowed');
+            btnReveal.classList.add('hidden'); // Hide reveal if already answered
         } else {
+            // Question is NOT answered
             expBox.classList.add('hidden');
-            btnNext.classList.add('hidden');
+            btnNext.disabled = true; // Lock the Next button
+            btnNext.classList.add('opacity-50', 'cursor-not-allowed');
+            btnReveal.classList.remove('hidden'); // Show Reveal button
         }
     }
     
     updateIcons(q.ID);
-}
+} // End of renderQuestion function
 
 // --- CATEGORY PROGRESS SYSTEM ---
 
@@ -1206,6 +1218,35 @@ function clearSessionProgress() {
             }
             return array;
         }
+
+        function revealAnswer() {
+    if (!state.session.active) return;
+    
+    const q = state.session.questions[state.session.currentIndex];
+    
+    // 1. Record the action so the app knows it was processed
+    state.session.userAnswers[state.session.currentIndex] = "REVEALED";
+    
+    // 2. Track as a mistake (isCorrect = false)
+    trackStats(q, false);
+    
+    // 3. Highlight the correct choice and dim the others
+    document.querySelectorAll('.choice-btn').forEach(btn => {
+        btn.onclick = null; // Disable further clicking
+        if(btn.dataset.choice === q.Answer) {
+            btn.classList.add('selected-correct');
+        } else {
+            btn.classList.add('dimmed');
+        }
+    });
+
+    // 4. Update the progress bar
+    document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
+    
+    // 5. Re-render the question UI (this will show explanation and unlock Next button)
+    renderQuestion();
+    saveSessionProgress();
+}
     </script>
     <script src="features.js"></script>
 </body>
