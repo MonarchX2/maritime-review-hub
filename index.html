@@ -930,17 +930,20 @@ function nextQuestion() {
 function endSession(silent = false) {
     clearInterval(examTimerInterval);
     
-    // FIX 2: Check if the current session is completely finished
+    // NEW: Check if this was a completed practice session
     const isLastQuestion = state.session.currentIndex >= state.session.questions.length - 1;
     const isAnswered = state.session.userAnswers && state.session.userAnswers[state.session.currentIndex];
     
-    if (isLastQuestion && isAnswered) {
-        clearSessionProgress(); // Wipe it out completely so the button hides
+    if (state.session.type === 'practice' && isLastQuestion && isAnswered) {
+        // If finished, wipe it
+        clearSessionProgress();
     } else {
-        saveSessionProgress(); // Otherwise, save it for later
+        // Otherwise, save the progress so you can resume later
+        saveSessionProgress(); 
     }
 
     state.session.active = false;
+    
     if(!silent) navigate('dashboard');
 }
 
@@ -1140,9 +1143,15 @@ function resumeSession() {
     renderQuestion();
 }
 
-        function clearSessionProgress() {
-            localStorage.removeItem('mrh_saved_session');
-        }
+function clearSessionProgress() {
+    localStorage.removeItem('mrh_saved_session');
+    
+    // NEW: Instantly hide the button from the screen
+    const resumeContainer = document.getElementById('resume-container');
+    if (resumeContainer) {
+        resumeContainer.classList.add('hidden');
+    }
+}
 
         function shuffleArray(array) {
             for (let i = array.length - 1; i > 0; i--) {
