@@ -377,8 +377,14 @@ function navigate(viewId) {
                 if (!response.ok) throw new Error("Network response failed");
                 const data = await response.json();
 
-                if (data && data.length > 0) {
-                    state.db = data;
+if (data && data.length > 0) {
+                    // FILTER: Only keep questions that actually have text and at least choices A and B
+                    state.db = data.filter(q => 
+                        q.Question && q.Question.trim() !== "" &&
+                        q.ChoiceA && q.ChoiceA.trim() !== "" &&
+                        q.ChoiceB && q.ChoiceB.trim() !== ""
+                    );
+                    
                     localStorage.setItem('mrh_db', JSON.stringify(state.db));
                     document.getElementById('db-size-display').innerText = state.db.length;
                     
