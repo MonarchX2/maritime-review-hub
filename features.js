@@ -55,10 +55,18 @@ const ACHIEVEMENTS = [
 ];
 
 // We hook into the existing trackStats function without rewriting index.html
+// --- ACHIEVEMENT & PROGRESS SYSTEM ---
 const originalTrackStats = trackStats;
 trackStats = function(q, isCorrect) {
     originalTrackStats(q, isCorrect); // Run original logic first
-    checkAchievements(); // Then run our new logic
+    checkAchievements(); // Then run achievement logic
+    
+    // NEW: Track completed questions to avoid repeating them in 'Continue' mode
+    if (!state.stats.completedQs) state.stats.completedQs = [];
+    if (!state.stats.completedQs.includes(q.ID)) {
+        state.stats.completedQs.push(q.ID);
+        saveState();
+    }
 }
 
 function checkAchievements() {

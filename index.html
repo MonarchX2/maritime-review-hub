@@ -122,13 +122,13 @@
                     <p class="text-red-100 text-sm mt-1">Target your weak points. Only uncorrected mistakes.</p>
                 </button>
             </div>
-        </section>
 
-        <h3 class="text-lg font-bold mb-4 mt-8">Subject Progress</h3>
+                    <h3 class="text-lg font-bold mb-4 mt-8">Subject Progress</h3>
 <button onclick="navigate('categories'); renderCategoryProgress();" class="w-full bg-blue-500 hover:bg-blue-600 text-white p-6 rounded-2xl shadow-md text-left transition-transform transform hover:-translate-y-1">
     <h4 class="text-xl font-bold"><i class="fa-solid fa-list mr-2"></i> View All Categories</h4>
     <p class="text-blue-100 text-sm mt-1">Track progress, resume learning, or reset stats for specific subjects.</p>
 </button>
+        </section>
 
         <section id="view-practice" class="view-section">
             <div id="session-setup">
@@ -603,10 +603,10 @@ function navigate(viewId) {
         }
 // --- CATEGORY PROGRESS SYSTEM ---
 
+// --- CATEGORY PROGRESS SYSTEM ---
+
 function renderCategoryProgress() {
     const container = document.getElementById('category-list');
-    
-    // Extract all unique subjects directly from the database
     const subjects = [...new Set(state.db.map(q => q.Subject).filter(Boolean))]; 
     
     if (subjects.length === 0) {
@@ -614,23 +614,26 @@ function renderCategoryProgress() {
         return;
     }
 
+    // Ensure our completed array exists
+    if (!state.stats.completedQs) state.stats.completedQs = [];
+
     container.innerHTML = subjects.map(subj => {
-        // Retrieve current accuracy stats for the subject
         const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
-        
-        // Calculate total available questions for this specific subject
         const totalQuestionsInDb = state.db.filter(q => q.Subject === subj).length;
         
-        // Calculate a visual progress percentage based on how many questions have been encountered
-        const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((data.total / totalQuestionsInDb) * 100)) : 0;
+        // Find how many are completed and how many are mistakes in this specific category
+        const completedCount = state.db.filter(q => q.Subject === subj && state.stats.completedQs.includes(q.ID)).length;
+        const mistakesCount = state.db.filter(q => q.Subject === subj && state.stats.mistakes.includes(q.ID)).length;
+        
+        const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
 
         return `
             <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
                 <div class="flex justify-between items-end mb-2">
                     <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100">${subj}</h3>
                     <div class="text-right">
-                        <span class="text-sm font-black text-brand-600">${data.correct} Correct</span>
-                        <p class="text-xs text-gray-400">out of ${data.total} attempts</p>
+                        <span class="text-sm font-black text-brand-600">${completedCount} / ${totalQuestionsInDb} Done</span>
+                        <p class="text-xs text-gray-400">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>
                     </div>
                 </div>
                 
@@ -638,11 +641,18 @@ function renderCategoryProgress() {
                     <div class="bg-brand-500 h-2.5 rounded-full transition-all duration-500" style="width: ${progressPercent}%"></div>
                 </div>
                 
-                <div class="flex gap-3 mt-4">
-                    <button onclick="continueCategory('${subj}')" class="flex-1 bg-brand-600 text-white py-2.5 rounded-lg font-bold hover:bg-brand-700 text-sm shadow-sm transition-colors">
+                <div class="flex gap-2 mt-4 flex-wrap">
+                    <button onclick="continueCategory('${subj}')" class="flex-1 bg-brand-600 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-brand-700 text-sm shadow-sm transition-colors">
                         <i class="fa-solid fa-play mr-1"></i> Continue
                     </button>
-                    <button onclick="resetCategory('${subj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2.5 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors text-sm">
+                    
+                    ${mistakesCount > 0 ? `
+                    <button onclick="reviewCategoryMistakes('${subj}')" class="flex-1 bg-orange-500 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-orange-600 text-sm shadow-sm transition-colors">
+                        <i class="fa-solid fa-hammer mr-1"></i> Fix ${mistakesCount}
+                    </button>
+                    ` : ''}
+                    
+                    <button onclick="resetCategory('${subj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2.5 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors text-sm" title="Reset Subject Progress">
                         <i class="fa-solid fa-rotate-left"></i>
                     </button>
                 </div>
@@ -652,40 +662,68 @@ function renderCategoryProgress() {
 }
 
 function continueCategory(subject) {
-    // Navigate to the practice view and hide other sections
+    if (!state.stats.completedQs) state.stats.completedQs = [];
+    
+    // Get all questions in the subject that are NOT in the completed array
+    let pool = state.db.filter(q => q.Subject === subject && !state.stats.completedQs.includes(q.ID));
+    
+    if (pool.length === 0) {
+        alert(`You have answered all available questions for ${subject}! Reset the category to start over.`);
+        return;
+    }
+
+    startCustomSession(pool);
+}
+
+function reviewCategoryMistakes(subject) {
+    // Get questions in this subject that ARE in the mistakes array
+    let pool = state.db.filter(q => q.Subject === subject && state.stats.mistakes.includes(q.ID));
+    
+    if (pool.length === 0) {
+        alert(`No mistakes to review for ${subject}! Great job.`);
+        return;
+    }
+
+    startCustomSession(pool);
+}
+
+// Helper function to launch directly into practice with a pre-built pool of questions
+function startCustomSession(pool) {
     navigate('practice'); 
-    document.getElementById('session-setup').classList.remove('hidden'); 
-    document.getElementById('session-active').classList.add('hidden'); 
+    document.getElementById('session-setup').classList.add('hidden'); 
+    document.getElementById('session-active').classList.remove('hidden'); 
     document.getElementById('exam-results').classList.add('hidden'); 
     document.getElementById('exam-options').classList.add('hidden'); 
     
-    // Explicitly set the session type to 'practice'[cite: 2]
-    state.session.type = 'practice'; 
+    pool = pool.sort(() => Math.random() - 0.5);
     
-    // Populate the dropdown filters and force the selection to the chosen subject[cite: 2]
-    populateFilters(); 
-    document.getElementById('filter-subject').value = `SUBJ:${subject}`;
+    state.session = { 
+        active: true, type: 'practice', questions: pool, 
+        currentIndex: 0, userAnswers: {}, flags: [] 
+    };
     
-    // Automatically initialize the session so the user doesn't have to click "Start"[cite: 2]
-    initSession(); 
+    examPaused = false;
+    renderQuestion();
+    saveSessionProgress();
 }
 
 function resetCategory(subject) {
     if (confirm(`Are you sure you want to reset your accuracy and progress statistics for "${subject}"? This cannot be undone.`)) {
         
-        // Reset the specific subject's data in the state object[cite: 2]
+        // Reset accuracy stats
         if (state.stats.subjectAccuracy[subject]) {
             state.stats.subjectAccuracy[subject] = { total: 0, correct: 0 }; 
         }
         
-        // Save the updated state to localStorage and re-render the list[cite: 2]
+        // Remove questions matching this subject from the completed array so they can be re-answered
+        if (state.stats.completedQs) {
+            const subjectQIDs = state.db.filter(q => q.Subject === subject).map(q => q.ID);
+            state.stats.completedQs = state.stats.completedQs.filter(id => !subjectQIDs.includes(id));
+        }
+        
         saveState(); 
         renderCategoryProgress(); 
-        
-        // Update charts if they are currently active[cite: 2]
-        if(chartInstance) {
-            renderCharts(); 
-        }
+        if(chartInstance) renderCharts(); 
     }
 }
         function submitPracticeAnswer(selected, correct) {
