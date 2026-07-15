@@ -1117,13 +1117,46 @@ function resumeSession() {
     const saved = localStorage.getItem('mrh_saved_session');
     if (!saved) return;
 
-    // FIX 1: Navigate to the view FIRST so we don't trigger the 
-    // "You have an active session" confirmation pop-up.
-    navigate('practice');
-
-    // THEN load the saved session state
+    // Load the saved session state
     state.session = JSON.parse(saved);
 
+    // NEW: Sync the loaded session with the freshest database data
+    state.session.questions = state.session.questions.map((savedQ, index) => {
+        const freshQ = state.db.find(dbQ => dbQ.ID === savedQ.ID);
+        
+        if (freshQ) {
+            // Update texts in case you edited typos
+            savedQ.Question = freshQ.Question;
+            savedQ.Explanation = freshQ.Explanation;
+            
+            // Get the actual text of the new correct answer from the database
+            const realCorrectText = freshQ[`Choice${freshQ.Answer}`];
+            
+            // Find where that text landed in our already-shuffled choices
+            if (savedQ.ChoiceA === realCorrectText) savedQ.Answer = 'A';
+            else if (savedQ.ChoiceB === realCorrectText) savedQ.Answer = 'B';
+            else if (savedQ.ChoiceC === realCorrectText) savedQ.Answer = 'C';
+            else if (savedQ.ChoiceD === realCorrectText) savedQ.Answer = 'D';
+            else {
+                // If the text of the choices was heavily edited, replace them with a fresh shuffle
+                const freshShuffled = prepareSessionPool([freshQ])[0];
+                savedQ.ChoiceA = freshShuffled.ChoiceA;
+                savedQ.ChoiceB = freshShuffled.ChoiceB;
+                savedQ.ChoiceC = freshShuffled.ChoiceC;
+                savedQ.ChoiceD = freshShuffled.ChoiceD;
+                savedQ.Answer = freshShuffled.Answer;
+                
+                // Remove the user's saved answer for this question since the choices completely changed
+                if (state.session.userAnswers[index]) {
+                    delete state.session.userAnswers[index];
+                }
+            }
+        }
+        return savedQ;
+    });
+
+    // Switch to the practice view
+    navigate('practice');
     document.getElementById('session-setup').classList.add('hidden');
     document.getElementById('session-active').classList.remove('hidden');
     document.getElementById('exam-results').classList.add('hidden');
