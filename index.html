@@ -929,8 +929,18 @@ function nextQuestion() {
 
 function endSession(silent = false) {
     clearInterval(examTimerInterval);
+    
+    // FIX 2: Check if the current session is completely finished
+    const isLastQuestion = state.session.currentIndex >= state.session.questions.length - 1;
+    const isAnswered = state.session.userAnswers && state.session.userAnswers[state.session.currentIndex];
+    
+    if (isLastQuestion && isAnswered) {
+        clearSessionProgress(); // Wipe it out completely so the button hides
+    } else {
+        saveSessionProgress(); // Otherwise, save it for later
+    }
+
     state.session.active = false;
-    saveSessionProgress(); // Save instead of clearing
     if(!silent) navigate('dashboard');
 }
 
@@ -1104,11 +1114,13 @@ function resumeSession() {
     const saved = localStorage.getItem('mrh_saved_session');
     if (!saved) return;
 
-    // Load the saved session state
+    // FIX 1: Navigate to the view FIRST so we don't trigger the 
+    // "You have an active session" confirmation pop-up.
+    navigate('practice');
+
+    // THEN load the saved session state
     state.session = JSON.parse(saved);
 
-    // Switch to the practice view
-    navigate('practice');
     document.getElementById('session-setup').classList.add('hidden');
     document.getElementById('session-active').classList.remove('hidden');
     document.getElementById('exam-results').classList.add('hidden');
@@ -1118,7 +1130,6 @@ function resumeSession() {
         document.getElementById('exam-timer-display').classList.remove('hidden');
         document.getElementById('btn-flag').classList.remove('hidden');
         document.getElementById('btn-pause-exam').classList.remove('hidden');
-        // Note: For a strict exam, you might also want to save/resume examTimeRemaining
     } else {
         document.getElementById('exam-timer-display').classList.add('hidden');
         document.getElementById('btn-flag').classList.add('hidden');
