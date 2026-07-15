@@ -611,18 +611,40 @@ const choices = ['A', 'B', 'C', 'D'];
                 
                 btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium";
                 
-                if(isExam) {
-                    btn.onclick = () => selectExamAnswer(ch);
-                    if(userAnswer === ch) btn.classList.add('exam-selected');
+if(isExam) {
+                expBox.classList.add('hidden');
+                btnPrev.classList.remove('hidden');
+                btnPrev.disabled = state.session.currentIndex === 0;
+                btnPrev.style.opacity = state.session.currentIndex === 0 ? '0.3' : '1';
+                
+                if(state.session.currentIndex === state.session.questions.length - 1) {
+                    btnNext.classList.add('hidden');
+                    btnSubmit.classList.remove('hidden');
                 } else {
-                    btn.onclick = () => submitPracticeAnswer(ch, q.Answer);
-                    if(userAnswer) {
-                        btn.onclick = null;
-                        if(ch === q.Answer) btn.classList.add('selected-correct');
-                        else if(ch === userAnswer) btn.classList.add('selected-wrong');
-                        else btn.classList.add('dimmed');
-                    }
+                    btnNext.classList.remove('hidden');
+                    btnSubmit.classList.add('hidden');
                 }
+            } else {
+                // NEW: Show the Previous button in practice mode if we aren't on question 1
+                if (state.session.currentIndex > 0) {
+                    btnPrev.classList.remove('hidden');
+                    btnPrev.disabled = false;
+                    btnPrev.style.opacity = '1';
+                } else {
+                    btnPrev.classList.add('hidden');
+                }
+
+                btnSubmit.classList.add('hidden');
+                
+                // Keep the Next button logic the same
+                if(userAnswer) {
+                    showExplanation(q);
+                    btnNext.classList.remove('hidden');
+                } else {
+                    expBox.classList.add('hidden');
+                    btnNext.classList.add('hidden');
+                }
+            }
             });
             
             const expBox = document.getElementById('q-explanation-box');
