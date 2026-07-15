@@ -581,8 +581,6 @@ function renderQuestion() {
     const isExam = state.session.type === 'exam';
     const userAnswer = state.session.userAnswers[state.session.currentIndex];
     
-    document.getElementById('q-current-num').innerText = state.session.currentIndex + 1;
-    document.getElementById('q-total-num').innerText = state.session.questions.length;
     document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / state.session.questions.length) * 100}%`;
     
     document.getElementById('q-subject').innerText = q.Subject || 'General';
