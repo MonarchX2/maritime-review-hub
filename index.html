@@ -793,23 +793,27 @@ function resetCategory(subject) {
         if(chartInstance) renderCharts(); 
     }
 }
-        function submitPracticeAnswer(selected, correct) {
-            const q = state.session.questions[state.session.currentIndex];
-            state.session.userAnswers[state.session.currentIndex] = selected;
-            
-            trackStats(q, selected === correct);
+function submitPracticeAnswer(selected, correct) {
+    const q = state.session.questions[state.session.currentIndex];
+    state.session.userAnswers[state.session.currentIndex] = selected;
+    
+    trackStats(q, selected === correct);
 
-            document.querySelectorAll('.choice-btn').forEach(btn => {
-                btn.onclick = null;
-                if(btn.dataset.choice === correct) btn.classList.add('selected-correct');
-                else if (btn.dataset.choice === selected) btn.classList.add('selected-wrong');
-                else btn.classList.add('dimmed');
-            });
+    document.querySelectorAll('.choice-btn').forEach(btn => {
+        btn.onclick = null;
+        if(btn.dataset.choice === correct) btn.classList.add('selected-correct');
+        else if (btn.dataset.choice === selected) btn.classList.add('selected-wrong');
+        else btn.classList.add('dimmed');
+    });
 
-            showExplanation(q);
-            document.getElementById('btn-next').classList.remove('hidden');
-            document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
-        }
+    showExplanation(q);
+    
+    // THE FIX: Change from classList.remove('hidden') to disabling/enabling properties
+    document.getElementById('btn-next').disabled = false;
+    document.getElementById('btn-reveal').disabled = true;
+    
+    document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
+}
 
         function showExplanation(q) {
             document.getElementById('q-explanation-text').innerText = q.Explanation || "No explanation provided in database.";
