@@ -1088,35 +1088,27 @@ function checkSavedSession() {
     const saved = localStorage.getItem('mrh_saved_session');
     const resumeContainer = document.getElementById('resume-container');
     
-    if (!resumeContainer) return; // Failsafe
-
-    // NEW: Strictly check if there is absolutely no valid session data
-    if (!saved || saved === "null" || saved === "undefined" || saved === "{}") {
-        resumeContainer.classList.add('hidden');
-        return;
-    }
-    
-    try {
-        const session = JSON.parse(saved);
-        
-        // Auto-destroy practice sessions if the final question is already answered
-        if (session.type === 'practice') {
-            const isLastQuestion = session.currentIndex >= session.questions.length - 1;
-            const isAnswered = session.userAnswers && session.userAnswers[session.currentIndex];
+    if (saved && resumeContainer) {
+        try {
+            const session = JSON.parse(saved);
             
-            if (isLastQuestion && isAnswered) {
-                localStorage.removeItem('mrh_saved_session');
-                resumeContainer.classList.add('hidden');
-                return; 
+            // NEW: Automatically destroy practice sessions if the final question is already answered
+            if (session.type === 'practice') {
+                const isLastQuestion = session.currentIndex >= session.questions.length - 1;
+                const isAnswered = session.userAnswers && session.userAnswers[session.currentIndex];
+                
+                if (isLastQuestion && isAnswered) {
+                    localStorage.removeItem('mrh_saved_session');
+                    resumeContainer.classList.add('hidden');
+                    return; // Stop execution here so the button stays hidden
+                }
             }
+        } catch(e) {
+            console.error("Error checking session", e);
         }
-        
-        // If it's a valid, unfinished session, reveal the button
+
         resumeContainer.classList.remove('hidden');
-    } catch(e) {
-        // NEW: If the save file is somehow corrupted, hide the button and wipe it
-        console.error("Error checking session", e);
-        localStorage.removeItem('mrh_saved_session');
+    } else if (resumeContainer) {
         resumeContainer.classList.add('hidden');
     }
 }
