@@ -351,14 +351,17 @@ function navigate(viewId) {
     
     if (state.session.active) {
         clearInterval(examTimerInterval);
-        state.session.active = false;
-        saveSessionProgress(); // Ensure the latest state is saved before leaving
+        saveSessionProgress(); // FIX: Save BEFORE turning the session off
+        state.session.active = false; 
     }
 
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
     document.getElementById(`view-${viewId}`).classList.add('active');
     
     if(viewId === 'stats') renderCharts();
+    
+    // NEW: Force the dashboard to evaluate if the resume button should be hidden
+    if(viewId === 'dashboard') checkSavedSession(); 
 }
 
         async function syncDatabase() {
@@ -1073,6 +1076,24 @@ function checkSavedSession() {
     const resumeContainer = document.getElementById('resume-container');
     
     if (saved && resumeContainer) {
+        try {
+            const session = JSON.parse(saved);
+            
+            // NEW: Automatically destroy practice sessions if the final question is already answered
+            if (session.type === 'practice') {
+                const isLastQuestion = session.currentIndex >= session.questions.length - 1;
+                const isAnswered = session.userAnswers && session.userAnswers[session.currentIndex];
+                
+                if (isLastQuestion && isAnswered) {
+                    localStorage.removeItem('mrh_saved_session');
+                    resumeContainer.classList.add('hidden');
+                    return; // Stop execution here so the button stays hidden
+                }
+            }
+        } catch(e) {
+            console.error("Error checking session", e);
+        }
+
         resumeContainer.classList.remove('hidden');
     } else if (resumeContainer) {
         resumeContainer.classList.add('hidden');
