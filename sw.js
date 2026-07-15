@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mrh-v12'; // Bumped version to force update
+const CACHE_NAME = 'mrh-v13'; // Bumped version to force update
 const ASSETS_TO_CACHE = [
     './',
     './index.html',

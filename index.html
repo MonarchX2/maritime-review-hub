@@ -810,16 +810,20 @@ function resetCategory(subject) {
             });
         }
 
-        function nextQuestion() {
-            if(state.session.currentIndex < state.session.questions.length - 1) {
-                state.session.currentIndex++;
-                renderQuestion();
-            } else if (state.session.type === 'practice') {
-                alert("Practice Session Complete! Great job.");
-                endSession(false);
-            }
-            saveSessionProgress();
-        }
+function nextQuestion() {
+    if(state.session.currentIndex < state.session.questions.length - 1) {
+        state.session.currentIndex++;
+        renderQuestion();
+        saveSessionProgress();
+    } else if (state.session.type === 'practice') {
+        alert("Practice Session Complete! Great job.");
+        
+        // NEW: This wipes the finished session from local storage
+        clearSessionProgress(); 
+        
+        endSession(false);
+    }
+}
 
         function prevQuestion() {
             if(state.session.currentIndex > 0) {
