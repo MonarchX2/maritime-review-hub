@@ -575,111 +575,102 @@ if(pool.length === 0) { alert("No questions found for this filter."); return; }
             }
         }
 
-        function renderQuestion() {
-            const q = state.session.questions[state.session.currentIndex];
-            const isExam = state.session.type === 'exam';
-            const userAnswer = state.session.userAnswers[state.session.currentIndex];
-            
-            document.getElementById('q-current-num').innerText = state.session.currentIndex + 1;
-            document.getElementById('q-total-num').innerText = state.session.questions.length;
-            document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / state.session.questions.length) * 100}%`;
-            
-            document.getElementById('q-subject').innerText = q.Subject || 'General';
-            document.getElementById('q-id').innerText = q.ID || `Q-${state.session.currentIndex}`;
-            document.getElementById('q-text').innerText = q.Question;
-            
-            const imgEl = document.getElementById('q-image');
-            if(q.ImageURL && q.ImageURL.trim() !== "") {
-                imgEl.src = q.ImageURL; imgEl.classList.remove('hidden');
-            } else {
-                imgEl.classList.add('hidden');
-            }
-const choices = ['A', 'B', 'C', 'D'];
-            choices.forEach(ch => {
-                const choiceText = q[`Choice${ch}`];
-                const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
-                
-                // If a choice is completely blank, hide the button and skip the rest
-                if (!choiceText || choiceText.trim() === "") {
-                    btn.classList.add('hidden');
-                    return; 
-                }
-                
-                // Otherwise, show it and render the text
-                btn.classList.remove('hidden');
-                document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = choiceText;
-                
-                btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium";
-                
-if(isExam) {
-                expBox.classList.add('hidden');
-                btnPrev.classList.remove('hidden');
-                btnPrev.disabled = state.session.currentIndex === 0;
-                btnPrev.style.opacity = state.session.currentIndex === 0 ? '0.3' : '1';
-                
-                if(state.session.currentIndex === state.session.questions.length - 1) {
-                    btnNext.classList.add('hidden');
-                    btnSubmit.classList.remove('hidden');
-                } else {
-                    btnNext.classList.remove('hidden');
-                    btnSubmit.classList.add('hidden');
-                }
-            } else {
-                // NEW: Show the Previous button in practice mode if we aren't on question 1
-                if (state.session.currentIndex > 0) {
-                    btnPrev.classList.remove('hidden');
-                    btnPrev.disabled = false;
-                    btnPrev.style.opacity = '1';
-                } else {
-                    btnPrev.classList.add('hidden');
-                }
+function renderQuestion() {
+    const q = state.session.questions[state.session.currentIndex];
+    const isExam = state.session.type === 'exam';
+    const userAnswer = state.session.userAnswers[state.session.currentIndex];
+    
+    document.getElementById('q-current-num').innerText = state.session.currentIndex + 1;
+    document.getElementById('q-total-num').innerText = state.session.questions.length;
+    document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / state.session.questions.length) * 100}%`;
+    
+    document.getElementById('q-subject').innerText = q.Subject || 'General';
+    document.getElementById('q-id').innerText = q.ID || `Q-${state.session.currentIndex}`;
+    document.getElementById('q-text').innerText = q.Question;
+    
+    const imgEl = document.getElementById('q-image');
+    if(q.ImageURL && q.ImageURL.trim() !== "") {
+        imgEl.src = q.ImageURL; imgEl.classList.remove('hidden');
+    } else {
+        imgEl.classList.add('hidden');
+    }
 
-                btnSubmit.classList.add('hidden');
-                
-                // Keep the Next button logic the same
-                if(userAnswer) {
-                    showExplanation(q);
-                    btnNext.classList.remove('hidden');
-                } else {
-                    expBox.classList.add('hidden');
-                    btnNext.classList.add('hidden');
-                }
-            }
-            });
-            
-            const expBox = document.getElementById('q-explanation-box');
-            const btnNext = document.getElementById('btn-next');
-            const btnPrev = document.getElementById('btn-prev');
-            const btnSubmit = document.getElementById('btn-submit-exam');
-
-            if(isExam) {
-                expBox.classList.add('hidden');
-                btnPrev.classList.remove('hidden');
-                btnPrev.disabled = state.session.currentIndex === 0;
-                btnPrev.style.opacity = state.session.currentIndex === 0 ? '0.3' : '1';
-                
-                if(state.session.currentIndex === state.session.questions.length - 1) {
-                    btnNext.classList.add('hidden');
-                    btnSubmit.classList.remove('hidden');
-                } else {
-                    btnNext.classList.remove('hidden');
-                    btnSubmit.classList.add('hidden');
-                }
-            } else {
-                btnPrev.classList.add('hidden');
-                btnSubmit.classList.add('hidden');
-                if(userAnswer) {
-                    showExplanation(q);
-                    btnNext.classList.remove('hidden');
-                } else {
-                    expBox.classList.add('hidden');
-                    btnNext.classList.add('hidden');
-                }
-            }
-            
-            updateIcons(q.ID);
+    const choices = ['A', 'B', 'C', 'D'];
+    choices.forEach(ch => {
+        const choiceText = q[`Choice${ch}`];
+        const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
+        
+        // If a choice is completely blank, hide the button and skip the rest
+        if (!choiceText || choiceText.trim() === "") {
+            btn.classList.add('hidden');
+            return; 
         }
-// --- CATEGORY PROGRESS SYSTEM ---
+        
+        // Otherwise, show it and render the text
+        btn.classList.remove('hidden');
+        document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = choiceText;
+        
+        // FIX: Re-added the click handler that got accidentally deleted
+        btn.onclick = () => isExam ? selectExamAnswer(ch) : submitPracticeAnswer(ch, q.Answer);
+        
+        // Reset to default styling
+        btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium";
+        
+        // FIX: Retain selected answer states if returning to a previous question
+        if (userAnswer) {
+            btn.onclick = null; // Disable clicking again
+            if (isExam) {
+                if (userAnswer === ch) btn.classList.add('exam-selected');
+            } else {
+                if (ch === q.Answer) btn.classList.add('selected-correct');
+                else if (userAnswer === ch) btn.classList.add('selected-wrong');
+                else btn.classList.add('dimmed');
+            }
+        }
+    });
+    
+    const expBox = document.getElementById('q-explanation-box');
+    const btnNext = document.getElementById('btn-next');
+    const btnPrev = document.getElementById('btn-prev');
+    const btnSubmit = document.getElementById('btn-submit-exam');
+
+    if(isExam) {
+        expBox.classList.add('hidden');
+        btnPrev.classList.remove('hidden');
+        btnPrev.disabled = state.session.currentIndex === 0;
+        btnPrev.style.opacity = state.session.currentIndex === 0 ? '0.3' : '1';
+        
+        if(state.session.currentIndex === state.session.questions.length - 1) {
+            btnNext.classList.add('hidden');
+            btnSubmit.classList.remove('hidden');
+        } else {
+            btnNext.classList.remove('hidden');
+            btnSubmit.classList.add('hidden');
+        }
+    } else {
+        // Show the Previous button in practice mode if we aren't on question 1
+        if (state.session.currentIndex > 0) {
+            btnPrev.classList.remove('hidden');
+            btnPrev.disabled = false;
+            btnPrev.style.opacity = '1';
+        } else {
+            btnPrev.classList.add('hidden');
+        }
+
+        btnSubmit.classList.add('hidden');
+        
+        // Control Next button and Explanation box visibility
+        if(userAnswer) {
+            showExplanation(q);
+            btnNext.classList.remove('hidden');
+        } else {
+            expBox.classList.add('hidden');
+            btnNext.classList.add('hidden');
+        }
+    }
+    
+    updateIcons(q.ID);
+}
 
 // --- CATEGORY PROGRESS SYSTEM ---
 
