@@ -153,24 +153,6 @@
             </div>
 
             <div id="session-active" class="hidden">
-<div class="flex gap-2 md:gap-4">
-    <button id="btn-prev" onclick="prevQuestion()" class="hidden flex-1 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white py-4 rounded-xl font-bold shadow-md hover:bg-gray-300 transition-all">
-        <i class="fa-solid fa-arrow-left md:mr-2"></i> <span class="hidden md:inline">Prev</span>
-    </button>
-    
-    <button id="btn-reveal" onclick="revealAnswer()" class="hidden flex-1 bg-yellow-500 text-white py-4 rounded-xl font-bold shadow-md hover:bg-yellow-600 transition-all">
-        <i class="fa-solid fa-eye md:mr-2"></i> <span class="hidden md:inline">Reveal</span>
-    </button>
-    
-    <button id="btn-next" onclick="nextQuestion()" class="hidden flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-        <span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2"></i>
-    </button>
-    
-    <button id="btn-submit-exam" onclick="submitExam()" class="hidden flex-1 bg-green-600 text-white py-4 rounded-xl font-bold shadow-md hover:bg-green-700 transition-all">
-        <i class="fa-solid fa-check-double md:mr-2"></i> Submit Exam
-    </button>
-</div>
-                
                 <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-8">
                     <div class="bg-brand-500 h-2 rounded-full transition-all duration-300" id="session-progress" style="width: 0%"></div>
                 </div>
@@ -197,11 +179,23 @@
                     <p class="text-gray-700 dark:text-gray-300 text-sm mb-2" id="q-explanation-text"></p>
                 </div>
 
-                <div class="flex gap-4">
-                    <button id="btn-prev" onclick="prevQuestion()" class="hidden flex-1 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white py-4 rounded-xl font-bold shadow-md hover:bg-gray-300"><i class="fa-solid fa-arrow-left mr-2"></i> Prev</button>
-                    <button id="btn-next" onclick="nextQuestion()" class="hidden flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800">Next <i class="fa-solid fa-arrow-right ml-2"></i></button>
-                    <button id="btn-submit-exam" onclick="submitExam()" class="hidden flex-1 bg-green-600 text-white py-4 rounded-xl font-bold shadow-md hover:bg-green-700"><i class="fa-solid fa-check-double mr-2"></i> Submit Exam</button>
-                </div>
+<div class="flex gap-2 md:gap-4 mt-6">
+    <button id="btn-prev" onclick="prevQuestion()" class="flex-1 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white py-4 rounded-xl font-bold shadow-md hover:bg-gray-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+        <i class="fa-solid fa-arrow-left md:mr-2"></i> <span class="hidden md:inline">Prev</span>
+    </button>
+    
+    <button id="btn-reveal" onclick="revealAnswer()" class="flex-1 bg-yellow-500 text-white py-4 rounded-xl font-bold shadow-md hover:bg-yellow-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+        <i class="fa-solid fa-eye md:mr-2"></i> <span class="hidden md:inline">Reveal</span>
+    </button>
+    
+    <button id="btn-next" onclick="nextQuestion()" class="flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+        <span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2"></i>
+    </button>
+    
+    <button id="btn-submit-exam" onclick="submitExam()" class="flex-1 bg-green-600 text-white py-4 rounded-xl font-bold shadow-md hover:bg-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+        <i class="fa-solid fa-check-double md:mr-2"></i> <span class="hidden md:inline">Submit</span>
+    </button>
+</div>
             </div>
             
             <div id="exam-results" class="hidden text-center mt-10">
@@ -634,48 +628,35 @@ const expBox = document.getElementById('q-explanation-box');
     const btnReveal = document.getElementById('btn-reveal');
     const btnSubmit = document.getElementById('btn-submit-exam');
 
-    if(isExam) {
+    if (isExam) {
         expBox.classList.add('hidden');
-        btnReveal.classList.add('hidden'); // Hide reveal in exam mode
         
-        btnPrev.classList.remove('hidden');
+        btnReveal.disabled = true; // Reveal is never allowed in exams
         btnPrev.disabled = state.session.currentIndex === 0;
-        btnPrev.style.opacity = state.session.currentIndex === 0 ? '0.3' : '1';
         
-        if(state.session.currentIndex === state.session.questions.length - 1) {
-            btnNext.classList.add('hidden');
-            btnSubmit.classList.remove('hidden');
+        // Toggle Next vs Submit based on if we are at the last question
+        if (state.session.currentIndex === state.session.questions.length - 1) {
+            btnNext.disabled = true;
+            btnSubmit.disabled = false;
         } else {
-            btnNext.classList.remove('hidden');
-            btnNext.disabled = false; // Always clickable in exam mode
-            btnNext.classList.remove('opacity-50', 'cursor-not-allowed');
-            btnSubmit.classList.add('hidden');
+            btnNext.disabled = false;
+            btnSubmit.disabled = true;
         }
     } else {
         // Practice Mode Logic
-        if (state.session.currentIndex > 0) {
-            btnPrev.classList.remove('hidden');
-            btnPrev.disabled = false;
-            btnPrev.style.opacity = '1';
-        } else {
-            btnPrev.classList.add('hidden');
-        }
-
-        btnSubmit.classList.add('hidden');
-        btnNext.classList.remove('hidden'); // Next button always occupies space side-to-side
+        btnSubmit.disabled = true; // Submit is never used in practice
+        btnPrev.disabled = state.session.currentIndex === 0;
         
-        if(userAnswer) {
+        if (userAnswer) {
             // Question is answered or revealed
             showExplanation(q);
             btnNext.disabled = false;
-            btnNext.classList.remove('opacity-50', 'cursor-not-allowed');
-            btnReveal.classList.add('hidden'); // Hide reveal if already answered
+            btnReveal.disabled = true; // Disable reveal if already answered
         } else {
             // Question is NOT answered
             expBox.classList.add('hidden');
-            btnNext.disabled = true; // Lock the Next button
-            btnNext.classList.add('opacity-50', 'cursor-not-allowed');
-            btnReveal.classList.remove('hidden'); // Show Reveal button
+            btnNext.disabled = true; // Lock Next until answered
+            btnReveal.disabled = false; 
         }
     }
     
