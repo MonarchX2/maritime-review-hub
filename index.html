@@ -905,9 +905,11 @@ let settingsClickCount = 0;
                 const totalQuestionsInDb = cat.QuestionCount; 
                 const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
                 
-                const completedCount = state.stats.completedQs.filter(id => id.startsWith(subj.substring(0, 3).toUpperCase())).length;
-                const mistakesCount = state.stats.mistakes.filter(id => id.startsWith(subj.substring(0, 3).toUpperCase())).length;
-                const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
+// --- 1. NEW EXACT-MATCH ID FILTERING ---
+                const dbQsForSubj = state.db.filter(q => q.Subject === subj).map(q => q.ID);
+                const completedCount = state.stats.completedQs.filter(id => dbQsForSubj.includes(id)).length;
+                const mistakesCount = state.stats.mistakes.filter(id => dbQsForSubj.includes(id)).length;
+                // ---------------------------------------                const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
                 const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
                 const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
 
@@ -980,26 +982,47 @@ let settingsClickCount = 0;
                 const contentDiv = details.querySelector('summary ~ div');
                 const chevron = summary.querySelector('i.fa-chevron-down');
 
-                summary.addEventListener('click', function(e) {
+summary.addEventListener('click', function(e) {
+                    e.preventDefault(); // Stop native instant-toggle
+                    
                     if (details.open) {
-                        // 1. Prevent the browser from instantly snapping it closed
-                        e.preventDefault();
+                        // CLOSING: Shrink from full size down to just the title
+                        const startHeight = details.offsetHeight;
+                        details.style.height = startHeight + 'px';
+                        details.style.overflow = 'hidden';
+                        void details.offsetHeight; // Force browser reflow
                         
-                        // 2. Play your CSS animation in reverse to close it smoothly
-                        contentDiv.style.animation = 'folderSlideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) reverse forwards';
-                        if (chevron) chevron.style.transform = 'rotate(0deg)'; // Spin arrow back
+                        details.style.transition = 'height 0.35s ease-in-out';
+                        details.style.height = summary.offsetHeight + 'px'; 
+                        if (chevron) chevron.style.transform = 'rotate(0deg)';
                         
-                        // 3. Wait for the reverse animation to finish before actually closing
+                        // Wait for transition, then finalize
                         setTimeout(() => {
                             details.removeAttribute('open');
-                            contentDiv.style.animation = ''; // Clean up inline styles
-                            if (chevron) chevron.style.transform = ''; 
-                        }, 300); 
+                            details.style.height = '';
+                            details.style.transition = '';
+                            details.style.overflow = '';
+                        }, 350);
                     } else {
-                        // Force a "DOM Reflow" so the browser restarts the opening animation every single time
-                        contentDiv.style.animation = 'none';
-                        void contentDiv.offsetWidth; 
-                        contentDiv.style.animation = '';
+                        // OPENING: Expand from title to full content size
+                        details.setAttribute('open', ''); 
+                        const startHeight = summary.offsetHeight;
+                        const endHeight = summary.offsetHeight + contentDiv.offsetHeight;
+                        
+                        details.style.height = startHeight + 'px';
+                        details.style.overflow = 'hidden';
+                        void details.offsetHeight; // Force browser reflow
+                        
+                        details.style.transition = 'height 0.35s ease-in-out';
+                        details.style.height = endHeight + 'px'; 
+                        if (chevron) chevron.style.transform = 'rotate(180deg)';
+                        
+                        // Wait for transition, then finalize
+                        setTimeout(() => {
+                            details.style.height = '';
+                            details.style.transition = '';
+                            details.style.overflow = '';
+                        }, 350);
                     }
                 });
             });

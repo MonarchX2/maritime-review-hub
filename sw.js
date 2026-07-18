@@ -2,7 +2,6 @@ const CACHE_NAME = 'mrh-v2'; // Bumped version to force update
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
-    './features.js',
     './manifest.json'
 ];
 
