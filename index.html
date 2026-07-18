@@ -797,9 +797,23 @@
 
             function generateTreeHTML(node, depth = 0) {
                 let html = '';
-                let indexCounter = 0; // for stagger animation timing
+                let indexCounter = 0;
                 
-                for (const key in node) {
+                // --- ADDED SORTING LOGIC HERE ---
+                // We want folders (items with children) to appear before leaf cards
+                const keys = Object.keys(node);
+                keys.sort((a, b) => {
+                    const aHasChildren = Object.keys(node[a]._children).length > 0;
+                    const bHasChildren = Object.keys(node[b]._children).length > 0;
+                    
+                    if (aHasChildren && !bHasChildren) return -1; // 'a' is a folder, comes first
+                    if (!aHasChildren && bHasChildren) return 1;  // 'b' is a folder, comes first
+                    
+                    // If both are folders or both are files, sort alphabetically
+                    return a.localeCompare(b);
+                });
+
+                for (const key of keys) {
                     const item = node[key];
                     const hasChildren = Object.keys(item._children).length > 0;
                     const hasData = item._data !== null;
@@ -811,8 +825,9 @@
                             ? "mb-4 bg-gray-50 dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm transition-all duration-500 hover:shadow-md animate-card-in"
                             : "mb-3 mt-2 border-l-2 border-brand-200 dark:border-brand-800 pl-2 transition-all duration-300 animate-card-in";
 
+                        // --- REMOVED 'open' ATTRIBUTE SO IT STARTS CLOSED ---
                         html += `
-                            <details class="${folderClass} overflow-hidden" open style="animation-delay: ${delay}s;">
+                            <details class="${folderClass} overflow-hidden" style="animation-delay: ${delay}s;">
                                 <summary class="p-4 font-bold text-gray-800 dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center select-none list-none [&::-webkit-details-marker]:hidden">
                                     <i class="fa-solid fa-folder-open text-brand-500 mr-3 transform transition-transform group-hover:scale-110"></i> ${escapeHTML(key)}
                                     <i class="fa-solid fa-chevron-down text-gray-400 text-xs ml-auto"></i>
