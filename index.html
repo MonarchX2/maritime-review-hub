@@ -267,8 +267,9 @@
     <script>
         const DB_URL = "https://script.google.com/macros/s/AKfycbw9B0Ny93yn3W8tE4e0Kvfamdwk_YCn0AUol67NqjPbtYljF3V-7uPha7Z0Snyw8sw_/exec";
         
-        let state = {
+let state = {
             db: [],
+            categorySummary: [], // NEW: Stores the lightweight sheet list
             stats: { totalAnswered: 0, correct: 0, mistakes: [], bookmarks: [], streak: 0, lastStudyDate: null, subjectAccuracy: {} },
             prefs: { darkMode: false, csvUrl: '' },
             session: { active: false, type: 'practice', questions: [], currentIndex: 0, userAnswers: {}, flags: [] }
@@ -337,46 +338,44 @@ function navigate(viewId) {
     if(viewId === 'dashboard') checkSavedSession(); 
 }
 
-        async function syncDatabase() {
+async function syncDatabase() {
             const url = DB_URL; 
             const statusEl = document.getElementById('sync-status');
-            statusEl.classList.remove('hidden');
-            
-            state.prefs.csvUrl = url;
-            saveState();
-            
-            statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Fetching data from all subjects...';
-            statusEl.className = "text-sm mt-3 font-medium bg-blue-50 text-blue-600 p-3 rounded-lg";
+            if (statusEl) {
+                statusEl.classList.remove('hidden');
+                statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Fetching subjects...';
+                statusEl.className = "text-sm mt-3 font-medium bg-blue-50 text-blue-600 p-3 rounded-lg";
+            }
 
             try {
+                // This now fetches the lightweight summary
                 const response = await fetch(url);
                 if (!response.ok) throw new Error("Network response failed");
-                const data = await response.json();
+                const summaryData = await response.json();
 
-if (data && data.length > 0) {
-                    // FILTER: Only keep questions that actually have text and at least choices A and B
-                    state.db = data.filter(q => 
-                        q.Question && q.Question.trim() !== "" &&
-                        q.ChoiceA && q.ChoiceA.trim() !== "" &&
-                        q.ChoiceB && q.ChoiceB.trim() !== ""
-                    );
+                if (summaryData && summaryData.length > 0) {
+                    state.categorySummary = summaryData;
+                    saveState();
                     
-                    localStorage.setItem('mrh_db', JSON.stringify(state.db));
-                    document.getElementById('db-size-display').innerText = state.db.length;
+                    if (statusEl) {
+                        statusEl.innerHTML = `<i class="fa-solid fa-check-circle mr-1"></i> Success! Loaded ${summaryData.length} subjects.`;
+                        statusEl.className = "text-sm mt-3 font-medium bg-green-50 text-green-600 p-3 rounded-lg";
+                    }
                     
                     if (typeof populateFilters === "function") populateFilters();
                     if (typeof renderCategoryProgress === "function") renderCategoryProgress();
-                    
-                    statusEl.innerHTML = `<i class="fa-solid fa-check-circle mr-1"></i> Success! Loaded ${state.db.length} questions.`;
-                    statusEl.className = "text-sm mt-3 font-medium bg-green-50 text-green-600 p-3 rounded-lg";
                 } else {
-                    statusEl.innerText = "Error: Connected, but no valid questions found. Check your sheet formatting.";
-                    statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+                    if (statusEl) {
+                        statusEl.innerText = "Error: Connected, but no subjects found.";
+                        statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+                    }
                 }
             } catch (err) {
                 console.error(err);
-                statusEl.innerText = "Connection Error. Ensure you deployed the Apps Script as a Web App accessible to 'Anyone'.";
-                statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+                if (statusEl) {
+                    statusEl.innerText = "Connection Error. Ensure you deployed the Apps Script correctly.";
+                    statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+                }
             }
         }
 
@@ -646,34 +645,39 @@ function renderQuestion() {
 
 function renderCategoryProgress() {
     const container = document.getElementById('category-list');
-    const subjects = [...new Set(state.db.map(q => q.Subject).filter(Boolean))]; 
     
-    if (subjects.length === 0) {
+    if (!state.categorySummary || state.categorySummary.length === 0) {
         container.innerHTML = '<p class="text-gray-500">No categories found. Please ensure your database is synced.</p>';
         return;
     }
 
-    // Ensure our completed array exists
     if (!state.stats.completedQs) state.stats.completedQs = [];
 
-    container.innerHTML = subjects.map(subj => {
-        const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
-        const totalQuestionsInDb = state.db.filter(q => q.Subject === subj).length;
+    container.innerHTML = state.categorySummary.map(cat => {
+        const subj = cat.Subject;
+        const totalQuestionsInDb = cat.QuestionCount; // Coming directly from the new API
         
-        // Find how many are completed and how many are mistakes in this specific category
-        const completedCount = state.db.filter(q => q.Subject === subj && state.stats.completedQs.includes(q.ID)).length;
-        const mistakesCount = state.db.filter(q => q.Subject === subj && state.stats.mistakes.includes(q.ID)).length;
+        const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
+        
+        // Count how many completed/mistakes exist in local stats for this subject
+        const completedCount = state.stats.completedQs.filter(id => id.startsWith(subj.substring(0, 3).toUpperCase())).length;
+        const mistakesCount = state.stats.mistakes.filter(id => id.startsWith(subj.substring(0, 3).toUpperCase())).length;
         
         const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
 
-        // NEW: Check if finished and set background classes accordingly
-        const isCompleted = totalQuestionsInDb > 0 && completedCount === totalQuestionsInDb;
+        const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
         const cardClasses = isCompleted 
             ? 'bg-green-50 dark:bg-green-900/30 border-green-300 dark:border-green-800' 
             : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
 
         return `
-            <div class="${cardClasses} p-5 rounded-xl shadow-sm border transition-colors duration-300">
+            <div class="${cardClasses} p-5 rounded-xl shadow-sm border transition-colors duration-300 relative">
+                <!-- Add a loading overlay for when fetching questions -->
+                <div id="loading-${subj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center">
+                    <i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500 mb-2"></i>
+                    <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Downloading...</span>
+                </div>
+
                 <div class="flex justify-between items-end mb-2">
                     <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100">${subj}</h3>
                     <div class="text-right">
@@ -687,12 +691,12 @@ function renderCategoryProgress() {
                 </div>
                 
                 <div class="flex gap-2 mt-4 flex-wrap">
-                    <button onclick="continueCategory('${subj}')" class="flex-1 bg-brand-600 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-brand-700 text-sm shadow-sm transition-colors">
+                    <button onclick="fetchAndStartCategory('${subj}', 'continue')" class="flex-1 bg-brand-600 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-brand-700 text-sm shadow-sm transition-colors">
                         <i class="fa-solid fa-play mr-1"></i> Continue
                     </button>
                     
                     ${mistakesCount > 0 ? `
-                    <button onclick="reviewCategoryMistakes('${subj}')" class="flex-1 bg-orange-500 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-orange-600 text-sm shadow-sm transition-colors">
+                    <button onclick="fetchAndStartCategory('${subj}', 'mistakes')" class="flex-1 bg-orange-500 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-orange-600 text-sm shadow-sm transition-colors">
                         <i class="fa-solid fa-book mr-1"></i> Review ${mistakesCount}
                     </button>
                     ` : ''}
@@ -706,30 +710,64 @@ function renderCategoryProgress() {
     }).join('');
 }
 
-function continueCategory(subject) {
-    if (!state.stats.completedQs) state.stats.completedQs = [];
-    
-    // Get all questions in the subject that are NOT in the completed array
-    let pool = state.db.filter(q => q.Subject === subject && !state.stats.completedQs.includes(q.ID));
-    
-    if (pool.length === 0) {
-        alert(`You have answered all available questions for ${subject}! Reset the category to start over.`);
-        return;
+async function fetchAndStartCategory(subject, mode) {
+    const loader = document.getElementById(`loading-${subject}`);
+    if (loader) loader.classList.remove('hidden'); // Show loading spinner on the card
+
+    try {
+        // Fetch only this specific subject's questions
+        const response = await fetch(`${DB_URL}?subject=${encodeURIComponent(subject)}`);
+        const newQuestions = await response.json();
+
+        if (newQuestions.error) {
+            alert(newQuestions.error);
+            if (loader) loader.classList.add('hidden');
+            return;
+        }
+
+        // Filter out bad data (empty questions) just like we did in the old sync method
+        const validQuestions = newQuestions.filter(q => 
+            q.Question && q.Question.trim() !== "" &&
+            q.ChoiceA && q.ChoiceA.trim() !== "" &&
+            q.ChoiceB && q.ChoiceB.trim() !== ""
+        );
+
+        // Update our local state.db to include these newly fetched questions
+        // We filter out old versions of this subject to prevent duplicates, then add the new ones
+        const otherQuestions = state.db.filter(q => q.Subject !== subject);
+        state.db = [...otherQuestions, ...validQuestions];
+        localStorage.setItem('mrh_db', JSON.stringify(state.db));
+
+        if (!state.stats.completedQs) state.stats.completedQs = [];
+
+        // Decide which questions to load based on the mode clicked
+        let pool = [];
+        if (mode === 'continue') {
+            pool = validQuestions.filter(q => !state.stats.completedQs.includes(q.ID));
+            if (pool.length === 0) {
+                alert(`You have answered all available questions for ${subject}! Reset the category to start over.`);
+                if (loader) loader.classList.add('hidden');
+                return;
+            }
+        } else if (mode === 'mistakes') {
+            pool = validQuestions.filter(q => state.stats.mistakes.includes(q.ID));
+            if (pool.length === 0) {
+                alert(`No mistakes to review for ${subject}! Great job.`);
+                if (loader) loader.classList.add('hidden');
+                return;
+            }
+        }
+
+        if (loader) loader.classList.add('hidden');
+        
+        // Launch the session with the prepared pool
+        startCustomSession(pool);
+
+    } catch (err) {
+        console.error(err);
+        alert("Failed to load questions. Please check your connection.");
+        if (loader) loader.classList.add('hidden');
     }
-
-    startCustomSession(pool);
-}
-
-function reviewCategoryMistakes(subject) {
-    // Get questions in this subject that ARE in the mistakes array
-    let pool = state.db.filter(q => q.Subject === subject && state.stats.mistakes.includes(q.ID));
-    
-    if (pool.length === 0) {
-        alert(`No mistakes to review for ${subject}! Great job.`);
-        return;
-    }
-
-    startCustomSession(pool);
 }
 
 // Helper function to launch directly into practice with a pre-built pool of questions
