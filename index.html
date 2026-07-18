@@ -8,13 +8,13 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1e3a8a">
     
-    <!-- Dark Mode Memory Fix to avoid white flash -->
-    <script>
-        try {
-            const prefs = JSON.parse(localStorage.getItem('mrh_prefs') || '{"darkMode":false}');
-            if (prefs.darkMode) document.documentElement.classList.add('dark');
-        } catch (e) {}
-    </script>
+<!-- Dark Mode Memory Fix to avoid white flash -->
+<script>
+    try {
+        const prefs = JSON.parse(localStorage.getItem('mrh_prefs') || '{"darkMode":true}');
+        if (prefs.darkMode) document.documentElement.classList.add('dark');
+    } catch (e) {}
+</script>
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -43,7 +43,7 @@
 <header class="bg-brand-900 text-white p-4 flex justify-between items-center shadow-md sticky top-0 z-50 w-full">
         <!-- Clicking the title now takes you Home -->
         <button onclick="navigate('dashboard')" class="font-bold text-lg hover:text-brand-200 transition-colors text-left flex items-center">
-            <i class="fa-solid fa-anchor mr-2"></i> Hub v2.0
+            <i class="fa-solid fa-anchor mr-2"></i> BSMT 3.1 – ALPHA (2026-2027)
         </button>
         <div class="flex items-center gap-4">
             <!-- Settings button moved here -->
@@ -210,8 +210,7 @@
             
             <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-6 border border-gray-100 dark:border-gray-700">
                 <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-database text-brand-500 mr-2"></i> Database Sync</h3>
-                <p class="text-sm text-gray-500 mb-4">No need to manually sync. Questions will be automatically fetched from the database.</p>
-                <p id="sync-status" class="text-sm mt-3 font-medium bg-gray-50 dark:bg-gray-700 p-3 rounded-lg hidden"></p>
+.                <p id="sync-status" class="text-sm mt-3 font-medium bg-gray-50 dark:bg-gray-700 p-3 rounded-lg hidden"></p>
                 <p class="text-xs text-gray-400 mt-4">Current Database Size: <span id="db-size-display" class="font-bold">0</span> questions.</p>
             </div>
 
@@ -245,12 +244,12 @@
         const DB_URL = "https://script.google.com/macros/s/AKfycbw9B0Ny93yn3W8tE4e0Kvfamdwk_YCn0AUol67NqjPbtYljF3V-7uPha7Z0Snyw8sw_/exec";
         
 let state = {
-            db: [],
-            categorySummary: [],
-            stats: { totalAnswered: 0, correct: 0, mistakes: [], bookmarks: [], subjectAccuracy: {} },
-            prefs: { darkMode: false, csvUrl: '' },
-            session: { active: false, type: 'practice', questions: [], currentIndex: 0, userAnswers: {}, flags: [] }
-        };
+    db: [],
+    categorySummary: [],
+    stats: { totalAnswered: 0, correct: 0, mistakes: [], bookmarks: [], subjectAccuracy: {} },
+    prefs: { darkMode: true, csvUrl: '' },
+    session: { active: false, type: 'practice', questions: [], currentIndex: 0, userAnswers: {}, flags: [] }
+};
         
         let examTimerInterval;
         let examTimeRemaining = 0;
@@ -1024,24 +1023,33 @@ function endSession(silent = false) {
         }
 
 function resetProgress() {
-            if(confirm("Are you sure? This deletes mistakes and all statistics.")) {
-                state.stats = { totalAnswered: 0, correct: 0, mistakes: [], bookmarks: [], subjectAccuracy: {} };
-                saveState(); alert("Progress Reset.");
-                if(document.getElementById('view-stats').classList.contains('active')) renderCharts();
-            }
-        }
+    if(confirm("Are you sure? This deletes mistakes, all statistics, and your current saved session.")) {
+        // Wipes all stats
+        state.stats = { totalAnswered: 0, correct: 0, mistakes: [], bookmarks: [], subjectAccuracy: {}, completedQs: [] };
+        
+        // Wipes the active session state
+        state.session = { active: false, type: 'practice', questions: [], currentIndex: 0, userAnswers: {}, flags: [] };
+        
+        // Deletes the saved session from storage and hides the Resume button
+        clearSessionProgress();
+        
+        saveState(); 
+        alert("Progress Reset.");
+        
+        // Refresh charts if we are on the stats page
+        if(document.getElementById('view-stats').classList.contains('active')) renderCharts();
+    }
+}
 
-        function clearDatabase() {
-    // Prompt the user with a warning
+function clearDatabase() {
     if(confirm("WARNING: Are you sure you want to clear the locally saved database? You will need an active internet connection to sync the questions again. The app will reload to apply changes.")) {
         
-        // Remove the database from local storage
         localStorage.removeItem('mrh_db');
-        
-        // Clear the state array
         state.db = [];
         
-        // Refresh the page
+        // Deletes the saved session so it doesn't try to load deleted questions
+        clearSessionProgress();
+        
         window.location.reload();
     }
 }
