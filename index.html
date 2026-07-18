@@ -909,7 +909,8 @@ let settingsClickCount = 0;
                 const dbQsForSubj = state.db.filter(q => q.Subject === subj).map(q => q.ID);
                 const completedCount = state.stats.completedQs.filter(id => dbQsForSubj.includes(id)).length;
                 const mistakesCount = state.stats.mistakes.filter(id => dbQsForSubj.includes(id)).length;
-                // ---------------------------------------                const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
+                // ---------------------------------------                
+                const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
                 const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
                 const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
 
