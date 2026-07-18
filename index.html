@@ -33,44 +33,112 @@
         }
     </script>
     <style>
-        body { -webkit-tap-highlight-color: transparent; }
-        .view-section { display: none; animation: fadeIn 0.3s ease-in-out; }
-        .view-section.active { display: block; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        body { 
+            -webkit-tap-highlight-color: transparent; 
+            scroll-behavior: smooth;
+        }
         
-        .choice-btn.selected-correct { background-color: #22c55e !important; color: white !important; border-color: #16a34a !important; }
-        .choice-btn.selected-wrong { background-color: #ef4444 !important; color: white !important; border-color: #dc2626 !important; }
-        .choice-btn.dimmed { opacity: 0.5; pointer-events: none; }
-        details[open] summary i.fa-chevron-down {
-    transform: rotate(180deg);
-    /* Smooth fade and slide animation when a folder opens */
-details[open] summary ~ div {
-    animation: folderSlideDown 0.3s ease-out forwards;
-}
+        /* Smooth View Section Transitions */
+        .view-section { 
+            display: none; 
+            opacity: 0; 
+        }
+        .view-section.active { 
+            display: block; 
+            animation: smoothSlideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; 
+        }
+        @keyframes smoothSlideUp { 
+            0% { opacity: 0; transform: translateY(20px) scale(0.98); } 
+            100% { opacity: 1; transform: translateY(0) scale(1); } 
+        }
+        
+        /* Universal Interactive Element Animations */
+        button, select, input {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        button:active:not(:disabled) { 
+            transform: scale(0.94); 
+        }
 
-@keyframes folderSlideDown {
-    0% { opacity: 0; transform: translateY(-10px); }
-    100% { opacity: 1; transform: translateY(0); }
-}
+        /* Choice Button Interaction Animations */
+        .choice-btn {
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+        .choice-btn:hover:not(.dimmed):not(.selected-correct):not(.selected-wrong) {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            border-color: #3b82f6 !important;
+        }
+        .choice-btn.selected-correct { 
+            animation: popCorrect 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; 
+        }
+        .choice-btn.selected-wrong { 
+            animation: shakeWrong 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) forwards; 
+        }
+        .choice-btn.dimmed { 
+            opacity: 0.4; 
+            pointer-events: none; 
+            filter: grayscale(100%); 
+            transform: scale(0.98);
+        }
+        
+        @keyframes popCorrect {
+            0% { transform: scale(1); }
+            40% { transform: scale(1.04); }
+            100% { transform: scale(1); background-color: #22c55e !important; color: white !important; border-color: #16a34a !important; box-shadow: 0 4px 14px 0 rgba(34, 197, 94, 0.39); }
+        }
+        @keyframes shakeWrong {
+            0%, 100% { transform: translateX(0); background-color: #ef4444 !important; color: white !important; border-color: #dc2626 !important; box-shadow: 0 4px 14px 0 rgba(239, 68, 68, 0.39);}
+            20%, 60% { transform: translateX(-6px); }
+            40%, 80% { transform: translateX(6px); }
+        }
 
-/* Rotates the little arrow icon 180 degrees when open */
-details[open] summary i.fa-chevron-down {
-    transform: rotate(180deg);
-}
-}
+        /* Folders & Accordions Smooth Expand */
+        details > summary { list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
+        details[open] summary i.fa-chevron-down { 
+            transform: rotate(180deg); 
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        details summary i.fa-chevron-down {
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        details[open] summary ~ div { 
+            animation: folderSlideDown 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; 
+            transform-origin: top;
+        }
+        
+        @keyframes folderSlideDown {
+            0% { opacity: 0; transform: translateY(-10px) scaleY(0.95); }
+            100% { opacity: 1; transform: translateY(0) scaleY(1); }
+        }
+
+        /* Dynamic Generated Card Stagger Animation */
+        .animate-card-in {
+            animation: fadeScaleIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            opacity: 0;
+        }
+        @keyframes fadeScaleIn {
+            0% { opacity: 0; transform: translateY(20px) scale(0.96); }
+            100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        /* Progress Bar Smoothing */
+        #session-progress {
+            transition: width 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+        }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col">
-    <header class="bg-brand-900 text-white p-4 flex justify-between items-center shadow-md sticky top-0 z-50 w-full">
-        <button onclick="navigate('dashboard')" class="font-bold text-lg hover:text-brand-200 transition-colors text-left flex items-center">
-            <i class="fa-solid fa-anchor mr-2"></i> BSMT 3.1 – ALPHA (2026-2027)
+<body class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col transition-colors duration-500">
+    <header class="bg-brand-900 text-white p-4 flex justify-between items-center shadow-lg sticky top-0 z-50 w-full transition-all duration-300">
+        <button onclick="navigate('dashboard')" class="font-bold text-lg hover:text-brand-200 transition-colors text-left flex items-center transform hover:scale-105 active:scale-95 origin-left">
+            <i class="fa-solid fa-anchor mr-2"></i> BSMT 3.1 – ALPHA
         </button>
         <div class="flex items-center gap-5">
-            <!-- NEW: Admin Access Button -->
-            <button onclick="navigate('admin')" class="hover:text-brand-200 transition-colors text-lg" aria-label="Admin Portal">
+            <button onclick="navigate('admin')" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="Admin Portal">
                 <i class="fa-solid fa-lock"></i>
             </button>
-            <button onclick="navigate('settings')" class="hover:text-brand-200 transition-colors text-lg" aria-label="Settings">
+            <button onclick="navigate('settings')" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg hover:rotate-90" aria-label="Settings">
                 <i class="fa-solid fa-gear"></i>
             </button>
         </div>
@@ -80,10 +148,10 @@ details[open] summary i.fa-chevron-down {
         
         <!-- DASHBOARD SECTION -->
         <section id="view-dashboard" class="view-section active">
-            <div id="resume-container" class="hidden mb-8">
+            <div id="resume-container" class="hidden mb-8 animate-card-in">
                 <h3 class="text-lg font-bold mb-4 text-yellow-600 dark:text-yellow-400">Continue Learning</h3>
-                <button onclick="resumeSession()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white p-6 rounded-2xl shadow-md text-left transition-transform transform hover:-translate-y-1">
-                    <h4 class="text-xl font-bold"><i class="fa-solid fa-clock-rotate-left mr-2"></i> Resume Previous Session</h4>
+                <button onclick="resumeSession()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white p-6 rounded-2xl shadow-md text-left transition-all duration-300 transform hover:-translate-y-2 hover:shadow-xl hover:shadow-yellow-500/20 active:scale-95">
+                    <h4 class="text-xl font-bold"><i class="fa-solid fa-clock-rotate-left mr-2 animate-spin-slow"></i> Resume Previous Session</h4>
                     <p class="text-yellow-100 text-sm mt-1">Pick up exactly where you left off.</p>
                 </button>
             </div>
@@ -91,7 +159,7 @@ details[open] summary i.fa-chevron-down {
             <h3 class="text-lg font-bold mb-4">Subject Progress</h3>
             
             <div id="category-list" class="space-y-4">
-                <div id="dashboard-loading" class="flex flex-col items-center justify-center py-12">
+                <div id="dashboard-loading" class="flex flex-col items-center justify-center py-12 animate-pulse">
                     <i class="fa-solid fa-spinner fa-spin text-4xl text-brand-500 mb-4"></i>
                     <h3 class="text-lg font-bold text-gray-700 dark:text-gray-200">Loading Database...</h3>
                     <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Fetching the latest subjects</p>
@@ -101,60 +169,62 @@ details[open] summary i.fa-chevron-down {
 
         <!-- PRACTICE SECTION -->
         <section id="view-practice" class="view-section">
-            <div id="session-setup">
+            <div id="session-setup" class="transition-all duration-500">
                 <h2 class="text-2xl font-bold mb-6" id="setup-title">Setup Practice Session</h2>
-                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                    <label class="block text-sm font-semibold mb-2">Subject / Tag Filter</label>
-                    <select id="filter-subject" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white mb-6">
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 border border-gray-100 dark:border-gray-700">
+                    <label class="block text-sm font-semibold mb-2 transform transition-transform">Subject / Tag Filter</label>
+                    <select id="filter-subject" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white mb-6 focus:ring-2 focus:ring-brand-500 transition-shadow outline-none cursor-pointer">
                         <option value="ALL">All Subjects</option>
                     </select>
                     
-                    <button onclick="initSession()" class="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 shadow-md">Start Review <i class="fa-solid fa-play ml-2"></i></button>
+                    <button onclick="initSession()" class="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 hover:-translate-y-1 hover:shadow-lg shadow-md transition-all duration-300 active:scale-95 group">
+                        Start Review <i class="fa-solid fa-play ml-2 group-hover:translate-x-1 transition-transform"></i>
+                    </button>
                 </div>
             </div>
 
-            <div id="session-active" class="hidden">
+            <div id="session-active" class="hidden transition-all duration-500">
                 <div class="flex justify-between items-center mb-2">
-                    <span class="text-sm font-semibold text-gray-500 dark:text-gray-400">Card Progress</span>
+                    <span class="text-sm font-semibold text-gray-500 dark:text-gray-400 transition-colors">Card Progress</span>
                     <span class="text-sm font-bold text-brand-600 dark:text-brand-400" id="session-progress-text">0 / 0</span>
                 </div>
-                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-8">
-                    <div class="bg-brand-500 h-2 rounded-full transition-all duration-300" id="session-progress" style="width: 0%"></div>
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-8 overflow-hidden">
+                    <div class="bg-brand-500 h-full rounded-full transition-all duration-500 ease-out" id="session-progress" style="width: 0%"></div>
                 </div>
 
-                <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6">
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 transition-colors duration-300">
                     <div class="flex gap-2 mb-3 flex-wrap">
-                        <span class="bg-brand-100 text-brand-800 text-xs px-2 py-1 rounded font-semibold dark:bg-brand-900 dark:text-brand-200" id="q-subject">Subject</span>
-                        <span class="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded font-semibold dark:bg-gray-700 dark:text-gray-300" id="q-id">ID</span>
+                        <span class="bg-brand-100 text-brand-800 text-xs px-2 py-1 rounded font-semibold dark:bg-brand-900 dark:text-brand-200 transition-colors" id="q-subject">Subject</span>
+                        <span class="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded font-semibold dark:bg-gray-700 dark:text-gray-300 transition-colors" id="q-id">ID</span>
                     </div>
-                    <h3 class="text-xl font-medium mb-4" id="q-text">Loading question...</h3>
+                    <h3 class="text-xl font-medium mb-4 transition-colors" id="q-text">Loading question...</h3>
                     
-                    <img id="q-image" src="" alt="Reference" class="hidden w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border">
+                    <img id="q-image" src="" alt="Reference" class="hidden w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500 hover:scale-105">
 
                     <div class="grid gap-3 mt-6" id="q-choices">
-                        <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium" data-choice="A">A) <span id="choice-a-text"></span></button>
-                        <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium" data-choice="B">B) <span id="choice-b-text"></span></button>
-                        <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium" data-choice="C">C) <span id="choice-c-text"></span></button>
-                        <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium" data-choice="D">D) <span id="choice-d-text"></span></button>
+                        <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium" data-choice="A">A) <span id="choice-a-text"></span></button>
+                        <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium" data-choice="B">B) <span id="choice-b-text"></span></button>
+                        <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium" data-choice="C">C) <span id="choice-c-text"></span></button>
+                        <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium" data-choice="D">D) <span id="choice-d-text"></span></button>
                     </div>
                 </div>
 
-                <div id="q-explanation-box" class="hidden bg-blue-50 dark:bg-gray-800 border-l-4 border-blue-500 p-4 rounded-r-xl mb-6 shadow-sm">
-                    <h4 class="font-bold text-blue-800 dark:text-blue-300 mb-1"><i class="fa-solid fa-lightbulb"></i> Explanation</h4>
+                <div id="q-explanation-box" class="hidden bg-blue-50 dark:bg-gray-800 border-l-4 border-blue-500 p-4 rounded-r-xl mb-6 shadow-sm animate-card-in">
+                    <h4 class="font-bold text-blue-800 dark:text-blue-300 mb-1 flex items-center"><i class="fa-solid fa-lightbulb mr-2 text-yellow-500 animate-pulse"></i> Explanation</h4>
                     <p class="text-gray-700 dark:text-gray-300 text-sm mb-2" id="q-explanation-text"></p>
                 </div>
 
                 <div class="flex gap-2 md:gap-4 mt-6">
-                    <button id="btn-prev" onclick="prevQuestion()" class="flex-1 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white py-4 rounded-xl font-bold shadow-md hover:bg-gray-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                        <i class="fa-solid fa-arrow-left md:mr-2"></i> <span class="hidden md:inline">Previous</span>
+                    <button id="btn-prev" onclick="prevQuestion()" class="flex-1 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white py-4 rounded-xl font-bold shadow-md hover:bg-gray-300 hover:-translate-y-1 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 group">
+                        <i class="fa-solid fa-arrow-left md:mr-2 group-hover:-translate-x-1 transition-transform"></i> <span class="hidden md:inline">Previous</span>
                     </button>
                     
-                    <button id="btn-reveal" onclick="revealAnswer()" class="flex-1 bg-yellow-500 text-white py-4 rounded-xl font-bold shadow-md hover:bg-yellow-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                    <button id="btn-reveal" onclick="revealAnswer()" class="flex-1 bg-yellow-500 text-white py-4 rounded-xl font-bold shadow-md hover:bg-yellow-600 hover:-translate-y-1 hover:shadow-yellow-500/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0">
                         <i class="fa-solid fa-eye md:mr-2"></i> <span class="hidden md:inline">Reveal</span>
                     </button>
                     
-                    <button id="btn-next" onclick="nextQuestion()" class="flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                        <span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2"></i>
+                    <button id="btn-next" onclick="nextQuestion()" class="flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 hover:-translate-y-1 hover:shadow-brand-500/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 group">
+                        <span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2 group-hover:translate-x-1 transition-transform"></i>
                     </button>
                 </div>
             </div>
@@ -165,23 +235,23 @@ details[open] summary i.fa-chevron-down {
             <h2 class="text-2xl font-bold mb-6">Performance Analytics</h2>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                    <h3 class="font-bold text-center mb-4 text-gray-600 dark:text-gray-300">Accuracy by Subject</h3>
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm hover:shadow-lg transition-shadow duration-300 border border-gray-100 dark:border-gray-700 animate-card-in" style="animation-delay: 0.1s;">
+                    <h3 class="font-bold text-center mb-4 text-gray-600 dark:text-gray-300 transition-colors">Accuracy by Subject</h3>
                     <div class="relative h-64 w-full">
                         <canvas id="chart-accuracy"></canvas>
                     </div>
                 </div>
 
-                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col justify-center">
-                    <h3 class="font-bold mb-4 text-gray-600 dark:text-gray-300"><i class="fa-solid fa-trophy text-yellow-500 mr-2"></i> Milestones</h3>
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm hover:shadow-lg transition-shadow duration-300 border border-gray-100 dark:border-gray-700 flex flex-col justify-center animate-card-in" style="animation-delay: 0.2s;">
+                    <h3 class="font-bold mb-4 text-gray-600 dark:text-gray-300 transition-colors"><i class="fa-solid fa-trophy text-yellow-500 mr-2 hover:animate-spin"></i> Milestones</h3>
                     <ul class="space-y-4">
-                        <li class="flex justify-between items-center border-b dark:border-gray-700 pb-2">
-                            <span>Total Questions Encountered</span>
-                            <span class="font-bold text-brand-600" id="stat-total">0</span>
+                        <li class="flex justify-between items-center border-b dark:border-gray-700 pb-2 hover:pl-2 transition-all duration-300">
+                            <span class="transition-colors">Total Questions Encountered</span>
+                            <span class="font-bold text-brand-600 text-lg transition-colors" id="stat-total">0</span>
                         </li>
-                        <li class="flex justify-between items-center border-b dark:border-gray-700 pb-2">
-                            <span>Total Correct Answers</span>
-                            <span class="font-bold text-green-500" id="stat-correct">0</span>
+                        <li class="flex justify-between items-center border-b dark:border-gray-700 pb-2 hover:pl-2 transition-all duration-300">
+                            <span class="transition-colors">Total Correct Answers</span>
+                            <span class="font-bold text-green-500 text-lg transition-colors" id="stat-correct">0</span>
                         </li>
                     </ul>
                 </div>
@@ -192,66 +262,65 @@ details[open] summary i.fa-chevron-down {
         <section id="view-settings" class="view-section">
             <h2 class="text-2xl font-bold mb-6">Settings</h2>
             
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-6 border border-gray-100 dark:border-gray-700">
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 mb-6 border border-gray-100 dark:border-gray-700 animate-card-in">
                 <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-paint-roller text-brand-500 mr-2"></i> Appearance</h3>
                 <div class="flex justify-between items-center">
-                    <span class="text-sm dark:text-gray-300">Theme Preference</span>
-                    <button id="btn-theme-toggle" onclick="toggleTheme()" class="bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg font-bold hover:bg-gray-300 transition-colors">
+                    <span class="text-sm dark:text-gray-300 transition-colors">Theme Preference</span>
+                    <button id="btn-theme-toggle" onclick="toggleTheme()" class="bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg font-bold hover:bg-gray-300 hover:shadow transform active:scale-95 transition-all duration-300">
                         <!-- Text injected via JS -->
                     </button>
                 </div>
             </div>
 
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-6 border border-gray-100 dark:border-gray-700">
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 mb-6 border border-gray-100 dark:border-gray-700 animate-card-in" style="animation-delay: 0.1s;">
                 <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-database text-brand-500 mr-2"></i> Database Sync</h3>
-                <p id="sync-status" class="text-sm mt-3 font-medium bg-gray-50 dark:bg-gray-700 p-3 rounded-lg hidden"></p>
-                <p class="text-xs text-gray-400 mt-4">Current Database Size: <span id="db-size-display" class="font-bold">0</span> questions.</p>
+                <p id="sync-status" class="text-sm mt-3 font-medium bg-gray-50 dark:bg-gray-700 p-3 rounded-lg hidden transition-all duration-300"></p>
+                <p class="text-xs text-gray-400 mt-4 transition-colors">Current Database Size: <span id="db-size-display" class="font-bold">0</span> questions.</p>
             </div>
 
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-6 border border-gray-100 dark:border-gray-700">
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 mb-6 border border-gray-100 dark:border-gray-700 animate-card-in" style="animation-delay: 0.2s;">
                 <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-floppy-disk text-brand-500 mr-2"></i> Backup & Restore</h3>
-                <p class="text-sm text-gray-500 mb-4">Export your statistics and save them to a file, or restore a previous backup.</p>
+                <p class="text-sm text-gray-500 mb-4 transition-colors">Export your statistics and save them to a file, or restore a previous backup.</p>
                 <div class="flex gap-4">
-                    <button onclick="exportData()" class="flex-1 bg-brand-100 text-brand-700 dark:bg-brand-900 dark:text-brand-300 px-4 py-2 rounded-lg font-bold hover:bg-brand-200 transition-colors"><i class="fa-solid fa-download mr-1"></i> Export</button>
-                    <button onclick="document.getElementById('import-file').click()" class="flex-1 bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-lg font-bold hover:bg-gray-300 transition-colors"><i class="fa-solid fa-upload mr-1"></i> Import</button>
+                    <button onclick="exportData()" class="flex-1 bg-brand-100 text-brand-700 dark:bg-brand-900 dark:text-brand-300 px-4 py-2 rounded-lg font-bold hover:bg-brand-200 hover:-translate-y-1 hover:shadow active:scale-95 transition-all duration-300"><i class="fa-solid fa-download mr-1"></i> Export</button>
+                    <button onclick="document.getElementById('import-file').click()" class="flex-1 bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-lg font-bold hover:bg-gray-300 hover:-translate-y-1 hover:shadow active:scale-95 transition-all duration-300"><i class="fa-solid fa-upload mr-1"></i> Import</button>
                     <input type="file" id="import-file" class="hidden" accept=".json" onchange="importData(event)">
                 </div>
             </div>
             
-            <div class="flex flex-col gap-4 border-t dark:border-gray-700 pt-4 mt-4">
-                <span class="font-medium text-red-500">Danger Zone</span>
+            <div class="flex flex-col gap-4 border-t dark:border-gray-700 pt-4 mt-4 animate-card-in" style="animation-delay: 0.3s;">
+                <span class="font-medium text-red-500 animate-pulse">Danger Zone</span>
                 <div class="flex justify-between items-center">
-                    <span class="text-sm dark:text-gray-300">Clear Statistics</span>
-                    <button onclick="resetProgress()" class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 transition-colors">Reset Progress</button>
+                    <span class="text-sm dark:text-gray-300 transition-colors">Clear Statistics</span>
+                    <button onclick="resetProgress()" class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300">Reset Progress</button>
                 </div>
                 <div class="flex justify-between items-center">
-                    <span class="text-sm dark:text-gray-300">Clear Local Database</span>
-                    <button onclick="clearDatabase()" class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 transition-colors">Clear Database</button>
+                    <span class="text-sm dark:text-gray-300 transition-colors">Clear Local Database</span>
+                    <button onclick="clearDatabase()" class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300">Clear Database</button>
                 </div>
             </div>
         </section>
 
-        <!-- NEW ADMIN SECTION -->
+        <!-- ADMIN SECTION -->
         <section id="view-admin" class="view-section">
             <h2 class="text-2xl font-bold mb-6">Admin Portal</h2>
             
-            <!-- Admin Login -->
-            <div id="admin-login-section" class="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-sm max-w-md mx-auto border border-gray-100 dark:border-gray-700">
-                <h2 class="text-xl font-bold mb-4 text-center">Authentication Required</h2>
-                <input type="password" id="admin-password" class="w-full p-3 border rounded-lg mb-4 bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Enter Admin Password">
-<button id="btn-admin-login" onclick="adminLogin()" class="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 transition">Log In</button>                <p id="admin-login-error" class="text-red-500 text-sm mt-3 hidden text-center">Incorrect password.</p>
+            <div id="admin-login-section" class="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-sm hover:shadow-lg transition-shadow max-w-md mx-auto border border-gray-100 dark:border-gray-700 animate-card-in">
+                <h2 class="text-xl font-bold mb-4 text-center transition-colors">Authentication Required</h2>
+                <input type="password" id="admin-password" class="w-full p-3 border rounded-lg mb-4 bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-brand-500 transition-all outline-none" placeholder="Enter Admin Password">
+                <button id="btn-admin-login" onclick="adminLogin()" class="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 hover:-translate-y-1 hover:shadow-lg active:scale-95 transition-all duration-300">Log In</button>                
+                <p id="admin-login-error" class="text-red-500 text-sm mt-3 hidden text-center animate-bounce">Incorrect password.</p>
             </div>
 
-            <!-- Admin Dashboard -->
-            <div id="admin-dashboard-section" class="hidden">
+            <div id="admin-dashboard-section" class="hidden animate-card-in">
                 <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                    <h3 class="text-xl font-bold">Subject Hierarchy Editor</h3>
-                    <button onclick="saveAdminChanges()" id="btn-admin-save" class="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700 transition shadow-md w-full md:w-auto">
+                    <h3 class="text-xl font-bold transition-colors">Subject Hierarchy Editor</h3>
+                    <button onclick="saveAdminChanges()" id="btn-admin-save" class="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700 hover:-translate-y-1 hover:shadow-lg hover:shadow-green-600/30 active:scale-95 transition-all shadow-md w-full md:w-auto">
                         <i class="fa-solid fa-floppy-disk mr-2"></i> Save Layout
                     </button>
                 </div>
                 
-                <div class="bg-blue-50 dark:bg-gray-800 border-l-4 border-blue-500 p-4 mb-6 rounded-r-lg text-sm text-blue-800 dark:text-blue-300 shadow-sm">
+                <div class="bg-blue-50 dark:bg-gray-800 border-l-4 border-blue-500 p-4 mb-6 rounded-r-lg text-sm text-blue-800 dark:text-blue-300 shadow-sm transition-colors hover:shadow-md">
                     <strong>Tip:</strong> Use double colons (<code>::</code>) to create nesting. For example: <code>BSMT::3.1::Prelims::Naval Architecture</code>.
                 </div>
 
@@ -274,7 +343,6 @@ details[open] summary i.fa-chevron-down {
             session: { active: false, questions: [], currentIndex: 0, userAnswers: {} }
         };
 
-        // NEW: Dedicated Admin State
         let adminState = {
             token: "",
             subjects: []
@@ -282,7 +350,6 @@ details[open] summary i.fa-chevron-down {
         
         let chartInstance = null;
 
-        // Utility function to prevent XSS
         function escapeHTML(str) {
             if (!str) return '';
             return str.toString().replace(/[&<>'"]/g, tag => ({
@@ -348,7 +415,6 @@ details[open] summary i.fa-chevron-down {
             
             if(viewId === 'stats') renderCharts();
             
-            // Re-render admin list if user navigates to admin while logged in
             if(viewId === 'admin' && adminState.token) {
                 loadAdminSubjects();
             }
@@ -360,7 +426,7 @@ details[open] summary i.fa-chevron-down {
             if (statusEl) {
                 statusEl.classList.remove('hidden');
                 statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Fetching subjects...';
-                statusEl.className = "text-sm mt-3 font-medium bg-blue-50 text-blue-600 p-3 rounded-lg";
+                statusEl.className = "text-sm mt-3 font-medium bg-blue-50 text-blue-600 p-3 rounded-lg animate-pulse";
             }
 
             try {
@@ -374,7 +440,7 @@ details[open] summary i.fa-chevron-down {
                     
                     if (statusEl) {
                         statusEl.innerHTML = `<i class="fa-solid fa-check-circle mr-1"></i> Success! Loaded ${summaryData.length} subjects.`;
-                        statusEl.className = "text-sm mt-3 font-medium bg-green-50 text-green-600 p-3 rounded-lg";
+                        statusEl.className = "text-sm mt-3 font-medium bg-green-50 text-green-600 p-3 rounded-lg animate-card-in";
                     }
                     
                     if (typeof populateFilters === "function") populateFilters();
@@ -395,8 +461,8 @@ details[open] summary i.fa-chevron-down {
                 const catList = document.getElementById('category-list');
                 if (catList && state.categorySummary.length === 0) {
                     catList.innerHTML = `
-                        <div class="text-center py-10 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
-                            <i class="fa-solid fa-triangle-exclamation text-3xl text-red-500 mb-3"></i>
+                        <div class="text-center py-10 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 animate-card-in">
+                            <i class="fa-solid fa-triangle-exclamation text-3xl text-red-500 mb-3 hover:scale-110 transition-transform"></i>
                             <h3 class="font-bold text-red-700 dark:text-red-400">Database Connection Failed</h3>
                             <p class="text-sm text-red-600 dark:text-red-300 mt-1">Please check your internet connection or go to Settings to try syncing again.</p>
                         </div>`;
@@ -404,66 +470,57 @@ details[open] summary i.fa-chevron-down {
             }
         }
 
-        // ==========================================
-        // NEW ADMIN FUNCTIONALITY PORTED TO APP
-        // ==========================================
+        async function adminLogin() {
+            const pass = document.getElementById('admin-password').value;
+            if(!pass) return;
 
-async function adminLogin() {
-    const pass = document.getElementById('admin-password').value;
-    if(!pass) return;
+            const btn = document.getElementById('btn-admin-login');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Verifying...';
+            btn.disabled = true;
 
-    // Grab the button and show a loading state
-    const btn = document.getElementById('btn-admin-login');
-    const originalText = btn.innerHTML;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Verifying...';
-    btn.disabled = true;
+            try {
+                const response = await fetch(DB_URL, {
+                    method: 'POST',
+                    redirect: 'follow',
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: JSON.stringify({
+                        type: "verify_admin",
+                        token: pass
+                    })
+                });
 
-    try {
-        const response = await fetch(DB_URL, {
-            method: 'POST',
-            redirect: 'follow',
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({
-                type: "verify_admin",
-                token: pass
-            })
-        });
+                const result = await response.json();
 
-        const result = await response.json();
-
-        if (result.status === "success") {
-            // Password is correct! Log them in.
-            adminState.token = pass;
-            document.getElementById('admin-login-error').classList.add('hidden');
-            document.getElementById('admin-login-section').classList.add('hidden');
-            document.getElementById('admin-dashboard-section').classList.remove('hidden');
-            loadAdminSubjects();
-        } else {
-            // Password is wrong
-            const errEl = document.getElementById('admin-login-error');
-            errEl.innerText = "Incorrect password.";
-            errEl.classList.remove('hidden');
+                if (result.status === "success") {
+                    adminState.token = pass;
+                    document.getElementById('admin-login-error').classList.add('hidden');
+                    document.getElementById('admin-login-section').classList.add('hidden');
+                    document.getElementById('admin-dashboard-section').classList.remove('hidden');
+                    loadAdminSubjects();
+                } else {
+                    const errEl = document.getElementById('admin-login-error');
+                    errEl.innerText = "Incorrect password.";
+                    errEl.classList.remove('hidden');
+                }
+            } catch(e) {
+                alert("Network error while verifying password.");
+                console.error(e);
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
         }
-    } catch(e) {
-        alert("Network error while verifying password.");
-        console.error(e);
-    } finally {
-        // Restore button state
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-    }
-}
 
         function loadAdminSubjects() {
             if (!state.categorySummary || state.categorySummary.length === 0) {
                 document.getElementById('admin-subject-list').innerHTML = `
-                    <p class="text-center text-gray-500 dark:text-gray-400 py-6">
+                    <p class="text-center text-gray-500 dark:text-gray-400 py-6 animate-pulse">
                         No subjects found. Please go to Settings and Sync your Database first.
                     </p>`;
                 return;
             }
 
-            // Sync the admin working array with the current global categories
             adminState.subjects = state.categorySummary.map(cat => cat.Subject);
             renderAdminSubjectList();
         }
@@ -472,17 +529,17 @@ async function adminLogin() {
             const container = document.getElementById('admin-subject-list');
             
             container.innerHTML = adminState.subjects.map((subj, index) => `
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col md:flex-row items-center gap-4">
+                <div class="animate-card-in bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 border border-gray-200 dark:border-gray-700 flex flex-col md:flex-row items-center gap-4" style="animation-delay: ${index * 0.05}s">
                     <div class="w-full md:w-1/3">
                         <span class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">Current Subject Name</span>
-                        <div class="font-medium bg-gray-100 dark:bg-gray-700 p-2 rounded text-gray-700 dark:text-gray-200 truncate" title="${escapeHTML(subj)}" id="old-subj-${index}">${escapeHTML(subj)}</div>
+                        <div class="font-medium bg-gray-100 dark:bg-gray-700 p-2 rounded text-gray-700 dark:text-gray-200 truncate transition-colors" title="${escapeHTML(subj)}" id="old-subj-${index}">${escapeHTML(subj)}</div>
                     </div>
-                    <i class="fa-solid fa-arrow-right text-gray-400 hidden md:block"></i>
-                    <i class="fa-solid fa-arrow-down text-gray-400 block md:hidden"></i>
+                    <i class="fa-solid fa-arrow-right text-gray-400 hidden md:block hover:scale-125 transition-transform"></i>
+                    <i class="fa-solid fa-arrow-down text-gray-400 block md:hidden hover:scale-125 transition-transform"></i>
                     <div class="w-full md:w-2/3">
                         <div class="flex justify-between items-end mb-1">
                             <span class="text-xs font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">New Hierarchy Path</span>
-                            <span class="text-xs text-gray-400 font-mono" id="char-count-${index}">${subj.length}/100</span>
+                            <span class="text-xs text-gray-400 font-mono transition-colors" id="char-count-${index}">${subj.length}/100</span>
                         </div>
                         <input type="text" 
                                id="new-subj-${index}" 
@@ -490,7 +547,7 @@ async function adminLogin() {
                                maxlength="100"
                                oninput="document.getElementById('char-count-${index}').innerText = this.value.length + '/100'; 
                                         this.value.length >= 90 ? document.getElementById('char-count-${index}').classList.add('text-red-500') : document.getElementById('char-count-${index}').classList.remove('text-red-500');"
-                               class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none transition">
+                               class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-brand-500 focus:ring-2 focus:ring-brand-500 outline-none transition-all duration-300 hover:shadow-sm">
                     </div>
                 </div>
             `).join('');
@@ -531,8 +588,8 @@ async function adminLogin() {
                 
                 if (result.status === "success") {
                     alert("Hierarchy Updated! Fetching the latest layout...");
-                    await syncDatabase(); // Refresh category data
-                    loadAdminSubjects();  // Re-render UI
+                    await syncDatabase(); 
+                    loadAdminSubjects();  
                 } else {
                     alert("Failed: " + result.message);
                     if(result.message.includes("Unauthorized")) {
@@ -550,10 +607,6 @@ async function adminLogin() {
                 btn.disabled = false;
             }
         }
-
-        // ==========================================
-        // REST OF THE CORE FUNCTIONS
-        // ==========================================
 
         function populateFilters() {
             const select = document.getElementById('filter-subject');
@@ -675,7 +728,7 @@ async function adminLogin() {
                 document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = choiceText;
                 
                 btn.onclick = () => submitPracticeAnswer(ch, q.Answer);
-                btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium";
+                btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium";
                 
                 if (userAnswer) {
                     btn.onclick = null;
@@ -691,8 +744,6 @@ async function adminLogin() {
             const btnReveal = document.getElementById('btn-reveal');
 
             btnPrev.disabled = state.session.currentIndex === 0;
-            btnNext.innerHTML = `<span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2"></i>`;
-            btnNext.className = "flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
             
             if (userAnswer) {
                 showExplanation(q);
@@ -705,165 +756,157 @@ async function adminLogin() {
             }
         }
 
-function renderCategoryProgress() {
-    const container = document.getElementById('category-list');
-    
-    if (!state.categorySummary || state.categorySummary.length === 0) {
-        container.innerHTML = '<p class="text-gray-500">No categories found. Please ensure your database is synced.</p>';
-        return;
-    }
-
-    if (!state.stats.completedQs) state.stats.completedQs = [];
-
-    // 1. FILTER: Remove Admin and Telemetry
-    const filteredCategories = state.categorySummary.filter(cat => {
-        const lower = cat.Subject.toLowerCase();
-        return lower !== 'admin' && lower !== 'telemetry';
-    });
-
-    if (filteredCategories.length === 0) {
-        container.innerHTML = '<p class="text-gray-500">No active subjects available to study.</p>';
-        return;
-    }
-
-    // 2. PARSE: Build the Hierarchy Tree based on "::"
-    const tree = {};
-    filteredCategories.forEach(cat => {
-        let parts = cat.Subject.split('::').map(s => s.trim());
-        
-        // NEW: If there is no "::" delimiter, force it into an "UNCATEGORIZED" folder
-        if (parts.length === 1) {
-            parts = ['UNCATEGORIZED', parts[0]];
-        }
-
-        let current = tree;
-        parts.forEach((part, index) => {
-            if (!current[part]) {
-                current[part] = { _data: null, _children: {} };
+        function renderCategoryProgress() {
+            const container = document.getElementById('category-list');
+            
+            if (!state.categorySummary || state.categorySummary.length === 0) {
+                container.innerHTML = '<p class="text-gray-500">No categories found. Please ensure your database is synced.</p>';
+                return;
             }
-            if (index === parts.length - 1) {
-                current[part]._data = cat;
+
+            if (!state.stats.completedQs) state.stats.completedQs = [];
+
+            const filteredCategories = state.categorySummary.filter(cat => {
+                const lower = cat.Subject.toLowerCase();
+                return lower !== 'admin' && lower !== 'telemetry';
+            });
+
+            if (filteredCategories.length === 0) {
+                container.innerHTML = '<p class="text-gray-500">No active subjects available to study.</p>';
+                return;
             }
-            current = current[part]._children;
-        });
-    });
 
-    // 3. RENDER: Recursive function to build HTML
-    function generateTreeHTML(node, depth = 0) {
-        let html = '';
-        for (const key in node) {
-            const item = node[key];
-            const hasChildren = Object.keys(item._children).length > 0;
-            const hasData = item._data !== null;
-
-            // If it has children, render a collapsible folder
-            if (hasChildren) {
-                // Determine padding based on depth
-                const isRoot = depth === 0;
-                const folderClass = isRoot 
-                    ? "mb-4 bg-gray-50 dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm"
-                    : "mb-3 mt-2 border-l-2 border-brand-200 dark:border-brand-800 pl-2";
-
-                html += `
-                    <details class="${folderClass} overflow-hidden" open>
-                        <summary class="p-4 font-bold text-gray-800 dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center select-none list-none [&::-webkit-details-marker]:hidden">
-                            <i class="fa-solid fa-folder-open text-brand-500 mr-3"></i> ${escapeHTML(key)}
-                            <i class="fa-solid fa-chevron-down text-gray-400 text-xs ml-auto transition-transform duration-200"></i>
-                        </summary>
-                        <div class="p-2 pb-4 ${isRoot ? 'px-4 border-t border-gray-200 dark:border-gray-700' : 'px-2'}">
-                `;
-                
-                // If a folder itself is also a playable subject, render its card first
-                if (hasData) {
-                    html += generateCardHTML(item._data, key);
+            const tree = {};
+            filteredCategories.forEach(cat => {
+                let parts = cat.Subject.split('::').map(s => s.trim());
+                if (parts.length === 1) {
+                    parts = ['UNCATEGORIZED', parts[0]];
                 }
+
+                let current = tree;
+                parts.forEach((part, index) => {
+                    if (!current[part]) {
+                        current[part] = { _data: null, _children: {} };
+                    }
+                    if (index === parts.length - 1) {
+                        current[part]._data = cat;
+                    }
+                    current = current[part]._children;
+                });
+            });
+
+            function generateTreeHTML(node, depth = 0) {
+                let html = '';
+                let indexCounter = 0; // for stagger animation timing
                 
-                // Render sub-folders and child cards
-                html += generateTreeHTML(item._children, depth + 1);
-                
-                html += `
-                        </div>
-                    </details>
-                `;
-            } else if (hasData) {
-                // Leaf node: render the standard study card
-                html += generateCardHTML(item._data, key);
+                for (const key in node) {
+                    const item = node[key];
+                    const hasChildren = Object.keys(item._children).length > 0;
+                    const hasData = item._data !== null;
+                    const delay = indexCounter * 0.05;
+
+                    if (hasChildren) {
+                        const isRoot = depth === 0;
+                        const folderClass = isRoot 
+                            ? "mb-4 bg-gray-50 dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm transition-all duration-500 hover:shadow-md animate-card-in"
+                            : "mb-3 mt-2 border-l-2 border-brand-200 dark:border-brand-800 pl-2 transition-all duration-300 animate-card-in";
+
+                        html += `
+                            <details class="${folderClass} overflow-hidden" open style="animation-delay: ${delay}s;">
+                                <summary class="p-4 font-bold text-gray-800 dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center select-none list-none [&::-webkit-details-marker]:hidden">
+                                    <i class="fa-solid fa-folder-open text-brand-500 mr-3 transform transition-transform group-hover:scale-110"></i> ${escapeHTML(key)}
+                                    <i class="fa-solid fa-chevron-down text-gray-400 text-xs ml-auto"></i>
+                                </summary>
+                                <div class="p-2 pb-4 ${isRoot ? 'px-4 border-t border-gray-200 dark:border-gray-700' : 'px-2'}">
+                        `;
+                        
+                        if (hasData) {
+                            html += generateCardHTML(item._data, key, 0);
+                        }
+                        
+                        html += generateTreeHTML(item._children, depth + 1);
+                        
+                        html += `
+                                </div>
+                            </details>
+                        `;
+                    } else if (hasData) {
+                        html += generateCardHTML(item._data, key, delay);
+                    }
+                    indexCounter++;
+                }
+                return html;
             }
-        }
-        return html;
-    }
 
-    // 4. RENDER: Helper to create the actual study card UI
-    function generateCardHTML(cat, displayName) {
-        const subj = cat.Subject;
-        const safeSubj = escapeHTML(subj); 
-        const safeName = escapeHTML(displayName);
-        const totalQuestionsInDb = cat.QuestionCount; 
-        const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
-        
-        const completedCount = state.stats.completedQs.filter(id => id.startsWith(subj.substring(0, 3).toUpperCase())).length;
-        const mistakesCount = state.stats.mistakes.filter(id => id.startsWith(subj.substring(0, 3).toUpperCase())).length;
-        const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
-        const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
-        const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
+            function generateCardHTML(cat, displayName, delay = 0) {
+                const subj = cat.Subject;
+                const safeSubj = escapeHTML(subj); 
+                const safeName = escapeHTML(displayName);
+                const totalQuestionsInDb = cat.QuestionCount; 
+                const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
+                
+                const completedCount = state.stats.completedQs.filter(id => id.startsWith(subj.substring(0, 3).toUpperCase())).length;
+                const mistakesCount = state.stats.mistakes.filter(id => id.startsWith(subj.substring(0, 3).toUpperCase())).length;
+                const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
+                const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
+                const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
 
-        const isDownloaded = state.db.some(q => q.Subject === subj);
-        const statusBadge = isDownloaded 
-            ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400" title="Saved locally."><i class="fa-solid fa-hard-drive mr-1"></i> Saved</span>`
-            : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400" title="Not downloaded yet."><i class="fa-solid fa-cloud mr-1"></i> Cloud</span>`;
+                const isDownloaded = state.db.some(q => q.Subject === subj);
+                const statusBadge = isDownloaded 
+                    ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i> Saved</span>`
+                    : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i> Cloud</span>`;
 
-        const buttonText = completedCount === 0 ? 'Start' : 'Continue';
+                const buttonText = completedCount === 0 ? 'Start' : 'Continue';
 
-        return `
-            <div class="${cardClasses} p-5 rounded-xl shadow-sm border transition-colors duration-300 relative w-full mb-3 last:mb-0">
-                <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center">
-                    <i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500 mb-2"></i>
-                    <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
-                </div>
-
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
-                    <div>
-                        <div class="flex items-center gap-2 mb-1">
-                            <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center">
-                                <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm"></i>
-                                ${safeName}
-                            </h3>
-                            ${statusBadge}
+                return `
+                    <div class="animate-card-in ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 hover:shadow-brand-500/10 active:scale-[0.99] border transition-all duration-400 relative w-full mb-3 last:mb-0" style="animation-delay: ${delay}s;">
+                        <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
+                            <i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500 mb-2"></i>
+                            <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
                         </div>
-                        <p class="text-xs text-gray-500 dark:text-gray-400">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>
-                    </div>
-                    <div class="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
-                        ${isDownloaded 
-                            ? `<button onclick="deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 transition-colors" title="Delete Downloaded Data">
-                                 <i class="fa-solid fa-trash-can"></i>
-                               </button>` 
-                            : `<div></div>`}
-                        <span class="text-sm font-black text-brand-600 dark:text-brand-400">${completedCount} / ${totalQuestionsInDb} Done</span>
-                    </div>
-                </div>
-                
-                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4">
-                    <div class="bg-brand-500 h-2 rounded-full transition-all duration-500" style="width: ${progressPercent}%"></div>
-                </div>
-                
-                <div class="flex gap-2 flex-wrap">
-                    <button onclick="fetchAndStartCategory('${safeSubj}', 'continue')" class="flex-1 bg-brand-600 text-white py-2 px-2 rounded-lg font-bold hover:bg-brand-700 text-sm shadow-sm transition-colors flex items-center justify-center">
-                        <i class="fa-solid fa-play mr-2"></i> ${buttonText}
-                    </button>
-                    ${mistakesCount > 0 ? `
-                    <button onclick="fetchAndStartCategory('${safeSubj}', 'mistakes')" class="flex-1 bg-orange-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-orange-600 text-sm shadow-sm transition-colors flex items-center justify-center">
-                        <i class="fa-solid fa-book mr-2"></i> Review ${mistakesCount}
-                    </button>
-                    ` : ''}
-                    <button onclick="resetCategory('${safeSubj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors text-sm border border-red-100 dark:border-red-800" title="Reset Progress"><i class="fa-solid fa-rotate-left"></i></button>
-                </div>
-            </div>
-        `;
-    }
 
-    // 5. INJECT: Add the generated HTML to the DOM
-    container.innerHTML = generateTreeHTML(tree);
-}
+                        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
+                            <div>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors">
+                                        <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm"></i>
+                                        ${safeName}
+                                    </h3>
+                                    ${statusBadge}
+                                </div>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>
+                            </div>
+                            <div class="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+                                ${isDownloaded 
+                                    ? `<button onclick="deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300" title="Delete Downloaded Data">
+                                         <i class="fa-solid fa-trash-can"></i>
+                                       </button>` 
+                                    : `<div></div>`}
+                                <span class="text-sm font-black text-brand-600 dark:text-brand-400 transition-colors">${completedCount} / ${totalQuestionsInDb} Done</span>
+                            </div>
+                        </div>
+                        
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden">
+                            <div class="bg-brand-500 h-full rounded-full transition-all duration-700 ease-out" style="width: ${progressPercent}%"></div>
+                        </div>
+                        
+                        <div class="flex gap-2 flex-wrap">
+                            <button onclick="fetchAndStartCategory('${safeSubj}', 'continue')" class="flex-1 bg-brand-600 text-white py-2 px-2 rounded-lg font-bold hover:bg-brand-700 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group">
+                                <i class="fa-solid fa-play mr-2 group-hover:scale-125 transition-transform"></i> ${buttonText}
+                            </button>
+                            ${mistakesCount > 0 ? `
+                            <button onclick="fetchAndStartCategory('${safeSubj}', 'mistakes')" class="flex-1 bg-orange-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-orange-600 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group">
+                                <i class="fa-solid fa-book mr-2 group-hover:-rotate-12 transition-transform"></i> Review ${mistakesCount}
+                            </button>
+                            ` : ''}
+                            <button onclick="resetCategory('${safeSubj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-sm border border-red-100 dark:border-red-800 hover:rotate-180" title="Reset Progress"><i class="fa-solid fa-rotate-left transition-transform"></i></button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = generateTreeHTML(tree);
+        }
 
         async function fetchAndStartCategory(subject, mode) {
             const loader = document.getElementById(`loading-${subject}`);
@@ -1127,7 +1170,11 @@ function renderCategoryProgress() {
                     responsive: true,
                     maintainAspectRatio: false,
                     scales: { r: { beginAtZero: true, max: 100, ticks: { stepSize: 20 } } },
-                    plugins: { legend: { display: false } }
+                    plugins: { legend: { display: false } },
+                    animation: {
+                        duration: 1500,
+                        easing: 'easeOutQuart'
+                    }
                 }
             });
         }
@@ -1143,8 +1190,8 @@ function renderCategoryProgress() {
             const btn = document.getElementById('btn-theme-toggle');
             if (btn) {
                 btn.innerHTML = state.prefs.darkMode 
-                    ? '<i class="fa-solid fa-sun mr-1"></i> Switch to Light Mode' 
-                    : '<i class="fa-solid fa-moon mr-1"></i> Switch to Dark Mode';
+                    ? '<i class="fa-solid fa-sun mr-1 transition-transform transform hover:rotate-180 duration-500"></i> Switch to Light Mode' 
+                    : '<i class="fa-solid fa-moon mr-1 transition-transform transform hover:rotate-12 duration-300"></i> Switch to Dark Mode';
             }
         }
 
