@@ -48,7 +48,11 @@
         <button onclick="navigate('dashboard')" class="font-bold text-lg hover:text-brand-200 transition-colors text-left flex items-center">
             <i class="fa-solid fa-anchor mr-2"></i> BSMT 3.1 – ALPHA (2026-2027)
         </button>
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-5">
+            <!-- NEW: Admin Access Button -->
+            <button onclick="navigate('admin')" class="hover:text-brand-200 transition-colors text-lg" aria-label="Admin Portal">
+                <i class="fa-solid fa-lock"></i>
+            </button>
             <button onclick="navigate('settings')" class="hover:text-brand-200 transition-colors text-lg" aria-label="Settings">
                 <i class="fa-solid fa-gear"></i>
             </button>
@@ -57,6 +61,7 @@
 
     <main class="flex-1 p-4 md:p-8 overflow-y-auto w-full max-w-5xl mx-auto">        
         
+        <!-- DASHBOARD SECTION -->
         <section id="view-dashboard" class="view-section active">
             <div id="resume-container" class="hidden mb-8">
                 <h3 class="text-lg font-bold mb-4 text-yellow-600 dark:text-yellow-400">Continue Learning</h3>
@@ -77,10 +82,11 @@
             </div>
         </section>
 
+        <!-- PRACTICE SECTION -->
         <section id="view-practice" class="view-section">
             <div id="session-setup">
                 <h2 class="text-2xl font-bold mb-6" id="setup-title">Setup Practice Session</h2>
-                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm">
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
                     <label class="block text-sm font-semibold mb-2">Subject / Tag Filter</label>
                     <select id="filter-subject" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white mb-6">
                         <option value="ALL">All Subjects</option>
@@ -137,6 +143,7 @@
             </div>
         </section>
 
+        <!-- STATS SECTION -->
         <section id="view-stats" class="view-section">
             <h2 class="text-2xl font-bold mb-6">Performance Analytics</h2>
             
@@ -164,6 +171,7 @@
             </div>
         </section>
 
+        <!-- SETTINGS SECTION -->
         <section id="view-settings" class="view-section">
             <h2 class="text-2xl font-bold mb-6">Settings</h2>
             
@@ -205,6 +213,38 @@
                 </div>
             </div>
         </section>
+
+        <!-- NEW ADMIN SECTION -->
+        <section id="view-admin" class="view-section">
+            <h2 class="text-2xl font-bold mb-6">Admin Portal</h2>
+            
+            <!-- Admin Login -->
+            <div id="admin-login-section" class="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-sm max-w-md mx-auto border border-gray-100 dark:border-gray-700">
+                <h2 class="text-xl font-bold mb-4 text-center">Authentication Required</h2>
+                <input type="password" id="admin-password" class="w-full p-3 border rounded-lg mb-4 bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Enter Admin Password">
+                <button onclick="adminLogin()" class="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 transition">Log In</button>
+                <p id="admin-login-error" class="text-red-500 text-sm mt-3 hidden text-center">Incorrect password.</p>
+            </div>
+
+            <!-- Admin Dashboard -->
+            <div id="admin-dashboard-section" class="hidden">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                    <h3 class="text-xl font-bold">Subject Hierarchy Editor</h3>
+                    <button onclick="saveAdminChanges()" id="btn-admin-save" class="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700 transition shadow-md w-full md:w-auto">
+                        <i class="fa-solid fa-floppy-disk mr-2"></i> Save Layout
+                    </button>
+                </div>
+                
+                <div class="bg-blue-50 dark:bg-gray-800 border-l-4 border-blue-500 p-4 mb-6 rounded-r-lg text-sm text-blue-800 dark:text-blue-300 shadow-sm">
+                    <strong>Tip:</strong> Use double colons (<code>::</code>) to create nesting. For example: <code>BSMT::3.1::Prelims::Naval Architecture</code>.
+                </div>
+
+                <div id="admin-subject-list" class="space-y-3">
+                    <!-- Dynamically populated via JS -->
+                </div>
+            </div>
+        </section>
+
     </main>
 
     <script>
@@ -216,6 +256,12 @@
             stats: { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} },
             prefs: { darkMode: true },
             session: { active: false, questions: [], currentIndex: 0, userAnswers: {} }
+        };
+
+        // NEW: Dedicated Admin State
+        let adminState = {
+            token: "",
+            subjects: []
         };
         
         let chartInstance = null;
@@ -232,7 +278,6 @@
             const savedStats = localStorage.getItem('mrh_stats');
             const savedPrefs = localStorage.getItem('mrh_prefs');
             
-            // Retrieve DB from IndexedDB instead of localStorage to avoid 5MB limits
             try {
                 const savedDb = await idbKeyval.get('mrh_db');
                 if (savedDb) state.db = savedDb;
@@ -247,7 +292,7 @@
             if (state.prefs.darkMode) document.documentElement.classList.add('dark');
             
             document.getElementById('db-size-display').innerText = state.db.length;
-            populateFilters(); // Fix: Populate dropdown filters even if offline
+            populateFilters(); 
             updateDashboard();
             updateThemeButton(); 
         }
@@ -272,11 +317,9 @@
             if (typeof renderCategoryProgress === 'function') renderCategoryProgress();
         }
 
-function navigate(viewId) {
-            // Only show the warning if the user has an active session AND is trying to navigate to a different screen (not practice)
-            if (state.session.active && viewId !== 'practice' && !confirm("You have an active session. Do you want to pause and return to the dashboard? Your progress will be saved.")) return;
+        function navigate(viewId) {
+            if (state.session.active && viewId !== 'practice' && !confirm("You have an active session. Do you want to pause and return? Your progress will be saved.")) return;
             
-            // If they confirmed leaving, save and deactivate the session
             if (state.session.active && viewId !== 'practice') {
                 saveSessionProgress(); 
                 state.session.active = false; 
@@ -288,6 +331,11 @@ function navigate(viewId) {
             document.getElementById(`view-${viewId}`).classList.add('active');
             
             if(viewId === 'stats') renderCharts();
+            
+            // Re-render admin list if user navigates to admin while logged in
+            if(viewId === 'admin' && adminState.token) {
+                loadAdminSubjects();
+            }
         }
 
         async function syncDatabase() {
@@ -339,6 +387,123 @@ function navigate(viewId) {
                 }
             }
         }
+
+        // ==========================================
+        // NEW ADMIN FUNCTIONALITY PORTED TO APP
+        // ==========================================
+
+        function adminLogin() {
+            const pass = document.getElementById('admin-password').value;
+            if(!pass) return;
+            adminState.token = pass;
+            
+            document.getElementById('admin-login-error').classList.add('hidden');
+            document.getElementById('admin-login-section').classList.add('hidden');
+            document.getElementById('admin-dashboard-section').classList.remove('hidden');
+            
+            loadAdminSubjects();
+        }
+
+        function loadAdminSubjects() {
+            if (!state.categorySummary || state.categorySummary.length === 0) {
+                document.getElementById('admin-subject-list').innerHTML = `
+                    <p class="text-center text-gray-500 dark:text-gray-400 py-6">
+                        No subjects found. Please go to Settings and Sync your Database first.
+                    </p>`;
+                return;
+            }
+
+            // Sync the admin working array with the current global categories
+            adminState.subjects = state.categorySummary.map(cat => cat.Subject);
+            renderAdminSubjectList();
+        }
+
+        function renderAdminSubjectList() {
+            const container = document.getElementById('admin-subject-list');
+            
+            container.innerHTML = adminState.subjects.map((subj, index) => `
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col md:flex-row items-center gap-4">
+                    <div class="w-full md:w-1/3">
+                        <span class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">Current Subject Name</span>
+                        <div class="font-medium bg-gray-100 dark:bg-gray-700 p-2 rounded text-gray-700 dark:text-gray-200 truncate" title="${escapeHTML(subj)}" id="old-subj-${index}">${escapeHTML(subj)}</div>
+                    </div>
+                    <i class="fa-solid fa-arrow-right text-gray-400 hidden md:block"></i>
+                    <i class="fa-solid fa-arrow-down text-gray-400 block md:hidden"></i>
+                    <div class="w-full md:w-2/3">
+                        <div class="flex justify-between items-end mb-1">
+                            <span class="text-xs font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">New Hierarchy Path</span>
+                            <span class="text-xs text-gray-400 font-mono" id="char-count-${index}">${subj.length}/100</span>
+                        </div>
+                        <input type="text" 
+                               id="new-subj-${index}" 
+                               value="${escapeHTML(subj)}" 
+                               maxlength="100"
+                               oninput="document.getElementById('char-count-${index}').innerText = this.value.length + '/100'; 
+                                        this.value.length >= 90 ? document.getElementById('char-count-${index}').classList.add('text-red-500') : document.getElementById('char-count-${index}').classList.remove('text-red-500');"
+                               class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none transition">
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function saveAdminChanges() {
+            const btn = document.getElementById('btn-admin-save');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving...';
+            btn.disabled = true;
+
+            const updates = [];
+            adminState.subjects.forEach((subj, index) => {
+                const newName = document.getElementById(`new-subj-${index}`).value.trim();
+                if (newName !== subj && newName !== "") {
+                    updates.push({ oldName: subj, newName: newName });
+                }
+            });
+
+            if (updates.length === 0) {
+                alert("No changes detected.");
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
+                return;
+            }
+
+            try {
+                const response = await fetch(DB_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        type: "admin_update",
+                        token: adminState.token,
+                        updates: updates
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.status === "success") {
+                    alert("Hierarchy Updated! Fetching the latest layout...");
+                    await syncDatabase(); // Refresh category data
+                    loadAdminSubjects();  // Re-render UI
+                } else {
+                    alert("Failed: " + result.message);
+                    if(result.message.includes("Unauthorized")) {
+                        document.getElementById('admin-dashboard-section').classList.add('hidden');
+                        document.getElementById('admin-login-section').classList.remove('hidden');
+                        document.getElementById('admin-login-error').classList.remove('hidden');
+                        adminState.token = ""; 
+                    }
+                }
+            } catch(e) {
+                alert("Network error.");
+                console.error(e);
+            } finally {
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
+            }
+        }
+
+        // ==========================================
+        // REST OF THE CORE FUNCTIONS
+        // ==========================================
 
         function populateFilters() {
             const select = document.getElementById('filter-subject');
@@ -502,7 +667,7 @@ function navigate(viewId) {
 
             container.innerHTML = state.categorySummary.map(cat => {
                 const subj = cat.Subject;
-                const safeSubj = escapeHTML(subj); // Prevent XSS formatting
+                const safeSubj = escapeHTML(subj); 
                 const totalQuestionsInDb = cat.QuestionCount; 
                 const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
                 
@@ -516,6 +681,8 @@ function navigate(viewId) {
                 const statusBadge = isDownloaded 
                     ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400" title="Saved locally. Will update automatically on click."><i class="fa-solid fa-hard-drive mr-1"></i> Saved</span>`
                     : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400" title="Not downloaded yet."><i class="fa-solid fa-cloud mr-1"></i> Cloud</span>`;
+
+                const buttonText = completedCount === 0 ? 'Start' : 'Continue';
 
                 return `
                     <div class="${cardClasses} p-5 rounded-xl shadow-sm border transition-colors duration-300 relative">
@@ -548,7 +715,7 @@ function navigate(viewId) {
                         
                         <div class="flex gap-2 mt-4 flex-wrap">
                             <button onclick="fetchAndStartCategory('${safeSubj}', 'continue')" class="flex-1 bg-brand-600 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-brand-700 text-sm shadow-sm transition-colors">
-                                <i class="fa-solid fa-play mr-1"></i> Continue
+                                <i class="fa-solid fa-play mr-1"></i> ${buttonText}
                             </button>
                             ${mistakesCount > 0 ? `
                             <button onclick="fetchAndStartCategory('${safeSubj}', 'mistakes')" class="flex-1 bg-orange-500 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-orange-600 text-sm shadow-sm transition-colors">
@@ -583,7 +750,6 @@ function navigate(viewId) {
                 const otherQuestions = state.db.filter(q => q.Subject !== subject);
                 state.db = [...otherQuestions, ...validQuestions];
                 
-                // Save safely using IndexedDB
                 await idbKeyval.set('mrh_db', state.db);
                 
             } catch (err) {
@@ -658,74 +824,60 @@ function navigate(viewId) {
             }
         }
 
-async function deleteSubjectData(subject) {
-    if(confirm(`Are you sure you want to delete the downloaded questions for "${subject}"? Your accuracy and progress stats will remain, but the app will remove the local data to save space.`)) {
-        // 1. Remove the subject from the main database
-        state.db = state.db.filter(q => q.Subject !== subject);
-        await idbKeyval.set('mrh_db', state.db);
-        
-        // 2. Safely filter the saved session instead of destroying it
-        const saved = localStorage.getItem('mrh_saved_session');
-        if (saved) {
-            try {
-                const sessionObj = JSON.parse(saved);
-                const hasDeletedQuestions = sessionObj.questions.some(q => q.Subject === subject);
+        async function deleteSubjectData(subject) {
+            if(confirm(`Are you sure you want to delete the downloaded questions for "${subject}"? Your accuracy and progress stats will remain, but the app will remove the local data to save space.`)) {
+                state.db = state.db.filter(q => q.Subject !== subject);
+                await idbKeyval.set('mrh_db', state.db);
                 
-                if (hasDeletedQuestions) {
-                    let newQuestions = [];
-                    let newUserAnswers = {};
-                    let keptBeforeCurrent = 0;
-                    
-                    // Loop through the session to rebuild it safely
-                    let newIdx = 0;
-                    for (let i = 0; i < sessionObj.questions.length; i++) {
-                        // Only keep questions that DO NOT belong to the deleted subject
-                        if (sessionObj.questions[i].Subject !== subject) {
-                            newQuestions.push(sessionObj.questions[i]);
+                const saved = localStorage.getItem('mrh_saved_session');
+                if (saved) {
+                    try {
+                        const sessionObj = JSON.parse(saved);
+                        const hasDeletedQuestions = sessionObj.questions.some(q => q.Subject === subject);
+                        
+                        if (hasDeletedQuestions) {
+                            let newQuestions = [];
+                            let newUserAnswers = {};
+                            let keptBeforeCurrent = 0;
                             
-                            // Remap previous answers to the new index
-                            if (sessionObj.userAnswers[i]) {
-                                newUserAnswers[newIdx] = sessionObj.userAnswers[i];
+                            let newIdx = 0;
+                            for (let i = 0; i < sessionObj.questions.length; i++) {
+                                if (sessionObj.questions[i].Subject !== subject) {
+                                    newQuestions.push(sessionObj.questions[i]);
+                                    
+                                    if (sessionObj.userAnswers[i]) {
+                                        newUserAnswers[newIdx] = sessionObj.userAnswers[i];
+                                    }
+                                    
+                                    if (i < sessionObj.currentIndex) {
+                                        keptBeforeCurrent++;
+                                    }
+                                    
+                                    newIdx++;
+                                }
                             }
                             
-                            // Track where the currentIndex should shift to
-                            if (i < sessionObj.currentIndex) {
-                                keptBeforeCurrent++;
+                            if (newQuestions.length === 0) {
+                                clearSessionProgress();
+                                state.session = { active: false, questions: [], currentIndex: 0, userAnswers: {} };
+                            } else {
+                                sessionObj.questions = newQuestions;
+                                sessionObj.userAnswers = newUserAnswers;
+                                sessionObj.currentIndex = Math.min(keptBeforeCurrent, newQuestions.length - 1);
+                                localStorage.setItem('mrh_saved_session', JSON.stringify(sessionObj));
+                                
+                                if (state.session.active) {
+                                    state.session = sessionObj;
+                                }
                             }
-                            
-                            newIdx++;
                         }
-                    }
-                    
-                    // If ALL questions in the session were from the deleted subject, clear it
-                    if (newQuestions.length === 0) {
-                        clearSessionProgress();
-                        state.session = { active: false, questions: [], currentIndex: 0, userAnswers: {} };
-                    } else {
-                        // Apply the filtered data back to the session object
-                        sessionObj.questions = newQuestions;
-                        sessionObj.userAnswers = newUserAnswers;
-                        
-                        // Adjust current index safely so it doesn't go out of bounds
-                        sessionObj.currentIndex = Math.min(keptBeforeCurrent, newQuestions.length - 1);
-                        
-                        // Save the repaired session back to local storage
-                        localStorage.setItem('mrh_saved_session', JSON.stringify(sessionObj));
-                        
-                        // Update active state memory if currently loaded
-                        if (state.session.active) {
-                            state.session = sessionObj;
-                        }
+                    } catch(e) {
+                        console.error("Error parsing saved session during deletion.", e);
                     }
                 }
-            } catch(e) {
-                console.error("Error parsing saved session during deletion.", e);
+                updateDashboard(); 
             }
         }
-
-        updateDashboard(); 
-    }
-}
 
         function submitPracticeAnswer(selected, correct) {
             const q = state.session.questions[state.session.currentIndex];
