@@ -41,12 +41,10 @@
 </head>
 <body class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col">
 <header class="bg-brand-900 text-white p-4 flex justify-between items-center shadow-md sticky top-0 z-50 w-full">
-        <!-- Clicking the title now takes you Home -->
         <button onclick="navigate('dashboard')" class="font-bold text-lg hover:text-brand-200 transition-colors text-left flex items-center">
             <i class="fa-solid fa-anchor mr-2"></i> BSMT 3.1 – ALPHA (2026-2027)
         </button>
         <div class="flex items-center gap-4">
-            <!-- Settings button moved here -->
             <button onclick="navigate('settings')" class="hover:text-brand-200 transition-colors text-lg" aria-label="Settings">
                 <i class="fa-solid fa-gear"></i>
             </button>
@@ -54,19 +52,8 @@
     </header>
 
 <main class="flex-1 p-4 md:p-8 overflow-y-auto w-full max-w-5xl mx-auto">        
-        <section id="view-search" class="view-section">
-            <h2 class="text-2xl font-bold mb-6">Global Search</h2>
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-6">
-                <div class="flex gap-2">
-                    <input type="text" id="search-input" onkeyup="executeSearch()" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Search by ID, keyword, rule...">
-                </div>
-            </div>
-            <div id="search-results" class="space-y-4">
-                <p class="text-gray-500 text-center mt-10">Type above to search the entire database.</p>
-            </div>
-        </section>
-
-<section id="view-dashboard" class="view-section active">
+        
+        <section id="view-dashboard" class="view-section active">
             <div class="flex justify-between items-end mb-6">
                 <div>
                     <h2 class="text-2xl font-bold">Welcome Back, Cadet.</h2>
@@ -74,7 +61,6 @@
                 </div>
             </div>
 
-            <!-- Keep the Resume button logic active in case you are mid-session -->
             <div id="resume-container" class="hidden mb-8">
                 <h3 class="text-lg font-bold mb-4 text-yellow-600 dark:text-yellow-400">Continue Learning</h3>
                 <button onclick="resumeSession()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white p-6 rounded-2xl shadow-md text-left transition-transform transform hover:-translate-y-1">
@@ -86,16 +72,13 @@
             <h3 class="text-lg font-bold mb-4">Subject Progress</h3>
             <p class="text-gray-500 mb-6">Track your milestones, continue where you left off, or reset individual subjects.</p>
             
-            <!-- We moved the category list directly into the dashboard -->
-<!-- We moved the category list directly into the dashboard -->
-<div id="category-list" class="space-y-4">
-    <!-- Default Loading State -->
-    <div id="dashboard-loading" class="flex flex-col items-center justify-center py-12">
-        <i class="fa-solid fa-spinner fa-spin text-4xl text-brand-500 mb-4"></i>
-        <h3 class="text-lg font-bold text-gray-700 dark:text-gray-200">Loading Database...</h3>
-        <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Fetching the latest subjects</p>
-    </div>
-</div>
+            <div id="category-list" class="space-y-4">
+                <div id="dashboard-loading" class="flex flex-col items-center justify-center py-12">
+                    <i class="fa-solid fa-spinner fa-spin text-4xl text-brand-500 mb-4"></i>
+                    <h3 class="text-lg font-bold text-gray-700 dark:text-gray-200">Loading Database...</h3>
+                    <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Fetching the latest subjects</p>
+                </div>
+            </div>
         </section>
 
         <section id="view-practice" class="view-section">
@@ -120,15 +103,14 @@
                 </div>
             </div>
 
-<div id="session-active" class="hidden">
-    <!-- Card Progress Counter on Top -->
-    <div class="flex justify-between items-center mb-2">
-        <span class="text-sm font-semibold text-gray-500 dark:text-gray-400">Card Progress</span>
-        <span class="text-sm font-bold text-brand-600 dark:text-brand-400" id="session-progress-text">0 / 0</span>
-    </div>
-    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-8">
-        <div class="bg-brand-500 h-2 rounded-full transition-all duration-300" id="session-progress" style="width: 0%"></div>
-    </div>
+            <div id="session-active" class="hidden">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm font-semibold text-gray-500 dark:text-gray-400">Card Progress</span>
+                    <span class="text-sm font-bold text-brand-600 dark:text-brand-400" id="session-progress-text">0 / 0</span>
+                </div>
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-8">
+                    <div class="bg-brand-500 h-2 rounded-full transition-all duration-300" id="session-progress" style="width: 0%"></div>
+                </div>
 
                 <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6">
                     <div class="flex gap-2 mb-3 flex-wrap">
@@ -152,19 +134,19 @@
                     <p class="text-gray-700 dark:text-gray-300 text-sm mb-2" id="q-explanation-text"></p>
                 </div>
 
-<div class="flex gap-2 md:gap-4 mt-6">
-    <button id="btn-prev" onclick="prevQuestion()" class="flex-1 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white py-4 rounded-xl font-bold shadow-md hover:bg-gray-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-        <i class="fa-solid fa-arrow-left md:mr-2"></i> <span class="hidden md:inline">Previous</span>
-    </button>
-    
-    <button id="btn-reveal" onclick="revealAnswer()" class="flex-1 bg-yellow-500 text-white py-4 rounded-xl font-bold shadow-md hover:bg-yellow-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-        <i class="fa-solid fa-eye md:mr-2"></i> <span class="hidden md:inline">Reveal</span>
-    </button>
-    
-    <button id="btn-next" onclick="nextQuestion()" class="flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-        <span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2"></i>
-    </button>
-</div>
+                <div class="flex gap-2 md:gap-4 mt-6">
+                    <button id="btn-prev" onclick="prevQuestion()" class="flex-1 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white py-4 rounded-xl font-bold shadow-md hover:bg-gray-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-arrow-left md:mr-2"></i> <span class="hidden md:inline">Previous</span>
+                    </button>
+                    
+                    <button id="btn-reveal" onclick="revealAnswer()" class="flex-1 bg-yellow-500 text-white py-4 rounded-xl font-bold shadow-md hover:bg-yellow-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-eye md:mr-2"></i> <span class="hidden md:inline">Reveal</span>
+                    </button>
+                    
+                    <button id="btn-next" onclick="nextQuestion()" class="flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2"></i>
+                    </button>
+                </div>
             </div>
             
             <div id="exam-results" class="hidden text-center mt-10">
@@ -220,7 +202,6 @@
                 <p class="text-xs text-gray-400 mt-4">Current Database Size: <span id="db-size-display" class="font-bold">0</span> questions.</p>
             </div>
 
-            <!-- New Backup & Restore Section -->
             <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-6 border border-gray-100 dark:border-gray-700">
                 <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-floppy-disk text-brand-500 mr-2"></i> Backup & Restore</h3>
                 <p class="text-sm text-gray-500 mb-4">Export your statistics and save them to a file, or restore a previous backup.</p>
@@ -230,36 +211,32 @@
                     <input type="file" id="import-file" class="hidden" accept=".json" onchange="importData(event)">
                 </div>
             </div>
-<div class="flex flex-col gap-4 border-t dark:border-gray-700 pt-4 mt-4">
-    <span class="font-medium text-red-500">Danger Zone</span>
-    
-    <div class="flex justify-between items-center">
-        <span class="text-sm dark:text-gray-300">Clear Statistics</span>
-        <button onclick="resetProgress()" class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 transition-colors">Reset Progress</button>
-    </div>
-
-    <div class="flex justify-between items-center">
-        <span class="text-sm dark:text-gray-300">Clear Local Database</span>
-        <button onclick="clearDatabase()" class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 transition-colors">Clear Database</button>
-    </div>
-</div>
+            
+            <div class="flex flex-col gap-4 border-t dark:border-gray-700 pt-4 mt-4">
+                <span class="font-medium text-red-500">Danger Zone</span>
+                <div class="flex justify-between items-center">
+                    <span class="text-sm dark:text-gray-300">Clear Statistics</span>
+                    <button onclick="resetProgress()" class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 transition-colors">Reset Progress</button>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-sm dark:text-gray-300">Clear Local Database</span>
+                    <button onclick="clearDatabase()" class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 transition-colors">Clear Database</button>
+                </div>
+            </div>
         </section>
     </main>
 
     <script>
         const DB_URL = "https://script.google.com/macros/s/AKfycbw9B0Ny93yn3W8tE4e0Kvfamdwk_YCn0AUol67NqjPbtYljF3V-7uPha7Z0Snyw8sw_/exec";
         
-let state = {
-    db: [],
-    categorySummary: [],
-    stats: { totalAnswered: 0, correct: 0, mistakes: [], bookmarks: [], subjectAccuracy: {} },
-    prefs: { darkMode: true, csvUrl: '' },
-    session: { active: false, type: 'practice', questions: [], currentIndex: 0, userAnswers: {}, flags: [] }
-};
+        let state = {
+            db: [],
+            categorySummary: [],
+            stats: { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} },
+            prefs: { darkMode: true },
+            session: { active: false, type: 'practice', questions: [], currentIndex: 0, userAnswers: {} }
+        };
         
-        let examTimerInterval;
-        let examTimeRemaining = 0;
-        let examPaused = false; // New Pause State
         let chartInstance = null;
 
         function loadState() {
@@ -284,7 +261,7 @@ let state = {
             updateDashboard();
         }
 
-function updateDashboard() {
+        function updateDashboard() {
             const statTotal = document.getElementById('stat-total');
             if (statTotal) statTotal.innerText = state.stats.totalAnswered;
             
@@ -295,25 +272,22 @@ function updateDashboard() {
             if (typeof renderCategoryProgress === 'function') renderCategoryProgress();
         }
 
-function navigate(viewId) {
-    if(state.session.active && !confirm("You have an active session. Do you want to pause and return to the dashboard? Your progress will be saved.")) return;
-    
-    if (state.session.active) {
-        clearInterval(examTimerInterval);
-        saveSessionProgress(); // FIX: Save BEFORE turning the session off
-        state.session.active = false; 
-    }
+        function navigate(viewId) {
+            if(state.session.active && !confirm("You have an active session. Do you want to pause and return to the dashboard? Your progress will be saved.")) return;
+            
+            if (state.session.active) {
+                saveSessionProgress(); 
+                state.session.active = false; 
+            }
 
-    document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-    document.getElementById(`view-${viewId}`).classList.add('active');
-    
-    if(viewId === 'stats') renderCharts();
-    
-    // NEW: Force the dashboard to evaluate if the resume button should be hidden
-    if(viewId === 'dashboard') checkSavedSession(); 
-}
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            document.getElementById(`view-${viewId}`).classList.add('active');
+            
+            if(viewId === 'stats') renderCharts();
+            if(viewId === 'dashboard') checkSavedSession(); 
+        }
 
-async function syncDatabase() {
+        async function syncDatabase() {
             const url = DB_URL; 
             const statusEl = document.getElementById('sync-status');
             if (statusEl) {
@@ -323,7 +297,6 @@ async function syncDatabase() {
             }
 
             try {
-                // This now fetches the lightweight summary
                 const response = await fetch(url);
                 if (!response.ok) throw new Error("Network response failed");
                 const summaryData = await response.json();
@@ -339,34 +312,31 @@ async function syncDatabase() {
                     
                     if (typeof populateFilters === "function") populateFilters();
                     if (typeof renderCategoryProgress === "function") renderCategoryProgress();
-// ... existing syncDatabase code ...
-            } else {
+                } else {
+                    if (statusEl) {
+                        statusEl.innerText = "Error: Connected, but no subjects found.";
+                        statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+                    }
+                }
+            } catch (err) {
+                console.error(err);
                 if (statusEl) {
-                    statusEl.innerText = "Error: Connected, but no subjects found.";
+                    statusEl.innerText = "Connection Error. Ensure you deployed the Apps Script correctly.";
                     statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
                 }
-            }
-        } catch (err) {
-            console.error(err);
-            if (statusEl) {
-                statusEl.innerText = "Connection Error. Ensure you deployed the Apps Script correctly.";
-                statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
-            }
-            
-            // NEW: Remove the infinite spinner if the connection fails
-            const catList = document.getElementById('category-list');
-            if (catList && state.categorySummary.length === 0) {
-                catList.innerHTML = `
-                    <div class="text-center py-10 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
-                        <i class="fa-solid fa-triangle-exclamation text-3xl text-red-500 mb-3"></i>
-                        <h3 class="font-bold text-red-700 dark:text-red-400">Database Connection Failed</h3>
-                        <p class="text-sm text-red-600 dark:text-red-300 mt-1">Please check your internet connection or go to Settings to try syncing again.</p>
-                    </div>`;
+                
+                const catList = document.getElementById('category-list');
+                if (catList && state.categorySummary.length === 0) {
+                    catList.innerHTML = `
+                        <div class="text-center py-10 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
+                            <i class="fa-solid fa-triangle-exclamation text-3xl text-red-500 mb-3"></i>
+                            <h3 class="font-bold text-red-700 dark:text-red-400">Database Connection Failed</h3>
+                            <p class="text-sm text-red-600 dark:text-red-300 mt-1">Please check your internet connection or go to Settings to try syncing again.</p>
+                        </div>`;
+                }
             }
         }
-    }
 
-        // Updated for Subject and Tag filtering
         function populateFilters() {
             const select = document.getElementById('filter-subject');
             const subjects = [...new Set(state.db.map(q => q.Subject).filter(Boolean))];
@@ -394,68 +364,25 @@ async function syncDatabase() {
             select.innerHTML = html;
         }
 
-        function startPractice(filterType) {
-            if (state.db.length === 0) { alert("Please sync the database in Settings first."); return; }
-            navigate('practice');
-            document.getElementById('session-setup').classList.remove('hidden');
-            document.getElementById('session-active').classList.add('hidden');
-            document.getElementById('exam-results').classList.add('hidden');
-            document.getElementById('exam-options').classList.add('hidden');
-            
-            state.session.type = 'practice';
-            document.getElementById('setup-title').innerText = "Setup Practice";
-            
-            populateFilters();
-            if(filterType === 'mistakes') {
-                if(state.stats.mistakes.length === 0) {
-                    alert("You have no mistakes to review! Good job.");
-                    navigate('dashboard'); return;
-                }
-                document.getElementById('filter-subject').innerHTML = '<option value="MISTAKES">Review Mistakes Only</option>';
-            }
-        }
-
-        function startExamSetup() {
-            if (state.db.length === 0) { alert("Please sync the database in Settings first."); return; }
-            navigate('practice');
-            document.getElementById('session-setup').classList.remove('hidden');
-            document.getElementById('session-active').classList.add('hidden');
-            document.getElementById('exam-results').classList.add('hidden');
-            document.getElementById('exam-options').classList.remove('hidden');
-            
-            state.session.type = 'exam';
-            document.getElementById('setup-title').innerText = "Configure Examination";
-            populateFilters();
-        }
-
         function prepareSessionPool(pool) {
-            // 1. Shuffle the order of the questions using your existing shuffleArray function
             let randomizedPool = shuffleArray([...pool]); 
             
-            // 2. Shuffle the choices inside each question
             return randomizedPool.map(originalQ => {
-                let q = { ...originalQ }; // Clone so we don't alter the main database
-                
-                // Gather only the choices that actually have text
+                let q = { ...originalQ };
                 let validChoices = [];
                 if (q.ChoiceA && q.ChoiceA.trim() !== "") validChoices.push(q.ChoiceA);
                 if (q.ChoiceB && q.ChoiceB.trim() !== "") validChoices.push(q.ChoiceB);
                 if (q.ChoiceC && q.ChoiceC.trim() !== "") validChoices.push(q.ChoiceC);
                 if (q.ChoiceD && q.ChoiceD.trim() !== "") validChoices.push(q.ChoiceD);
                 
-                // Remember the actual text of the correct answer before we mix them up
                 let correctText = q[`Choice${q.Answer}`]; 
-                
-                // Mix up the choices array
                 validChoices = shuffleArray(validChoices);
                 
-                // Put the shuffled text back into the A, B, C, D slots
                 q.ChoiceA = validChoices[0] || "";
                 q.ChoiceB = validChoices[1] || "";
                 q.ChoiceC = validChoices[2] || "";
                 q.ChoiceD = validChoices[3] || "";
                 
-                // Update the correct answer letter to match wherever the correct text landed
                 if (q.ChoiceA === correctText) q.Answer = 'A';
                 else if (q.ChoiceB === correctText) q.Answer = 'B';
                 else if (q.ChoiceC === correctText) q.Answer = 'C';
@@ -481,349 +408,293 @@ async function syncDatabase() {
                 pool = state.db;
             }
 
-if(pool.length === 0) { alert("No questions found for this filter."); return; }
+            if(pool.length === 0) { alert("No questions found for this filter."); return; }
             pool = prepareSessionPool(pool);
 
             if(state.session.type === 'exam') {
                 const count = parseInt(document.getElementById('exam-count').value);
                 pool = pool.slice(0, count);
-                startExamTimer(pool.length * 60); 
             }
             
             state.session = { 
                 active: true, type: state.session.type, questions: pool, 
-                currentIndex: 0, userAnswers: {}, flags: [] 
+                currentIndex: 0, userAnswers: {}
             };
             
             document.getElementById('session-setup').classList.add('hidden');
             document.getElementById('session-active').classList.remove('hidden');
             
-            if(state.session.type === 'exam') {
-                document.getElementById('exam-timer-display').classList.remove('hidden');
-                document.getElementById('btn-flag').classList.remove('hidden');
-                document.getElementById('btn-pause-exam').classList.remove('hidden'); // Show Pause
-            } else {
-                document.getElementById('exam-timer-display').classList.add('hidden');
-                document.getElementById('btn-flag').classList.add('hidden');
-                document.getElementById('btn-pause-exam').classList.add('hidden');
-            }
-            
-            examPaused = false;
             renderQuestion();
             saveSessionProgress();
         }
 
-        // --- NEW: EXAM PAUSE LOGIC ---
-        function togglePauseExam() {
-            examPaused = !examPaused;
-            const btn = document.getElementById('btn-pause-exam');
-            const content = document.getElementById('q-choices');
-            const qText = document.getElementById('q-text');
-            const qImg = document.getElementById('q-image');
+        function renderQuestion() {
+            const q = state.session.questions[state.session.currentIndex];
+            const isExam = state.session.type === 'exam';
+            const userAnswer = state.session.userAnswers[state.session.currentIndex];
             
-            if (examPaused) {
-                clearInterval(examTimerInterval);
-                btn.innerHTML = '<i class="fa-solid fa-play mr-1"></i> Resume';
-                content.classList.add('hidden');
-                qText.innerText = "Exam Paused";
-                qImg.classList.add('hidden');
+            const currentCard = state.session.currentIndex + 1;
+            const totalCards = state.session.questions.length;
+            document.getElementById('session-progress-text').innerText = `${currentCard} / ${totalCards}`;
+            document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / totalCards) * 100}%`;
+            
+            document.getElementById('q-subject').innerText = q.Subject || 'General';
+            document.getElementById('q-id').innerText = q.ID || `Q-${state.session.currentIndex}`;
+            document.getElementById('q-text').innerText = q.Question;
+            
+            const imgEl = document.getElementById('q-image');
+            if(q.ImageURL && q.ImageURL.trim() !== "") {
+                imgEl.src = q.ImageURL; imgEl.classList.remove('hidden');
             } else {
-                startExamTimer(examTimeRemaining);
-                btn.innerHTML = '<i class="fa-solid fa-pause mr-1"></i> Pause';
-                content.classList.remove('hidden');
-                renderQuestion(); 
+                imgEl.classList.add('hidden');
             }
-        }
 
-function renderQuestion() {
-    const q = state.session.questions[state.session.currentIndex];
-    const isExam = state.session.type === 'exam';
-    const userAnswer = state.session.userAnswers[state.session.currentIndex];
-    
-    // 1. Update Card Progress Number and Progress Bar
-    const currentCard = state.session.currentIndex + 1;
-    const totalCards = state.session.questions.length;
-    document.getElementById('session-progress-text').innerText = `${currentCard} / ${totalCards}`;
-    document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / totalCards) * 100}%`;
-    
-    document.getElementById('q-subject').innerText = q.Subject || 'General';
-    document.getElementById('q-id').innerText = q.ID || `Q-${state.session.currentIndex}`;
-    document.getElementById('q-text').innerText = q.Question;
-    
-    const imgEl = document.getElementById('q-image');
-    if(q.ImageURL && q.ImageURL.trim() !== "") {
-        imgEl.src = q.ImageURL; imgEl.classList.remove('hidden');
-    } else {
-        imgEl.classList.add('hidden');
-    }
+            const choices = ['A', 'B', 'C', 'D'];
+            choices.forEach(ch => {
+                const choiceText = q[`Choice${ch}`];
+                const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
+                
+                if (!choiceText || choiceText.trim() === "") {
+                    btn.classList.add('hidden');
+                    return; 
+                }
+                
+                btn.classList.remove('hidden');
+                document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = choiceText;
+                
+                btn.onclick = () => isExam ? selectExamAnswer(ch) : submitPracticeAnswer(ch, q.Answer);
+                btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium";
+                
+                if (userAnswer) {
+                    btn.onclick = null;
+                    if (isExam) {
+                        if (userAnswer === ch) btn.classList.add('exam-selected');
+                    } else {
+                        if (ch === q.Answer) btn.classList.add('selected-correct');
+                        else if (userAnswer === ch) btn.classList.add('selected-wrong');
+                        else btn.classList.add('dimmed');
+                    }
+                }
+            });
+            
+            const expBox = document.getElementById('q-explanation-box');
+            const btnNext = document.getElementById('btn-next');
+            const btnPrev = document.getElementById('btn-prev');
+            const btnReveal = document.getElementById('btn-reveal');
 
-    const choices = ['A', 'B', 'C', 'D'];
-    choices.forEach(ch => {
-        const choiceText = q[`Choice${ch}`];
-        const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
-        
-        if (!choiceText || choiceText.trim() === "") {
-            btn.classList.add('hidden');
-            return; 
-        }
-        
-        btn.classList.remove('hidden');
-        document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = choiceText;
-        
-        btn.onclick = () => isExam ? selectExamAnswer(ch) : submitPracticeAnswer(ch, q.Answer);
-        btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium";
-        
-        if (userAnswer) {
-            btn.onclick = null;
+            const isLastQuestion = state.session.currentIndex === totalCards - 1;
+
             if (isExam) {
-                if (userAnswer === ch) btn.classList.add('exam-selected');
+                expBox.classList.add('hidden');
+                btnReveal.disabled = true;
+                btnPrev.disabled = state.session.currentIndex === 0;
+                btnNext.disabled = false; 
+
+                if (isLastQuestion) {
+                    btnNext.innerHTML = `<span class="hidden md:inline">Submit Exam</span> <i class="fa-solid fa-check-double md:ml-2"></i>`;
+                    btnNext.className = "flex-1 bg-green-600 text-white py-4 rounded-xl font-bold shadow-md hover:bg-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
+                } else {
+                    btnNext.innerHTML = `<span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2"></i>`;
+                    btnNext.className = "flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
+                }
             } else {
-                if (ch === q.Answer) btn.classList.add('selected-correct');
-                else if (userAnswer === ch) btn.classList.add('selected-wrong');
-                else btn.classList.add('dimmed');
+                btnPrev.disabled = state.session.currentIndex === 0;
+                btnNext.innerHTML = `<span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2"></i>`;
+                btnNext.className = "flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
+                
+                if (userAnswer) {
+                    showExplanation(q);
+                    btnNext.disabled = false;
+                    btnReveal.disabled = true;
+                } else {
+                    expBox.classList.add('hidden');
+                    btnNext.disabled = true;
+                    btnReveal.disabled = false;
+                }
             }
         }
-    });
-    
-    const expBox = document.getElementById('q-explanation-box');
-    const btnNext = document.getElementById('btn-next');
-    const btnPrev = document.getElementById('btn-prev');
-    const btnReveal = document.getElementById('btn-reveal');
 
-    const isLastQuestion = state.session.currentIndex === totalCards - 1;
+        function renderCategoryProgress() {
+            const container = document.getElementById('category-list');
+            
+            if (!state.categorySummary || state.categorySummary.length === 0) {
+                container.innerHTML = '<p class="text-gray-500">No categories found. Please ensure your database is synced.</p>';
+                return;
+            }
 
-    if (isExam) {
-        expBox.classList.add('hidden');
-        btnReveal.disabled = true;
-        btnPrev.disabled = state.session.currentIndex === 0;
-        btnNext.disabled = false; // Always allow navigation in exam mode
+            if (!state.stats.completedQs) state.stats.completedQs = [];
 
-        // Dynamically style and rename "Next" on the last question
-        if (isLastQuestion) {
-            btnNext.innerHTML = `<span class="hidden md:inline">Submit Exam</span> <i class="fa-solid fa-check-double md:ml-2"></i>`;
-            btnNext.className = "flex-1 bg-green-600 text-white py-4 rounded-xl font-bold shadow-md hover:bg-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
-        } else {
-            btnNext.innerHTML = `<span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2"></i>`;
-            btnNext.className = "flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
-        }
-    } else {
-        // Practice Mode Logic
-        btnPrev.disabled = state.session.currentIndex === 0;
-        
-        // Reset button style to standard Next button
-        btnNext.innerHTML = `<span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2"></i>`;
-        btnNext.className = "flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
-        
-        if (userAnswer) {
-            showExplanation(q);
-            btnNext.disabled = false;
-            btnReveal.disabled = true;
-        } else {
-            expBox.classList.add('hidden');
-            btnNext.disabled = true;
-            btnReveal.disabled = false;
-        }
-    }
-    
-    updateIcons(q.ID);
-}
+            container.innerHTML = state.categorySummary.map(cat => {
+                const subj = cat.Subject;
+                const totalQuestionsInDb = cat.QuestionCount; 
+                const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
+                
+                const completedCount = state.stats.completedQs.filter(id => id.startsWith(subj.substring(0, 3).toUpperCase())).length;
+                const mistakesCount = state.stats.mistakes.filter(id => id.startsWith(subj.substring(0, 3).toUpperCase())).length;
+                const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
+                const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
+                const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100';
 
-// --- CATEGORY PROGRESS SYSTEM ---
+                const isDownloaded = state.db.some(q => q.Subject === subj);
+                const statusBadge = isDownloaded 
+                    ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400" title="Saved locally. Will update automatically on click."><i class="fa-solid fa-hard-drive mr-1"></i> Saved</span>`
+                    : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400" title="Not downloaded yet."><i class="fa-solid fa-cloud mr-1"></i> Cloud</span>`;
 
-function renderCategoryProgress() {
-    const container = document.getElementById('category-list');
-    
-    if (!state.categorySummary || state.categorySummary.length === 0) {
-        container.innerHTML = '<p class="text-gray-500">No categories found. Please ensure your database is synced.</p>';
-        return;
-    }
-
-    if (!state.stats.completedQs) state.stats.completedQs = [];
-
-    container.innerHTML = state.categorySummary.map(cat => {
-        const subj = cat.Subject;
-        const totalQuestionsInDb = cat.QuestionCount; 
-        const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
-        
-        const completedCount = state.stats.completedQs.filter(id => id.startsWith(subj.substring(0, 3).toUpperCase())).length;
-        const mistakesCount = state.stats.mistakes.filter(id => id.startsWith(subj.substring(0, 3).toUpperCase())).length;
-        const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
-        const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
-        const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100';
-
-        // NEW: Check if this subject currently exists in the local database
-        const isDownloaded = state.db.some(q => q.Subject === subj);
-        const statusBadge = isDownloaded 
-            ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400" title="Saved locally. Will update automatically on click."><i class="fa-solid fa-hard-drive mr-1"></i> Saved</span>`
-            : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400" title="Not downloaded yet."><i class="fa-solid fa-cloud mr-1"></i> Cloud</span>`;
-
-        return `
-            <div class="${cardClasses} p-5 rounded-xl shadow-sm border transition-colors duration-300 relative">
-                <div id="loading-${subj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center">
-                    <i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500 mb-2"></i>
-                    <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
-                </div>
-
-                <div class="flex justify-between items-end mb-2">
-                    <div>
-                        <div class="flex items-center gap-2 mb-1">
-                            <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100">${subj}</h3>
-                            ${statusBadge}
+                return `
+                    <div class="${cardClasses} p-5 rounded-xl shadow-sm border transition-colors duration-300 relative">
+                        <div id="loading-${subj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center">
+                            <i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500 mb-2"></i>
+                            <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
                         </div>
-                        <p class="text-xs text-gray-400">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>
+
+                        <div class="flex justify-between items-end mb-2">
+                            <div>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100">${subj}</h3>
+                                    ${statusBadge}
+                                </div>
+                                <p class="text-xs text-gray-400">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-sm font-black text-brand-600">${completedCount} / ${totalQuestionsInDb} Done</span>
+                            </div>
+                        </div>
+                        
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mb-4">
+                            <div class="bg-brand-500 h-2.5 rounded-full transition-all duration-500" style="width: ${progressPercent}%"></div>
+                        </div>
+                        
+                        <div class="flex gap-2 mt-4 flex-wrap">
+                            <button onclick="fetchAndStartCategory('${subj}', 'continue')" class="flex-1 bg-brand-600 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-brand-700 text-sm shadow-sm transition-colors">
+                                <i class="fa-solid fa-play mr-1"></i> Continue
+                            </button>
+                            ${mistakesCount > 0 ? `
+                            <button onclick="fetchAndStartCategory('${subj}', 'mistakes')" class="flex-1 bg-orange-500 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-orange-600 text-sm shadow-sm transition-colors">
+                                <i class="fa-solid fa-book mr-1"></i> Review ${mistakesCount}
+                            </button>
+                            ` : ''}
+                            <button onclick="resetCategory('${subj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2.5 rounded-lg font-bold hover:bg-red-100 transition-colors text-sm"><i class="fa-solid fa-rotate-left"></i></button>
+                        </div>
                     </div>
-                    <div class="text-right">
-                        <span class="text-sm font-black text-brand-600">${completedCount} / ${totalQuestionsInDb} Done</span>
-                    </div>
-                </div>
+                `;
+            }).join('');
+        }
+
+        async function fetchAndStartCategory(subject, mode) {
+            const loader = document.getElementById(`loading-${subject}`);
+            if (loader) loader.classList.remove('hidden'); 
+
+            let validQuestions = [];
+
+            try {
+                const response = await fetch(`${DB_URL}?subject=${encodeURIComponent(subject)}`);
+                const newQuestions = await response.json();
+
+                if (newQuestions.error) throw new Error(newQuestions.error);
+
+                validQuestions = newQuestions.filter(q => 
+                    q.Question && q.Question.trim() !== "" &&
+                    q.ChoiceA && q.ChoiceA.trim() !== "" &&
+                    q.ChoiceB && q.ChoiceB.trim() !== ""
+                );
+
+                const otherQuestions = state.db.filter(q => q.Subject !== subject);
+                state.db = [...otherQuestions, ...validQuestions];
+                localStorage.setItem('mrh_db', JSON.stringify(state.db));
                 
-                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mb-4">
-                    <div class="bg-brand-500 h-2.5 rounded-full transition-all duration-500" style="width: ${progressPercent}%"></div>
-                </div>
+            } catch (err) {
+                console.warn("Network request failed. Falling back to local cache.", err);
+                validQuestions = state.db.filter(q => q.Subject === subject);
                 
-                <div class="flex gap-2 mt-4 flex-wrap">
-                    <button onclick="fetchAndStartCategory('${subj}', 'continue')" class="flex-1 bg-brand-600 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-brand-700 text-sm shadow-sm transition-colors">
-                        <i class="fa-solid fa-play mr-1"></i> Continue
-                    </button>
-                    ${mistakesCount > 0 ? `
-                    <button onclick="fetchAndStartCategory('${subj}', 'mistakes')" class="flex-1 bg-orange-500 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-orange-600 text-sm shadow-sm transition-colors">
-                        <i class="fa-solid fa-book mr-1"></i> Review ${mistakesCount}
-                    </button>
-                    ` : ''}
-                    <button onclick="resetCategory('${subj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2.5 rounded-lg font-bold hover:bg-red-100 transition-colors text-sm"><i class="fa-solid fa-rotate-left"></i></button>
-                </div>
-            </div>
-        `;
-    }).join('');
-}
+                if (validQuestions.length === 0) {
+                    alert(`Cannot start session. You are offline and "${subject}" has not been downloaded to your device yet.`);
+                    if (loader) loader.classList.add('hidden');
+                    return;
+                }
+            }
 
-async function fetchAndStartCategory(subject, mode) {
-    const loader = document.getElementById(`loading-${subject}`);
-    if (loader) loader.classList.remove('hidden'); 
+            if (!state.stats.completedQs) state.stats.completedQs = [];
 
-    let validQuestions = [];
+            let pool = [];
+            if (mode === 'continue') {
+                pool = validQuestions.filter(q => !state.stats.completedQs.includes(q.ID));
+                if (pool.length === 0) {
+                    alert(`You have answered all available questions for ${subject}! Reset the category to start over.`);
+                    if (loader) loader.classList.add('hidden');
+                    return;
+                }
+            } else if (mode === 'mistakes') {
+                pool = validQuestions.filter(q => state.stats.mistakes.includes(q.ID));
+                if (pool.length === 0) {
+                    alert(`No mistakes to review for ${subject}! Great job.`);
+                    if (loader) loader.classList.add('hidden');
+                    return;
+                }
+            }
 
-    try {
-        // ALWAYS fetch the absolute latest version from Sheets first
-        const response = await fetch(`${DB_URL}?subject=${encodeURIComponent(subject)}`);
-        const newQuestions = await response.json();
-
-        if (newQuestions.error) throw new Error(newQuestions.error);
-
-        validQuestions = newQuestions.filter(q => 
-            q.Question && q.Question.trim() !== "" &&
-            q.ChoiceA && q.ChoiceA.trim() !== "" &&
-            q.ChoiceB && q.ChoiceB.trim() !== ""
-        );
-
-        // Update local cache by overwriting old questions for this subject with the fresh ones
-        const otherQuestions = state.db.filter(q => q.Subject !== subject);
-        state.db = [...otherQuestions, ...validQuestions];
-        localStorage.setItem('mrh_db', JSON.stringify(state.db));
-        
-    } catch (err) {
-        console.warn("Network request failed. Falling back to local cache.", err);
-        
-        // If offline or network fails, try to load what we already have saved
-        validQuestions = state.db.filter(q => q.Subject === subject);
-        
-        if (validQuestions.length === 0) {
-            alert(`Cannot start session. You are offline and "${subject}" has not been downloaded to your device yet.`);
             if (loader) loader.classList.add('hidden');
-            return;
+            startCustomSession(pool);
         }
-    }
 
-    if (!state.stats.completedQs) state.stats.completedQs = [];
+        function startCustomSession(pool) {
+            navigate('practice'); 
+            document.getElementById('session-setup').classList.add('hidden'); 
+            document.getElementById('session-active').classList.remove('hidden'); 
+            document.getElementById('exam-results').classList.add('hidden'); 
+            document.getElementById('exam-options').classList.add('hidden'); 
+            
+            pool = prepareSessionPool(pool);
 
-    let pool = [];
-    if (mode === 'continue') {
-        pool = validQuestions.filter(q => !state.stats.completedQs.includes(q.ID));
-        if (pool.length === 0) {
-            alert(`You have answered all available questions for ${subject}! Reset the category to start over.`);
-            if (loader) loader.classList.add('hidden');
-            return;
+            state.session = { 
+                active: true, type: 'practice', questions: pool, 
+                currentIndex: 0, userAnswers: {}
+            };
+            
+            renderQuestion();
+            saveSessionProgress();
         }
-    } else if (mode === 'mistakes') {
-        pool = validQuestions.filter(q => state.stats.mistakes.includes(q.ID));
-        if (pool.length === 0) {
-            alert(`No mistakes to review for ${subject}! Great job.`);
-            if (loader) loader.classList.add('hidden');
-            return;
+
+        function resetCategory(subject) {
+            if (confirm(`Are you sure you want to reset your accuracy and progress statistics for "${subject}"? This cannot be undone.`)) {
+                if (state.stats.subjectAccuracy[subject]) {
+                    state.stats.subjectAccuracy[subject] = { total: 0, correct: 0 }; 
+                }
+                
+                const subjectQIDs = state.db.filter(q => q.Subject === subject).map(q => q.ID);
+                
+                if (state.stats.completedQs) {
+                    state.stats.completedQs = state.stats.completedQs.filter(id => !subjectQIDs.includes(id));
+                }
+                
+                if (state.stats.mistakes) {
+                    state.stats.mistakes = state.stats.mistakes.filter(id => !subjectQIDs.includes(id));
+                }
+                
+                saveState(); 
+                renderCategoryProgress(); 
+                if(chartInstance) renderCharts(); 
+            }
         }
-    }
 
-    if (loader) loader.classList.add('hidden');
-    startCustomSession(pool);
-}
+        function submitPracticeAnswer(selected, correct) {
+            const q = state.session.questions[state.session.currentIndex];
+            state.session.userAnswers[state.session.currentIndex] = selected;
+            
+            trackStats(q, selected === correct);
 
-// Helper function to launch directly into practice with a pre-built pool of questions
-function startCustomSession(pool) {
-    navigate('practice'); 
-    document.getElementById('session-setup').classList.add('hidden'); 
-    document.getElementById('session-active').classList.remove('hidden'); 
-    document.getElementById('exam-results').classList.add('hidden'); 
-    document.getElementById('exam-options').classList.add('hidden'); 
-    
-pool = prepareSessionPool(pool);
+            document.querySelectorAll('.choice-btn').forEach(btn => {
+                btn.onclick = null;
+                if(btn.dataset.choice === correct) btn.classList.add('selected-correct');
+                else if (btn.dataset.choice === selected) btn.classList.add('selected-wrong');
+                else btn.classList.add('dimmed');
+            });
 
-    state.session = { 
-        active: true, type: 'practice', questions: pool, 
-        currentIndex: 0, userAnswers: {}, flags: [] 
-    };
-    
-    examPaused = false;
-    renderQuestion();
-    saveSessionProgress();
-}
-
-function resetCategory(subject) {
-    if (confirm(`Are you sure you want to reset your accuracy and progress statistics for "${subject}"? This cannot be undone.`)) {
-        
-        // Reset accuracy stats
-        if (state.stats.subjectAccuracy[subject]) {
-            state.stats.subjectAccuracy[subject] = { total: 0, correct: 0 }; 
+            showExplanation(q);
+            
+            document.getElementById('btn-next').disabled = false;
+            document.getElementById('btn-reveal').disabled = true;
+            document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
         }
-        
-        // Find all question IDs belonging to this subject
-        const subjectQIDs = state.db.filter(q => q.Subject === subject).map(q => q.ID);
-        
-        // Remove questions matching this subject from the completed array so they can be re-answered
-        if (state.stats.completedQs) {
-            state.stats.completedQs = state.stats.completedQs.filter(id => !subjectQIDs.includes(id));
-        }
-        
-        // NEW: Clear the mistakes for this subject so the "Review #" button hides
-        if (state.stats.mistakes) {
-            state.stats.mistakes = state.stats.mistakes.filter(id => !subjectQIDs.includes(id));
-        }
-        
-        saveState(); 
-        renderCategoryProgress(); 
-        if(chartInstance) renderCharts(); 
-    }
-}
-function submitPracticeAnswer(selected, correct) {
-    const q = state.session.questions[state.session.currentIndex];
-    state.session.userAnswers[state.session.currentIndex] = selected;
-    
-    trackStats(q, selected === correct);
-
-    document.querySelectorAll('.choice-btn').forEach(btn => {
-        btn.onclick = null;
-        if(btn.dataset.choice === correct) btn.classList.add('selected-correct');
-        else if (btn.dataset.choice === selected) btn.classList.add('selected-wrong');
-        else btn.classList.add('dimmed');
-    });
-
-    showExplanation(q);
-    
-    // THE FIX: Change from classList.remove('hidden') to disabling/enabling properties
-    document.getElementById('btn-next').disabled = false;
-    document.getElementById('btn-reveal').disabled = true;
-    
-    document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
-}
 
         function showExplanation(q) {
             document.getElementById('q-explanation-text').innerText = q.Explanation || "No explanation provided in database.";
@@ -838,22 +709,21 @@ function submitPracticeAnswer(selected, correct) {
             });
         }
 
-function nextQuestion() {
-    if(state.session.currentIndex < state.session.questions.length - 1) {
-        state.session.currentIndex++;
-        renderQuestion();
-        saveSessionProgress();
-    } else {
-        // Handle when user hits "Next" on the final question
-        if (state.session.type === 'exam') {
-            submitExam();
-        } else if (state.session.type === 'practice') {
-            alert("Practice Session Complete! Great job.");
-            clearSessionProgress(); 
-            endSession(false);
+        function nextQuestion() {
+            if(state.session.currentIndex < state.session.questions.length - 1) {
+                state.session.currentIndex++;
+                renderQuestion();
+                saveSessionProgress();
+            } else {
+                if (state.session.type === 'exam') {
+                    submitExam();
+                } else if (state.session.type === 'practice') {
+                    alert("Practice Session Complete! Great job.");
+                    clearSessionProgress(); 
+                    endSession(false);
+                }
+            }
         }
-    }
-}
 
         function prevQuestion() {
             if(state.session.currentIndex > 0) {
@@ -863,7 +733,7 @@ function nextQuestion() {
             saveSessionProgress();
         }
 
-function trackStats(q, isCorrect) {
+        function trackStats(q, isCorrect) {
             state.stats.totalAnswered++;
             
             const subj = q.Subject || "General";
@@ -879,31 +749,8 @@ function trackStats(q, isCorrect) {
             }
             saveState();
         }
-        function startExamTimer(seconds) {
-            clearInterval(examTimerInterval);
-            examTimeRemaining = seconds;
-            updateTimerUI();
-            
-            examTimerInterval = setInterval(() => {
-                examTimeRemaining--;
-                updateTimerUI();
-                if(examTimeRemaining <= 0) {
-                    clearInterval(examTimerInterval);
-                    alert("Time's up! Submitting exam automatically.");
-                    submitExam();
-                }
-            }, 1000);
-        }
-
-        function updateTimerUI() {
-            const m = Math.floor(examTimeRemaining / 60).toString().padStart(2, '0');
-            const s = (examTimeRemaining % 60).toString().padStart(2, '0');
-            document.getElementById('exam-timer-display').innerText = `${m}:${s}`;
-        }
 
         function submitExam() {
-            clearInterval(examTimerInterval);
-            
             let score = 0;
             state.session.questions.forEach((q, index) => {
                 const userAns = state.session.userAnswers[index];
@@ -941,56 +788,18 @@ function trackStats(q, isCorrect) {
             clearSessionProgress();
         }
 
-function endSession(silent = false) {
-    clearInterval(examTimerInterval);
-    
-    // NEW: Check if this was a completed practice session
-    const isLastQuestion = state.session.currentIndex >= state.session.questions.length - 1;
-    const isAnswered = state.session.userAnswers && state.session.userAnswers[state.session.currentIndex];
-    
-    if (state.session.type === 'practice' && isLastQuestion && isAnswered) {
-        // If finished, wipe it
-        clearSessionProgress();
-    } else {
-        // Otherwise, save the progress so you can resume later
-        saveSessionProgress(); 
-    }
-
-    state.session.active = false;
-    
-    if(!silent) navigate('dashboard');
-}
-
-        function toggleBookmark() {
-            if(!state.session.active) return;
-            const qId = state.session.questions[state.session.currentIndex].ID;
+        function endSession(silent = false) {
+            const isLastQuestion = state.session.currentIndex >= state.session.questions.length - 1;
+            const isAnswered = state.session.userAnswers && state.session.userAnswers[state.session.currentIndex];
             
-            if(state.stats.bookmarks.includes(qId)) state.stats.bookmarks = state.stats.bookmarks.filter(id => id !== qId);
-            else state.stats.bookmarks.push(qId);
-            
-            saveState(); updateIcons(qId);
-        }
-
-        function toggleFlag() {
-            if(!state.session.active) return;
-            const index = state.session.currentIndex;
-            
-            if(state.session.flags.includes(index)) state.session.flags = state.session.flags.filter(i => i !== index);
-            else state.session.flags.push(index);
-            
-            updateIcons(state.session.questions[index].ID);
-        }
-
-        function updateIcons(qId) {
-            const bBtn = document.getElementById('btn-bookmark');
-            if(state.stats.bookmarks.includes(qId)) bBtn.innerHTML = '<i class="fa-solid fa-bookmark text-xl text-yellow-500"></i>';
-            else bBtn.innerHTML = '<i class="fa-regular fa-bookmark text-xl"></i>';
-
-            if(state.session.type === 'exam') {
-                const fBtn = document.getElementById('btn-flag');
-                if(state.session.flags.includes(state.session.currentIndex)) fBtn.innerHTML = '<i class="fa-solid fa-flag text-xl text-orange-500"></i>';
-                else fBtn.innerHTML = '<i class="fa-regular fa-flag text-xl"></i>';
+            if (state.session.type === 'practice' && isLastQuestion && isAnswered) {
+                clearSessionProgress();
+            } else {
+                saveSessionProgress(); 
             }
+
+            state.session.active = false;
+            if(!silent) navigate('dashboard');
         }
 
         function renderCharts() {
@@ -1040,39 +849,28 @@ function endSession(silent = false) {
             saveState();
         }
 
-function resetProgress() {
-    if(confirm("Are you sure? This deletes mistakes, all statistics, and your current saved session.")) {
-        // Wipes all stats
-        state.stats = { totalAnswered: 0, correct: 0, mistakes: [], bookmarks: [], subjectAccuracy: {}, completedQs: [] };
-        
-        // Wipes the active session state
-        state.session = { active: false, type: 'practice', questions: [], currentIndex: 0, userAnswers: {}, flags: [] };
-        
-        // Deletes the saved session from storage and hides the Resume button
-        clearSessionProgress();
-        
-        saveState(); 
-        alert("Progress Reset.");
-        
-        // Refresh charts if we are on the stats page
-        if(document.getElementById('view-stats').classList.contains('active')) renderCharts();
-    }
-}
+        function resetProgress() {
+            if(confirm("Are you sure? This deletes mistakes, all statistics, and your current saved session.")) {
+                state.stats = { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {}, completedQs: [] };
+                state.session = { active: false, type: 'practice', questions: [], currentIndex: 0, userAnswers: {} };
+                
+                clearSessionProgress();
+                saveState(); 
+                alert("Progress Reset.");
+                
+                if(document.getElementById('view-stats').classList.contains('active')) renderCharts();
+            }
+        }
 
-function clearDatabase() {
-    if(confirm("WARNING: Are you sure you want to clear the locally saved database? You will need an active internet connection to sync the questions again. The app will reload to apply changes.")) {
-        
-        localStorage.removeItem('mrh_db');
-        state.db = [];
-        
-        // Deletes the saved session so it doesn't try to load deleted questions
-        clearSessionProgress();
-        
-        window.location.reload();
-    }
-}
+        function clearDatabase() {
+            if(confirm("WARNING: Are you sure you want to clear the locally saved database? You will need an active internet connection to sync the questions again. The app will reload to apply changes.")) {
+                localStorage.removeItem('mrh_db');
+                state.db = [];
+                clearSessionProgress();
+                window.location.reload();
+            }
+        }
 
-        // --- NEW: BACKUP & RESTORE LOGIC ---
         function exportData() {
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
             const dlAnchorElem = document.createElement('a');
@@ -1114,115 +912,89 @@ function clearDatabase() {
             syncDatabase();
         };
 
-// --- REPLACE your existing saveSessionProgress with this ---
-function saveSessionProgress() {
-    if (!state.session.active) return;
-    // Save the entire session object so the randomized pool and user answers remain intact
-    localStorage.setItem('mrh_saved_session', JSON.stringify(state.session));
-}
-
-// --- ADD these new functions ---
-function checkSavedSession() {
-    const saved = localStorage.getItem('mrh_saved_session');
-    const resumeContainer = document.getElementById('resume-container');
-    
-    if (saved && resumeContainer) {
-        try {
-            const session = JSON.parse(saved);
-            
-            // NEW: Automatically destroy practice sessions if the final question is already answered
-            if (session.type === 'practice') {
-                const isLastQuestion = session.currentIndex >= session.questions.length - 1;
-                const isAnswered = session.userAnswers && session.userAnswers[session.currentIndex];
-                
-                if (isLastQuestion && isAnswered) {
-                    localStorage.removeItem('mrh_saved_session');
-                    resumeContainer.classList.add('hidden');
-                    return; // Stop execution here so the button stays hidden
-                }
-            }
-        } catch(e) {
-            console.error("Error checking session", e);
+        function saveSessionProgress() {
+            if (!state.session.active) return;
+            localStorage.setItem('mrh_saved_session', JSON.stringify(state.session));
         }
 
-        resumeContainer.classList.remove('hidden');
-    } else if (resumeContainer) {
-        resumeContainer.classList.add('hidden');
-    }
-}
-
-function resumeSession() {
-    const saved = localStorage.getItem('mrh_saved_session');
-    if (!saved) return;
-
-    // Load the saved session state
-    state.session = JSON.parse(saved);
-
-    // NEW: Sync the loaded session with the freshest database data
-    state.session.questions = state.session.questions.map((savedQ, index) => {
-        const freshQ = state.db.find(dbQ => dbQ.ID === savedQ.ID);
-        
-        if (freshQ) {
-            // Update texts in case you edited typos
-            savedQ.Question = freshQ.Question;
-            savedQ.Explanation = freshQ.Explanation;
+        function checkSavedSession() {
+            const saved = localStorage.getItem('mrh_saved_session');
+            const resumeContainer = document.getElementById('resume-container');
             
-            // Get the actual text of the new correct answer from the database
-            const realCorrectText = freshQ[`Choice${freshQ.Answer}`];
-            
-            // Find where that text landed in our already-shuffled choices
-            if (savedQ.ChoiceA === realCorrectText) savedQ.Answer = 'A';
-            else if (savedQ.ChoiceB === realCorrectText) savedQ.Answer = 'B';
-            else if (savedQ.ChoiceC === realCorrectText) savedQ.Answer = 'C';
-            else if (savedQ.ChoiceD === realCorrectText) savedQ.Answer = 'D';
-            else {
-                // If the text of the choices was heavily edited, replace them with a fresh shuffle
-                const freshShuffled = prepareSessionPool([freshQ])[0];
-                savedQ.ChoiceA = freshShuffled.ChoiceA;
-                savedQ.ChoiceB = freshShuffled.ChoiceB;
-                savedQ.ChoiceC = freshShuffled.ChoiceC;
-                savedQ.ChoiceD = freshShuffled.ChoiceD;
-                savedQ.Answer = freshShuffled.Answer;
-                
-                // Remove the user's saved answer for this question since the choices completely changed
-                if (state.session.userAnswers[index]) {
-                    delete state.session.userAnswers[index];
+            if (saved && resumeContainer) {
+                try {
+                    const session = JSON.parse(saved);
+                    
+                    if (session.type === 'practice') {
+                        const isLastQuestion = session.currentIndex >= session.questions.length - 1;
+                        const isAnswered = session.userAnswers && session.userAnswers[session.currentIndex];
+                        
+                        if (isLastQuestion && isAnswered) {
+                            localStorage.removeItem('mrh_saved_session');
+                            resumeContainer.classList.add('hidden');
+                            return; 
+                        }
+                    }
+                } catch(e) {
+                    console.error("Error checking session", e);
                 }
+
+                resumeContainer.classList.remove('hidden');
+            } else if (resumeContainer) {
+                resumeContainer.classList.add('hidden');
             }
         }
-        return savedQ;
-    });
 
-    // Switch to the practice view
-    navigate('practice');
-    document.getElementById('session-setup').classList.add('hidden');
-    document.getElementById('session-active').classList.remove('hidden');
-    document.getElementById('exam-results').classList.add('hidden');
+        function resumeSession() {
+            const saved = localStorage.getItem('mrh_saved_session');
+            if (!saved) return;
 
-    // Configure UI based on session type
-    if(state.session.type === 'exam') {
-        document.getElementById('exam-timer-display').classList.remove('hidden');
-        document.getElementById('btn-flag').classList.remove('hidden');
-        document.getElementById('btn-pause-exam').classList.remove('hidden');
-    } else {
-        document.getElementById('exam-timer-display').classList.add('hidden');
-        document.getElementById('btn-flag').classList.add('hidden');
-        document.getElementById('btn-pause-exam').classList.add('hidden');
-    }
+            state.session = JSON.parse(saved);
 
-    examPaused = false;
-    renderQuestion();
-}
+            state.session.questions = state.session.questions.map((savedQ, index) => {
+                const freshQ = state.db.find(dbQ => dbQ.ID === savedQ.ID);
+                
+                if (freshQ) {
+                    savedQ.Question = freshQ.Question;
+                    savedQ.Explanation = freshQ.Explanation;
+                    
+                    const realCorrectText = freshQ[`Choice${freshQ.Answer}`];
+                    
+                    if (savedQ.ChoiceA === realCorrectText) savedQ.Answer = 'A';
+                    else if (savedQ.ChoiceB === realCorrectText) savedQ.Answer = 'B';
+                    else if (savedQ.ChoiceC === realCorrectText) savedQ.Answer = 'C';
+                    else if (savedQ.ChoiceD === realCorrectText) savedQ.Answer = 'D';
+                    else {
+                        const freshShuffled = prepareSessionPool([freshQ])[0];
+                        savedQ.ChoiceA = freshShuffled.ChoiceA;
+                        savedQ.ChoiceB = freshShuffled.ChoiceB;
+                        savedQ.ChoiceC = freshShuffled.ChoiceC;
+                        savedQ.ChoiceD = freshShuffled.ChoiceD;
+                        savedQ.Answer = freshShuffled.Answer;
+                        
+                        if (state.session.userAnswers[index]) {
+                            delete state.session.userAnswers[index];
+                        }
+                    }
+                }
+                return savedQ;
+            });
 
-function clearSessionProgress() {
-    localStorage.removeItem('mrh_saved_session');
-    
-    // NEW: Instantly hide the button from the screen
-    const resumeContainer = document.getElementById('resume-container');
-    if (resumeContainer) {
-        resumeContainer.classList.add('hidden');
-    }
-}
+            navigate('practice');
+            document.getElementById('session-setup').classList.add('hidden');
+            document.getElementById('session-active').classList.remove('hidden');
+            document.getElementById('exam-results').classList.add('hidden');
+
+            renderQuestion();
+        }
+
+        function clearSessionProgress() {
+            localStorage.removeItem('mrh_saved_session');
+            const resumeContainer = document.getElementById('resume-container');
+            if (resumeContainer) {
+                resumeContainer.classList.add('hidden');
+            }
+        }
 
         function shuffleArray(array) {
             for (let i = array.length - 1; i > 0; i--) {
@@ -1233,33 +1005,27 @@ function clearSessionProgress() {
         }
 
         function revealAnswer() {
-    if (!state.session.active) return;
-    
-    const q = state.session.questions[state.session.currentIndex];
-    
-    // 1. Record the action so the app knows it was processed
-    state.session.userAnswers[state.session.currentIndex] = "REVEALED";
-    
-    // 2. Track as a mistake (isCorrect = false)
-    trackStats(q, false);
-    
-    // 3. Highlight the correct choice and dim the others
-    document.querySelectorAll('.choice-btn').forEach(btn => {
-        btn.onclick = null; // Disable further clicking
-        if(btn.dataset.choice === q.Answer) {
-            btn.classList.add('selected-correct');
-        } else {
-            btn.classList.add('dimmed');
-        }
-    });
+            if (!state.session.active) return;
+            
+            const q = state.session.questions[state.session.currentIndex];
+            state.session.userAnswers[state.session.currentIndex] = "REVEALED";
+            
+            trackStats(q, false);
+            
+            document.querySelectorAll('.choice-btn').forEach(btn => {
+                btn.onclick = null; 
+                if(btn.dataset.choice === q.Answer) {
+                    btn.classList.add('selected-correct');
+                } else {
+                    btn.classList.add('dimmed');
+                }
+            });
 
-    // 4. Update the progress bar
-    document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
-    
-    // 5. Re-render the question UI (this will show explanation and unlock Next button)
-    renderQuestion();
-    saveSessionProgress();
-}
+            document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
+            
+            renderQuestion();
+            saveSessionProgress();
+        }
     </script>
 </body>
 </html>
