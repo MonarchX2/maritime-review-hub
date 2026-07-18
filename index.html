@@ -41,6 +41,9 @@
         .choice-btn.selected-correct { background-color: #22c55e !important; color: white !important; border-color: #16a34a !important; }
         .choice-btn.selected-wrong { background-color: #ef4444 !important; color: white !important; border-color: #dc2626 !important; }
         .choice-btn.dimmed { opacity: 0.5; pointer-events: none; }
+        details[open] summary i.fa-chevron-down {
+    transform: rotate(180deg);
+}
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col">
@@ -655,79 +658,159 @@
             }
         }
 
-        function renderCategoryProgress() {
-            const container = document.getElementById('category-list');
-            
-            if (!state.categorySummary || state.categorySummary.length === 0) {
-                container.innerHTML = '<p class="text-gray-500">No categories found. Please ensure your database is synced.</p>';
-                return;
+function renderCategoryProgress() {
+    const container = document.getElementById('category-list');
+    
+    if (!state.categorySummary || state.categorySummary.length === 0) {
+        container.innerHTML = '<p class="text-gray-500">No categories found. Please ensure your database is synced.</p>';
+        return;
+    }
+
+    if (!state.stats.completedQs) state.stats.completedQs = [];
+
+    // 1. FILTER: Remove Admin and Telemetry
+    const filteredCategories = state.categorySummary.filter(cat => {
+        const lower = cat.Subject.toLowerCase();
+        return lower !== 'admin' && lower !== 'telemetry';
+    });
+
+    if (filteredCategories.length === 0) {
+        container.innerHTML = '<p class="text-gray-500">No active subjects available to study.</p>';
+        return;
+    }
+
+    // 2. PARSE: Build the Hierarchy Tree based on "::"
+    const tree = {};
+    filteredCategories.forEach(cat => {
+        const parts = cat.Subject.split('::').map(s => s.trim());
+        let current = tree;
+        parts.forEach((part, index) => {
+            if (!current[part]) {
+                current[part] = { _data: null, _children: {} };
             }
+            if (index === parts.length - 1) {
+                current[part]._data = cat;
+            }
+            current = current[part]._children;
+        });
+    });
 
-            if (!state.stats.completedQs) state.stats.completedQs = [];
+    // 3. RENDER: Recursive function to build HTML
+    function generateTreeHTML(node, depth = 0) {
+        let html = '';
+        for (const key in node) {
+            const item = node[key];
+            const hasChildren = Object.keys(item._children).length > 0;
+            const hasData = item._data !== null;
 
-            container.innerHTML = state.categorySummary.map(cat => {
-                const subj = cat.Subject;
-                const safeSubj = escapeHTML(subj); 
-                const totalQuestionsInDb = cat.QuestionCount; 
-                const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
-                
-                const completedCount = state.stats.completedQs.filter(id => id.startsWith(subj.substring(0, 3).toUpperCase())).length;
-                const mistakesCount = state.stats.mistakes.filter(id => id.startsWith(subj.substring(0, 3).toUpperCase())).length;
-                const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
-                const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
-                const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100';
+            // If it has children, render a collapsible folder
+            if (hasChildren) {
+                // Determine padding based on depth
+                const isRoot = depth === 0;
+                const folderClass = isRoot 
+                    ? "mb-4 bg-gray-50 dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm"
+                    : "mb-3 mt-2 border-l-2 border-brand-200 dark:border-brand-800 pl-2";
 
-                const isDownloaded = state.db.some(q => q.Subject === subj);
-                const statusBadge = isDownloaded 
-                    ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400" title="Saved locally. Will update automatically on click."><i class="fa-solid fa-hard-drive mr-1"></i> Saved</span>`
-                    : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400" title="Not downloaded yet."><i class="fa-solid fa-cloud mr-1"></i> Cloud</span>`;
-
-                const buttonText = completedCount === 0 ? 'Start' : 'Continue';
-
-                return `
-                    <div class="${cardClasses} p-5 rounded-xl shadow-sm border transition-colors duration-300 relative">
-                        <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center">
-                            <i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500 mb-2"></i>
-                            <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
-                        </div>
-
-                        <div class="flex justify-between items-start mb-2">
-                            <div>
-                                <div class="flex items-center gap-2 mb-1">
-                                    <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100">${safeSubj}</h3>
-                                    ${statusBadge}
-                                </div>
-                                <p class="text-xs text-gray-400">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>
-                            </div>
-                            <div class="text-right flex flex-col items-end gap-1">
-                                ${isDownloaded 
-                                    ? `<button onclick="deleteSubjectData('${safeSubj}')" class="text-gray-300 hover:text-red-500 transition-colors" title="Delete Downloaded Data">
-                                         <i class="fa-solid fa-trash-can"></i>
-                                       </button>` 
-                                    : `<div class="h-4"></div>`}
-                                <span class="text-sm font-black text-brand-600">${completedCount} / ${totalQuestionsInDb} Done</span>
-                            </div>
-                        </div>
-                        
-                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mb-4">
-                            <div class="bg-brand-500 h-2.5 rounded-full transition-all duration-500" style="width: ${progressPercent}%"></div>
-                        </div>
-                        
-                        <div class="flex gap-2 mt-4 flex-wrap">
-                            <button onclick="fetchAndStartCategory('${safeSubj}', 'continue')" class="flex-1 bg-brand-600 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-brand-700 text-sm shadow-sm transition-colors">
-                                <i class="fa-solid fa-play mr-1"></i> ${buttonText}
-                            </button>
-                            ${mistakesCount > 0 ? `
-                            <button onclick="fetchAndStartCategory('${safeSubj}', 'mistakes')" class="flex-1 bg-orange-500 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-orange-600 text-sm shadow-sm transition-colors">
-                                <i class="fa-solid fa-book mr-1"></i> Review ${mistakesCount}
-                            </button>
-                            ` : ''}
-                            <button onclick="resetCategory('${safeSubj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2.5 rounded-lg font-bold hover:bg-red-100 transition-colors text-sm"><i class="fa-solid fa-rotate-left"></i></button>
-                        </div>
-                    </div>
+                html += `
+                    <details class="${folderClass} overflow-hidden" open>
+                        <summary class="p-4 font-bold text-gray-800 dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center select-none list-none [&::-webkit-details-marker]:hidden">
+                            <i class="fa-solid fa-folder-open text-brand-500 mr-3"></i> ${escapeHTML(key)}
+                            <i class="fa-solid fa-chevron-down text-gray-400 text-xs ml-auto transition-transform duration-200"></i>
+                        </summary>
+                        <div class="p-2 pb-4 ${isRoot ? 'px-4 border-t border-gray-200 dark:border-gray-700' : 'px-2'}">
                 `;
-            }).join('');
+                
+                // If a folder itself is also a playable subject, render its card first
+                if (hasData) {
+                    html += generateCardHTML(item._data, key);
+                }
+                
+                // Render sub-folders and child cards
+                html += generateTreeHTML(item._children, depth + 1);
+                
+                html += `
+                        </div>
+                    </details>
+                `;
+            } else if (hasData) {
+                // Leaf node: render the standard study card
+                html += generateCardHTML(item._data, key);
+            }
         }
+        return html;
+    }
+
+    // 4. RENDER: Helper to create the actual study card UI
+    function generateCardHTML(cat, displayName) {
+        const subj = cat.Subject;
+        const safeSubj = escapeHTML(subj); 
+        const safeName = escapeHTML(displayName);
+        const totalQuestionsInDb = cat.QuestionCount; 
+        const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
+        
+        const completedCount = state.stats.completedQs.filter(id => id.startsWith(subj.substring(0, 3).toUpperCase())).length;
+        const mistakesCount = state.stats.mistakes.filter(id => id.startsWith(subj.substring(0, 3).toUpperCase())).length;
+        const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
+        const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
+        const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
+
+        const isDownloaded = state.db.some(q => q.Subject === subj);
+        const statusBadge = isDownloaded 
+            ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400" title="Saved locally."><i class="fa-solid fa-hard-drive mr-1"></i> Saved</span>`
+            : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400" title="Not downloaded yet."><i class="fa-solid fa-cloud mr-1"></i> Cloud</span>`;
+
+        const buttonText = completedCount === 0 ? 'Start' : 'Continue';
+
+        return `
+            <div class="${cardClasses} p-5 rounded-xl shadow-sm border transition-colors duration-300 relative w-full mb-3 last:mb-0">
+                <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center">
+                    <i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500 mb-2"></i>
+                    <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
+                </div>
+
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center">
+                                <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm"></i>
+                                ${safeName}
+                            </h3>
+                            ${statusBadge}
+                        </div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>
+                    </div>
+                    <div class="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+                        ${isDownloaded 
+                            ? `<button onclick="deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 transition-colors" title="Delete Downloaded Data">
+                                 <i class="fa-solid fa-trash-can"></i>
+                               </button>` 
+                            : `<div></div>`}
+                        <span class="text-sm font-black text-brand-600 dark:text-brand-400">${completedCount} / ${totalQuestionsInDb} Done</span>
+                    </div>
+                </div>
+                
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4">
+                    <div class="bg-brand-500 h-2 rounded-full transition-all duration-500" style="width: ${progressPercent}%"></div>
+                </div>
+                
+                <div class="flex gap-2 flex-wrap">
+                    <button onclick="fetchAndStartCategory('${safeSubj}', 'continue')" class="flex-1 bg-brand-600 text-white py-2 px-2 rounded-lg font-bold hover:bg-brand-700 text-sm shadow-sm transition-colors flex items-center justify-center">
+                        <i class="fa-solid fa-play mr-2"></i> ${buttonText}
+                    </button>
+                    ${mistakesCount > 0 ? `
+                    <button onclick="fetchAndStartCategory('${safeSubj}', 'mistakes')" class="flex-1 bg-orange-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-orange-600 text-sm shadow-sm transition-colors flex items-center justify-center">
+                        <i class="fa-solid fa-book mr-2"></i> Review ${mistakesCount}
+                    </button>
+                    ` : ''}
+                    <button onclick="resetCategory('${safeSubj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors text-sm border border-red-100 dark:border-red-800" title="Reset Progress"><i class="fa-solid fa-rotate-left"></i></button>
+                </div>
+            </div>
+        `;
+    }
+
+    // 5. INJECT: Add the generated HTML to the DOM
+    container.innerHTML = generateTreeHTML(tree);
+}
 
         async function fetchAndStartCategory(subject, mode) {
             const loader = document.getElementById(`loading-${subject}`);
