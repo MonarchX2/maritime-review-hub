@@ -82,16 +82,32 @@
             transform: scale(0.98);
         }
         
-        @keyframes popCorrect {
-            0% { transform: scale(1); }
-            40% { transform: scale(1.04); }
-            100% { transform: scale(1); background-color: #22c55e !important; color: white !important; border-color: #16a34a !important; box-shadow: 0 4px 14px 0 rgba(34, 197, 94, 0.39); }
-        }
-        @keyframes shakeWrong {
-            0%, 100% { transform: translateX(0); background-color: #ef4444 !important; color: white !important; border-color: #dc2626 !important; box-shadow: 0 4px 14px 0 rgba(239, 68, 68, 0.39);}
-            20%, 60% { transform: translateX(-6px); }
-            40%, 80% { transform: translateX(6px); }
-        }
+@keyframes popCorrect {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.04); }
+    100% { 
+        transform: scale(1); 
+        background-color: #16a34a !important; /* Deeper, richer green */
+        color: #ffffff !important; 
+        border-color: #14532d !important; /* Very dark green border */
+        border-width: 3px !important; 
+        font-weight: 900 !important; /* Extra bold text */
+        box-shadow: 0 0 15px 5px rgba(34, 197, 94, 0.6) !important; /* Stronger, wider glow */
+    }
+}
+@keyframes shakeWrong {
+    0%, 100% { 
+        transform: translateX(0); 
+        background-color: #dc2626 !important; /* Deeper, richer red */
+        color: #ffffff !important; 
+        border-color: #7f1d1d !important; /* Very dark red border */
+        border-width: 3px !important; 
+        font-weight: 900 !important; /* Extra bold text */
+        box-shadow: 0 0 15px 5px rgba(239, 68, 68, 0.6) !important; /* Stronger, wider glow */
+    }
+    20%, 60% { transform: translateX(-6px); }
+    40%, 80% { transform: translateX(6px); }
+}
 
         /* Folders & Accordions Smooth Expand */
         details > summary { list-style: none; }
@@ -145,7 +161,7 @@
             <i class="fa-solid fa-anchor mr-2"></i> BSMT 3.1 – ALPHA
         </button>
         <div class="flex items-center gap-5">
-            <button id="btn-admin-nav"onclick="navigate('admin')" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="Admin Portal">
+            <button id="btn-admin-nav"onclick="navigate('admin')" class="hidden hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="Admin Portal">
                 <i class="fa-solid fa-lock"></i>
             </button>
             <button onclick="navigate('settings')" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg hover:rotate-90" aria-label="Settings">
