@@ -87,9 +87,15 @@
             <p class="text-gray-500 mb-6">Track your milestones, continue where you left off, or reset individual subjects.</p>
             
             <!-- We moved the category list directly into the dashboard -->
-            <div id="category-list" class="space-y-4">
-                <!-- Categories will be rendered here dynamically -->
-            </div>
+<!-- We moved the category list directly into the dashboard -->
+<div id="category-list" class="space-y-4">
+    <!-- Default Loading State -->
+    <div id="dashboard-loading" class="flex flex-col items-center justify-center py-12">
+        <i class="fa-solid fa-spinner fa-spin text-4xl text-brand-500 mb-4"></i>
+        <h3 class="text-lg font-bold text-gray-700 dark:text-gray-200">Loading Database...</h3>
+        <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Fetching the latest subjects</p>
+    </div>
+</div>
         </section>
 
         <section id="view-practice" class="view-section">
@@ -210,7 +216,7 @@
             
             <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-6 border border-gray-100 dark:border-gray-700">
                 <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-database text-brand-500 mr-2"></i> Database Sync</h3>
-.                <p id="sync-status" class="text-sm mt-3 font-medium bg-gray-50 dark:bg-gray-700 p-3 rounded-lg hidden"></p>
+                <p id="sync-status" class="text-sm mt-3 font-medium bg-gray-50 dark:bg-gray-700 p-3 rounded-lg hidden"></p>
                 <p class="text-xs text-gray-400 mt-4">Current Database Size: <span id="db-size-display" class="font-bold">0</span> questions.</p>
             </div>
 
@@ -333,20 +339,32 @@ async function syncDatabase() {
                     
                     if (typeof populateFilters === "function") populateFilters();
                     if (typeof renderCategoryProgress === "function") renderCategoryProgress();
-                } else {
-                    if (statusEl) {
-                        statusEl.innerText = "Error: Connected, but no subjects found.";
-                        statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
-                    }
-                }
-            } catch (err) {
-                console.error(err);
+// ... existing syncDatabase code ...
+            } else {
                 if (statusEl) {
-                    statusEl.innerText = "Connection Error. Ensure you deployed the Apps Script correctly.";
+                    statusEl.innerText = "Error: Connected, but no subjects found.";
                     statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
                 }
             }
+        } catch (err) {
+            console.error(err);
+            if (statusEl) {
+                statusEl.innerText = "Connection Error. Ensure you deployed the Apps Script correctly.";
+                statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+            }
+            
+            // NEW: Remove the infinite spinner if the connection fails
+            const catList = document.getElementById('category-list');
+            if (catList && state.categorySummary.length === 0) {
+                catList.innerHTML = `
+                    <div class="text-center py-10 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
+                        <i class="fa-solid fa-triangle-exclamation text-3xl text-red-500 mb-3"></i>
+                        <h3 class="font-bold text-red-700 dark:text-red-400">Database Connection Failed</h3>
+                        <p class="text-sm text-red-600 dark:text-red-300 mt-1">Please check your internet connection or go to Settings to try syncing again.</p>
+                    </div>`;
+            }
         }
+    }
 
         // Updated for Subject and Tag filtering
         function populateFilters() {
