@@ -335,13 +335,13 @@
     <script>
         const DB_URL = "https://script.google.com/macros/s/AKfycbw9B0Ny93yn3W8tE4e0Kvfamdwk_YCn0AUol67NqjPbtYljF3V-7uPha7Z0Snyw8sw_/exec";
         
-        let state = {
-            db: [],
-            categorySummary: [],
-            stats: { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} },
-            prefs: { darkMode: true },
-            session: { active: false, questions: [], currentIndex: 0, userAnswers: {} }
-        };
+let state = {
+    db: [],
+    categorySummary: [],
+    stats: { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} },
+    prefs: { darkMode: true },
+    session: { active: false, questions: [], currentIndex: 0, userAnswers: {}, autoNextTimeout: null }
+};
 
         let adminState = {
             token: "",
@@ -1073,50 +1073,70 @@
             }
         }
 
-        function submitPracticeAnswer(selected, correct) {
-            const q = state.session.questions[state.session.currentIndex];
-            state.session.userAnswers[state.session.currentIndex] = selected;
-            
-            trackStats(q, selected === correct);
+function submitPracticeAnswer(selected, correct) {
+    const q = state.session.questions[state.session.currentIndex];
+    state.session.userAnswers[state.session.currentIndex] = selected;
+    
+    trackStats(q, selected === correct);
 
-            document.querySelectorAll('.choice-btn').forEach(btn => {
-                btn.onclick = null;
-                if(btn.dataset.choice === correct) btn.classList.add('selected-correct');
-                else if (btn.dataset.choice === selected) btn.classList.add('selected-wrong');
-                else btn.classList.add('dimmed');
-            });
+    document.querySelectorAll('.choice-btn').forEach(btn => {
+        btn.onclick = null;
+        if(btn.dataset.choice === correct) btn.classList.add('selected-correct');
+        else if (btn.dataset.choice === selected) btn.classList.add('selected-wrong');
+        else btn.classList.add('dimmed');
+    });
 
-            showExplanation(q);
-            
-            document.getElementById('btn-next').disabled = false;
-            document.getElementById('btn-reveal').disabled = true;
-            document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
-        }
+    showExplanation(q);
+    
+    document.getElementById('btn-next').disabled = false;
+    document.getElementById('btn-reveal').disabled = true;
+    document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
 
-        function showExplanation(q) {
-            document.getElementById('q-explanation-text').innerText = q.Explanation || "No explanation provided in database.";
-            document.getElementById('q-explanation-box').classList.remove('hidden');
-        }
+    // Start 2-second timer to proceed to the next question
+    if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
+    state.session.autoNextTimeout = setTimeout(() => {
+        nextQuestion();
+    }, 3000);
+}
 
-        function nextQuestion() {
-            if(state.session.currentIndex < state.session.questions.length - 1) {
-                state.session.currentIndex++;
-                renderQuestion();
-                saveSessionProgress();
-            } else {
-                alert("Practice Session Complete! Great job.");
-                clearSessionProgress(); 
-                endSession(false);
-            }
-        }
+function showExplanation(q) {
+    const expBox = document.getElementById('q-explanation-box');
+    
+    // Check if an explanation exists and is not empty
+    if (q.Explanation && q.Explanation.trim() !== "") {
+        document.getElementById('q-explanation-text').innerText = q.Explanation;
+        expBox.classList.remove('hidden');
+    } else {
+        // Keep the box hidden if there is no explanation
+        expBox.classList.add('hidden');
+    }
+}
 
-        function prevQuestion() {
-            if(state.session.currentIndex > 0) {
-                state.session.currentIndex--;
-                renderQuestion();
-            }
-            saveSessionProgress();
-        }
+function nextQuestion() {
+    // Clear any pending auto-next timers
+    if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
+
+    if(state.session.currentIndex < state.session.questions.length - 1) {
+        state.session.currentIndex++;
+        renderQuestion();
+        saveSessionProgress();
+    } else {
+        alert("Practice Session Complete! Great job.");
+        clearSessionProgress(); 
+        endSession(false);
+    }
+}
+
+function prevQuestion() {
+    // Clear any pending auto-next timers
+    if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
+
+    if(state.session.currentIndex > 0) {
+        state.session.currentIndex--;
+        renderQuestion();
+    }
+    saveSessionProgress();
+}
 
         function trackStats(q, isCorrect) {
             state.stats.totalAnswered++;
@@ -1361,28 +1381,34 @@
             return array;
         }
 
-        function revealAnswer() {
-            if (!state.session.active) return;
-            
-            const q = state.session.questions[state.session.currentIndex];
-            state.session.userAnswers[state.session.currentIndex] = "REVEALED";
-            
-            trackStats(q, false);
-            
-            document.querySelectorAll('.choice-btn').forEach(btn => {
-                btn.onclick = null; 
-                if(btn.dataset.choice === q.Answer) {
-                    btn.classList.add('selected-correct');
-                } else {
-                    btn.classList.add('dimmed');
-                }
-            });
-
-            document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
-            
-            renderQuestion();
-            saveSessionProgress();
+function revealAnswer() {
+    if (!state.session.active) return;
+    
+    const q = state.session.questions[state.session.currentIndex];
+    state.session.userAnswers[state.session.currentIndex] = "REVEALED";
+    
+    trackStats(q, false);
+    
+    document.querySelectorAll('.choice-btn').forEach(btn => {
+        btn.onclick = null; 
+        if(btn.dataset.choice === q.Answer) {
+            btn.classList.add('selected-correct');
+        } else {
+            btn.classList.add('dimmed');
         }
+    });
+
+    document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
+    
+    renderQuestion();
+    saveSessionProgress();
+
+    // Start 2-second timer to proceed to the next question
+    if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
+    state.session.autoNextTimeout = setTimeout(() => {
+        nextQuestion();
+    }, 3000);
+}
     </script>
 </body>
 </html>
