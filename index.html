@@ -145,7 +145,7 @@
             <i class="fa-solid fa-anchor mr-2"></i> BSMT 3.1 – ALPHA
         </button>
         <div class="flex items-center gap-5">
-            <button onclick="navigate('admin')" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="Admin Portal">
+            <button id="btn-admin-nav"onclick="navigate('admin')" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="Admin Portal">
                 <i class="fa-solid fa-lock"></i>
             </button>
             <button onclick="navigate('settings')" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg hover:rotate-90" aria-label="Settings">
@@ -194,6 +194,11 @@
             </div>
 
             <div id="session-active" class="hidden transition-all duration-500">
+                <div class="mb-6">
+                    <button onclick="navigate('dashboard')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95 flex items-center group">
+                        <i class="fa-solid fa-arrow-left mr-2 group-hover:-translate-x-1 transition-transform"></i> Pause & Return
+                    </button>
+                </div>
                 <div class="flex justify-between items-center mb-2">
                     <span class="text-sm font-semibold text-gray-500 dark:text-gray-400 transition-colors">Card Progress</span>
                     <span class="text-sm font-bold text-brand-600 dark:text-brand-400" id="session-progress-text">0 / 0</span>
@@ -415,7 +420,29 @@ let state = {
             if (typeof renderCategoryProgress === 'function') renderCategoryProgress();
         }
 
+let settingsClickCount = 0;
+        let settingsClickTimeout = null;
+
         function navigate(viewId) {
+
+            if (viewId === 'settings') {
+                settingsClickCount++;
+                clearTimeout(settingsClickTimeout);
+                
+                // If clicked 5 times, show the button
+                if (settingsClickCount >= 5) {
+                    const adminBtn = document.getElementById('btn-admin-nav');
+                    adminBtn.classList.remove('hidden');
+                    adminBtn.classList.add('animate-card-in'); // Adds a nice fade-in animation
+                    settingsClickCount = 0; // Reset counter after unlocking
+                } else {
+                    // Reset the counter if they stop clicking for 2 seconds
+                    settingsClickTimeout = setTimeout(() => {
+                        settingsClickCount = 0;
+                    }, 2000);
+                }
+            }
+
             if (state.session.active && viewId !== 'practice' && !confirm("You have an active session. Do you want to pause and return? Your progress will be saved.")) return;
             
             if (state.session.active && viewId !== 'practice') {
@@ -774,7 +801,9 @@ let state = {
 
         function renderCategoryProgress() {
             const container = document.getElementById('category-list');
-            
+            const openFolders = Array.from(container.querySelectorAll('details[open] summary'))
+                                     .map(summary => summary.textContent.trim());
+
             if (!state.categorySummary || state.categorySummary.length === 0) {
                 container.innerHTML = '<p class="text-gray-500">No categories found. Please ensure your database is synced.</p>';
                 return;
@@ -937,6 +966,44 @@ let state = {
             }
 
             container.innerHTML = generateTreeHTML(tree);
+
+// --- 2. RE-OPEN MEMORIZED FOLDERS & FIX ANIMATIONS ---
+            container.querySelectorAll('details').forEach(details => {
+                // Re-open folders that were open before the refresh
+                const summaryText = details.querySelector('summary').textContent.trim();
+                if (openFolders.includes(summaryText)) {
+                    details.setAttribute('open', '');
+                }
+
+                // Grab the elements we need to animate
+                const summary = details.querySelector('summary');
+                const contentDiv = details.querySelector('summary ~ div');
+                const chevron = summary.querySelector('i.fa-chevron-down');
+
+                summary.addEventListener('click', function(e) {
+                    if (details.open) {
+                        // 1. Prevent the browser from instantly snapping it closed
+                        e.preventDefault();
+                        
+                        // 2. Play your CSS animation in reverse to close it smoothly
+                        contentDiv.style.animation = 'folderSlideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) reverse forwards';
+                        if (chevron) chevron.style.transform = 'rotate(0deg)'; // Spin arrow back
+                        
+                        // 3. Wait for the reverse animation to finish before actually closing
+                        setTimeout(() => {
+                            details.removeAttribute('open');
+                            contentDiv.style.animation = ''; // Clean up inline styles
+                            if (chevron) chevron.style.transform = ''; 
+                        }, 300); 
+                    } else {
+                        // Force a "DOM Reflow" so the browser restarts the opening animation every single time
+                        contentDiv.style.animation = 'none';
+                        void contentDiv.offsetWidth; 
+                        contentDiv.style.animation = '';
+                    }
+                });
+            });
+            // -----------------------------------------------------
         }
 
         async function fetchAndStartCategory(subject, mode) {
@@ -1163,6 +1230,11 @@ stopVisualTimer();
             const subj = q.Subject || "General";
             if(!state.stats.subjectAccuracy[subj]) state.stats.subjectAccuracy[subj] = { total: 0, correct: 0 };
             state.stats.subjectAccuracy[subj].total++;
+
+            if (!state.stats.completedQs) state.stats.completedQs = [];
+            if (!state.stats.completedQs.includes(q.ID)) {
+                state.stats.completedQs.push(q.ID);
+            }
 
             if (isCorrect) {
                 state.stats.correct++;
