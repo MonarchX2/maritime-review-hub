@@ -43,6 +43,20 @@
         .choice-btn.dimmed { opacity: 0.5; pointer-events: none; }
         details[open] summary i.fa-chevron-down {
     transform: rotate(180deg);
+    /* Smooth fade and slide animation when a folder opens */
+details[open] summary ~ div {
+    animation: folderSlideDown 0.3s ease-out forwards;
+}
+
+@keyframes folderSlideDown {
+    0% { opacity: 0; transform: translateY(-10px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Rotates the little arrow icon 180 degrees when open */
+details[open] summary i.fa-chevron-down {
+    transform: rotate(180deg);
+}
 }
     </style>
 </head>
@@ -395,17 +409,51 @@
         // NEW ADMIN FUNCTIONALITY PORTED TO APP
         // ==========================================
 
-        function adminLogin() {
-            const pass = document.getElementById('admin-password').value;
-            if(!pass) return;
+async function adminLogin() {
+    const pass = document.getElementById('admin-password').value;
+    if(!pass) return;
+
+    // Grab the button and show a loading state
+    const btn = document.getElementById('btn-admin-login');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Verifying...';
+    btn.disabled = true;
+
+    try {
+        const response = await fetch(DB_URL, {
+            method: 'POST',
+            redirect: 'follow',
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({
+                type: "verify_admin",
+                token: pass
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.status === "success") {
+            // Password is correct! Log them in.
             adminState.token = pass;
-            
             document.getElementById('admin-login-error').classList.add('hidden');
             document.getElementById('admin-login-section').classList.add('hidden');
             document.getElementById('admin-dashboard-section').classList.remove('hidden');
-            
             loadAdminSubjects();
+        } else {
+            // Password is wrong
+            const errEl = document.getElementById('admin-login-error');
+            errEl.innerText = "Incorrect password.";
+            errEl.classList.remove('hidden');
         }
+    } catch(e) {
+        alert("Network error while verifying password.");
+        console.error(e);
+    } finally {
+        // Restore button state
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
 
         function loadAdminSubjects() {
             if (!state.categorySummary || state.categorySummary.length === 0) {
