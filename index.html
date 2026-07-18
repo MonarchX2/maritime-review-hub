@@ -123,6 +123,16 @@
             100% { opacity: 1; transform: translateY(0) scale(1); }
         }
 
+        /* Timer Animation (Pop and Expand from Center) */
+        @keyframes expandTimerCenter {
+            0% { transform: scaleX(0) scaleY(2); opacity: 0; } /* Initial 'pop' */
+            5% { transform: scaleX(0.05) scaleY(1); opacity: 1; } 
+            100% { transform: scaleX(1) scaleY(1); opacity: 1; }
+        }
+        .animate-timer-bar {
+            animation: expandTimerCenter 2s linear forwards;
+        }
+
         /* Progress Bar Smoothing */
         #session-progress {
             transition: width 0.6s cubic-bezier(0.25, 1, 0.5, 1);
@@ -226,6 +236,11 @@
                     <button id="btn-next" onclick="nextQuestion()" class="flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 hover:-translate-y-1 hover:shadow-brand-500/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 group">
                         <span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2 group-hover:translate-x-1 transition-transform"></i>
                     </button>
+                </div>
+
+                <!-- ADD THIS: Auto-Next Timer Bar -->
+                <div id="auto-next-timer-container" class="hidden mt-6 h-1.5 w-full max-w-sm mx-auto rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden shadow-inner transition-opacity duration-300">
+                    <div id="auto-next-timer-bar" class="bg-brand-500 h-full w-full origin-center scale-x-0 rounded-full"></div>
                 </div>
             </div>
         </section>
@@ -695,6 +710,7 @@ let state = {
         }
 
         function renderQuestion() {
+            stopVisualTimer();
             const q = state.session.questions[state.session.currentIndex];
             const userAnswer = state.session.userAnswers[state.session.currentIndex];
             
@@ -1092,6 +1108,7 @@ function submitPracticeAnswer(selected, correct) {
     document.getElementById('btn-reveal').disabled = true;
     document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
 
+    startVisualTimer();
     // Start 2-second timer to proceed to the next question
     if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
     state.session.autoNextTimeout = setTimeout(() => {
@@ -1115,6 +1132,7 @@ function showExplanation(q) {
 function nextQuestion() {
     // Clear any pending auto-next timers
     if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
+stopVisualTimer();
 
     if(state.session.currentIndex < state.session.questions.length - 1) {
         state.session.currentIndex++;
@@ -1130,6 +1148,7 @@ function nextQuestion() {
 function prevQuestion() {
     // Clear any pending auto-next timers
     if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
+stopVisualTimer();
 
     if(state.session.currentIndex > 0) {
         state.session.currentIndex--;
@@ -1402,12 +1421,33 @@ function revealAnswer() {
     
     renderQuestion();
     saveSessionProgress();
+startVisualTimer();
 
     // Start 2-second timer to proceed to the next question
     if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
     state.session.autoNextTimeout = setTimeout(() => {
         nextQuestion();
     }, 3000);
+}
+
+function startVisualTimer() {
+    const container = document.getElementById('auto-next-timer-container');
+    const bar = document.getElementById('auto-next-timer-bar');
+    
+    container.classList.remove('hidden');
+    
+    // Trigger CSS reflow to restart the animation consistently
+    bar.classList.remove('animate-timer-bar');
+    void bar.offsetWidth; 
+    bar.classList.add('animate-timer-bar');
+}
+
+function stopVisualTimer() {
+    const container = document.getElementById('auto-next-timer-container');
+    const bar = document.getElementById('auto-next-timer-bar');
+    
+    container.classList.add('hidden');
+    bar.classList.remove('animate-timer-bar');
 }
     </script>
 </body>
