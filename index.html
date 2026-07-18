@@ -225,18 +225,19 @@
                     <input type="file" id="import-file" class="hidden" accept=".json" onchange="importData(event)">
                 </div>
             </div>
+<div class="flex flex-col gap-4 border-t dark:border-gray-700 pt-4 mt-4">
+    <span class="font-medium text-red-500">Danger Zone</span>
+    
+    <div class="flex justify-between items-center">
+        <span class="text-sm dark:text-gray-300">Clear Statistics</span>
+        <button onclick="resetProgress()" class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 transition-colors">Reset Progress</button>
+    </div>
 
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-paint-roller text-brand-500 mr-2"></i> Preferences</h3>
-                <div class="flex justify-between items-center mb-4">
-                    <span class="font-medium">Dark Mode</span>
-                    <button onclick="toggleDarkMode()" class="bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-white px-4 py-2 rounded-lg font-bold shadow-sm"><i class="fa-solid fa-moon mr-2"></i> Toggle</button>
-                </div>
-                <div class="flex justify-between items-center border-t dark:border-gray-700 pt-4 mt-4">
-                    <span class="font-medium text-red-500">Danger Zone</span>
-                    <button onclick="resetProgress()" class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 transition-colors">Reset Local Progress</button>
-                </div>
-            </div>
+    <div class="flex justify-between items-center">
+        <span class="text-sm dark:text-gray-300">Clear Local Database</span>
+        <button onclick="clearDatabase()" class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 transition-colors">Clear Database</button>
+    </div>
+</div>
         </section>
     </main>
 
@@ -767,10 +768,17 @@ function resetCategory(subject) {
             state.stats.subjectAccuracy[subject] = { total: 0, correct: 0 }; 
         }
         
+        // Find all question IDs belonging to this subject
+        const subjectQIDs = state.db.filter(q => q.Subject === subject).map(q => q.ID);
+        
         // Remove questions matching this subject from the completed array so they can be re-answered
         if (state.stats.completedQs) {
-            const subjectQIDs = state.db.filter(q => q.Subject === subject).map(q => q.ID);
             state.stats.completedQs = state.stats.completedQs.filter(id => !subjectQIDs.includes(id));
+        }
+        
+        // NEW: Clear the mistakes for this subject so the "Review #" button hides
+        if (state.stats.mistakes) {
+            state.stats.mistakes = state.stats.mistakes.filter(id => !subjectQIDs.includes(id));
         }
         
         saveState(); 
@@ -1023,6 +1031,21 @@ function resetProgress() {
             }
         }
 
+        function clearDatabase() {
+    // Prompt the user with a warning
+    if(confirm("WARNING: Are you sure you want to clear the locally saved database? You will need an active internet connection to sync the questions again. The app will reload to apply changes.")) {
+        
+        // Remove the database from local storage
+        localStorage.removeItem('mrh_db');
+        
+        // Clear the state array
+        state.db = [];
+        
+        // Refresh the page
+        window.location.reload();
+    }
+}
+
         // --- NEW: BACKUP & RESTORE LOGIC ---
         function exportData() {
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
@@ -1212,6 +1235,5 @@ function clearSessionProgress() {
     saveSessionProgress();
 }
     </script>
-    <script src="features.js"></script>
 </body>
 </html>
