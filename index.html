@@ -272,10 +272,12 @@
             if (typeof renderCategoryProgress === 'function') renderCategoryProgress();
         }
 
-        function navigate(viewId) {
-            if(state.session.active && !confirm("You have an active session. Do you want to pause and return to the dashboard? Your progress will be saved.")) return;
+function navigate(viewId) {
+            // Only show the warning if the user has an active session AND is trying to navigate to a different screen (not practice)
+            if (state.session.active && viewId !== 'practice' && !confirm("You have an active session. Do you want to pause and return to the dashboard? Your progress will be saved.")) return;
             
-            if (state.session.active) {
+            // If they confirmed leaving, save and deactivate the session
+            if (state.session.active && viewId !== 'practice') {
                 saveSessionProgress(); 
                 state.session.active = false; 
             }
@@ -657,31 +659,73 @@
         }
 
 async function deleteSubjectData(subject) {
-            if(confirm(`Are you sure you want to delete the downloaded questions for "${subject}"? Your accuracy and progress stats will remain, but the app will remove the local data to save space.`)) {
-                // 1. Remove the subject from the main database
-                state.db = state.db.filter(q => q.Subject !== subject);
-                await idbKeyval.set('mrh_db', state.db);
+    if(confirm(`Are you sure you want to delete the downloaded questions for "${subject}"? Your accuracy and progress stats will remain, but the app will remove the local data to save space.`)) {
+        // 1. Remove the subject from the main database
+        state.db = state.db.filter(q => q.Subject !== subject);
+        await idbKeyval.set('mrh_db', state.db);
+        
+        // 2. Safely filter the saved session instead of destroying it
+        const saved = localStorage.getItem('mrh_saved_session');
+        if (saved) {
+            try {
+                const sessionObj = JSON.parse(saved);
+                const hasDeletedQuestions = sessionObj.questions.some(q => q.Subject === subject);
                 
-                // 2. Check if the saved session contains questions from the deleted subject
-                const saved = localStorage.getItem('mrh_saved_session');
-                if (saved) {
-                    try {
-                        const sessionObj = JSON.parse(saved);
-                        const hasDeletedQuestions = sessionObj.questions.some(q => q.Subject === subject);
-                        
-                        // If it does, destroy the saved session to prevent phantom resuming
-                        if (hasDeletedQuestions) {
-                            clearSessionProgress(); 
-                            state.session = { active: false, questions: [], currentIndex: 0, userAnswers: {} };
+                if (hasDeletedQuestions) {
+                    let newQuestions = [];
+                    let newUserAnswers = {};
+                    let keptBeforeCurrent = 0;
+                    
+                    // Loop through the session to rebuild it safely
+                    let newIdx = 0;
+                    for (let i = 0; i < sessionObj.questions.length; i++) {
+                        // Only keep questions that DO NOT belong to the deleted subject
+                        if (sessionObj.questions[i].Subject !== subject) {
+                            newQuestions.push(sessionObj.questions[i]);
+                            
+                            // Remap previous answers to the new index
+                            if (sessionObj.userAnswers[i]) {
+                                newUserAnswers[newIdx] = sessionObj.userAnswers[i];
+                            }
+                            
+                            // Track where the currentIndex should shift to
+                            if (i < sessionObj.currentIndex) {
+                                keptBeforeCurrent++;
+                            }
+                            
+                            newIdx++;
                         }
-                    } catch(e) {
-                        console.error("Error parsing saved session during deletion.", e);
+                    }
+                    
+                    // If ALL questions in the session were from the deleted subject, clear it
+                    if (newQuestions.length === 0) {
+                        clearSessionProgress();
+                        state.session = { active: false, questions: [], currentIndex: 0, userAnswers: {} };
+                    } else {
+                        // Apply the filtered data back to the session object
+                        sessionObj.questions = newQuestions;
+                        sessionObj.userAnswers = newUserAnswers;
+                        
+                        // Adjust current index safely so it doesn't go out of bounds
+                        sessionObj.currentIndex = Math.min(keptBeforeCurrent, newQuestions.length - 1);
+                        
+                        // Save the repaired session back to local storage
+                        localStorage.setItem('mrh_saved_session', JSON.stringify(sessionObj));
+                        
+                        // Update active state memory if currently loaded
+                        if (state.session.active) {
+                            state.session = sessionObj;
+                        }
                     }
                 }
-
-                updateDashboard(); 
+            } catch(e) {
+                console.error("Error parsing saved session during deletion.", e);
             }
         }
+
+        updateDashboard(); 
+    }
+}
 
         function submitPracticeAnswer(selected, correct) {
             const q = state.session.questions[state.session.currentIndex];
