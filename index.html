@@ -73,7 +73,7 @@
             <div id="achievement-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
         </section>
 
-        <section id="view-dashboard" class="view-section active">
+<section id="view-dashboard" class="view-section active">
             <div class="flex justify-between items-end mb-6">
                 <div>
                     <h2 class="text-2xl font-bold">Welcome Back, Cadet.</h2>
@@ -85,49 +85,22 @@
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                    <p class="text-sm text-gray-500"><i class="fa-solid fa-bullseye text-blue-500 mr-1"></i> Accuracy</p>
-                    <p class="text-2xl font-bold mt-1" id="dash-accuracy">0%</p>
-                </div>
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                    <p class="text-sm text-gray-500"><i class="fa-solid fa-check-double text-green-500 mr-1"></i> Answered</p>
-                    <p class="text-2xl font-bold mt-1" id="dash-answered">0</p>
-                </div>
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                    <p class="text-sm text-gray-500"><i class="fa-solid fa-bookmark text-yellow-500 mr-1"></i> Bookmarks</p>
-                    <p class="text-2xl font-bold mt-1" id="dash-bookmarks">0</p>
-                </div>
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                    <p class="text-sm text-gray-500"><i class="fa-solid fa-triangle-exclamation text-red-500 mr-1"></i> Mistakes</p>
-                    <p class="text-2xl font-bold mt-1" id="dash-mistakes">0</p>
-                </div>
-            </div>
-<!-- Add this inside the dashboard section, right above <h3 class="text-lg font-bold mb-4">Quick Start</h3> -->
-<div id="resume-container" class="hidden mb-8">
-    <h3 class="text-lg font-bold mb-4 text-yellow-600 dark:text-yellow-400">Continue Learning</h3>
-    <button onclick="resumeSession()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white p-6 rounded-2xl shadow-md text-left transition-transform transform hover:-translate-y-1">
-        <h4 class="text-xl font-bold"><i class="fa-solid fa-clock-rotate-left mr-2"></i> Resume Previous Session</h4>
-        <p class="text-yellow-100 text-sm mt-1">Pick up exactly where you left off.</p>
-    </button>
-</div>
-            <h3 class="text-lg font-bold mb-4">Quick Start</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <button onclick="startPractice('all')" class="bg-brand-600 hover:bg-brand-700 text-white p-6 rounded-2xl shadow-md text-left transition-transform transform hover:-translate-y-1">
-                    <h4 class="text-xl font-bold"><i class="fa-solid fa-infinity mr-2"></i> Unlimited Practice</h4>
-                    <p class="text-brand-100 text-sm mt-1">Shuffle all available questions with instant explanations.</p>
-                </button>
-                <button onclick="startPractice('mistakes')" class="bg-red-500 hover:bg-red-600 text-white p-6 rounded-2xl shadow-md text-left transition-transform transform hover:-translate-y-1">
-                    <h4 class="text-xl font-bold"><i class="fa-solid fa-hammer mr-2"></i> Review Mistakes</h4>
-                    <p class="text-red-100 text-sm mt-1">Target your weak points. Only uncorrected mistakes.</p>
+            <!-- Keep the Resume button logic active in case you are mid-session -->
+            <div id="resume-container" class="hidden mb-8">
+                <h3 class="text-lg font-bold mb-4 text-yellow-600 dark:text-yellow-400">Continue Learning</h3>
+                <button onclick="resumeSession()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white p-6 rounded-2xl shadow-md text-left transition-transform transform hover:-translate-y-1">
+                    <h4 class="text-xl font-bold"><i class="fa-solid fa-clock-rotate-left mr-2"></i> Resume Previous Session</h4>
+                    <p class="text-yellow-100 text-sm mt-1">Pick up exactly where you left off.</p>
                 </button>
             </div>
 
-                                <h3 class="text-lg font-bold mb-4 mt-8">Subject Progress</h3>
-<button onclick="navigate('categories'); renderCategoryProgress();" class="w-full bg-blue-500 hover:bg-blue-600 text-white p-6 rounded-2xl shadow-md text-left transition-transform transform hover:-translate-y-1">
-    <h4 class="text-xl font-bold"><i class="fa-solid fa-list mr-2"></i> View All Categories</h4>
-    <p class="text-blue-100 text-sm mt-1">Track progress, resume learning, or reset stats for specific subjects.</p>
-</button>
+            <h3 class="text-lg font-bold mb-4">Subject Progress</h3>
+            <p class="text-gray-500 mb-6">Track your milestones, continue where you left off, or reset individual subjects.</p>
+            
+            <!-- We moved the category list directly into the dashboard -->
+            <div id="category-list" class="space-y-4">
+                <!-- Categories will be rendered here dynamically -->
+            </div>
         </section>
 
         <section id="view-practice" class="view-section">
@@ -328,18 +301,22 @@
             updateDashboard();
         }
 
-        function updateDashboard() {
-            const accuracy = state.stats.totalAnswered === 0 ? 0 : Math.round((state.stats.correct / state.stats.totalAnswered) * 100);
-            document.getElementById('dash-accuracy').innerText = `${accuracy}%`;
-            document.getElementById('dash-answered').innerText = state.stats.totalAnswered;
-            document.getElementById('dash-mistakes').innerText = state.stats.mistakes.length;
-            document.getElementById('dash-bookmarks').innerText = state.stats.bookmarks.length;
-            
+function updateDashboard() {
+            // We removed the dashboard stats elements, so we skip updating them here.
+            // Streak elements still exist in the header and dashboard top.
             document.querySelectorAll('.streak-display').forEach(el => el.innerText = state.stats.streak);
             
-            document.getElementById('stat-total').innerText = state.stats.totalAnswered;
-            document.getElementById('stat-correct').innerText = state.stats.correct;
+            // These stats still exist in the "Stats" view section
+            const statTotal = document.getElementById('stat-total');
+            if (statTotal) statTotal.innerText = state.stats.totalAnswered;
+            
+            const statCorrect = document.getElementById('stat-correct');
+            if (statCorrect) statCorrect.innerText = state.stats.correct;
+
             if (typeof checkSavedSession === 'function') checkSavedSession();
+            
+            // NEW: Render the categories list directly on the dashboard
+            if (typeof renderCategoryProgress === 'function') renderCategoryProgress();
         }
 
 function navigate(viewId) {
@@ -388,6 +365,7 @@ if (data && data.length > 0) {
                     document.getElementById('db-size-display').innerText = state.db.length;
                     
                     if (typeof populateFilters === "function") populateFilters();
+                    if (typeof renderCategoryProgress === "function") renderCategoryProgress();
                     
                     statusEl.innerHTML = `<i class="fa-solid fa-check-circle mr-1"></i> Success! Loaded ${state.db.length} questions.`;
                     statusEl.className = "text-sm mt-3 font-medium bg-green-50 text-green-600 p-3 rounded-lg";
