@@ -730,7 +730,13 @@ function renderCategoryProgress() {
     // 2. PARSE: Build the Hierarchy Tree based on "::"
     const tree = {};
     filteredCategories.forEach(cat => {
-        const parts = cat.Subject.split('::').map(s => s.trim());
+        let parts = cat.Subject.split('::').map(s => s.trim());
+        
+        // NEW: If there is no "::" delimiter, force it into an "UNCATEGORIZED" folder
+        if (parts.length === 1) {
+            parts = ['UNCATEGORIZED', parts[0]];
+        }
+
         let current = tree;
         parts.forEach((part, index) => {
             if (!current[part]) {
