@@ -8,18 +8,23 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1e3a8a">
     
-<!-- Dark Mode Memory Fix to avoid white flash -->
-<script>
-    try {
-        const prefs = JSON.parse(localStorage.getItem('mrh_prefs') || '{"darkMode":true}');
-        if (prefs.darkMode) document.documentElement.classList.add('dark');
-    } catch (e) {}
-</script>
+    <!-- Dark Mode Memory Fix to avoid white flash -->
+    <script>
+        try {
+            const prefs = JSON.parse(localStorage.getItem('mrh_prefs') || '{"darkMode":true}');
+            if (prefs.darkMode) document.documentElement.classList.add('dark');
+        } catch (e) {}
+    </script>
 
+    <!-- Tailwind CSS (Development only). For production, use the Tailwind CLI to build a static CSS file. -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
     <!-- Deferred Chart.js for faster initial paint -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+    
+    <!-- idb-keyval for IndexedDB (Bypasses 5MB localStorage limit) -->
+    <script src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js"></script>
 
     <script>
         tailwind.config = {
@@ -36,11 +41,10 @@
         .choice-btn.selected-correct { background-color: #22c55e !important; color: white !important; border-color: #16a34a !important; }
         .choice-btn.selected-wrong { background-color: #ef4444 !important; color: white !important; border-color: #dc2626 !important; }
         .choice-btn.dimmed { opacity: 0.5; pointer-events: none; }
-        .choice-btn.exam-selected { background-color: #3b82f6 !important; color: white !important; border-color: #2563eb !important; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col">
-<header class="bg-brand-900 text-white p-4 flex justify-between items-center shadow-md sticky top-0 z-50 w-full">
+    <header class="bg-brand-900 text-white p-4 flex justify-between items-center shadow-md sticky top-0 z-50 w-full">
         <button onclick="navigate('dashboard')" class="font-bold text-lg hover:text-brand-200 transition-colors text-left flex items-center">
             <i class="fa-solid fa-anchor mr-2"></i> BSMT 3.1 – ALPHA (2026-2027)
         </button>
@@ -51,7 +55,7 @@
         </div>
     </header>
 
-<main class="flex-1 p-4 md:p-8 overflow-y-auto w-full max-w-5xl mx-auto">        
+    <main class="flex-1 p-4 md:p-8 overflow-y-auto w-full max-w-5xl mx-auto">        
         
         <section id="view-dashboard" class="view-section active">
             <div id="resume-container" class="hidden mb-8">
@@ -75,23 +79,14 @@
 
         <section id="view-practice" class="view-section">
             <div id="session-setup">
-                <h2 class="text-2xl font-bold mb-6" id="setup-title">Setup Session</h2>
+                <h2 class="text-2xl font-bold mb-6" id="setup-title">Setup Practice Session</h2>
                 <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm">
                     <label class="block text-sm font-semibold mb-2">Subject / Tag Filter</label>
-                    <select id="filter-subject" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white mb-4">
+                    <select id="filter-subject" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white mb-6">
                         <option value="ALL">All Subjects</option>
                     </select>
-
-                    <div id="exam-options" class="hidden mb-4 border-t dark:border-gray-700 pt-4">
-                        <label class="block text-sm font-semibold mb-2">Number of Questions</label>
-                        <select id="exam-count" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white mb-4">
-                            <option value="20">20 Questions (20 mins)</option>
-                            <option value="50">50 Questions (50 mins)</option>
-                            <option value="100">100 Questions (100 mins)</option>
-                        </select>
-                    </div>
                     
-                    <button onclick="initSession()" class="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 shadow-md">Start <i class="fa-solid fa-play ml-2"></i></button>
+                    <button onclick="initSession()" class="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 shadow-md">Start Review <i class="fa-solid fa-play ml-2"></i></button>
                 </div>
             </div>
 
@@ -140,22 +135,6 @@
                     </button>
                 </div>
             </div>
-            
-            <div id="exam-results" class="hidden text-center mt-10">
-                <div id="result-icon" class="text-6xl mb-4"></div>
-                <h2 class="text-3xl font-black mb-2" id="result-title">Exam Complete</h2>
-                <p class="text-gray-500 mb-6" id="result-subtitle">Here is how you did.</p>
-                
-                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm inline-block w-full max-w-sm mb-8 border border-gray-100 dark:border-gray-700">
-                    <p class="text-sm font-bold text-gray-400 uppercase tracking-wide">Final Score</p>
-                    <p class="text-5xl font-black text-brand-600 my-2" id="result-score">0%</p>
-                    <p class="text-sm font-medium" id="result-fraction">0 / 0 correct</p>
-                </div>
-
-                <div>
-                    <button onclick="navigate('dashboard')" class="bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white px-6 py-3 rounded-lg font-bold mr-2 hover:bg-gray-300">Back Home</button>
-                </div>
-            </div>
         </section>
 
         <section id="view-stats" class="view-section">
@@ -188,6 +167,16 @@
         <section id="view-settings" class="view-section">
             <h2 class="text-2xl font-bold mb-6">Settings</h2>
             
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-6 border border-gray-100 dark:border-gray-700">
+                <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-paint-roller text-brand-500 mr-2"></i> Appearance</h3>
+                <div class="flex justify-between items-center">
+                    <span class="text-sm dark:text-gray-300">Theme Preference</span>
+                    <button id="btn-theme-toggle" onclick="toggleTheme()" class="bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg font-bold hover:bg-gray-300 transition-colors">
+                        <!-- Text injected via JS -->
+                    </button>
+                </div>
+            </div>
+
             <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-6 border border-gray-100 dark:border-gray-700">
                 <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-database text-brand-500 mr-2"></i> Database Sync</h3>
                 <p id="sync-status" class="text-sm mt-3 font-medium bg-gray-50 dark:bg-gray-700 p-3 rounded-lg hidden"></p>
@@ -226,28 +215,44 @@
             categorySummary: [],
             stats: { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} },
             prefs: { darkMode: true },
-            session: { active: false, type: 'practice', questions: [], currentIndex: 0, userAnswers: {} }
+            session: { active: false, questions: [], currentIndex: 0, userAnswers: {} }
         };
         
         let chartInstance = null;
 
-        function loadState() {
+        // Utility function to prevent XSS
+        function escapeHTML(str) {
+            if (!str) return '';
+            return str.toString().replace(/[&<>'"]/g, tag => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+            }[tag]));
+        }
+
+        async function loadState() {
             const savedStats = localStorage.getItem('mrh_stats');
             const savedPrefs = localStorage.getItem('mrh_prefs');
-            const savedDb = localStorage.getItem('mrh_db');
+            
+            // Retrieve DB from IndexedDB instead of localStorage to avoid 5MB limits
+            try {
+                const savedDb = await idbKeyval.get('mrh_db');
+                if (savedDb) state.db = savedDb;
+            } catch (err) {
+                console.error("Error loading DB from IndexedDB", err);
+            }
             
             if (savedStats) state.stats = JSON.parse(savedStats);
             if (savedPrefs) state.prefs = JSON.parse(savedPrefs);
-            if (savedDb) state.db = JSON.parse(savedDb);
 
             if (!state.stats.subjectAccuracy) state.stats.subjectAccuracy = {};
             if (state.prefs.darkMode) document.documentElement.classList.add('dark');
             
             document.getElementById('db-size-display').innerText = state.db.length;
+            populateFilters(); // Fix: Populate dropdown filters even if offline
             updateDashboard();
+            updateThemeButton(); 
         }
 
-        function saveState() {
+        async function saveState() {
             localStorage.setItem('mrh_stats', JSON.stringify(state.stats));
             localStorage.setItem('mrh_prefs', JSON.stringify(state.prefs));
             updateDashboard();
@@ -260,27 +265,28 @@
             const statCorrect = document.getElementById('stat-correct');
             if (statCorrect) statCorrect.innerText = state.stats.correct;
 
+            const dbSize = document.getElementById('db-size-display');
+            if (dbSize) dbSize.innerText = state.db.length;
+
             if (typeof checkSavedSession === 'function') checkSavedSession();
             if (typeof renderCategoryProgress === 'function') renderCategoryProgress();
         }
 
-function navigate(viewId) {
-    if(state.session.active && !confirm("You have an active session. Do you want to pause and return to the dashboard? Your progress will be saved.")) return;
-    
-    if (state.session.active) {
-        saveSessionProgress(); 
-        state.session.active = false; 
-    }
+        function navigate(viewId) {
+            if(state.session.active && !confirm("You have an active session. Do you want to pause and return to the dashboard? Your progress will be saved.")) return;
+            
+            if (state.session.active) {
+                saveSessionProgress(); 
+                state.session.active = false; 
+            }
 
-    document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-    document.getElementById(`view-${viewId}`).classList.add('active');
-    
-    if(viewId === 'stats') renderCharts();
-    
-    // CHANGED: Use updateDashboard() instead of checkSavedSession() 
-    // updateDashboard() will automatically call checkSavedSession() AND renderCategoryProgress()
-    if(viewId === 'dashboard') updateDashboard(); 
-}
+            updateDashboard();
+
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            document.getElementById(`view-${viewId}`).classList.add('active');
+            
+            if(viewId === 'stats') renderCharts();
+        }
 
         async function syncDatabase() {
             const url = DB_URL; 
@@ -347,12 +353,12 @@ function navigate(viewId) {
             let html = '<option value="ALL">All Subjects (Randomized)</option>';
             if(subjects.length > 0) {
                 html += '<optgroup label="Subjects">';
-                html += subjects.map(s => `<option value="SUBJ:${s}">${s}</option>`).join('');
+                html += subjects.map(s => `<option value="SUBJ:${escapeHTML(s)}">${escapeHTML(s)}</option>`).join('');
                 html += '</optgroup>';
             }
             if(tags.length > 0) {
                 html += '<optgroup label="Tags">';
-                html += tags.map(t => `<option value="TAG:${t}">${t}</option>`).join('');
+                html += tags.map(t => `<option value="TAG:${escapeHTML(t)}">${escapeHTML(t)}</option>`).join('');
                 html += '</optgroup>';
             }
             
@@ -405,14 +411,9 @@ function navigate(viewId) {
 
             if(pool.length === 0) { alert("No questions found for this filter."); return; }
             pool = prepareSessionPool(pool);
-
-            if(state.session.type === 'exam') {
-                const count = parseInt(document.getElementById('exam-count').value);
-                pool = pool.slice(0, count);
-            }
             
             state.session = { 
-                active: true, type: state.session.type, questions: pool, 
+                active: true, questions: pool, 
                 currentIndex: 0, userAnswers: {}
             };
             
@@ -425,7 +426,6 @@ function navigate(viewId) {
 
         function renderQuestion() {
             const q = state.session.questions[state.session.currentIndex];
-            const isExam = state.session.type === 'exam';
             const userAnswer = state.session.userAnswers[state.session.currentIndex];
             
             const currentCard = state.session.currentIndex + 1;
@@ -457,18 +457,14 @@ function navigate(viewId) {
                 btn.classList.remove('hidden');
                 document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = choiceText;
                 
-                btn.onclick = () => isExam ? selectExamAnswer(ch) : submitPracticeAnswer(ch, q.Answer);
+                btn.onclick = () => submitPracticeAnswer(ch, q.Answer);
                 btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-brand-500 bg-gray-50 dark:bg-gray-700 transition-colors font-medium";
                 
                 if (userAnswer) {
                     btn.onclick = null;
-                    if (isExam) {
-                        if (userAnswer === ch) btn.classList.add('exam-selected');
-                    } else {
-                        if (ch === q.Answer) btn.classList.add('selected-correct');
-                        else if (userAnswer === ch) btn.classList.add('selected-wrong');
-                        else btn.classList.add('dimmed');
-                    }
+                    if (ch === q.Answer) btn.classList.add('selected-correct');
+                    else if (userAnswer === ch) btn.classList.add('selected-wrong');
+                    else btn.classList.add('dimmed');
                 }
             });
             
@@ -477,35 +473,18 @@ function navigate(viewId) {
             const btnPrev = document.getElementById('btn-prev');
             const btnReveal = document.getElementById('btn-reveal');
 
-            const isLastQuestion = state.session.currentIndex === totalCards - 1;
-
-            if (isExam) {
-                expBox.classList.add('hidden');
+            btnPrev.disabled = state.session.currentIndex === 0;
+            btnNext.innerHTML = `<span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2"></i>`;
+            btnNext.className = "flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
+            
+            if (userAnswer) {
+                showExplanation(q);
+                btnNext.disabled = false;
                 btnReveal.disabled = true;
-                btnPrev.disabled = state.session.currentIndex === 0;
-                btnNext.disabled = false; 
-
-                if (isLastQuestion) {
-                    btnNext.innerHTML = `<span class="hidden md:inline">Submit Exam</span> <i class="fa-solid fa-check-double md:ml-2"></i>`;
-                    btnNext.className = "flex-1 bg-green-600 text-white py-4 rounded-xl font-bold shadow-md hover:bg-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
-                } else {
-                    btnNext.innerHTML = `<span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2"></i>`;
-                    btnNext.className = "flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
-                }
             } else {
-                btnPrev.disabled = state.session.currentIndex === 0;
-                btnNext.innerHTML = `<span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2"></i>`;
-                btnNext.className = "flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
-                
-                if (userAnswer) {
-                    showExplanation(q);
-                    btnNext.disabled = false;
-                    btnReveal.disabled = true;
-                } else {
-                    expBox.classList.add('hidden');
-                    btnNext.disabled = true;
-                    btnReveal.disabled = false;
-                }
+                expBox.classList.add('hidden');
+                btnNext.disabled = true;
+                btnReveal.disabled = false;
             }
         }
 
@@ -521,6 +500,7 @@ function navigate(viewId) {
 
             container.innerHTML = state.categorySummary.map(cat => {
                 const subj = cat.Subject;
+                const safeSubj = escapeHTML(subj); // Prevent XSS formatting
                 const totalQuestionsInDb = cat.QuestionCount; 
                 const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
                 
@@ -537,20 +517,25 @@ function navigate(viewId) {
 
                 return `
                     <div class="${cardClasses} p-5 rounded-xl shadow-sm border transition-colors duration-300 relative">
-                        <div id="loading-${subj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center">
+                        <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center">
                             <i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500 mb-2"></i>
                             <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
                         </div>
 
-                        <div class="flex justify-between items-end mb-2">
+                        <div class="flex justify-between items-start mb-2">
                             <div>
                                 <div class="flex items-center gap-2 mb-1">
-                                    <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100">${subj}</h3>
+                                    <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100">${safeSubj}</h3>
                                     ${statusBadge}
                                 </div>
                                 <p class="text-xs text-gray-400">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>
                             </div>
-                            <div class="text-right">
+                            <div class="text-right flex flex-col items-end gap-1">
+                                ${isDownloaded 
+                                    ? `<button onclick="deleteSubjectData('${safeSubj}')" class="text-gray-300 hover:text-red-500 transition-colors" title="Delete Downloaded Data">
+                                         <i class="fa-solid fa-trash-can"></i>
+                                       </button>` 
+                                    : `<div class="h-4"></div>`}
                                 <span class="text-sm font-black text-brand-600">${completedCount} / ${totalQuestionsInDb} Done</span>
                             </div>
                         </div>
@@ -560,15 +545,15 @@ function navigate(viewId) {
                         </div>
                         
                         <div class="flex gap-2 mt-4 flex-wrap">
-                            <button onclick="fetchAndStartCategory('${subj}', 'continue')" class="flex-1 bg-brand-600 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-brand-700 text-sm shadow-sm transition-colors">
+                            <button onclick="fetchAndStartCategory('${safeSubj}', 'continue')" class="flex-1 bg-brand-600 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-brand-700 text-sm shadow-sm transition-colors">
                                 <i class="fa-solid fa-play mr-1"></i> Continue
                             </button>
                             ${mistakesCount > 0 ? `
-                            <button onclick="fetchAndStartCategory('${subj}', 'mistakes')" class="flex-1 bg-orange-500 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-orange-600 text-sm shadow-sm transition-colors">
+                            <button onclick="fetchAndStartCategory('${safeSubj}', 'mistakes')" class="flex-1 bg-orange-500 text-white py-2.5 px-2 rounded-lg font-bold hover:bg-orange-600 text-sm shadow-sm transition-colors">
                                 <i class="fa-solid fa-book mr-1"></i> Review ${mistakesCount}
                             </button>
                             ` : ''}
-                            <button onclick="resetCategory('${subj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2.5 rounded-lg font-bold hover:bg-red-100 transition-colors text-sm"><i class="fa-solid fa-rotate-left"></i></button>
+                            <button onclick="resetCategory('${safeSubj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2.5 rounded-lg font-bold hover:bg-red-100 transition-colors text-sm"><i class="fa-solid fa-rotate-left"></i></button>
                         </div>
                     </div>
                 `;
@@ -595,7 +580,9 @@ function navigate(viewId) {
 
                 const otherQuestions = state.db.filter(q => q.Subject !== subject);
                 state.db = [...otherQuestions, ...validQuestions];
-                localStorage.setItem('mrh_db', JSON.stringify(state.db));
+                
+                // Save safely using IndexedDB
+                await idbKeyval.set('mrh_db', state.db);
                 
             } catch (err) {
                 console.warn("Network request failed. Falling back to local cache.", err);
@@ -635,13 +622,11 @@ function navigate(viewId) {
             navigate('practice'); 
             document.getElementById('session-setup').classList.add('hidden'); 
             document.getElementById('session-active').classList.remove('hidden'); 
-            document.getElementById('exam-results').classList.add('hidden'); 
-            document.getElementById('exam-options').classList.add('hidden'); 
             
             pool = prepareSessionPool(pool);
 
             state.session = { 
-                active: true, type: 'practice', questions: pool, 
+                active: true, questions: pool, 
                 currentIndex: 0, userAnswers: {}
             };
             
@@ -671,6 +656,14 @@ function navigate(viewId) {
             }
         }
 
+        async function deleteSubjectData(subject) {
+            if(confirm(`Are you sure you want to delete the downloaded questions for "${subject}"? Your accuracy and progress stats will remain, but the app will remove the local data to save space.`)) {
+                state.db = state.db.filter(q => q.Subject !== subject);
+                await idbKeyval.set('mrh_db', state.db);
+                updateDashboard(); 
+            }
+        }
+
         function submitPracticeAnswer(selected, correct) {
             const q = state.session.questions[state.session.currentIndex];
             state.session.userAnswers[state.session.currentIndex] = selected;
@@ -696,27 +689,15 @@ function navigate(viewId) {
             document.getElementById('q-explanation-box').classList.remove('hidden');
         }
 
-        function selectExamAnswer(selected) {
-            state.session.userAnswers[state.session.currentIndex] = selected;
-            document.querySelectorAll('.choice-btn').forEach(btn => {
-                if(btn.dataset.choice === selected) btn.classList.add('exam-selected');
-                else btn.classList.remove('exam-selected');
-            });
-        }
-
         function nextQuestion() {
             if(state.session.currentIndex < state.session.questions.length - 1) {
                 state.session.currentIndex++;
                 renderQuestion();
                 saveSessionProgress();
             } else {
-                if (state.session.type === 'exam') {
-                    submitExam();
-                } else if (state.session.type === 'practice') {
-                    alert("Practice Session Complete! Great job.");
-                    clearSessionProgress(); 
-                    endSession(false);
-                }
+                alert("Practice Session Complete! Great job.");
+                clearSessionProgress(); 
+                endSession(false);
             }
         }
 
@@ -745,49 +726,11 @@ function navigate(viewId) {
             saveState();
         }
 
-        function submitExam() {
-            let score = 0;
-            state.session.questions.forEach((q, index) => {
-                const userAns = state.session.userAnswers[index];
-                if(userAns) {
-                    const isCorrect = userAns === q.Answer;
-                    if(isCorrect) score++;
-                    trackStats(q, isCorrect);
-                }
-            });
-
-            const percentage = Math.round((score / state.session.questions.length) * 100);
-            const passed = percentage >= 70; 
-            
-            document.getElementById('session-active').classList.add('hidden');
-            const resDiv = document.getElementById('exam-results');
-            resDiv.classList.remove('hidden');
-            
-            document.getElementById('result-score').innerText = `${percentage}%`;
-            document.getElementById('result-fraction').innerText = `${score} / ${state.session.questions.length} Correct`;
-            
-            const icon = document.getElementById('result-icon');
-            const title = document.getElementById('result-title');
-            
-            if(passed) {
-                icon.innerHTML = '<i class="fa-solid fa-medal text-yellow-400"></i>';
-                title.innerText = "Passed!";
-                title.className = "text-3xl font-black mb-2 text-green-500";
-            } else {
-                icon.innerHTML = '<i class="fa-solid fa-circle-xmark text-red-400"></i>';
-                title.innerText = "Failed";
-                title.className = "text-3xl font-black mb-2 text-red-500";
-            }
-
-            state.session.active = false;
-            clearSessionProgress();
-        }
-
         function endSession(silent = false) {
             const isLastQuestion = state.session.currentIndex >= state.session.questions.length - 1;
             const isAnswered = state.session.userAnswers && state.session.userAnswers[state.session.currentIndex];
             
-            if (state.session.type === 'practice' && isLastQuestion && isAnswered) {
+            if (isLastQuestion && isAnswered) {
                 clearSessionProgress();
             } else {
                 saveSessionProgress(); 
@@ -838,16 +781,26 @@ function navigate(viewId) {
             });
         }
 
-        function toggleDarkMode() {
+        function toggleTheme() {
             state.prefs.darkMode = !state.prefs.darkMode;
             document.documentElement.classList.toggle('dark', state.prefs.darkMode);
             saveState();
+            updateThemeButton();
+        }
+
+        function updateThemeButton() {
+            const btn = document.getElementById('btn-theme-toggle');
+            if (btn) {
+                btn.innerHTML = state.prefs.darkMode 
+                    ? '<i class="fa-solid fa-sun mr-1"></i> Switch to Light Mode' 
+                    : '<i class="fa-solid fa-moon mr-1"></i> Switch to Dark Mode';
+            }
         }
 
         function resetProgress() {
             if(confirm("Are you sure? This deletes mistakes, all statistics, and your current saved session.")) {
                 state.stats = { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {}, completedQs: [] };
-                state.session = { active: false, type: 'practice', questions: [], currentIndex: 0, userAnswers: {} };
+                state.session = { active: false, questions: [], currentIndex: 0, userAnswers: {} };
                 
                 clearSessionProgress();
                 saveState(); 
@@ -857,9 +810,9 @@ function navigate(viewId) {
             }
         }
 
-        function clearDatabase() {
+        async function clearDatabase() {
             if(confirm("WARNING: Are you sure you want to clear the locally saved database? You will need an active internet connection to sync the questions again. The app will reload to apply changes.")) {
-                localStorage.removeItem('mrh_db');
+                await idbKeyval.del('mrh_db');
                 state.db = [];
                 clearSessionProgress();
                 window.location.reload();
@@ -878,13 +831,13 @@ function navigate(viewId) {
             const file = event.target.files[0];
             if (!file) return;
             const reader = new FileReader();
-            reader.onload = function(e) {
+            reader.onload = async function(e) {
                 try {
                     const importedState = JSON.parse(e.target.result);
                     if (importedState && importedState.stats && importedState.db) {
                         state = importedState;
                         saveState();
-                        localStorage.setItem('mrh_db', JSON.stringify(state.db));
+                        await idbKeyval.set('mrh_db', state.db);
                         alert("Data successfully restored!");
                         window.location.reload();
                     } else {
@@ -919,16 +872,13 @@ function navigate(viewId) {
             if (saved && resumeContainer) {
                 try {
                     const session = JSON.parse(saved);
+                    const isLastQuestion = session.currentIndex >= session.questions.length - 1;
+                    const isAnswered = session.userAnswers && session.userAnswers[session.currentIndex];
                     
-                    if (session.type === 'practice') {
-                        const isLastQuestion = session.currentIndex >= session.questions.length - 1;
-                        const isAnswered = session.userAnswers && session.userAnswers[session.currentIndex];
-                        
-                        if (isLastQuestion && isAnswered) {
-                            localStorage.removeItem('mrh_saved_session');
-                            resumeContainer.classList.add('hidden');
-                            return; 
-                        }
+                    if (isLastQuestion && isAnswered) {
+                        localStorage.removeItem('mrh_saved_session');
+                        resumeContainer.classList.add('hidden');
+                        return; 
                     }
                 } catch(e) {
                     console.error("Error checking session", e);
@@ -978,7 +928,6 @@ function navigate(viewId) {
             navigate('practice');
             document.getElementById('session-setup').classList.add('hidden');
             document.getElementById('session-active').classList.remove('hidden');
-            document.getElementById('exam-results').classList.add('hidden');
 
             renderQuestion();
         }

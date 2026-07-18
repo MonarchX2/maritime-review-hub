@@ -1,7 +1,7 @@
 {
-  "name": "Maritime Review Hub",
-  "short_name": "MRH",
-  "description": "Professional Maritime Examination Reviewer",
+  "name": "BSMT 3.1 – ALPHA (2026-2027)",
+  "short_name": "BSMT3.1-A",
+  "description": "BSMT Reviewer",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
