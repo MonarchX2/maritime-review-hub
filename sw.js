@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mrh-v1'; // Bumped version to force update
+const CACHE_NAME = 'mrh-v3'; // Bumped version to force update
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -33,15 +33,24 @@ self.addEventListener('activate', (event) => {
 });
 
 // Network-First Strategy
+// Network-First Strategy
 self.addEventListener('fetch', (event) => {
+    // FIX: The Cache API strictly requires GET requests. Ignore POST/PUT etc.
+    if (event.request.method !== 'GET') {
+        return; 
+    }
+
     event.respondWith(
         fetch(event.request)
             .then((networkResponse) => {
-                // If we get a valid response from the network, update the cache and return it
-                return caches.open(CACHE_NAME).then((cache) => {
-                    cache.put(event.request, networkResponse.clone());
-                    return networkResponse;
-                });
+                // FIX: Only cache successful network responses to avoid caching errors
+                if (networkResponse && networkResponse.status === 200) {
+                    const responseToCache = networkResponse.clone();
+                    caches.open(CACHE_NAME).then((cache) => {
+                        cache.put(event.request, responseToCache);
+                    });
+                }
+                return networkResponse;
             })
             .catch(() => {
                 // If the network fails (offline), fall back to the cache
