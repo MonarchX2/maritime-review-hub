@@ -69,24 +69,24 @@
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
             border-color: #3b82f6 !important;
         }
-.choice-btn.selected-correct { 
+        .choice-btn.selected-correct { 
             animation: popCorrect 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-            background-color: #15803d !important; /* Softer, slightly darker green */
+            background-color: #15803d !important; 
             color: #ffffff !important; 
-            border-color: #14532d !important; /* Dark green border */
-            border-width: 2px !important; /* Thinner border */
-            font-weight: 700 !important; /* Bold, but not overpowering */
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important; /* Subtle standard drop shadow instead of a glow */
+            border-color: #14532d !important; 
+            border-width: 2px !important; 
+            font-weight: 700 !important; 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important; 
         }
         
         .choice-btn.selected-wrong { 
             animation: shakeWrong 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) forwards;
-            background-color: #b91c1c !important; /* Softer, slightly darker red */
+            background-color: #b91c1c !important; 
             color: #ffffff !important; 
-            border-color: #7f1d1d !important; /* Dark red border */
-            border-width: 2px !important; /* Thinner border */
-            font-weight: 700 !important; /* Bold, but not overpowering */
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important; /* Subtle standard drop shadow instead of a glow */
+            border-color: #7f1d1d !important; 
+            border-width: 2px !important; 
+            font-weight: 700 !important; 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important; 
         }
         .choice-btn.dimmed { 
             opacity: 0.4; 
@@ -95,12 +95,12 @@
             transform: scale(0.98);
         }
         
-@keyframes popCorrect {
+        @keyframes popCorrect {
             0% { transform: scale(1); }
             40% { transform: scale(1.04); }
             100% { transform: scale(1); }
         }
-@keyframes shakeWrong {
+        @keyframes shakeWrong {
             0%, 100% { transform: translateX(0); }
             20%, 60% { transform: translateX(-6px); }
             40%, 80% { transform: translateX(6px); }
@@ -138,7 +138,7 @@
 
         /* Timer Animation (Pop and Expand from Center) */
         @keyframes expandTimerCenter {
-            0% { transform: scaleX(0) scaleY(2); opacity: 0; } /* Initial 'pop' */
+            0% { transform: scaleX(0) scaleY(2); opacity: 0; } 
             5% { transform: scaleX(0.05) scaleY(1); opacity: 1; } 
             100% { transform: scaleX(1) scaleY(1); opacity: 1; }
         }
@@ -368,13 +368,13 @@
     <script>
         const DB_URL = "https://script.google.com/macros/s/AKfycbw9B0Ny93yn3W8tE4e0Kvfamdwk_YCn0AUol67NqjPbtYljF3V-7uPha7Z0Snyw8sw_/exec";
         
-let state = {
-    db: [],
-    categorySummary: [],
-    stats: { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} },
-    prefs: { darkMode: true },
-    session: { active: false, questions: [], currentIndex: 0, userAnswers: {}, autoNextTimeout: null }
-};
+        let state = {
+            db: [],
+            categorySummary: [],
+            stats: { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} },
+            prefs: { darkMode: true },
+            session: { active: false, questions: [], currentIndex: 0, userAnswers: {}, autoNextTimeout: null }
+        };
 
         let adminState = {
             token: "",
@@ -396,7 +396,16 @@ let state = {
             
             try {
                 const savedDb = await idbKeyval.get('mrh_db');
-                if (savedDb) state.db = savedDb;
+                if (savedDb) {
+                    // MIGRATION: Ensure all existing DB items use the new unique ID format
+                    state.db = savedDb.map(q => {
+                        if (q.ID && !q.ID.toString().includes('::')) {
+                            let cleanId = q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, '');
+                            q.ID = `${q.Subject}::${cleanId}`;
+                        }
+                        return q;
+                    });
+                }
             } catch (err) {
                 console.error("Error loading DB from IndexedDB", err);
             }
@@ -433,7 +442,7 @@ let state = {
             if (typeof renderCategoryProgress === 'function') renderCategoryProgress();
         }
 
-let settingsClickCount = 0;
+        let settingsClickCount = 0;
         let settingsClickTimeout = null;
 
         function navigate(viewId) {
@@ -760,7 +769,14 @@ let settingsClickCount = 0;
             document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / totalCards) * 100}%`;
             
             document.getElementById('q-subject').innerText = q.Subject || 'General';
-            document.getElementById('q-id').innerText = q.ID || `Q-${state.session.currentIndex}`;
+            
+            // CLEAN ID DISPLAY: Extracts just the number part (removes the long Subject prefix)
+            let displayId = q.ID || `Q-${state.session.currentIndex}`;
+            if (displayId.includes('::')) {
+                displayId = displayId.split('::').pop();
+            }
+            document.getElementById('q-id').innerText = displayId;
+            
             document.getElementById('q-text').innerText = q.Question;
             
             const imgEl = document.getElementById('q-image');
@@ -857,17 +873,14 @@ let settingsClickCount = 0;
                 let html = '';
                 let indexCounter = 0;
                 
-                // --- ADDED SORTING LOGIC HERE ---
-                // We want folders (items with children) to appear before leaf cards
                 const keys = Object.keys(node);
                 keys.sort((a, b) => {
                     const aHasChildren = Object.keys(node[a]._children).length > 0;
                     const bHasChildren = Object.keys(node[b]._children).length > 0;
                     
-                    if (aHasChildren && !bHasChildren) return -1; // 'a' is a folder, comes first
-                    if (!aHasChildren && bHasChildren) return 1;  // 'b' is a folder, comes first
+                    if (aHasChildren && !bHasChildren) return -1; 
+                    if (!aHasChildren && bHasChildren) return 1;  
                     
-                    // If both are folders or both are files, sort alphabetically
                     return a.localeCompare(b);
                 });
 
@@ -883,7 +896,6 @@ let settingsClickCount = 0;
                             ? "mb-4 bg-gray-50 dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm transition-all duration-500 hover:shadow-md animate-card-in"
                             : "mb-3 mt-2 border-l-2 border-brand-200 dark:border-brand-800 pl-2 transition-all duration-300 animate-card-in";
 
-                        // --- REMOVED 'open' ATTRIBUTE SO IT STARTS CLOSED ---
                         html += `
                             <details class="${folderClass} overflow-hidden" style="animation-delay: ${delay}s;">
                                 <summary class="p-4 font-bold text-gray-800 dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center select-none list-none [&::-webkit-details-marker]:hidden">
@@ -918,11 +930,10 @@ let settingsClickCount = 0;
                 const totalQuestionsInDb = cat.QuestionCount; 
                 const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
                 
-// --- 1. NEW EXACT-MATCH ID FILTERING ---
                 const dbQsForSubj = state.db.filter(q => q.Subject === subj).map(q => q.ID);
                 const completedCount = state.stats.completedQs.filter(id => dbQsForSubj.includes(id)).length;
                 const mistakesCount = state.stats.mistakes.filter(id => dbQsForSubj.includes(id)).length;
-                // ---------------------------------------                
+                
                 const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
                 const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
                 const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
@@ -983,34 +994,29 @@ let settingsClickCount = 0;
 
             container.innerHTML = generateTreeHTML(tree);
 
-// --- 2. RE-OPEN MEMORIZED FOLDERS & FIX ANIMATIONS ---
             container.querySelectorAll('details').forEach(details => {
-                // Re-open folders that were open before the refresh
                 const summaryText = details.querySelector('summary').textContent.trim();
                 if (openFolders.includes(summaryText)) {
                     details.setAttribute('open', '');
                 }
 
-                // Grab the elements we need to animate
                 const summary = details.querySelector('summary');
                 const contentDiv = details.querySelector('summary ~ div');
                 const chevron = summary.querySelector('i.fa-chevron-down');
 
-summary.addEventListener('click', function(e) {
-                    e.preventDefault(); // Stop native instant-toggle
+                summary.addEventListener('click', function(e) {
+                    e.preventDefault(); 
                     
                     if (details.open) {
-                        // CLOSING: Shrink from full size down to just the title
                         const startHeight = details.offsetHeight;
                         details.style.height = startHeight + 'px';
                         details.style.overflow = 'hidden';
-                        void details.offsetHeight; // Force browser reflow
+                        void details.offsetHeight; 
                         
                         details.style.transition = 'height 0.35s ease-in-out';
                         details.style.height = summary.offsetHeight + 'px'; 
                         if (chevron) chevron.style.transform = 'rotate(0deg)';
                         
-                        // Wait for transition, then finalize
                         setTimeout(() => {
                             details.removeAttribute('open');
                             details.style.height = '';
@@ -1018,20 +1024,18 @@ summary.addEventListener('click', function(e) {
                             details.style.overflow = '';
                         }, 350);
                     } else {
-                        // OPENING: Expand from title to full content size
                         details.setAttribute('open', ''); 
                         const startHeight = summary.offsetHeight;
                         const endHeight = summary.offsetHeight + contentDiv.offsetHeight;
                         
                         details.style.height = startHeight + 'px';
                         details.style.overflow = 'hidden';
-                        void details.offsetHeight; // Force browser reflow
+                        void details.offsetHeight; 
                         
                         details.style.transition = 'height 0.35s ease-in-out';
                         details.style.height = endHeight + 'px'; 
                         if (chevron) chevron.style.transform = 'rotate(180deg)';
                         
-                        // Wait for transition, then finalize
                         setTimeout(() => {
                             details.style.height = '';
                             details.style.transition = '';
@@ -1040,7 +1044,6 @@ summary.addEventListener('click', function(e) {
                     }
                 });
             });
-            // -----------------------------------------------------
         }
 
         async function fetchAndStartCategory(subject, mode) {
@@ -1059,7 +1062,13 @@ summary.addEventListener('click', function(e) {
                     q.Question && q.Question.trim() !== "" &&
                     q.ChoiceA && q.ChoiceA.trim() !== "" &&
                     q.ChoiceB && q.ChoiceB.trim() !== ""
-                );
+                ).map(q => {
+                    // NEW: Enforce unique IDs and strip prefix strings (e.g., "BSM-", "NAV-")
+                    let cleanId = q.ID ? q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, '') : Math.random().toString(36).substr(2, 6);
+                    // Combine subject and ID so there are never duplicates across folders
+                    q.ID = `${q.Subject}::${cleanId}`;
+                    return q;
+                });
 
                 const otherQuestions = state.db.filter(q => q.Subject !== subject);
                 state.db = [...otherQuestions, ...validQuestions];
@@ -1193,73 +1202,68 @@ summary.addEventListener('click', function(e) {
             }
         }
 
-function submitPracticeAnswer(selected, correct) {
-    const q = state.session.questions[state.session.currentIndex];
-    state.session.userAnswers[state.session.currentIndex] = selected;
-    
-    trackStats(q, selected === correct);
+        function submitPracticeAnswer(selected, correct) {
+            const q = state.session.questions[state.session.currentIndex];
+            state.session.userAnswers[state.session.currentIndex] = selected;
+            
+            trackStats(q, selected === correct);
 
-    document.querySelectorAll('.choice-btn').forEach(btn => {
-        btn.onclick = null;
-        if(btn.dataset.choice === correct) btn.classList.add('selected-correct');
-        else if (btn.dataset.choice === selected) btn.classList.add('selected-wrong');
-        else btn.classList.add('dimmed');
-    });
+            document.querySelectorAll('.choice-btn').forEach(btn => {
+                btn.onclick = null;
+                if(btn.dataset.choice === correct) btn.classList.add('selected-correct');
+                else if (btn.dataset.choice === selected) btn.classList.add('selected-wrong');
+                else btn.classList.add('dimmed');
+            });
 
-    showExplanation(q);
-    
-    document.getElementById('btn-next').disabled = false;
-    document.getElementById('btn-reveal').disabled = true;
-    document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
+            showExplanation(q);
+            
+            document.getElementById('btn-next').disabled = false;
+            document.getElementById('btn-reveal').disabled = true;
+            document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
 
-    startVisualTimer();
-    // Start 2-second timer to proceed to the next question
-    if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
-    state.session.autoNextTimeout = setTimeout(() => {
-        nextQuestion();
-    }, 3000);
-}
+            startVisualTimer();
+            if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
+            state.session.autoNextTimeout = setTimeout(() => {
+                nextQuestion();
+            }, 3000);
+        }
 
-function showExplanation(q) {
-    const expBox = document.getElementById('q-explanation-box');
-    
-    // Check if an explanation exists and is not empty
-    if (q.Explanation && q.Explanation.trim() !== "") {
-        document.getElementById('q-explanation-text').innerText = q.Explanation;
-        expBox.classList.remove('hidden');
-    } else {
-        // Keep the box hidden if there is no explanation
-        expBox.classList.add('hidden');
-    }
-}
+        function showExplanation(q) {
+            const expBox = document.getElementById('q-explanation-box');
+            
+            if (q.Explanation && q.Explanation.trim() !== "") {
+                document.getElementById('q-explanation-text').innerText = q.Explanation;
+                expBox.classList.remove('hidden');
+            } else {
+                expBox.classList.add('hidden');
+            }
+        }
 
-function nextQuestion() {
-    // Clear any pending auto-next timers
-    if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
-stopVisualTimer();
+        function nextQuestion() {
+            if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
+            stopVisualTimer();
 
-    if(state.session.currentIndex < state.session.questions.length - 1) {
-        state.session.currentIndex++;
-        renderQuestion();
-        saveSessionProgress();
-    } else {
-        alert("Practice Session Complete! Great job.");
-        clearSessionProgress(); 
-        endSession(false);
-    }
-}
+            if(state.session.currentIndex < state.session.questions.length - 1) {
+                state.session.currentIndex++;
+                renderQuestion();
+                saveSessionProgress();
+            } else {
+                alert("Practice Session Complete! Great job.");
+                clearSessionProgress(); 
+                endSession(false);
+            }
+        }
 
-function prevQuestion() {
-    // Clear any pending auto-next timers
-    if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
-stopVisualTimer();
+        function prevQuestion() {
+            if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
+            stopVisualTimer();
 
-    if(state.session.currentIndex > 0) {
-        state.session.currentIndex--;
-        renderQuestion();
-    }
-    saveSessionProgress();
-}
+            if(state.session.currentIndex > 0) {
+                state.session.currentIndex--;
+                renderQuestion();
+            }
+            saveSessionProgress();
+        }
 
         function trackStats(q, isCorrect) {
             state.stats.totalAnswered++;
@@ -1458,7 +1462,15 @@ stopVisualTimer();
             state.session = JSON.parse(saved);
 
             state.session.questions = state.session.questions.map((savedQ, index) => {
-                const freshQ = state.db.find(dbQ => dbQ.ID === savedQ.ID);
+                
+                // MIGRATION HELPER: Ensure session resumer works with the freshly updated IDs
+                let searchId = savedQ.ID;
+                if (searchId && !searchId.toString().includes('::')) {
+                    let cleanId = searchId.toString().replace(/^[a-zA-Z]+[-\s]?/, '');
+                    searchId = `${savedQ.Subject}::${cleanId}`;
+                }
+
+                const freshQ = state.db.find(dbQ => dbQ.ID === searchId || dbQ.ID === savedQ.ID);
                 
                 if (freshQ) {
                     savedQ.Question = freshQ.Question;
@@ -1509,55 +1521,53 @@ stopVisualTimer();
             return array;
         }
 
-function revealAnswer() {
-    if (!state.session.active) return;
-    
-    const q = state.session.questions[state.session.currentIndex];
-    state.session.userAnswers[state.session.currentIndex] = "REVEALED";
-    
-    trackStats(q, false);
-    
-    document.querySelectorAll('.choice-btn').forEach(btn => {
-        btn.onclick = null; 
-        if(btn.dataset.choice === q.Answer) {
-            btn.classList.add('selected-correct');
-        } else {
-            btn.classList.add('dimmed');
+        function revealAnswer() {
+            if (!state.session.active) return;
+            
+            const q = state.session.questions[state.session.currentIndex];
+            state.session.userAnswers[state.session.currentIndex] = "REVEALED";
+            
+            trackStats(q, false);
+            
+            document.querySelectorAll('.choice-btn').forEach(btn => {
+                btn.onclick = null; 
+                if(btn.dataset.choice === q.Answer) {
+                    btn.classList.add('selected-correct');
+                } else {
+                    btn.classList.add('dimmed');
+                }
+            });
+
+            document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
+            
+            renderQuestion();
+            saveSessionProgress();
+            startVisualTimer();
+
+            if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
+            state.session.autoNextTimeout = setTimeout(() => {
+                nextQuestion();
+            }, 3000);
         }
-    });
 
-    document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
-    
-    renderQuestion();
-    saveSessionProgress();
-startVisualTimer();
+        function startVisualTimer() {
+            const container = document.getElementById('auto-next-timer-container');
+            const bar = document.getElementById('auto-next-timer-bar');
+            
+            container.classList.remove('hidden');
+            
+            bar.classList.remove('animate-timer-bar');
+            void bar.offsetWidth; 
+            bar.classList.add('animate-timer-bar');
+        }
 
-    // Start 2-second timer to proceed to the next question
-    if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
-    state.session.autoNextTimeout = setTimeout(() => {
-        nextQuestion();
-    }, 3000);
-}
-
-function startVisualTimer() {
-    const container = document.getElementById('auto-next-timer-container');
-    const bar = document.getElementById('auto-next-timer-bar');
-    
-    container.classList.remove('hidden');
-    
-    // Trigger CSS reflow to restart the animation consistently
-    bar.classList.remove('animate-timer-bar');
-    void bar.offsetWidth; 
-    bar.classList.add('animate-timer-bar');
-}
-
-function stopVisualTimer() {
-    const container = document.getElementById('auto-next-timer-container');
-    const bar = document.getElementById('auto-next-timer-bar');
-    
-    container.classList.add('hidden');
-    bar.classList.remove('animate-timer-bar');
-}
+        function stopVisualTimer() {
+            const container = document.getElementById('auto-next-timer-container');
+            const bar = document.getElementById('auto-next-timer-bar');
+            
+            container.classList.add('hidden');
+            bar.classList.remove('animate-timer-bar');
+        }
     </script>
 </body>
 </html>
