@@ -69,11 +69,24 @@
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
             border-color: #3b82f6 !important;
         }
-        .choice-btn.selected-correct { 
-            animation: popCorrect 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; 
+.choice-btn.selected-correct { 
+            animation: popCorrect 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            background-color: #16a34a !important; /* Deeper, richer green */
+            color: #ffffff !important; 
+            border-color: #14532d !important; /* Very dark green border */
+            border-width: 3px !important; 
+            font-weight: 900 !important; /* Extra bold text */
+            box-shadow: 0 0 15px 5px rgba(34, 197, 94, 0.6) !important; /* Stronger, wider glow */
         }
+        
         .choice-btn.selected-wrong { 
-            animation: shakeWrong 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) forwards; 
+            animation: shakeWrong 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) forwards;
+            background-color: #dc2626 !important; /* Deeper, richer red */
+            color: #ffffff !important; 
+            border-color: #7f1d1d !important; /* Very dark red border */
+            border-width: 3px !important; 
+            font-weight: 900 !important; /* Extra bold text */
+            box-shadow: 0 0 15px 5px rgba(239, 68, 68, 0.6) !important; /* Stronger, wider glow */
         }
         .choice-btn.dimmed { 
             opacity: 0.4; 
@@ -83,31 +96,15 @@
         }
         
 @keyframes popCorrect {
-    0% { transform: scale(1); }
-    40% { transform: scale(1.04); }
-    100% { 
-        transform: scale(1); 
-        background-color: #16a34a !important; /* Deeper, richer green */
-        color: #ffffff !important; 
-        border-color: #14532d !important; /* Very dark green border */
-        border-width: 3px !important; 
-        font-weight: 900 !important; /* Extra bold text */
-        box-shadow: 0 0 15px 5px rgba(34, 197, 94, 0.6) !important; /* Stronger, wider glow */
-    }
-}
+            0% { transform: scale(1); }
+            40% { transform: scale(1.04); }
+            100% { transform: scale(1); }
+        }
 @keyframes shakeWrong {
-    0%, 100% { 
-        transform: translateX(0); 
-        background-color: #dc2626 !important; /* Deeper, richer red */
-        color: #ffffff !important; 
-        border-color: #7f1d1d !important; /* Very dark red border */
-        border-width: 3px !important; 
-        font-weight: 900 !important; /* Extra bold text */
-        box-shadow: 0 0 15px 5px rgba(239, 68, 68, 0.6) !important; /* Stronger, wider glow */
-    }
-    20%, 60% { transform: translateX(-6px); }
-    40%, 80% { transform: translateX(6px); }
-}
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-6px); }
+            40%, 80% { transform: translateX(6px); }
+        }
 
         /* Folders & Accordions Smooth Expand */
         details > summary { list-style: none; }
