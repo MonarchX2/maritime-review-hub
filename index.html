@@ -722,11 +722,18 @@ function prepareSessionPool(pool) {
         const rawChoices = [q.ChoiceA, q.ChoiceB, q.ChoiceC, q.ChoiceD];
         rawChoices.forEach(c => {
             if (c !== undefined && c !== null && String(c).trim() !== "" && String(c).trim().toLowerCase() !== "undefined") {
-                validChoices.push(String(c));
+                validChoices.push(String(c).trim());
             }
         });
         
-        let correctText = String(q[`Choice${q.Answer}`] || ""); 
+        // Robust text matching in case the DB answer is the text instead of the letter
+        let originalAns = String(q.Answer || "").trim().toUpperCase();
+        let correctText = "";
+        if (['A', 'B', 'C', 'D'].includes(originalAns)) {
+            correctText = String(originalQ[`Choice${originalAns}`] || "").trim();
+        } else {
+            correctText = String(q.Answer || "").trim();
+        }
         
         if (validChoices.length > 0) {
             validChoices = shuffleArray(validChoices);
@@ -741,6 +748,10 @@ function prepareSessionPool(pool) {
             else if (q.ChoiceB === correctText) q.Answer = 'B';
             else if (q.ChoiceC === correctText) q.Answer = 'C';
             else if (q.ChoiceD === correctText) q.Answer = 'D';
+            else {
+                // Failsafe: if text mapping failed but it's a single choice flashcard, it defaults to A
+                if (validChoices.length === 1) q.Answer = 'A';
+            }
         }
         
         return q;
@@ -806,7 +817,15 @@ function renderQuestion() {
     }
 
     const choices = ['A', 'B', 'C', 'D'];
-    let validChoicesCount = 0; // Track how many valid choices exist
+    let validChoicesCount = 0; 
+    
+    // First count how many valid choices there are
+    choices.forEach(ch => {
+        const choiceText = q[`Choice${ch}`];
+        if (choiceText && choiceText.trim() !== "" && choiceText.toLowerCase() !== "undefined") {
+            validChoicesCount++;
+        }
+    });
     
     choices.forEach(ch => {
         const choiceText = q[`Choice${ch}`];
@@ -815,7 +834,6 @@ function renderQuestion() {
         if (!choiceText || choiceText.trim() === "" || choiceText.toLowerCase() === "undefined") {
             btn.classList.add('hidden');
         } else {
-            validChoicesCount++;
             btn.classList.remove('hidden');
             document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = choiceText;
             
@@ -824,9 +842,14 @@ function renderQuestion() {
             
             if (userAnswer) {
                 btn.onclick = null;
-                if (ch === q.Answer) btn.classList.add('selected-correct');
-                else if (userAnswer === ch) btn.classList.add('selected-wrong');
-                else btn.classList.add('dimmed');
+                // FAILSAFE: If it's a flashcard (1 choice), always mark it properly as correct
+                if (ch === q.Answer || validChoicesCount === 1) {
+                    btn.classList.add('selected-correct');
+                } else if (userAnswer === ch) {
+                    btn.classList.add('selected-wrong');
+                } else {
+                    btn.classList.add('dimmed');
+                }
             }
         }
     });
@@ -841,26 +864,22 @@ function renderQuestion() {
     btnPrev.disabled = state.session.currentIndex === 0;
     
     if (userAnswer) {
-        // If already answered, show choices normally
-        activeRecallMask.classList.add('hidden');
+        if (activeRecallMask) activeRecallMask.classList.add('hidden');
         qChoicesContainer.classList.remove('hidden');
         
         showExplanation(q);
         btnNext.disabled = false;
         btnReveal.disabled = true;
     } else {
-        // Unanswered: Apply Active Recall logic
         expBox.classList.add('hidden');
         btnNext.disabled = true;
         btnReveal.disabled = false;
         
         if (validChoicesCount <= 1) {
-            // Flashcard Mode: Hide options entirely until "Reveal" is pressed
-            activeRecallMask.classList.add('hidden');
+            if (activeRecallMask) activeRecallMask.classList.add('hidden');
             qChoicesContainer.classList.add('hidden');
         } else {
-            // Standard MCQ Mode: Show the "Think of the answer" mask
-            activeRecallMask.classList.remove('hidden');
+            if (activeRecallMask) activeRecallMask.classList.remove('hidden');
             qChoicesContainer.classList.add('hidden');
         }
     }
@@ -1572,23 +1591,12 @@ function revealAnswer() {
     
     trackStats(q, false);
     
-    // Force the correct UI containers to show
     document.getElementById('q-choices').classList.remove('hidden');
     const activeRecallMask = document.getElementById('active-recall-mask');
     if (activeRecallMask) activeRecallMask.classList.add('hidden');
     
-    document.querySelectorAll('.choice-btn').forEach(btn => {
-        btn.onclick = null; 
-        if(btn.dataset.choice === q.Answer) {
-            btn.classList.add('selected-correct');
-        } else {
-            btn.classList.add('dimmed');
-        }
-    });
-
-    document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
-    
-    renderQuestion(); // Re-runs layout updates securely
+    // Classes are now exclusively handled by renderQuestion() below
+    renderQuestion(); 
     saveSessionProgress();
     startVisualTimer();
 
