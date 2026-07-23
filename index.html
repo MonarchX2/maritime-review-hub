@@ -16,14 +16,14 @@
         } catch (e) {}
     </script>
 
-    <!-- Tailwind CSS (Development only). For production, use the Tailwind CLI to build a static CSS file. -->
+    <!-- Tailwind CSS (Development only). -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Deferred Chart.js for faster initial paint -->
+    <!-- Deferred Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
     
-    <!-- idb-keyval for IndexedDB (Bypasses 5MB localStorage limit) -->
+    <!-- idb-keyval for IndexedDB -->
     <script src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js"></script>
 
     <script>
@@ -38,7 +38,6 @@
             scroll-behavior: smooth;
         }
         
-        /* Smooth View Section Transitions */
         .view-section { 
             display: none; 
             opacity: 0; 
@@ -52,7 +51,6 @@
             100% { opacity: 1; transform: translateY(0) scale(1); } 
         }
         
-        /* Universal Interactive Element Animations */
         button, select, input {
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
@@ -60,7 +58,6 @@
             transform: scale(0.94); 
         }
 
-        /* Choice Button Interaction Animations */
         .choice-btn {
             transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
         }
@@ -106,7 +103,6 @@
             40%, 80% { transform: translateX(6px); }
         }
 
-        /* Folders & Accordions Smooth Expand */
         details > summary { list-style: none; }
         details > summary::-webkit-details-marker { display: none; }
         details[open] summary i.fa-chevron-down { 
@@ -126,7 +122,6 @@
             100% { opacity: 1; transform: translateY(0) scaleY(1); }
         }
 
-        /* Dynamic Generated Card Stagger Animation */
         .animate-card-in {
             animation: fadeScaleIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
             opacity: 0;
@@ -136,7 +131,6 @@
             100% { opacity: 1; transform: translateY(0) scale(1); }
         }
 
-        /* Timer Animation (Pop and Expand from Center) */
         @keyframes expandTimerCenter {
             0% { transform: scaleX(0) scaleY(2); opacity: 0; } 
             5% { transform: scaleX(0.05) scaleY(1); opacity: 1; } 
@@ -146,7 +140,6 @@
             animation: expandTimerCenter 3s linear forwards;
         }
 
-        /* Progress Bar Smoothing */
         #session-progress {
             transition: width 0.6s cubic-bezier(0.25, 1, 0.5, 1);
         }
@@ -158,7 +151,7 @@
             <i class="fa-solid fa-anchor mr-2"></i> BSMT 3.1 – ALPHA
         </button>
         <div class="flex items-center gap-5">
-            <button id="btn-admin-nav"onclick="navigate('admin')" class="hidden hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="Admin Portal">
+            <button id="btn-admin-nav" onclick="navigate('admin')" class="hidden hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="Admin Portal">
                 <i class="fa-solid fa-lock"></i>
             </button>
             <button onclick="navigate('settings')" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg hover:rotate-90" aria-label="Settings">
@@ -221,19 +214,47 @@
                 </div>
 
                 <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 transition-colors duration-300">
-                    <div class="flex gap-2 mb-3 flex-wrap">
-                        <span class="bg-brand-100 text-brand-800 text-xs px-2 py-1 rounded font-semibold dark:bg-brand-900 dark:text-brand-200 transition-colors" id="q-subject">Subject</span>
-                        <span class="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded font-semibold dark:bg-gray-700 dark:text-gray-300 transition-colors" id="q-id">ID</span>
+                    <div class="flex gap-2 mb-3 flex-wrap items-center justify-between">
+                        <div class="flex gap-2">
+                            <span class="bg-brand-100 text-brand-800 text-xs px-2 py-1 rounded font-semibold dark:bg-brand-900 dark:text-brand-200 transition-colors" id="q-subject">Subject</span>
+                            <span class="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded font-semibold dark:bg-gray-700 dark:text-gray-300 transition-colors" id="q-id">ID</span>
+                        </div>
+                        <!-- Question Type Indicator Badge -->
+                        <span id="q-type-badge" class="bg-purple-100 text-purple-800 text-xs px-2.5 py-1 rounded-full font-bold dark:bg-purple-900/50 dark:text-purple-300">
+                            MCQ
+                        </span>
                     </div>
                     <h3 class="text-xl font-medium mb-4 transition-colors" id="q-text">Loading question...</h3>
                     
                     <img id="q-image" src="" alt="Reference" class="hidden w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500 hover:scale-105">
 
-                    <div class="grid gap-3 mt-6" id="q-choices">
+                    <!-- ACTIVE RECALL COVER FEATURE -->
+                    <div id="active-recall-box" class="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 p-5 rounded-xl mb-4 text-center animate-card-in">
+                        <div class="flex items-center justify-center gap-2 text-amber-800 dark:text-amber-300 font-bold mb-2">
+                            <i class="fa-solid fa-brain text-lg animate-pulse"></i> Active Recall Mode
+                        </div>
+                        <p class="text-xs text-amber-700 dark:text-amber-400 mb-4">Recall or write down your answer from memory before looking at options!</p>
+
+                        <div class="flex flex-col sm:flex-row gap-2 max-w-md mx-auto">
+                            <input type="text" id="active-recall-input" placeholder="Type your answer here..." class="flex-1 p-2.5 text-sm border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
+                            <button id="btn-show-options" onclick="unlockChoices()" class="bg-brand-600 hover:bg-brand-700 text-white text-sm font-bold px-4 py-2.5 rounded-lg transition-all active:scale-95 shadow-sm">
+                                <i class="fa-solid fa-eye mr-1"></i> Show Choices
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- MCQ CHOICES CONTAINER -->
+                    <div class="grid gap-3 mt-6 hidden" id="q-choices">
                         <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium" data-choice="A">A) <span id="choice-a-text"></span></button>
                         <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium" data-choice="B">B) <span id="choice-b-text"></span></button>
                         <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium" data-choice="C">C) <span id="choice-c-text"></span></button>
                         <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium" data-choice="D">D) <span id="choice-d-text"></span></button>
+                    </div>
+
+                    <!-- IDENTIFICATION ANSWER DISPLAY CONTAINER -->
+                    <div id="q-identification-box" class="hidden p-5 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-center animate-card-in">
+                        <span class="text-xs uppercase font-bold text-gray-400 block mb-1">Correct Answer</span>
+                        <p id="identification-answer-text" class="text-xl font-bold text-brand-600 dark:text-brand-400">---</p>
                     </div>
                 </div>
 
@@ -256,7 +277,7 @@
                     </button>
                 </div>
 
-                <!-- ADD THIS: Auto-Next Timer Bar -->
+                <!-- Auto-Next Timer Bar -->
                 <div id="auto-next-timer-container" class="hidden mt-6 h-1.5 w-full max-w-sm mx-auto rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden shadow-inner transition-opacity duration-300">
                     <div id="auto-next-timer-bar" class="bg-brand-500 h-full w-full origin-center scale-x-0 rounded-full"></div>
                 </div>
@@ -300,7 +321,6 @@
                 <div class="flex justify-between items-center">
                     <span class="text-sm dark:text-gray-300 transition-colors">Theme Preference</span>
                     <button id="btn-theme-toggle" onclick="toggleTheme()" class="bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg font-bold hover:bg-gray-300 hover:shadow transform active:scale-95 transition-all duration-300">
-                        <!-- Text injected via JS -->
                     </button>
                 </div>
             </div>
@@ -358,7 +378,6 @@
                 </div>
 
                 <div id="admin-subject-list" class="space-y-3">
-                    <!-- Dynamically populated via JS -->
                 </div>
             </div>
         </section>
@@ -397,7 +416,6 @@
             try {
                 const savedDb = await idbKeyval.get('mrh_db');
                 if (savedDb) {
-                    // MIGRATION: Ensure all existing DB items use the new unique ID format
                     state.db = savedDb.map(q => {
                         if (q.ID && !q.ID.toString().includes('::')) {
                             let cleanId = q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, '');
@@ -451,14 +469,12 @@
                 settingsClickCount++;
                 clearTimeout(settingsClickTimeout);
                 
-                // If clicked 5 times, show the button
                 if (settingsClickCount >= 5) {
                     const adminBtn = document.getElementById('btn-admin-nav');
                     adminBtn.classList.remove('hidden');
-                    adminBtn.classList.add('animate-card-in'); // Adds a nice fade-in animation
-                    settingsClickCount = 0; // Reset counter after unlocking
+                    adminBtn.classList.add('animate-card-in');
+                    settingsClickCount = 0;
                 } else {
-                    // Reset the counter if they stop clicking for 2 seconds
                     settingsClickTimeout = setTimeout(() => {
                         settingsClickCount = 0;
                     }, 2000);
@@ -709,8 +725,13 @@
                 if (q.ChoiceB && q.ChoiceB.trim() !== "") validChoices.push(q.ChoiceB);
                 if (q.ChoiceC && q.ChoiceC.trim() !== "") validChoices.push(q.ChoiceC);
                 if (q.ChoiceD && q.ChoiceD.trim() !== "") validChoices.push(q.ChoiceD);
+
+                // Pure Identification check: if <= 1 choice exists, do not attempt to shuffle choices
+                if (validChoices.length <= 1) {
+                    return q;
+                }
                 
-                let correctText = q[`Choice${q.Answer}`]; 
+                let correctText = q[`Choice${q.Answer}`] || q.ChoiceA; 
                 validChoices = shuffleArray(validChoices);
                 
                 q.ChoiceA = validChoices[0] || "";
@@ -758,6 +779,7 @@
             saveSessionProgress();
         }
 
+        /* DETECT & RENDER IDENTIFICATION OR MCQ QUESTIONS */
         function renderQuestion() {
             stopVisualTimer();
             const q = state.session.questions[state.session.currentIndex];
@@ -770,13 +792,11 @@
             
             document.getElementById('q-subject').innerText = q.Subject || 'General';
             
-            // CLEAN ID DISPLAY: Extracts just the number part (removes the long Subject prefix)
             let displayId = q.ID || `Q-${state.session.currentIndex}`;
             if (displayId.includes('::')) {
                 displayId = displayId.split('::').pop();
             }
             document.getElementById('q-id').innerText = displayId;
-            
             document.getElementById('q-text').innerText = q.Question;
             
             const imgEl = document.getElementById('q-image');
@@ -786,8 +806,55 @@
                 imgEl.classList.add('hidden');
             }
 
-            const choices = ['A', 'B', 'C', 'D'];
-            choices.forEach(ch => {
+            // Identify available non-empty choices
+            const availableChoices = ['A', 'B', 'C', 'D'].filter(ch => q[`Choice${ch}`] && q[`Choice${ch}`].trim() !== "");
+            const isMCQ = availableChoices.length > 1;
+
+            // Update Type Badge
+            const badge = document.getElementById('q-type-badge');
+            if (badge) {
+                badge.innerText = isMCQ ? 'MCQ' : 'Identification';
+                badge.className = isMCQ 
+                    ? 'bg-purple-100 text-purple-800 text-xs px-2.5 py-1 rounded-full font-bold dark:bg-purple-900/50 dark:text-purple-300'
+                    : 'bg-emerald-100 text-emerald-800 text-xs px-2.5 py-1 rounded-full font-bold dark:bg-emerald-900/50 dark:text-emerald-300';
+            }
+
+            // Reset Active Recall Input
+            const recallInput = document.getElementById('active-recall-input');
+            if (recallInput) recallInput.value = "";
+
+            const activeRecallBox = document.getElementById('active-recall-box');
+            const choicesContainer = document.getElementById('q-choices');
+            const idBox = document.getElementById('q-identification-box');
+            const btnShowOptions = document.getElementById('btn-show-options');
+
+            if (!userAnswer) {
+                // Active Recall cover state: Hide choices / answer initially
+                activeRecallBox.classList.remove('hidden');
+                choicesContainer.classList.add('hidden');
+                idBox.classList.add('hidden');
+
+                if (isMCQ) {
+                    btnShowOptions.innerHTML = '<i class="fa-solid fa-eye mr-1"></i> Show Choices';
+                } else {
+                    btnShowOptions.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Check / Reveal Answer';
+                }
+            } else {
+                // Question already answered/revealed
+                activeRecallBox.classList.add('hidden');
+                if (isMCQ) {
+                    choicesContainer.classList.remove('hidden');
+                    idBox.classList.add('hidden');
+                } else {
+                    choicesContainer.classList.add('hidden');
+                    idBox.classList.remove('hidden');
+                    const ansText = q.ChoiceA || q[`Choice${q.Answer}`] || "N/A";
+                    document.getElementById('identification-answer-text').innerText = ansText;
+                }
+            }
+
+            // Populate choices and hide empty choices
+            ['A', 'B', 'C', 'D'].forEach(ch => {
                 const choiceText = q[`Choice${ch}`];
                 const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
                 
@@ -825,6 +892,21 @@
                 expBox.classList.add('hidden');
                 btnNext.disabled = true;
                 btnReveal.disabled = false;
+            }
+        }
+
+        // UNLOCK CHOICES AFTER ACTIVE RECALL STEP
+        function unlockChoices() {
+            const q = state.session.questions[state.session.currentIndex];
+            const availableChoices = ['A', 'B', 'C', 'D'].filter(ch => q[`Choice${ch}`] && q[`Choice${ch}`].trim() !== "");
+            const isMCQ = availableChoices.length > 1;
+
+            document.getElementById('active-recall-box').classList.add('hidden');
+
+            if (isMCQ) {
+                document.getElementById('q-choices').classList.remove('hidden');
+            } else {
+                revealAnswer();
             }
         }
 
@@ -1059,13 +1141,9 @@
                 if (newQuestions.error) throw new Error(newQuestions.error);
 
                 validQuestions = newQuestions.filter(q => 
-                    q.Question && q.Question.trim() !== "" &&
-                    q.ChoiceA && q.ChoiceA.trim() !== "" &&
-                    q.ChoiceB && q.ChoiceB.trim() !== ""
+                    q.Question && q.Question.trim() !== ""
                 ).map(q => {
-                    // NEW: Enforce unique IDs and strip prefix strings (e.g., "BSM-", "NAV-")
                     let cleanId = q.ID ? q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, '') : Math.random().toString(36).substr(2, 6);
-                    // Combine subject and ID so there are never duplicates across folders
                     q.ID = `${q.Subject}::${cleanId}`;
                     return q;
                 });
@@ -1225,7 +1303,7 @@
             if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
             state.session.autoNextTimeout = setTimeout(() => {
                 nextQuestion();
-            }, 3000);
+            }, 1000);
         }
 
         function showExplanation(q) {
@@ -1462,8 +1540,6 @@
             state.session = JSON.parse(saved);
 
             state.session.questions = state.session.questions.map((savedQ, index) => {
-                
-                // MIGRATION HELPER: Ensure session resumer works with the freshly updated IDs
                 let searchId = savedQ.ID;
                 if (searchId && !searchId.toString().includes('::')) {
                     let cleanId = searchId.toString().replace(/^[a-zA-Z]+[-\s]?/, '');
@@ -1476,7 +1552,7 @@
                     savedQ.Question = freshQ.Question;
                     savedQ.Explanation = freshQ.Explanation;
                     
-                    const realCorrectText = freshQ[`Choice${freshQ.Answer}`];
+                    const realCorrectText = freshQ[`Choice${freshQ.Answer}`] || freshQ.ChoiceA;
                     
                     if (savedQ.ChoiceA === realCorrectText) savedQ.Answer = 'A';
                     else if (savedQ.ChoiceB === realCorrectText) savedQ.Answer = 'B';
@@ -1529,14 +1605,26 @@
             
             trackStats(q, false);
             
-            document.querySelectorAll('.choice-btn').forEach(btn => {
-                btn.onclick = null; 
-                if(btn.dataset.choice === q.Answer) {
-                    btn.classList.add('selected-correct');
-                } else {
-                    btn.classList.add('dimmed');
-                }
-            });
+            document.getElementById('active-recall-box').classList.add('hidden');
+
+            const availableChoices = ['A', 'B', 'C', 'D'].filter(ch => q[`Choice${ch}`] && q[`Choice${ch}`].trim() !== "");
+            const isMCQ = availableChoices.length > 1;
+
+            if (isMCQ) {
+                document.getElementById('q-choices').classList.remove('hidden');
+                document.querySelectorAll('.choice-btn').forEach(btn => {
+                    btn.onclick = null; 
+                    if(btn.dataset.choice === q.Answer) {
+                        btn.classList.add('selected-correct');
+                    } else {
+                        btn.classList.add('dimmed');
+                    }
+                });
+            } else {
+                document.getElementById('q-identification-box').classList.remove('hidden');
+                const ansText = q.ChoiceA || q[`Choice${q.Answer}`] || "N/A";
+                document.getElementById('identification-answer-text').innerText = ansText;
+            }
 
             document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
             
@@ -1547,7 +1635,7 @@
             if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
             state.session.autoNextTimeout = setTimeout(() => {
                 nextQuestion();
-            }, 3000);
+            }, 1000);
         }
 
         function startVisualTimer() {
