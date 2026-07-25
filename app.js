@@ -11,6 +11,29 @@ let state = {
 
     let chartInstance = null;
 
+    // Add a simple UUID generator for telemetry tracking
+    function generateUserId() {
+        return 'user_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    // Ensure prefs has a userId
+    if (!state.prefs.userId) {
+        state.prefs.userId = generateUserId();
+    }
+
+    function sendTelemetry(action, details) {
+    fetch(DB_URL, {
+        method: 'POST',
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+            type: "telemetry",
+            userId: state.prefs.userId,
+            action: action,
+            details: details
+        })
+    }).catch(console.error); // Silently fail if offline so it doesn't interrupt the user
+}
+
     function escapeHTML(str) {
         if (!str) return '';
         return str.toString().replace(/[&<>'"]/g, tag => ({
@@ -1203,117 +1226,113 @@ renderCategoryProgress();
         }, 300); // Matches Tailwind transition duration
     }
 
-    async function submitReport() {
-        const typeEl = document.getElementById('report-type');
-        const comments = document.getElementById('report-comments').value.trim();
+async function submitReport() {
+    const typeEl = document.getElementById('report-type');
+    const comments = document.getElementById('report-comments').value.trim();
+    
+    if (!typeEl.value) {
+        alert("Please select an Error Type.");
+        return;
+    }
+
+    const btn = document.getElementById('btn-submit-report');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Sending...';
+    btn.disabled = true;
+
+    const q = state.session.questions[state.session.currentIndex];
+
+    try {
+        const response = await fetch(DB_URL, {
+            method: 'POST',
+            headers: { "Content-Type": "text/plain;charset=utf-8" }, // ADDED HEADER
+            body: JSON.stringify({
+                type: "submit_report",
+                questionId: q.ID,
+                subject: q.Subject,
+                questionText: q.Question,
+                errorType: typeEl.value,
+                comments: comments
+            })
+        });
+
+        const result = await response.json();
         
-        if (!typeEl.value) {
-            alert("Please select an Error Type.");
+        if (result.status === "success") {
+            const reportedQs = JSON.parse(localStorage.getItem('mrh_reported_qs') || '[]');
+            reportedQs.push(q.ID);
+            localStorage.setItem('mrh_reported_qs', JSON.stringify(reportedQs));
+
+            btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Report Submitted!';
+            btn.classList.replace('bg-red-500', 'bg-green-500');
+            btn.classList.replace('hover:bg-red-600', 'hover:bg-green-600');
+            
+            setTimeout(() => {
+                closeReportModal();
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                    btn.classList.replace('bg-green-500', 'bg-red-500');
+                    btn.classList.replace('hover:bg-green-600', 'hover:bg-red-600');
+                }, 500);
+
+                if (state.session.userAnswers[state.session.currentIndex]) {
+                    nextQuestion();
+                } else {
+                    revealAnswer(); 
+                }
+            }, 1500);
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Network error. Please try again.");
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
+async function loadReports() {
+    const container = document.getElementById('public-reports-list');
+    container.innerHTML = `<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500"></i><p class="mt-2 text-gray-500">Fetching community reports...</p></div>`;
+    
+    try {
+        const response = await fetch(DB_URL, {
+            method: 'POST',
+            headers: { "Content-Type": "text/plain;charset=utf-8" }, // ADDED HEADER
+            body: JSON.stringify({ type: "get_reports", role: "user" })
+        });
+        const reports = await response.json();
+        
+        if (reports.length === 0) {
+            container.innerHTML = `<div class="bg-white dark:bg-gray-800 p-8 rounded-xl border border-gray-100 dark:border-gray-700 text-center text-gray-500"><i class="fa-solid fa-check-circle text-4xl text-green-500 mb-3"></i><p>No active issues. The database is clean!</p></div>`;
             return;
         }
 
-        const btn = document.getElementById('btn-submit-report');
-        const originalText = btn.innerHTML;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Sending...';
-        btn.disabled = true;
-
-        const q = state.session.questions[state.session.currentIndex];
-
-        try {
-            const response = await fetch(DB_URL, {
-                method: 'POST',
-                body: JSON.stringify({
-                    type: "submit_report",
-                    questionId: q.ID,
-                    subject: q.Subject,
-                    questionText: q.Question,
-                    errorType: typeEl.value,
-                    comments: comments
-                })
-            });
-
-            const result = await response.json();
+        let html = '';
+        reports.forEach(r => {
+            const isResolved = r.status === 'Resolved';
+            const statusBadge = isResolved 
+                ? `<span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold uppercase tracking-wide"><i class="fa-solid fa-check mr-1"></i> Resolved</span>` 
+                : `<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold uppercase tracking-wide"><i class="fa-solid fa-clock mr-1"></i> Pending</span>`;
             
-            if (result.status === "success") {
-                // Record locally so they can't spam it
-                const reportedQs = JSON.parse(localStorage.getItem('mrh_reported_qs') || '[]');
-                reportedQs.push(q.ID);
-                localStorage.setItem('mrh_reported_qs', JSON.stringify(reportedQs));
-
-                btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Report Submitted!';
-                btn.classList.replace('bg-red-500', 'bg-green-500');
-                btn.classList.replace('hover:bg-red-600', 'hover:bg-green-600');
-                
-                // Close modal and auto-proceed
-                setTimeout(() => {
-                    closeReportModal();
-                    
-                    // Reset button styles for next time
-                    setTimeout(() => {
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                        btn.classList.replace('bg-green-500', 'bg-red-500');
-                        btn.classList.replace('hover:bg-green-600', 'hover:bg-red-600');
-                    }, 500);
-
-                    // Move to the next question automatically
-                    if (state.session.userAnswers[state.session.currentIndex]) {
-                        nextQuestion();
-                    } else {
-                        // Mark as skipped/revealed if they hadn't answered yet
-                        revealAnswer(); 
-                    }
-                }, 1500);
-            }
-        } catch (err) {
-            console.error(err);
-            alert("Network error. Please try again.");
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-        }
-    }
-
-    async function loadReports() {
-        const container = document.getElementById('public-reports-list');
-        container.innerHTML = `<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500"></i><p class="mt-2 text-gray-500">Fetching community reports...</p></div>`;
-        
-        try {
-            const response = await fetch(DB_URL, {
-                method: 'POST',
-                body: JSON.stringify({ type: "get_reports", role: "user" })
-            });
-            const reports = await response.json();
-            
-            if (reports.length === 0) {
-                container.innerHTML = `<div class="bg-white dark:bg-gray-800 p-8 rounded-xl border border-gray-100 dark:border-gray-700 text-center text-gray-500"><i class="fa-solid fa-check-circle text-4xl text-green-500 mb-3"></i><p>No active issues. The database is clean!</p></div>`;
-                return;
-            }
-
-            let html = '';
-            reports.forEach(r => {
-                const isResolved = r.status === 'Resolved';
-                const statusBadge = isResolved 
-                    ? `<span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold uppercase tracking-wide"><i class="fa-solid fa-check mr-1"></i> Resolved</span>` 
-                    : `<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold uppercase tracking-wide"><i class="fa-solid fa-clock mr-1"></i> Pending</span>`;
-                
-                html += `
-                    <div class="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm animate-card-in">
-                        <div class="flex justify-between items-start mb-2">
-                            <span class="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">${escapeHTML(r.questionId)}</span>
-                            ${statusBadge}
-                        </div>
-                        <h4 class="font-bold text-gray-800 dark:text-gray-100 mb-1">${escapeHTML(r.errorType)}</h4>
-                        <p class="text-sm text-gray-600 dark:text-gray-300 line-clamp-2 italic border-l-2 border-brand-500 pl-3 my-2">"${escapeHTML(r.questionText)}"</p>
-                        ${r.comments ? `<p class="text-sm text-gray-500 dark:text-gray-400 mt-2 bg-gray-50 dark:bg-gray-900/50 p-2 rounded"><i class="fa-solid fa-comment-dots mr-1"></i> ${escapeHTML(r.comments)}</p>` : ''}
-                        <div class="text-xs text-gray-400 mt-3 text-right">Reported: ${new Date(r.timestamp).toLocaleDateString()}</div>
+            html += `
+                <div class="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm animate-card-in">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">${escapeHTML(r.questionId)}</span>
+                        ${statusBadge}
                     </div>
-                `;
-            });
-            container.innerHTML = html;
-        } catch (err) {
-            container.innerHTML = `<div class="text-red-500 text-center p-4">Failed to load reports. Check your connection.</div>`;
-        }
+                    <h4 class="font-bold text-gray-800 dark:text-gray-100 mb-1">${escapeHTML(r.errorType)}</h4>
+                    <p class="text-sm text-gray-600 dark:text-gray-300 line-clamp-2 italic border-l-2 border-brand-500 pl-3 my-2">"${escapeHTML(r.questionText)}"</p>
+                    ${r.comments ? `<p class="text-sm text-gray-500 dark:text-gray-400 mt-2 bg-gray-50 dark:bg-gray-900/50 p-2 rounded"><i class="fa-solid fa-comment-dots mr-1"></i> ${escapeHTML(r.comments)}</p>` : ''}
+                    <div class="text-xs text-gray-400 mt-3 text-right">Reported: ${new Date(r.timestamp).toLocaleDateString()}</div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    } catch (err) {
+        container.innerHTML = `<div class="text-red-500 text-center p-4">Failed to load reports. Check your connection.</div>`;
     }
+}
 
     function showToast(message, type = 'success') {
     const container = document.getElementById('toast-container');
