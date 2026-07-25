@@ -1,8 +1,14 @@
-const CACHE_NAME = '2'; // Bumped version to force update
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
-    './manifest.json'
+    './manifest.json',
+    './app.js',
+    './admin.js',
+    './styles.css',
+    'https://cdn.tailwindcss.com',
+    'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
+    'https://cdn.jsdelivr.net/npm/chart.js',
+    'https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js'
 ];
 
 self.addEventListener('install', (event) => {
