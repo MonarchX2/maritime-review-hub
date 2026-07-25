@@ -190,50 +190,55 @@ const DB_URL = "https://script.google.com/macros/s/AKfycbx4HFy5LmX_CFZMTOdl809Or
     }
 
 function prepareSessionPool(pool) {
-let randomizedPool = shuffleArray([...pool]); 
+    let randomizedPool = shuffleArray([...pool]); 
 
-return randomizedPool.map(originalQ => {
-    let q = { ...originalQ };
-    let validChoices = [];
-    
-    // Safely extract choices, strictly ignoring undefined/empty strings
-    const rawChoices = [q.ChoiceA, q.ChoiceB, q.ChoiceC, q.ChoiceD];
-    rawChoices.forEach(c => {
-        if (c !== undefined && c !== null && String(c).trim() !== "" && String(c).trim().toLowerCase() !== "undefined") {
-            validChoices.push(String(c).trim());
-        }
+    // Basic SRS: Sort questions so those in the 'mistakes' array have a higher chance of appearing first
+    randomizedPool.sort((a, b) => {
+        const aIsMistake = state.stats.mistakes.includes(a.ID);
+        const bIsMistake = state.stats.mistakes.includes(b.ID);
+        // 70% chance to bump a mistake up if compared against a non-mistake
+        if (aIsMistake && !bIsMistake) return Math.random() > 0.3 ? -1 : 1;
+        if (!aIsMistake && bIsMistake) return Math.random() > 0.3 ? 1 : -1;
+        return 0;
     });
-    
-    // Robust text matching in case the DB answer is the text instead of the letter
-    let originalAns = String(q.Answer || "").trim().toUpperCase();
-    let correctText = "";
-    if (['A', 'B', 'C', 'D'].includes(originalAns)) {
-        correctText = String(originalQ[`Choice${originalAns}`] || "").trim();
-    } else {
-        correctText = String(q.Answer || "").trim();
-    }
-    
-    if (validChoices.length > 0) {
-        validChoices = shuffleArray(validChoices);
+
+    return randomizedPool.map(originalQ => {
+        let q = { ...originalQ };
+        let validChoices = [];
         
-        q.ChoiceA = validChoices[0] || "";
-        q.ChoiceB = validChoices[1] || "";
-        q.ChoiceC = validChoices[2] || "";
-        q.ChoiceD = validChoices[3] || "";
+        // Safely extract choices, strictly ignoring undefined/empty strings
+        const rawChoices = [q.ChoiceA, q.ChoiceB, q.ChoiceC, q.ChoiceD];
+        rawChoices.forEach(c => {
+            if (c !== undefined && c !== null && String(c).trim() !== "" && String(c).trim().toLowerCase() !== "undefined") {
+                validChoices.push(String(c).trim()); // SANITIZED
+            }
+        });
         
-        // Re-map the correct Answer letter based on the shuffled order
-        if (q.ChoiceA === correctText) q.Answer = 'A';
-        else if (q.ChoiceB === correctText) q.Answer = 'B';
-        else if (q.ChoiceC === correctText) q.Answer = 'C';
-        else if (q.ChoiceD === correctText) q.Answer = 'D';
-        else {
-            // Failsafe: if text mapping failed but it's a single choice flashcard, it defaults to A
-            if (validChoices.length === 1) q.Answer = 'A';
+        let originalAns = String(q.Answer || "").trim().toUpperCase();
+        let correctText = "";
+        if (['A', 'B', 'C', 'D'].includes(originalAns)) {
+            correctText = String(originalQ[`Choice${originalAns}`] || "").trim(); // SANITIZED
+        } else {
+            correctText = String(q.Answer || "").trim();
         }
-    }
-    
-    return q;
-});
+        
+        if (validChoices.length > 0) {
+            validChoices = shuffleArray(validChoices);
+            
+            q.ChoiceA = validChoices[0] || "";
+            q.ChoiceB = validChoices[1] || "";
+            q.ChoiceC = validChoices[2] || "";
+            q.ChoiceD = validChoices[3] || "";
+            
+            // Re-map correct Answer using strict trim matching
+            if (q.ChoiceA.trim() === correctText) q.Answer = 'A';
+            else if (q.ChoiceB.trim() === correctText) q.Answer = 'B';
+            else if (q.ChoiceC.trim() === correctText) q.Answer = 'C';
+            else if (q.ChoiceD.trim() === correctText) q.Answer = 'D';
+            else if (validChoices.length === 1) q.Answer = 'A';
+        }
+        return q;
+    });
 }
 
     function initSession() {
@@ -287,9 +292,12 @@ return randomizedPool.map(originalQ => {
 
     document.getElementById('q-text').innerText = q.Question;
 
-    const imgEl = document.getElementById('q-image');
+const imgEl = document.getElementById('q-image');
     if(q.ImageURL && q.ImageURL.trim() !== "") {
-        imgEl.src = q.ImageURL; imgEl.classList.remove('hidden');
+        imgEl.src = q.ImageURL; 
+        // Dynamic Alt Text for Accessibility
+        imgEl.alt = q.Question ? `Reference for: ${q.Question.substring(0, 50)}...` : "Question reference image";
+        imgEl.classList.remove('hidden');
     } else {
         imgEl.classList.add('hidden');
     }
@@ -525,11 +533,11 @@ return randomizedPool.map(originalQ => {
                         <button onclick="fetchAndStartCategory('${safeSubj}', 'continue')" class="flex-1 bg-brand-600 text-white py-2 px-2 rounded-lg font-bold hover:bg-brand-700 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group">
                             <i class="fa-solid fa-play mr-2 group-hover:scale-125 transition-transform"></i> ${buttonText}
                         </button>
-                        ${mistakesCount > 0 ? `
-                        <button onclick="fetchAndStartCategory('${safeSubj}', 'mistakes')" class="flex-1 bg-orange-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-orange-600 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group">
-                            <i class="fa-solid fa-book mr-2 group-hover:-rotate-12 transition-transform"></i> Review ${mistakesCount}
-                        </button>
-                        ` : ''}
+                            ${mistakesCount > 0 ? `
+                            <button onclick="fetchAndStartCategory('${safeSubj}', 'mistakes')" class="flex-1 bg-yellow-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-yellow-600 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group" title="Review Mistakes">
+                                <i class="fa-solid fa-triangle-exclamation mr-2 group-hover:scale-125 transition-transform"></i> Review
+                            </button>
+                            ` : ''}
                         <button onclick="resetCategory('${safeSubj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-sm border border-red-100 dark:border-red-800 hover:rotate-180" title="Reset Progress"><i class="fa-solid fa-rotate-left transition-transform"></i></button>
                     </div>
                 </div>
@@ -831,20 +839,20 @@ return randomizedPool.map(originalQ => {
         if(chartInstance) chartInstance.destroy(); 
         
         const ctx = document.getElementById('chart-accuracy').getContext('2d');
-        const subjects = Object.keys(state.stats.subjectAccuracy);
+        let labels = Object.keys(state.stats.subjectAccuracy);
+        let data = [];
         
-        if(subjects.length === 0) {
-            subjects.push("COLREG", "Navigation", "Meteorology");
-            state.stats.subjectAccuracy = {
-                "COLREG": {total: 10, correct: 0}, "Navigation": {total: 10, correct: 0}, "Meteorology": {total: 10, correct: 0}
-            };
+        if(labels.length === 0) {
+            // Use local placeholder arrays instead of mutating the global state
+            labels = ["COLREG", "Navigation", "Meteorology"];
+            data = [0, 0, 0]; // 0% accuracy for placeholders
+        } else {
+            // Map actual data
+            data = labels.map(s => {
+                const d = state.stats.subjectAccuracy[s];
+                return d.total === 0 ? 0 : Math.round((d.correct / d.total) * 100);
+            });
         }
-
-        const labels = subjects;
-        const data = subjects.map(s => {
-            const d = state.stats.subjectAccuracy[s];
-            return d.total === 0 ? 0 : Math.round((d.correct / d.total) * 100);
-        });
 
         chartInstance = new Chart(ctx, {
             type: 'radar',
@@ -918,28 +926,47 @@ return randomizedPool.map(originalQ => {
         dlAnchorElem.click();
     }
 
-    function importData(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = async function(e) {
-            try {
-                const importedState = JSON.parse(e.target.result);
-                if (importedState && importedState.stats && importedState.db) {
-                    state = importedState;
-                    saveState();
-                    await idbKeyval.set('mrh_db', state.db);
-                    alert("Data successfully restored!");
-                    window.location.reload();
-                } else {
-                    alert("Invalid backup file.");
-                }
-            } catch(err) {
-                alert("Error reading file.");
+function importData(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        try {
+            const importedState = JSON.parse(e.target.result);
+            // Stricter validation
+            if (importedState && typeof importedState.stats === 'object' && Array.isArray(importedState.db)) {
+                state = importedState;
+                saveState();
+                await idbKeyval.set('mrh_db', state.db);
+                showToast("Data successfully restored!", "success");
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                showToast("Invalid backup file format.", "error");
             }
-        };
-        reader.readAsText(file);
+        } catch(err) {
+            showToast("Error reading JSON file.", "error");
+        }
+    };
+    reader.readAsText(file);
+}
+
+    document.addEventListener('keydown', (e) => {
+    if (!state.session.active || document.getElementById('report-modal').classList.contains('hidden') === false) return;
+    
+    const key = e.key.toUpperCase();
+    const isAnswered = state.session.userAnswers[state.session.currentIndex];
+
+    if (!isAnswered) {
+        if (['1', 'A'].includes(key)) document.querySelector('.choice-btn[data-choice="A"]')?.click();
+        if (['2', 'B'].includes(key)) document.querySelector('.choice-btn[data-choice="B"]')?.click();
+        if (['3', 'C'].includes(key)) document.querySelector('.choice-btn[data-choice="C"]')?.click();
+        if (['4', 'D'].includes(key)) document.querySelector('.choice-btn[data-choice="D"]')?.click();
+        if (e.code === 'Space') { e.preventDefault(); revealAnswer(); }
+    } else {
+        if (e.code === 'Space' || e.code === 'ArrowRight') { e.preventDefault(); nextQuestion(); }
+        if (e.code === 'ArrowLeft') { e.preventDefault(); prevQuestion(); }
     }
+});
 
     window.onload = () => {
         loadState();
@@ -1259,3 +1286,55 @@ renderCategoryProgress();
             container.innerHTML = `<div class="text-red-500 text-center p-4">Failed to load reports. Check your connection.</div>`;
         }
     }
+
+    function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    const colors = type === 'error' ? 'bg-red-500 text-white' : 'bg-gray-800 dark:bg-gray-100 text-white dark:text-gray-900';
+    const icon = type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check';
+    
+    toast.className = `toast-enter ${colors} px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 font-medium text-sm`;
+    toast.innerHTML = `<i class="fa-solid ${icon}"></i> ${escapeHTML(message)}`;
+    
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(100%)';
+        toast.style.transition = 'all 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+function handleGlobalSearch() {
+    const query = document.getElementById('global-search').value.toLowerCase().trim();
+    const container = document.getElementById('category-list');
+    
+    if (!query) {
+        renderCategoryProgress(); // Reset to standard folder view
+        return;
+    }
+
+    const results = state.db.filter(q => 
+        (q.Question && q.Question.toLowerCase().includes(query)) ||
+        (q.Subject && q.Subject.toLowerCase().includes(query)) ||
+        (q.Tags && q.Tags.toLowerCase().includes(query))
+    );
+
+    if (results.length === 0) {
+        container.innerHTML = `<div class="col-span-full text-center py-10 text-gray-500">No questions found matching "${escapeHTML(query)}".</div>`;
+        return;
+    }
+
+    // Render a "Quick Review" card for the search results
+// 1. Save the results globally
+state.currentSearchResults = results; 
+
+// 2. Reference the state variable in the DOM string
+container.innerHTML = `
+    <div class="col-span-full animate-card-in bg-brand-50 dark:bg-brand-900/30 border border-brand-200 dark:border-brand-800 p-5 rounded-xl shadow-sm">
+        <h3 class="font-bold text-lg text-brand-800 dark:text-brand-300 mb-2"><i class="fa-solid fa-search mr-2"></i> Search Results</h3>
+        <p class="text-sm text-brand-600 dark:text-brand-400 mb-4">Found ${results.length} matching questions.</p>
+        <button onclick="startCustomSession(state.currentSearchResults)" class="bg-brand-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-brand-700 shadow-md transition-all active:scale-95">Review Found Questions</button>
+    </div>
+`;
+}

@@ -67,6 +67,10 @@
 
 <div class="flex justify-between items-center mb-4">
     <h3 class="text-lg font-bold">Subject Progress</h3>
+    <div class="mb-6 relative animate-card-in">
+    <i class="fa-solid fa-search absolute left-4 top-3.5 text-gray-400"></i>
+    <input type="text" id="global-search" onkeyup="handleGlobalSearch()" placeholder="Search questions, subjects, or tags..." class="w-full pl-10 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-sm">
+</div>
     <button onclick="toggleLayout()" class="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg shadow-sm hover:shadow-md transition-all text-sm font-medium text-gray-700 dark:text-gray-200">
         <i id="layout-icon" class="fa-solid fa-table-cells text-brand-500"></i>
         <span id="layout-text">Grid View</span>

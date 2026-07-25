@@ -115,3 +115,9 @@ details[open] summary ~ div {
 #session-progress {
     transition: width 0.6s cubic-bezier(0.25, 1, 0.5, 1);
 }
+
+@keyframes slideInRight {
+    0% { transform: translateX(100%); opacity: 0; }
+    100% { transform: translateX(0); opacity: 1; }
+}
+.toast-enter { animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }

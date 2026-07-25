@@ -1,4 +1,4 @@
-const CACHE_NAME = '2'; // Bumped version to force update
+const CACHE_NAME = '3'; // Bumped version to force update
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -41,15 +41,14 @@ self.addEventListener('activate', (event) => {
 
 // Network-First Strategy
 self.addEventListener('fetch', (event) => {
-    // FIX: The Cache API strictly requires GET requests. Ignore POST/PUT etc.
-    if (event.request.method !== 'GET') {
+    // FIX: Ignore POST requests and bypass caching for the Google Apps Script API
+    if (event.request.method !== 'GET' || event.request.url.includes('script.google.com')) {
         return; 
     }
 
     event.respondWith(
         fetch(event.request)
             .then((networkResponse) => {
-                // FIX: Only cache successful network responses to avoid caching errors
                 if (networkResponse && networkResponse.status === 200) {
                     const responseToCache = networkResponse.clone();
                     caches.open(CACHE_NAME).then((cache) => {
@@ -58,9 +57,6 @@ self.addEventListener('fetch', (event) => {
                 }
                 return networkResponse;
             })
-            .catch(() => {
-                // If the network fails (offline), fall back to the cache
-                return caches.match(event.request);
-            })
+            .catch(() => caches.match(event.request))
     );
 });
