@@ -573,7 +573,7 @@ const layoutClass = isGrid
                         </button>
                             ${mistakesCount > 0 ? `
                             <button onclick="fetchAndStartCategory('${safeSubj}', 'mistakes')" class="flex-1 bg-yellow-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-yellow-600 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group" title="Review Mistakes">
-                                <i class="fa-solid fa-triangle-exclamation mr-2 group-hover:scale-125 transition-transform"></i> Review
+                                <i class="fa-solid fa-triangle-exclamation mr-2 group-hover:scale-125 transition-transform"></i> Review (${mistakesCount})
                             </button>
                             ` : ''}
                         <button onclick="resetCategory('${safeSubj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-sm border border-red-100 dark:border-red-800 hover:rotate-180" title="Reset Progress"><i class="fa-solid fa-rotate-left transition-transform"></i></button>
