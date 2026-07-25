@@ -1,13 +1,13 @@
 const DB_URL = "https://script.google.com/macros/s/AKfycbx4HFy5LmX_CFZMTOdl809OrnsgxzQvpzHDOhrMK3yk7fNZb7Gp2pImwBCS_I1Gx-D20g/exec";
     
-    let state = {
-        db: [],
-        categorySummary: [],
-        stats: { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} },
-        prefs: { darkMode: true, layoutMode: 'grid' }, 
-        session: { active: false, questions: [], currentIndex: 0, userAnswers: {}, autoNextTimeout: null },
-        currentPath: [] // ADD THIS LINE
-    };
+let state = {
+    db: [],
+    categorySummary: [],
+    stats: { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} },
+    prefs: { darkMode: true, layoutMode: 'grid', activeRecall: true }, // Added activeRecall
+    session: { active: false, questions: [], currentIndex: 0, userAnswers: {}, autoNextTimeout: null },
+    currentPath: []
+};
 
     let chartInstance = null;
 
@@ -272,7 +272,7 @@ function prepareSessionPool(pool) {
         saveSessionProgress();
     }
 
-    function renderQuestion() {
+function renderQuestion() {
     stopVisualTimer();
     const q = state.session.questions[state.session.currentIndex];
     const userAnswer = state.session.userAnswers[state.session.currentIndex];
@@ -292,10 +292,9 @@ function prepareSessionPool(pool) {
 
     document.getElementById('q-text').innerText = q.Question;
 
-const imgEl = document.getElementById('q-image');
+    const imgEl = document.getElementById('q-image');
     if(q.ImageURL && q.ImageURL.trim() !== "") {
         imgEl.src = q.ImageURL; 
-        // Dynamic Alt Text for Accessibility
         imgEl.alt = q.Question ? `Reference for: ${q.Question.substring(0, 50)}...` : "Question reference image";
         imgEl.classList.remove('hidden');
     } else {
@@ -305,7 +304,7 @@ const imgEl = document.getElementById('q-image');
     const choices = ['A', 'B', 'C', 'D'];
     let validChoicesCount = 0; 
 
-    // First count how many valid choices there are
+    // Count valid choices
     choices.forEach(ch => {
         const choiceText = q[`Choice${ch}`];
         if (choiceText && choiceText.trim() !== "" && choiceText.toLowerCase() !== "undefined") {
@@ -313,6 +312,7 @@ const imgEl = document.getElementById('q-image');
         }
     });
 
+    // Render choice buttons (Removed the misplaced active recall logic from here)
     choices.forEach(ch => {
         const choiceText = q[`Choice${ch}`];
         const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
@@ -325,21 +325,10 @@ const imgEl = document.getElementById('q-image');
             
             btn.onclick = () => submitPracticeAnswer(ch, q.Answer);
             btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium";
-            
-            if (userAnswer) {
-                btn.onclick = null;
-                // FAILSAFE: If it's a flashcard (1 choice), always mark it properly as correct
-                if (ch === q.Answer || validChoicesCount === 1) {
-                    btn.classList.add('selected-correct');
-                } else if (userAnswer === ch) {
-                    btn.classList.add('selected-wrong');
-                } else {
-                    btn.classList.add('dimmed');
-                }
-            }
         }
     });
 
+    // Grab elements AFTER the loop
     const qChoicesContainer = document.getElementById('q-choices');
     const activeRecallMask = document.getElementById('active-recall-mask');
     const expBox = document.getElementById('q-explanation-box');
@@ -349,6 +338,7 @@ const imgEl = document.getElementById('q-image');
 
     btnPrev.disabled = state.session.currentIndex === 0;
 
+    // Apply Active Recall / Answered State logic ONCE at the end
     if (userAnswer) {
         if (activeRecallMask) activeRecallMask.classList.add('hidden');
         qChoicesContainer.classList.remove('hidden');
@@ -362,14 +352,21 @@ const imgEl = document.getElementById('q-image');
         btnReveal.disabled = false;
         
         if (validChoicesCount <= 1) {
+            // It's a flashcard (no choices to hide)
             if (activeRecallMask) activeRecallMask.classList.add('hidden');
             qChoicesContainer.classList.add('hidden');
         } else {
-            if (activeRecallMask) activeRecallMask.classList.remove('hidden');
-            qChoicesContainer.classList.add('hidden');
+            // It's multiple choice: Check Active Recall Preference
+            if (state.prefs.activeRecall !== false) {
+                if (activeRecallMask) activeRecallMask.classList.remove('hidden');
+                qChoicesContainer.classList.add('hidden');
+            } else {
+                if (activeRecallMask) activeRecallMask.classList.add('hidden');
+                qChoicesContainer.classList.remove('hidden');
+            }
         }
     }
-    }
+}
 
     function enterFolder(folderName) {
         if (!state.currentPath) state.currentPath = [];
@@ -461,9 +458,10 @@ const imgEl = document.getElementById('q-image');
         </div>`;
 
         // Apply grid/list container class mapping
-        const layoutClass = isGrid 
-            ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5' 
-            : 'flex flex-col space-y-4';
+// Change this line inside renderCategoryProgress():
+const layoutClass = isGrid 
+    ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 lg:gap-8' // Spaced out for less crowding
+    : 'flex flex-col space-y-4';
             
         html += `<div class="${layoutClass}">`;
 
@@ -1305,36 +1303,40 @@ renderCategoryProgress();
     }, 3000);
 }
 
-function handleGlobalSearch() {
-    const query = document.getElementById('global-search').value.toLowerCase().trim();
-    const container = document.getElementById('category-list');
+function openSessionSettingsModal() {
+    // Sync the toggle visually with the saved preference
+    document.getElementById('toggle-active-recall').checked = state.prefs.activeRecall !== false;
     
-    if (!query) {
-        renderCategoryProgress(); // Reset to standard folder view
-        return;
-    }
-
-    const results = state.db.filter(q => 
-        (q.Question && q.Question.toLowerCase().includes(query)) ||
-        (q.Subject && q.Subject.toLowerCase().includes(query)) ||
-        (q.Tags && q.Tags.toLowerCase().includes(query))
-    );
-
-    if (results.length === 0) {
-        container.innerHTML = `<div class="col-span-full text-center py-10 text-gray-500">No questions found matching "${escapeHTML(query)}".</div>`;
-        return;
-    }
-
-    // Render a "Quick Review" card for the search results
-// 1. Save the results globally
-state.currentSearchResults = results; 
-
-// 2. Reference the state variable in the DOM string
-container.innerHTML = `
-    <div class="col-span-full animate-card-in bg-brand-50 dark:bg-brand-900/30 border border-brand-200 dark:border-brand-800 p-5 rounded-xl shadow-sm">
-        <h3 class="font-bold text-lg text-brand-800 dark:text-brand-300 mb-2"><i class="fa-solid fa-search mr-2"></i> Search Results</h3>
-        <p class="text-sm text-brand-600 dark:text-brand-400 mb-4">Found ${results.length} matching questions.</p>
-        <button onclick="startCustomSession(state.currentSearchResults)" class="bg-brand-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-brand-700 shadow-md transition-all active:scale-95">Review Found Questions</button>
-    </div>
-`;
+    const modal = document.getElementById('session-settings-modal');
+    const inner = modal.querySelector('div');
+    modal.classList.remove('hidden');
+    
+    setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        inner.classList.remove('scale-95');
+    }, 10);
 }
+
+function closeSessionSettingsModal() {
+    const modal = document.getElementById('session-settings-modal');
+    const inner = modal.querySelector('div');
+    modal.classList.add('opacity-0');
+    inner.classList.add('scale-95');
+    
+    setTimeout(() => {
+        modal.classList.add('hidden');
+    }, 300);
+}
+
+function toggleActiveRecall() {
+    const isChecked = document.getElementById('toggle-active-recall').checked;
+    state.prefs.activeRecall = isChecked;
+    saveState(); // Saves the preference to localStorage
+    
+    // Re-render immediately so changes take effect without going to the next question
+    if (state.session.active) {
+        renderQuestion();
+    }
+}
+
+// NOTE: Don't forget to delete the old handleGlobalSearch() function if you haven't already!

@@ -67,10 +67,6 @@
 
 <div class="flex justify-between items-center mb-4">
     <h3 class="text-lg font-bold">Subject Progress</h3>
-    <div class="mb-6 relative animate-card-in">
-    <i class="fa-solid fa-search absolute left-4 top-3.5 text-gray-400"></i>
-    <input type="text" id="global-search" onkeyup="handleGlobalSearch()" placeholder="Search questions, subjects, or tags..." class="w-full pl-10 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-sm">
-</div>
     <button onclick="toggleLayout()" class="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg shadow-sm hover:shadow-md transition-all text-sm font-medium text-gray-700 dark:text-gray-200">
         <i id="layout-icon" class="fa-solid fa-table-cells text-brand-500"></i>
         <span id="layout-text">Grid View</span>
@@ -125,6 +121,11 @@
                         <button onclick="openReportModal()" id="btn-open-report" class="ml-auto text-gray-400 hover:text-red-500 text-xs font-bold flex items-center gap-1 transition-all bg-white hover:bg-red-50 dark:bg-gray-800 dark:hover:bg-red-900/30 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-md shadow-sm active:scale-95">
                             <i class="fa-solid fa-triangle-exclamation"></i> Report Issue
                         </button>
+
+                        <!-- NEW SETTINGS BUTTON -->
+    <button onclick="openSessionSettingsModal()" id="btn-session-settings" class="text-gray-400 hover:text-brand-500 text-xs font-bold flex items-center gap-1 transition-all bg-white hover:bg-brand-50 dark:bg-gray-800 dark:hover:bg-brand-900/30 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-md shadow-sm active:scale-95">
+        <i class="fa-solid fa-gear"></i> Settings
+    </button>
                     </div>
                     <h3 class="text-xl font-medium mb-4 transition-colors" id="q-text">Loading question...</h3>
                     
@@ -335,6 +336,29 @@
                 </div>
             </div>
         </div>
+
+        <!-- SESSION SETTINGS MODAL OVERLAY -->
+<div id="session-settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700">
+        <div class="flex justify-between items-center mb-6 border-b dark:border-gray-700 pb-3">
+            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100"><i class="fa-solid fa-sliders text-brand-500 mr-2"></i> Session Settings</h3>
+            <button onclick="closeSessionSettingsModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><i class="fa-solid fa-xmark text-xl"></i></button>
+        </div>
+        
+        <div class="flex justify-between items-center mb-6">
+            <div class="pr-4">
+                <span class="block text-sm font-bold text-gray-800 dark:text-gray-200">Active Recall Mode</span>
+                <span class="text-xs text-gray-500">Hide choices initially to test your memory.</span>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="toggle-active-recall" class="sr-only peer" onchange="toggleActiveRecall()">
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"></div>
+            </label>
+        </div>
+        
+        <button onclick="closeSessionSettingsModal()" class="w-full bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95">Done</button>
+    </div>
+</div>
     </main>
     <script src="app.js"></script>
     <script src="admin.js"></script>
