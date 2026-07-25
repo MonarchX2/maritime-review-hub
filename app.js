@@ -1,12 +1,13 @@
-    const DB_URL = "https://script.google.com/macros/s/AKfycbx4HFy5LmX_CFZMTOdl809OrnsgxzQvpzHDOhrMK3yk7fNZb7Gp2pImwBCS_I1Gx-D20g/exec";
+const DB_URL = "https://script.google.com/macros/s/AKfycbx4HFy5LmX_CFZMTOdl809OrnsgxzQvpzHDOhrMK3yk7fNZb7Gp2pImwBCS_I1Gx-D20g/exec";
     
-let state = {
-db: [],
-categorySummary: [],
-stats: { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} },
-prefs: { darkMode: true, layoutMode: 'grid' }, // Added layoutMode
-session: { active: false, questions: [], currentIndex: 0, userAnswers: {}, autoNextTimeout: null }
-};
+    let state = {
+        db: [],
+        categorySummary: [],
+        stats: { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} },
+        prefs: { darkMode: true, layoutMode: 'grid' }, 
+        session: { active: false, questions: [], currentIndex: 0, userAnswers: {}, autoNextTimeout: null },
+        currentPath: [] // ADD THIS LINE
+    };
 
     let adminState = {
         token: "",
@@ -409,317 +410,311 @@ return randomizedPool.map(originalQ => {
         saveSessionProgress();
     }
 
-function renderQuestion() {
-stopVisualTimer();
-const q = state.session.questions[state.session.currentIndex];
-const userAnswer = state.session.userAnswers[state.session.currentIndex];
+    function renderQuestion() {
+    stopVisualTimer();
+    const q = state.session.questions[state.session.currentIndex];
+    const userAnswer = state.session.userAnswers[state.session.currentIndex];
 
-const currentCard = state.session.currentIndex + 1;
-const totalCards = state.session.questions.length;
-document.getElementById('session-progress-text').innerText = `${currentCard} / ${totalCards}`;
-document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / totalCards) * 100}%`;
+    const currentCard = state.session.currentIndex + 1;
+    const totalCards = state.session.questions.length;
+    document.getElementById('session-progress-text').innerText = `${currentCard} / ${totalCards}`;
+    document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / totalCards) * 100}%`;
 
-document.getElementById('q-subject').innerText = q.Subject || 'General';
+    document.getElementById('q-subject').innerText = q.Subject || 'General';
 
-let displayId = q.ID || `Q-${state.session.currentIndex}`;
-if (displayId.includes('::')) {
-    displayId = displayId.split('::').pop();
-}
-document.getElementById('q-id').innerText = displayId;
-
-document.getElementById('q-text').innerText = q.Question;
-
-const imgEl = document.getElementById('q-image');
-if(q.ImageURL && q.ImageURL.trim() !== "") {
-    imgEl.src = q.ImageURL; imgEl.classList.remove('hidden');
-} else {
-    imgEl.classList.add('hidden');
-}
-
-const choices = ['A', 'B', 'C', 'D'];
-let validChoicesCount = 0; 
-
-// First count how many valid choices there are
-choices.forEach(ch => {
-    const choiceText = q[`Choice${ch}`];
-    if (choiceText && choiceText.trim() !== "" && choiceText.toLowerCase() !== "undefined") {
-        validChoicesCount++;
+    let displayId = q.ID || `Q-${state.session.currentIndex}`;
+    if (displayId.includes('::')) {
+        displayId = displayId.split('::').pop();
     }
-});
+    document.getElementById('q-id').innerText = displayId;
 
-choices.forEach(ch => {
-    const choiceText = q[`Choice${ch}`];
-    const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
-    
-    if (!choiceText || choiceText.trim() === "" || choiceText.toLowerCase() === "undefined") {
-        btn.classList.add('hidden');
+    document.getElementById('q-text').innerText = q.Question;
+
+    const imgEl = document.getElementById('q-image');
+    if(q.ImageURL && q.ImageURL.trim() !== "") {
+        imgEl.src = q.ImageURL; imgEl.classList.remove('hidden');
     } else {
-        btn.classList.remove('hidden');
-        document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = choiceText;
+        imgEl.classList.add('hidden');
+    }
+
+    const choices = ['A', 'B', 'C', 'D'];
+    let validChoicesCount = 0; 
+
+    // First count how many valid choices there are
+    choices.forEach(ch => {
+        const choiceText = q[`Choice${ch}`];
+        if (choiceText && choiceText.trim() !== "" && choiceText.toLowerCase() !== "undefined") {
+            validChoicesCount++;
+        }
+    });
+
+    choices.forEach(ch => {
+        const choiceText = q[`Choice${ch}`];
+        const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
         
-        btn.onclick = () => submitPracticeAnswer(ch, q.Answer);
-        btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium";
-        
-        if (userAnswer) {
-            btn.onclick = null;
-            // FAILSAFE: If it's a flashcard (1 choice), always mark it properly as correct
-            if (ch === q.Answer || validChoicesCount === 1) {
-                btn.classList.add('selected-correct');
-            } else if (userAnswer === ch) {
-                btn.classList.add('selected-wrong');
-            } else {
-                btn.classList.add('dimmed');
+        if (!choiceText || choiceText.trim() === "" || choiceText.toLowerCase() === "undefined") {
+            btn.classList.add('hidden');
+        } else {
+            btn.classList.remove('hidden');
+            document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = choiceText;
+            
+            btn.onclick = () => submitPracticeAnswer(ch, q.Answer);
+            btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium";
+            
+            if (userAnswer) {
+                btn.onclick = null;
+                // FAILSAFE: If it's a flashcard (1 choice), always mark it properly as correct
+                if (ch === q.Answer || validChoicesCount === 1) {
+                    btn.classList.add('selected-correct');
+                } else if (userAnswer === ch) {
+                    btn.classList.add('selected-wrong');
+                } else {
+                    btn.classList.add('dimmed');
+                }
             }
         }
-    }
-});
+    });
 
-const qChoicesContainer = document.getElementById('q-choices');
-const activeRecallMask = document.getElementById('active-recall-mask');
-const expBox = document.getElementById('q-explanation-box');
-const btnNext = document.getElementById('btn-next');
-const btnPrev = document.getElementById('btn-prev');
-const btnReveal = document.getElementById('btn-reveal');
+    const qChoicesContainer = document.getElementById('q-choices');
+    const activeRecallMask = document.getElementById('active-recall-mask');
+    const expBox = document.getElementById('q-explanation-box');
+    const btnNext = document.getElementById('btn-next');
+    const btnPrev = document.getElementById('btn-prev');
+    const btnReveal = document.getElementById('btn-reveal');
 
-btnPrev.disabled = state.session.currentIndex === 0;
+    btnPrev.disabled = state.session.currentIndex === 0;
 
-if (userAnswer) {
-    if (activeRecallMask) activeRecallMask.classList.add('hidden');
-    qChoicesContainer.classList.remove('hidden');
-    
-    showExplanation(q);
-    btnNext.disabled = false;
-    btnReveal.disabled = true;
-} else {
-    expBox.classList.add('hidden');
-    btnNext.disabled = true;
-    btnReveal.disabled = false;
-    
-    if (validChoicesCount <= 1) {
+    if (userAnswer) {
         if (activeRecallMask) activeRecallMask.classList.add('hidden');
-        qChoicesContainer.classList.add('hidden');
-    } else {
-        if (activeRecallMask) activeRecallMask.classList.remove('hidden');
-        qChoicesContainer.classList.add('hidden');
-    }
-}
-}
-
-function renderCategoryProgress() {
-    const container = document.getElementById('category-list');
-    const isGrid = state.prefs.layoutMode === 'grid';
-
-    // Update toggle button UI
-    const layoutIcon = document.getElementById('layout-icon');
-    const layoutText = document.getElementById('layout-text');
-    if (layoutIcon && layoutText) {
-        layoutIcon.className = isGrid ? 'fa-solid fa-list text-brand-500' : 'fa-solid fa-table-cells text-brand-500';
-        layoutText.innerText = isGrid ? 'List View' : 'Grid View';
-    }
-
-    // Apply layout classes to the container
-    container.className = isGrid 
-        ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' 
-        : 'space-y-4';
-
-    // --- 1. PRESERVE OPEN FOLDERS ---
-    let openFolders = [];
-    if (container) {
-        container.querySelectorAll('details[open]').forEach(details => {
-            const summaryText = details.querySelector('summary').textContent.trim();
-            openFolders.push(summaryText);
-        });
-    }
-
-    // --- 2. BUILD THE HIERARCHY TREE ---
-    let tree = {};
-    if (state.categorySummary && state.categorySummary.length > 0) {
-        state.categorySummary.forEach(cat => {
-            const parts = cat.Subject.split('::');
-            let currentLevel = tree;
-            
-            parts.forEach((part, index) => {
-                part = part.trim();
-                if (!currentLevel[part]) {
-                    currentLevel[part] = { _children: {}, _data: null };
-                }
-                
-                // If it's the last part of the path, assign the actual category data
-                if (index === parts.length - 1) {
-                    currentLevel[part]._data = cat; 
-                }
-                
-                // Move down a level for the next iteration
-                currentLevel = currentLevel[part]._children;
-            });
-        });
-    }
-
-    // --- 3. GENERATE TREE HTML ---
-    function generateTreeHTML(node, depth = 0) {
-        let html = '';
-        let indexCounter = 0;
+        qChoicesContainer.classList.remove('hidden');
         
-        // Sort alphabetically
-        const keys = Object.keys(node).sort(); 
+        showExplanation(q);
+        btnNext.disabled = false;
+        btnReveal.disabled = true;
+    } else {
+        expBox.classList.add('hidden');
+        btnNext.disabled = true;
+        btnReveal.disabled = false;
+        
+        if (validChoicesCount <= 1) {
+            if (activeRecallMask) activeRecallMask.classList.add('hidden');
+            qChoicesContainer.classList.add('hidden');
+        } else {
+            if (activeRecallMask) activeRecallMask.classList.remove('hidden');
+            qChoicesContainer.classList.add('hidden');
+        }
+    }
+    }
 
-        for (const key of keys) {
-            const item = node[key];
+    function enterFolder(folderName) {
+        if (!state.currentPath) state.currentPath = [];
+        state.currentPath.push(folderName);
+        renderCategoryProgress();
+    }
+
+    function goToPath(index) {
+        if (!state.currentPath) state.currentPath = [];
+        if (index === -1) {
+            state.currentPath = []; // Go to Root/Home
+        } else {
+            state.currentPath = state.currentPath.slice(0, index + 1); // Go to specific breadcrumb
+        }
+        renderCategoryProgress();
+    }
+
+    function renderCategoryProgress() {
+        const container = document.getElementById('category-list');
+        const isGrid = state.prefs.layoutMode === 'grid';
+
+        // Update toggle button UI
+        const layoutIcon = document.getElementById('layout-icon');
+        const layoutText = document.getElementById('layout-text');
+        if (layoutIcon && layoutText) {
+            layoutIcon.className = isGrid ? 'fa-solid fa-list text-brand-500' : 'fa-solid fa-table-cells text-brand-500';
+            layoutText.innerText = isGrid ? 'List View' : 'Grid View';
+        }
+
+        // --- 1. BUILD THE HIERARCHY TREE ---
+        let tree = {};
+        if (state.categorySummary && state.categorySummary.length > 0) {
+            state.categorySummary.forEach(cat => {
+                const parts = cat.Subject.split('::');
+                let currentLevel = tree;
+                
+                parts.forEach((part, index) => {
+                    part = part.trim();
+                    if (!currentLevel[part]) {
+                        currentLevel[part] = { _children: {}, _data: null };
+                    }
+                    if (index === parts.length - 1) {
+                        currentLevel[part]._data = cat; 
+                    }
+                    currentLevel = currentLevel[part]._children;
+                });
+            });
+        }
+
+        // --- 2. TRAVERSE TO CURRENT PATH ---
+        if (!state.currentPath) state.currentPath = [];
+        let currentNode = tree;
+        let pathValid = true;
+        
+        for (let dir of state.currentPath) {
+            if (currentNode[dir]) {
+                currentNode = currentNode[dir]._children;
+            } else {
+                pathValid = false; 
+                break;
+            }
+        }
+        
+        if (!pathValid) { 
+            state.currentPath = []; 
+            currentNode = tree; 
+        }
+
+        // --- 3. HELPER FOR FOLDER CARD STATS ---
+        function getFolderStats(node) {
+            let total = 0;
+            if (node._data) total += node._data.QuestionCount || 0;
+            for (let k in node._children) {
+                total += getFolderStats(node._children[k]);
+            }
+            return total;
+        }
+
+        // --- 4. RENDER BREADCRUMBS ---
+        let html = `
+        <div class="flex items-center gap-2 mb-6 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto pb-2 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
+            <button onclick="goToPath(-1)" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2">
+                <i class="fa-solid fa-folder-open text-brand-500"></i> Home
+            </button>
+            ${state.currentPath.map((dir, i) => `
+                <i class="fa-solid fa-chevron-right text-xs text-gray-400"></i>
+                <button onclick="goToPath(${i})" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors whitespace-nowrap">${escapeHTML(dir)}</button>
+            `).join('')}
+        </div>`;
+
+        // Apply grid/list container class mapping
+        const layoutClass = isGrid 
+            ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5' 
+            : 'flex flex-col space-y-4';
+            
+        html += `<div class="${layoutClass}">`;
+
+        // --- 5. RENDER CURRENT LEVEL ITEMS ---
+        const keys = Object.keys(currentNode).sort();
+        
+        if (keys.length === 0) {
+            html += `<div class="col-span-full text-center py-10 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">No decks found in this folder.</div>`;
+        }
+
+        // Embed the original card generator
+        function generateCardHTML(cat, displayName, delay = 0) {
+            const subj = cat.Subject;
+            const safeSubj = escapeHTML(subj); 
+            const safeName = escapeHTML(displayName);
+            const totalQuestionsInDb = cat.QuestionCount; 
+            const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
+            
+            const dbQsForSubj = state.db.filter(q => q.Subject === subj).map(q => q.ID);
+            const completedCount = state.stats.completedQs ? state.stats.completedQs.filter(id => dbQsForSubj.includes(id)).length : 0;
+            const mistakesCount = state.stats.mistakes ? state.stats.mistakes.filter(id => dbQsForSubj.includes(id)).length : 0;
+            
+            const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
+            const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
+            const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
+
+            const isDownloaded = state.db.some(q => q.Subject === subj);
+            const statusBadge = isDownloaded 
+                ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i> Saved</span>`
+                : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i> Cloud</span>`;
+
+            const buttonText = completedCount === 0 ? 'Start' : 'Continue';
+
+            return `
+                <div class="animate-card-in ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 hover:shadow-brand-500/10 active:scale-[0.99] border transition-all duration-400 relative w-full mb-3 last:mb-0" style="animation-delay: ${delay}s;">
+                    <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
+                        <i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500 mb-2"></i>
+                        <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
+                    </div>
+
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
+                        <div>
+                            <div class="flex items-center gap-2 mb-1">
+                                <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors">
+                                    <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm"></i>
+                                    ${safeName}
+                                </h3>
+                                ${statusBadge}
+                            </div>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>
+                        </div>
+                        <div class="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+                            ${isDownloaded 
+                                ? `<button onclick="deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300" title="Delete Downloaded Data">
+                                        <i class="fa-solid fa-trash-can"></i>
+                                    </button>` 
+                                : `<div></div>`}
+                            <span class="text-sm font-black text-brand-600 dark:text-brand-400 transition-colors">${completedCount} / ${totalQuestionsInDb} Done</span>
+                        </div>
+                    </div>
+                    
+                    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden">
+                        <div class="bg-brand-500 h-full rounded-full transition-all duration-700 ease-out" style="width: ${progressPercent}%"></div>
+                    </div>
+                    
+                    <div class="flex gap-2 flex-wrap">
+                        <button onclick="fetchAndStartCategory('${safeSubj}', 'continue')" class="flex-1 bg-brand-600 text-white py-2 px-2 rounded-lg font-bold hover:bg-brand-700 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group">
+                            <i class="fa-solid fa-play mr-2 group-hover:scale-125 transition-transform"></i> ${buttonText}
+                        </button>
+                        ${mistakesCount > 0 ? `
+                        <button onclick="fetchAndStartCategory('${safeSubj}', 'mistakes')" class="flex-1 bg-orange-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-orange-600 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group">
+                            <i class="fa-solid fa-book mr-2 group-hover:-rotate-12 transition-transform"></i> Review ${mistakesCount}
+                        </button>
+                        ` : ''}
+                        <button onclick="resetCategory('${safeSubj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-sm border border-red-100 dark:border-red-800 hover:rotate-180" title="Reset Progress"><i class="fa-solid fa-rotate-left transition-transform"></i></button>
+                    </div>
+                </div>
+            `;
+        }
+
+        keys.forEach((key, index) => {
+            const item = currentNode[key];
             const hasChildren = Object.keys(item._children).length > 0;
             const hasData = item._data !== null;
-            const delay = indexCounter * 0.05;
+            const delay = index * 0.05;
 
-            if (hasChildren) {
-                // Adjust folder styling based on layout
-                const folderClass = depth === 0 
-                    ? `bg-gray-50 dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm transition-all duration-500 hover:shadow-md animate-card-in ${isGrid ? 'flex flex-col h-full' : 'mb-4'}`
-                    : `mt-2 border-l-2 border-brand-200 dark:border-brand-800 pl-2 transition-all duration-300 animate-card-in ${isGrid ? '' : 'mb-3'}`;
-
+            if (hasChildren && !hasData) {
+                // Render Folder (Styled exactly like your reference image)
+                const totalCards = getFolderStats(item);
+                const folderClass = isGrid ? 'h-[140px]' : 'h-auto';
+                
                 html += `
-                    <details class="${folderClass} overflow-hidden" style="animation-delay: ${delay}s;">
-                        <summary class="p-4 font-bold text-gray-800 dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center select-none list-none [&::-webkit-details-marker]:hidden ${isGrid && depth === 0 ? 'bg-brand-500/10 dark:bg-brand-500/20 rounded-t-xl' : ''}">
-                            <i class="fa-solid fa-folder text-brand-500 mr-3 transform transition-transform group-hover:scale-110"></i> ${escapeHTML(key)}
-                            <i class="fa-solid fa-chevron-down text-gray-400 text-xs ml-auto"></i>
-                        </summary>
-                        <div class="p-2 pb-4 flex-grow ${depth === 0 ? 'px-4 border-t border-gray-200 dark:border-gray-700' : 'px-2'}">
-                `;
-                
-                if (hasData) html += generateCardHTML(item._data, key, 0, isGrid);
-                html += generateTreeHTML(item._children, depth + 1);
-                
-                html += `</div></details>`;
-            } else if (hasData) {
-                html += generateCardHTML(item._data, key, delay, isGrid);
-            }
-            indexCounter++;
-        }
-        return html;
-    }
-
-    // --- 4. GENERATE INDIVIDUAL CARDS ---
-    function generateCardHTML(cat, displayName, delay = 0) {
-        const subj = cat.Subject;
-        const safeSubj = escapeHTML(subj); 
-        const safeName = escapeHTML(displayName);
-        const totalQuestionsInDb = cat.QuestionCount; 
-        const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
-        
-        const dbQsForSubj = state.db.filter(q => q.Subject === subj).map(q => q.ID);
-        const completedCount = state.stats.completedQs ? state.stats.completedQs.filter(id => dbQsForSubj.includes(id)).length : 0;
-        const mistakesCount = state.stats.mistakes ? state.stats.mistakes.filter(id => dbQsForSubj.includes(id)).length : 0;
-        
-        const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
-        const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
-        const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
-
-        const isDownloaded = state.db.some(q => q.Subject === subj);
-        const statusBadge = isDownloaded 
-            ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i> Saved</span>`
-            : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i> Cloud</span>`;
-
-        const buttonText = completedCount === 0 ? 'Start' : 'Continue';
-
-        return `
-            <div class="animate-card-in ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 hover:shadow-brand-500/10 active:scale-[0.99] border transition-all duration-400 relative w-full mb-3 last:mb-0" style="animation-delay: ${delay}s;">
-                <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
-                    <i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500 mb-2"></i>
-                    <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
-                </div>
-
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
-                    <div>
-                        <div class="flex items-center gap-2 mb-1">
-                            <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors">
-                                <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm"></i>
-                                ${safeName}
-                            </h3>
-                            ${statusBadge}
+                <div onclick="enterFolder('${escapeHTML(key)}')" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1" style="animation-delay: ${delay}s;">
+                    <div class="h-12 bg-[#a3e635] dark:bg-[#65a30d] group-hover:bg-[#84cc16] transition-colors relative">
+                        <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
+                    </div>
+                    <div class="p-4 flex-1 flex flex-col justify-between">
+                        <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors text-lg">${escapeHTML(key)}</h3>
+                        <div class="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400 mt-2">
+                            <span>${totalCards} cards</span>
+                            <span class="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full text-xs font-semibold">Subdeck</span>
                         </div>
-                        <p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>
                     </div>
-                    <div class="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
-                        ${isDownloaded 
-                            ? `<button onclick="deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300" title="Delete Downloaded Data">
-                                    <i class="fa-solid fa-trash-can"></i>
-                                </button>` 
-                            : `<div></div>`}
-                        <span class="text-sm font-black text-brand-600 dark:text-brand-400 transition-colors">${completedCount} / ${totalQuestionsInDb} Done</span>
-                    </div>
-                </div>
-                
-                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden">
-                    <div class="bg-brand-500 h-full rounded-full transition-all duration-700 ease-out" style="width: ${progressPercent}%"></div>
-                </div>
-                
-                <div class="flex gap-2 flex-wrap">
-                    <button onclick="fetchAndStartCategory('${safeSubj}', 'continue')" class="flex-1 bg-brand-600 text-white py-2 px-2 rounded-lg font-bold hover:bg-brand-700 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group">
-                        <i class="fa-solid fa-play mr-2 group-hover:scale-125 transition-transform"></i> ${buttonText}
-                    </button>
-                    ${mistakesCount > 0 ? `
-                    <button onclick="fetchAndStartCategory('${safeSubj}', 'mistakes')" class="flex-1 bg-orange-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-orange-600 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group">
-                        <i class="fa-solid fa-book mr-2 group-hover:-rotate-12 transition-transform"></i> Review ${mistakesCount}
-                    </button>
-                    ` : ''}
-                    <button onclick="resetCategory('${safeSubj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-sm border border-red-100 dark:border-red-800 hover:rotate-180" title="Reset Progress"><i class="fa-solid fa-rotate-left transition-transform"></i></button>
-                </div>
-            </div>
-        `;
-    }
-
-    container.innerHTML = generateTreeHTML(tree);
-
-    // --- 5. RE-APPLY FOLDER STATES & ANIMATIONS ---
-    container.querySelectorAll('details').forEach(details => {
-        const summaryText = details.querySelector('summary').textContent.trim();
-        if (openFolders.includes(summaryText)) {
-            details.setAttribute('open', '');
-        }
-
-        const summary = details.querySelector('summary');
-        const contentDiv = details.querySelector('summary ~ div');
-        const chevron = summary.querySelector('i.fa-chevron-down');
-
-        summary.addEventListener('click', function(e) {
-            e.preventDefault(); 
-            
-            if (details.open) {
-                const startHeight = details.offsetHeight;
-                details.style.height = startHeight + 'px';
-                details.style.overflow = 'hidden';
-                void details.offsetHeight; 
-                
-                details.style.transition = 'height 0.35s ease-in-out';
-                details.style.height = summary.offsetHeight + 'px'; 
-                if (chevron) chevron.style.transform = 'rotate(0deg)';
-                
-                setTimeout(() => {
-                    details.removeAttribute('open');
-                    details.style.height = '';
-                    details.style.transition = '';
-                    details.style.overflow = '';
-                }, 350);
-            } else {
-                details.setAttribute('open', ''); 
-                const startHeight = summary.offsetHeight;
-                const endHeight = summary.offsetHeight + contentDiv.offsetHeight;
-                
-                details.style.height = startHeight + 'px';
-                details.style.overflow = 'hidden';
-                void details.offsetHeight; 
-                
-                details.style.transition = 'height 0.35s ease-in-out';
-                details.style.height = endHeight + 'px'; 
-                if (chevron) chevron.style.transform = 'rotate(180deg)';
-                
-                setTimeout(() => {
-                    details.style.height = '';
-                    details.style.transition = '';
-                    details.style.overflow = '';
-                }, 350);
+                </div>`;
+            } else if (hasData) {
+                // Render actual playable subject card
+                html += generateCardHTML(item._data, key, delay);
             }
         });
-    });
-}
+
+        html += `</div>`;
+        
+        // Clear out the old class handling and inject the new markup
+        container.className = "transition-all duration-500"; 
+        container.innerHTML = html;
+    }
 
     async function fetchAndStartCategory(subject, mode) {
         const loader = document.getElementById(`loading-${subject}`);

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mrh-v2'; // Bumped version to force update
+const CACHE_NAME = '1'; // Bumped version to force update
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -32,7 +32,6 @@ self.addEventListener('activate', (event) => {
     );
 });
 
-// Network-First Strategy
 // Network-First Strategy
 self.addEventListener('fetch', (event) => {
     // FIX: The Cache API strictly requires GET requests. Ignore POST/PUT etc.
