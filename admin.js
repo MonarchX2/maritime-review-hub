@@ -62,37 +62,46 @@ function loadAdminSubjects() {
 function renderAdminSubjectList() {
     const container = document.getElementById('admin-subject-list');
     
-    // 1. Group subjects by their folder path
+    // 1. Group subjects strictly by their TOP-LEVEL parent folder
     const groupedSubjects = {};
     
     adminState.subjects.forEach((subj, index) => {
         const parts = subj.split('::');
         const deckName = parts.pop(); // The actual subject/deck name
-        const folderPath = parts.length > 0 ? parts.join('::') : 'Root Level';
         
-        if (!groupedSubjects[folderPath]) {
-            groupedSubjects[folderPath] = [];
+        // Always grab the very first item as the root folder
+        const topLevelFolder = parts.length > 0 ? parts[0] : 'Root Level';
+        
+        if (!groupedSubjects[topLevelFolder]) {
+            groupedSubjects[topLevelFolder] = [];
         }
-        // Save the original index so saving still works perfectly
-        groupedSubjects[folderPath].push({ originalFull: subj, deckName: deckName, index: index });
+        groupedSubjects[topLevelFolder].push({ 
+            originalFull: subj, 
+            deckName: deckName, 
+            index: index 
+        });
     });
 
     let html = '';
-    let globalIndex = 0;
 
-    // 2. Render grouped containers
+    // 2. Render groups as collapsible <details> accordions
     for (const [folder, subjects] of Object.entries(groupedSubjects)) {
         html += `
-            <div class="mb-6 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-                <h4 class="font-bold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
-                    <i class="fa-solid fa-folder-open text-brand-500"></i> ${escapeHTML(folder)}
-                </h4>
-                <div class="space-y-3">
+            <details class="mb-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 group shadow-sm">
+                <summary class="font-bold text-gray-700 dark:text-gray-300 p-4 cursor-pointer flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors rounded-xl outline-none list-none">
+                    <span class="flex items-center gap-2">
+                        <i class="fa-solid fa-folder text-brand-500"></i> ${escapeHTML(folder)}
+                        <span class="bg-gray-200 dark:bg-gray-700 text-xs px-2 py-1 rounded-full text-gray-600 dark:text-gray-400 font-semibold ml-2">${subjects.length} decks</span>
+                    </span>
+                    <i class="fa-solid fa-chevron-down text-gray-400 transition-transform duration-300 group-open:rotate-180"></i>
+                </summary>
+                
+                <div class="p-4 pt-0 mt-2 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-3">
         `;
         
         subjects.forEach(subj => {
             html += `
-                <div class="animate-card-in bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row items-center gap-4" style="animation-delay: ${globalIndex * 0.05}s">
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row items-center gap-4 mt-3">
                     <div class="w-full md:w-1/3">
                         <span class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Deck Name</span>
                         <div class="font-medium text-gray-700 dark:text-gray-200 truncate" title="${escapeHTML(subj.originalFull)}">${escapeHTML(subj.deckName)}</div>
@@ -114,10 +123,9 @@ function renderAdminSubjectList() {
                     </div>
                 </div>
             `;
-            globalIndex++;
         });
 
-        html += `</div></div>`;
+        html += `</div></details>`;
     }
     
     container.innerHTML = html;
