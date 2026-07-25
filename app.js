@@ -506,185 +506,220 @@ if (userAnswer) {
 }
 
 function renderCategoryProgress() {
-const container = document.getElementById('category-list');
-const isGrid = state.prefs.layoutMode === 'grid';
+    const container = document.getElementById('category-list');
+    const isGrid = state.prefs.layoutMode === 'grid';
 
-// Update toggle button UI
-const layoutIcon = document.getElementById('layout-icon');
-const layoutText = document.getElementById('layout-text');
-if (layoutIcon && layoutText) {
-    layoutIcon.className = isGrid ? 'fa-solid fa-list text-brand-500' : 'fa-solid fa-table-cells text-brand-500';
-    layoutText.innerText = isGrid ? 'List View' : 'Grid View';
-}
-
-// Apply layout classes to the container
-container.className = isGrid 
-    ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' 
-    : 'space-y-4';
-
-// ... (Keep your existing tree generation logic here) ...
-
-function generateTreeHTML(node, depth = 0) {
-    let html = '';
-    let indexCounter = 0;
-    const keys = Object.keys(node);
-    // ... (Keep existing sorting logic) ...
-
-    for (const key of keys) {
-        const item = node[key];
-        const hasChildren = Object.keys(item._children).length > 0;
-        const hasData = item._data !== null;
-        const delay = indexCounter * 0.05;
-
-        if (hasChildren) {
-            // Adjust folder styling based on layout
-            const folderClass = depth === 0 
-                ? `bg-gray-50 dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm transition-all duration-500 hover:shadow-md animate-card-in ${isGrid ? 'flex flex-col h-full' : 'mb-4'}`
-                : `mt-2 border-l-2 border-brand-200 dark:border-brand-800 pl-2 transition-all duration-300 animate-card-in ${isGrid ? '' : 'mb-3'}`;
-
-            html += `
-                <details class="${folderClass} overflow-hidden" style="animation-delay: ${delay}s;">
-                    <summary class="p-4 font-bold text-gray-800 dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center select-none list-none [&::-webkit-details-marker]:hidden ${isGrid && depth === 0 ? 'bg-brand-500/10 dark:bg-brand-500/20 rounded-t-xl' : ''}">
-                        <i class="fa-solid fa-folder text-brand-500 mr-3 transform transition-transform group-hover:scale-110"></i> ${escapeHTML(key)}
-                        <i class="fa-solid fa-chevron-down text-gray-400 text-xs ml-auto"></i>
-                    </summary>
-                    <div class="p-2 pb-4 flex-grow ${depth === 0 ? 'px-4 border-t border-gray-200 dark:border-gray-700' : 'px-2'}">
-            `;
-            
-            if (hasData) html += generateCardHTML(item._data, key, 0, isGrid);
-            html += generateTreeHTML(item._children, depth + 1);
-            
-            html += `</div></details>`;
-        } else if (hasData) {
-            html += generateCardHTML(item._data, key, delay, isGrid);
-        }
-        indexCounter++;
+    // Update toggle button UI
+    const layoutIcon = document.getElementById('layout-icon');
+    const layoutText = document.getElementById('layout-text');
+    if (layoutIcon && layoutText) {
+        layoutIcon.className = isGrid ? 'fa-solid fa-list text-brand-500' : 'fa-solid fa-table-cells text-brand-500';
+        layoutText.innerText = isGrid ? 'List View' : 'Grid View';
     }
-    return html;
-}
 
-        function generateCardHTML(cat, displayName, delay = 0) {
-            const subj = cat.Subject;
-            const safeSubj = escapeHTML(subj); 
-            const safeName = escapeHTML(displayName);
-            const totalQuestionsInDb = cat.QuestionCount; 
-            const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
-            
-            const dbQsForSubj = state.db.filter(q => q.Subject === subj).map(q => q.ID);
-            const completedCount = state.stats.completedQs.filter(id => dbQsForSubj.includes(id)).length;
-            const mistakesCount = state.stats.mistakes.filter(id => dbQsForSubj.includes(id)).length;
-            
-            const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
-            const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
-            const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
+    // Apply layout classes to the container
+    container.className = isGrid 
+        ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' 
+        : 'space-y-4';
 
-            const isDownloaded = state.db.some(q => q.Subject === subj);
-            const statusBadge = isDownloaded 
-                ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i> Saved</span>`
-                : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i> Cloud</span>`;
-
-            const buttonText = completedCount === 0 ? 'Start' : 'Continue';
-
-            return `
-                <div class="animate-card-in ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 hover:shadow-brand-500/10 active:scale-[0.99] border transition-all duration-400 relative w-full mb-3 last:mb-0" style="animation-delay: ${delay}s;">
-                    <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
-                        <i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500 mb-2"></i>
-                        <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
-                    </div>
-
-                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
-                        <div>
-                            <div class="flex items-center gap-2 mb-1">
-                                <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors">
-                                    <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm"></i>
-                                    ${safeName}
-                                </h3>
-                                ${statusBadge}
-                            </div>
-                            <p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>
-                        </div>
-                        <div class="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
-                            ${isDownloaded 
-                                ? `<button onclick="deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300" title="Delete Downloaded Data">
-                                        <i class="fa-solid fa-trash-can"></i>
-                                    </button>` 
-                                : `<div></div>`}
-                            <span class="text-sm font-black text-brand-600 dark:text-brand-400 transition-colors">${completedCount} / ${totalQuestionsInDb} Done</span>
-                        </div>
-                    </div>
-                    
-                    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden">
-                        <div class="bg-brand-500 h-full rounded-full transition-all duration-700 ease-out" style="width: ${progressPercent}%"></div>
-                    </div>
-                    
-                    <div class="flex gap-2 flex-wrap">
-                        <button onclick="fetchAndStartCategory('${safeSubj}', 'continue')" class="flex-1 bg-brand-600 text-white py-2 px-2 rounded-lg font-bold hover:bg-brand-700 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group">
-                            <i class="fa-solid fa-play mr-2 group-hover:scale-125 transition-transform"></i> ${buttonText}
-                        </button>
-                        ${mistakesCount > 0 ? `
-                        <button onclick="fetchAndStartCategory('${safeSubj}', 'mistakes')" class="flex-1 bg-orange-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-orange-600 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group">
-                            <i class="fa-solid fa-book mr-2 group-hover:-rotate-12 transition-transform"></i> Review ${mistakesCount}
-                        </button>
-                        ` : ''}
-                        <button onclick="resetCategory('${safeSubj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-sm border border-red-100 dark:border-red-800 hover:rotate-180" title="Reset Progress"><i class="fa-solid fa-rotate-left transition-transform"></i></button>
-                    </div>
-                </div>
-            `;
-        }
-
-        container.innerHTML = generateTreeHTML(tree);
-
-        container.querySelectorAll('details').forEach(details => {
+    // --- 1. PRESERVE OPEN FOLDERS ---
+    let openFolders = [];
+    if (container) {
+        container.querySelectorAll('details[open]').forEach(details => {
             const summaryText = details.querySelector('summary').textContent.trim();
-            if (openFolders.includes(summaryText)) {
-                details.setAttribute('open', '');
-            }
+            openFolders.push(summaryText);
+        });
+    }
 
-            const summary = details.querySelector('summary');
-            const contentDiv = details.querySelector('summary ~ div');
-            const chevron = summary.querySelector('i.fa-chevron-down');
-
-            summary.addEventListener('click', function(e) {
-                e.preventDefault(); 
-                
-                if (details.open) {
-                    const startHeight = details.offsetHeight;
-                    details.style.height = startHeight + 'px';
-                    details.style.overflow = 'hidden';
-                    void details.offsetHeight; 
-                    
-                    details.style.transition = 'height 0.35s ease-in-out';
-                    details.style.height = summary.offsetHeight + 'px'; 
-                    if (chevron) chevron.style.transform = 'rotate(0deg)';
-                    
-                    setTimeout(() => {
-                        details.removeAttribute('open');
-                        details.style.height = '';
-                        details.style.transition = '';
-                        details.style.overflow = '';
-                    }, 350);
-                } else {
-                    details.setAttribute('open', ''); 
-                    const startHeight = summary.offsetHeight;
-                    const endHeight = summary.offsetHeight + contentDiv.offsetHeight;
-                    
-                    details.style.height = startHeight + 'px';
-                    details.style.overflow = 'hidden';
-                    void details.offsetHeight; 
-                    
-                    details.style.transition = 'height 0.35s ease-in-out';
-                    details.style.height = endHeight + 'px'; 
-                    if (chevron) chevron.style.transform = 'rotate(180deg)';
-                    
-                    setTimeout(() => {
-                        details.style.height = '';
-                        details.style.transition = '';
-                        details.style.overflow = '';
-                    }, 350);
+    // --- 2. BUILD THE HIERARCHY TREE ---
+    let tree = {};
+    if (state.categorySummary && state.categorySummary.length > 0) {
+        state.categorySummary.forEach(cat => {
+            const parts = cat.Subject.split('::');
+            let currentLevel = tree;
+            
+            parts.forEach((part, index) => {
+                part = part.trim();
+                if (!currentLevel[part]) {
+                    currentLevel[part] = { _children: {}, _data: null };
                 }
+                
+                // If it's the last part of the path, assign the actual category data
+                if (index === parts.length - 1) {
+                    currentLevel[part]._data = cat; 
+                }
+                
+                // Move down a level for the next iteration
+                currentLevel = currentLevel[part]._children;
             });
         });
     }
+
+    // --- 3. GENERATE TREE HTML ---
+    function generateTreeHTML(node, depth = 0) {
+        let html = '';
+        let indexCounter = 0;
+        
+        // Sort alphabetically
+        const keys = Object.keys(node).sort(); 
+
+        for (const key of keys) {
+            const item = node[key];
+            const hasChildren = Object.keys(item._children).length > 0;
+            const hasData = item._data !== null;
+            const delay = indexCounter * 0.05;
+
+            if (hasChildren) {
+                // Adjust folder styling based on layout
+                const folderClass = depth === 0 
+                    ? `bg-gray-50 dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm transition-all duration-500 hover:shadow-md animate-card-in ${isGrid ? 'flex flex-col h-full' : 'mb-4'}`
+                    : `mt-2 border-l-2 border-brand-200 dark:border-brand-800 pl-2 transition-all duration-300 animate-card-in ${isGrid ? '' : 'mb-3'}`;
+
+                html += `
+                    <details class="${folderClass} overflow-hidden" style="animation-delay: ${delay}s;">
+                        <summary class="p-4 font-bold text-gray-800 dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center select-none list-none [&::-webkit-details-marker]:hidden ${isGrid && depth === 0 ? 'bg-brand-500/10 dark:bg-brand-500/20 rounded-t-xl' : ''}">
+                            <i class="fa-solid fa-folder text-brand-500 mr-3 transform transition-transform group-hover:scale-110"></i> ${escapeHTML(key)}
+                            <i class="fa-solid fa-chevron-down text-gray-400 text-xs ml-auto"></i>
+                        </summary>
+                        <div class="p-2 pb-4 flex-grow ${depth === 0 ? 'px-4 border-t border-gray-200 dark:border-gray-700' : 'px-2'}">
+                `;
+                
+                if (hasData) html += generateCardHTML(item._data, key, 0, isGrid);
+                html += generateTreeHTML(item._children, depth + 1);
+                
+                html += `</div></details>`;
+            } else if (hasData) {
+                html += generateCardHTML(item._data, key, delay, isGrid);
+            }
+            indexCounter++;
+        }
+        return html;
+    }
+
+    // --- 4. GENERATE INDIVIDUAL CARDS ---
+    function generateCardHTML(cat, displayName, delay = 0) {
+        const subj = cat.Subject;
+        const safeSubj = escapeHTML(subj); 
+        const safeName = escapeHTML(displayName);
+        const totalQuestionsInDb = cat.QuestionCount; 
+        const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
+        
+        const dbQsForSubj = state.db.filter(q => q.Subject === subj).map(q => q.ID);
+        const completedCount = state.stats.completedQs ? state.stats.completedQs.filter(id => dbQsForSubj.includes(id)).length : 0;
+        const mistakesCount = state.stats.mistakes ? state.stats.mistakes.filter(id => dbQsForSubj.includes(id)).length : 0;
+        
+        const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
+        const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
+        const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
+
+        const isDownloaded = state.db.some(q => q.Subject === subj);
+        const statusBadge = isDownloaded 
+            ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i> Saved</span>`
+            : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i> Cloud</span>`;
+
+        const buttonText = completedCount === 0 ? 'Start' : 'Continue';
+
+        return `
+            <div class="animate-card-in ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 hover:shadow-brand-500/10 active:scale-[0.99] border transition-all duration-400 relative w-full mb-3 last:mb-0" style="animation-delay: ${delay}s;">
+                <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
+                    <i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500 mb-2"></i>
+                    <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
+                </div>
+
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors">
+                                <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm"></i>
+                                ${safeName}
+                            </h3>
+                            ${statusBadge}
+                        </div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>
+                    </div>
+                    <div class="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+                        ${isDownloaded 
+                            ? `<button onclick="deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300" title="Delete Downloaded Data">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>` 
+                            : `<div></div>`}
+                        <span class="text-sm font-black text-brand-600 dark:text-brand-400 transition-colors">${completedCount} / ${totalQuestionsInDb} Done</span>
+                    </div>
+                </div>
+                
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden">
+                    <div class="bg-brand-500 h-full rounded-full transition-all duration-700 ease-out" style="width: ${progressPercent}%"></div>
+                </div>
+                
+                <div class="flex gap-2 flex-wrap">
+                    <button onclick="fetchAndStartCategory('${safeSubj}', 'continue')" class="flex-1 bg-brand-600 text-white py-2 px-2 rounded-lg font-bold hover:bg-brand-700 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group">
+                        <i class="fa-solid fa-play mr-2 group-hover:scale-125 transition-transform"></i> ${buttonText}
+                    </button>
+                    ${mistakesCount > 0 ? `
+                    <button onclick="fetchAndStartCategory('${safeSubj}', 'mistakes')" class="flex-1 bg-orange-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-orange-600 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group">
+                        <i class="fa-solid fa-book mr-2 group-hover:-rotate-12 transition-transform"></i> Review ${mistakesCount}
+                    </button>
+                    ` : ''}
+                    <button onclick="resetCategory('${safeSubj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-sm border border-red-100 dark:border-red-800 hover:rotate-180" title="Reset Progress"><i class="fa-solid fa-rotate-left transition-transform"></i></button>
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = generateTreeHTML(tree);
+
+    // --- 5. RE-APPLY FOLDER STATES & ANIMATIONS ---
+    container.querySelectorAll('details').forEach(details => {
+        const summaryText = details.querySelector('summary').textContent.trim();
+        if (openFolders.includes(summaryText)) {
+            details.setAttribute('open', '');
+        }
+
+        const summary = details.querySelector('summary');
+        const contentDiv = details.querySelector('summary ~ div');
+        const chevron = summary.querySelector('i.fa-chevron-down');
+
+        summary.addEventListener('click', function(e) {
+            e.preventDefault(); 
+            
+            if (details.open) {
+                const startHeight = details.offsetHeight;
+                details.style.height = startHeight + 'px';
+                details.style.overflow = 'hidden';
+                void details.offsetHeight; 
+                
+                details.style.transition = 'height 0.35s ease-in-out';
+                details.style.height = summary.offsetHeight + 'px'; 
+                if (chevron) chevron.style.transform = 'rotate(0deg)';
+                
+                setTimeout(() => {
+                    details.removeAttribute('open');
+                    details.style.height = '';
+                    details.style.transition = '';
+                    details.style.overflow = '';
+                }, 350);
+            } else {
+                details.setAttribute('open', ''); 
+                const startHeight = summary.offsetHeight;
+                const endHeight = summary.offsetHeight + contentDiv.offsetHeight;
+                
+                details.style.height = startHeight + 'px';
+                details.style.overflow = 'hidden';
+                void details.offsetHeight; 
+                
+                details.style.transition = 'height 0.35s ease-in-out';
+                details.style.height = endHeight + 'px'; 
+                if (chevron) chevron.style.transform = 'rotate(180deg)';
+                
+                setTimeout(() => {
+                    details.style.height = '';
+                    details.style.transition = '';
+                    details.style.overflow = '';
+                }, 350);
+            }
+        });
+    });
+}
 
     async function fetchAndStartCategory(subject, mode) {
         const loader = document.getElementById(`loading-${subject}`);
