@@ -1,4 +1,4 @@
-const CACHE_NAME = '1'; // Bumped version to force update
+const CACHE_NAME = '5'; // Bumped version to force update
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -40,23 +40,26 @@ self.addEventListener('activate', (event) => {
 });
 
 // Network-First Strategy
-self.addEventListener('fetch', (event) => {
-    // FIX: Ignore POST requests and bypass caching for the Google Apps Script API
-    if (event.request.method !== 'GET' || event.request.url.includes('script.google.com')) {
-        return; 
-    }
+        self.addEventListener('fetch', (event) => {
+            // FIX: Ignore POST requests and bypass caching for the Google Apps Script API
+            if (event.request.method !== 'GET' || event.request.url.includes('script.google.com')) {
+                return; 
+            }
 
-    event.respondWith(
-        fetch(event.request)
-            .then((networkResponse) => {
-                if (networkResponse && networkResponse.status === 200) {
-                    const responseToCache = networkResponse.clone();
-                    caches.open(CACHE_NAME).then((cache) => {
-                        cache.put(event.request, responseToCache);
-                    });
-                }
-                return networkResponse;
-            })
-            .catch(() => caches.match(event.request))
-    );
-});
+            event.respondWith(
+                fetch(event.request)
+                    .then((networkResponse) => {
+                        if (networkResponse && networkResponse.status === 200) {
+                            const responseToCache = networkResponse.clone();
+                            caches.open(CACHE_NAME).then((cache) => {
+                                cache.put(event.request, responseToCache);
+                            });
+                        }
+                        return networkResponse;
+                    })
+                    .catch(() => {
+                        // Fallback to cache if network fails
+                        return caches.match(event.request);
+                    })
+            );
+        });

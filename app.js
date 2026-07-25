@@ -346,10 +346,27 @@ function renderQuestion() {
         showExplanation(q);
         btnNext.disabled = false;
         btnReveal.disabled = true;
+
+        // --- RESTORE THIS MISSING LOGIC BLOCK ---
+        document.querySelectorAll('.choice-btn').forEach(btn => {
+            btn.onclick = null; // Prevent changing answers
+            const choice = btn.dataset.choice;
+            
+            if (choice === q.Answer) {
+                btn.classList.add('selected-correct');
+            } else if (choice === userAnswer) {
+                btn.classList.add('selected-wrong');
+            } else {
+                btn.classList.add('dimmed');
+            }
+        });
+        // ----------------------------------------
+        
     } else {
         expBox.classList.add('hidden');
         btnNext.disabled = true;
         btnReveal.disabled = false;
+        // ... (keep the rest of your else block identical)
         
         if (validChoicesCount <= 1) {
             // It's a flashcard (no choices to hide)
@@ -834,6 +851,12 @@ const layoutClass = isGrid
     }
 
     function renderCharts() {
+        if (typeof Chart === 'undefined') {
+            console.warn("Chart.js is still loading...");
+            setTimeout(renderCharts, 500); // Retry after 500ms
+            return;
+        }
+
         if(chartInstance) chartInstance.destroy(); 
         
         const ctx = document.getElementById('chart-accuracy').getContext('2d');
@@ -916,12 +939,19 @@ const layoutClass = isGrid
         }
     }
 
-    function exportData() {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
+function exportData() {
+        const jsonStr = JSON.stringify(state);
+        const blob = new Blob([jsonStr], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        
         const dlAnchorElem = document.createElement('a');
-        dlAnchorElem.setAttribute("href", dataStr);
+        dlAnchorElem.setAttribute("href", url);
         dlAnchorElem.setAttribute("download", "mrh_backup.json");
+        document.body.appendChild(dlAnchorElem); // Required for Firefox
         dlAnchorElem.click();
+        
+        document.body.removeChild(dlAnchorElem);
+        URL.revokeObjectURL(url); // Clean up memory
     }
 
 function importData(event) {
