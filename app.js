@@ -9,11 +9,6 @@ const DB_URL = "https://script.google.com/macros/s/AKfycbx4HFy5LmX_CFZMTOdl809Or
         currentPath: [] // ADD THIS LINE
     };
 
-    let adminState = {
-        token: "",
-        subjects: []
-    };
-    
     let chartInstance = null;
 
     function escapeHTML(str) {
@@ -164,144 +159,6 @@ const DB_URL = "https://script.google.com/macros/s/AKfycbx4HFy5LmX_CFZMTOdl809Or
                         <p class="text-sm text-red-600 dark:text-red-300 mt-1">Please check your internet connection or go to Settings to try syncing again.</p>
                     </div>`;
             }
-        }
-    }
-
-    async function adminLogin() {
-        const pass = document.getElementById('admin-password').value;
-        if(!pass) return;
-
-        const btn = document.getElementById('btn-admin-login');
-        const originalText = btn.innerHTML;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Verifying...';
-        btn.disabled = true;
-
-        try {
-            const response = await fetch(DB_URL, {
-                method: 'POST',
-                redirect: 'follow',
-                headers: { "Content-Type": "text/plain;charset=utf-8" },
-                body: JSON.stringify({
-                    type: "verify_admin",
-                    token: pass
-                })
-            });
-
-            const result = await response.json();
-
-            if (result.status === "success") {
-                adminState.token = pass;
-                document.getElementById('admin-login-error').classList.add('hidden');
-                document.getElementById('admin-login-section').classList.add('hidden');
-                document.getElementById('admin-dashboard-section').classList.remove('hidden');
-                loadAdminSubjects();
-            } else {
-                const errEl = document.getElementById('admin-login-error');
-                errEl.innerText = "Incorrect password.";
-                errEl.classList.remove('hidden');
-            }
-        } catch(e) {
-            alert("Network error while verifying password.");
-            console.error(e);
-        } finally {
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-        }
-    }
-
-    function loadAdminSubjects() {
-        if (!state.categorySummary || state.categorySummary.length === 0) {
-            document.getElementById('admin-subject-list').innerHTML = `
-                <p class="text-center text-gray-500 dark:text-gray-400 py-6 animate-pulse">
-                    No subjects found. Please go to Settings and Sync your Database first.
-                </p>`;
-            return;
-        }
-
-        adminState.subjects = state.categorySummary.map(cat => cat.Subject);
-        renderAdminSubjectList();
-    }
-
-    function renderAdminSubjectList() {
-        const container = document.getElementById('admin-subject-list');
-        
-        container.innerHTML = adminState.subjects.map((subj, index) => `
-            <div class="animate-card-in bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 border border-gray-200 dark:border-gray-700 flex flex-col md:flex-row items-center gap-4" style="animation-delay: ${index * 0.05}s">
-                <div class="w-full md:w-1/3">
-                    <span class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">Current Subject Name</span>
-                    <div class="font-medium bg-gray-100 dark:bg-gray-700 p-2 rounded text-gray-700 dark:text-gray-200 truncate transition-colors" title="${escapeHTML(subj)}" id="old-subj-${index}">${escapeHTML(subj)}</div>
-                </div>
-                <i class="fa-solid fa-arrow-right text-gray-400 hidden md:block hover:scale-125 transition-transform"></i>
-                <i class="fa-solid fa-arrow-down text-gray-400 block md:hidden hover:scale-125 transition-transform"></i>
-                <div class="w-full md:w-2/3">
-                    <div class="flex justify-between items-end mb-1">
-                        <span class="text-xs font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">New Hierarchy Path</span>
-                        <span class="text-xs text-gray-400 font-mono transition-colors" id="char-count-${index}">${subj.length}/100</span>
-                    </div>
-                    <input type="text" 
-                            id="new-subj-${index}" 
-                            value="${escapeHTML(subj)}" 
-                            maxlength="100"
-                            oninput="document.getElementById('char-count-${index}').innerText = this.value.length + '/100'; 
-                                    this.value.length >= 90 ? document.getElementById('char-count-${index}').classList.add('text-red-500') : document.getElementById('char-count-${index}').classList.remove('text-red-500');"
-                            class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-brand-500 focus:ring-2 focus:ring-brand-500 outline-none transition-all duration-300 hover:shadow-sm">
-                </div>
-            </div>
-        `).join('');
-    }
-
-    async function saveAdminChanges() {
-        const btn = document.getElementById('btn-admin-save');
-        const originalHTML = btn.innerHTML;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving...';
-        btn.disabled = true;
-
-        const updates = [];
-        adminState.subjects.forEach((subj, index) => {
-            const newName = document.getElementById(`new-subj-${index}`).value.trim();
-            if (newName !== subj && newName !== "") {
-                updates.push({ oldName: subj, newName: newName });
-            }
-        });
-
-        if (updates.length === 0) {
-            alert("No changes detected.");
-            btn.innerHTML = originalHTML;
-            btn.disabled = false;
-            return;
-        }
-
-        try {
-            const response = await fetch(DB_URL, {
-                method: 'POST',
-                body: JSON.stringify({
-                    type: "admin_update",
-                    token: adminState.token,
-                    updates: updates
-                })
-            });
-
-            const result = await response.json();
-            
-            if (result.status === "success") {
-                alert("Hierarchy Updated! Fetching the latest layout...");
-                await syncDatabase(); 
-                loadAdminSubjects();  
-            } else {
-                alert("Failed: " + result.message);
-                if(result.message.includes("Unauthorized")) {
-                    document.getElementById('admin-dashboard-section').classList.add('hidden');
-                    document.getElementById('admin-login-section').classList.remove('hidden');
-                    document.getElementById('admin-login-error').classList.remove('hidden');
-                    adminState.token = ""; 
-                }
-            }
-        } catch(e) {
-            alert("Network error.");
-            console.error(e);
-        } finally {
-            btn.innerHTML = originalHTML;
-            btn.disabled = false;
         }
     }
 
@@ -692,8 +549,7 @@ return randomizedPool.map(originalQ => {
                 
                 html += `
                 <div onclick="enterFolder('${escapeHTML(key)}')" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1" style="animation-delay: ${delay}s;">
-                    <div class="h-12 bg-[#a3e635] dark:bg-[#65a30d] group-hover:bg-[#84cc16] transition-colors relative">
-                        <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
+<div class="h-12 bg-brand-500 dark:bg-brand-700 group-hover:bg-brand-600 dark:group-hover:bg-brand-600 transition-colors relative">                        <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
                     </div>
                     <div class="p-4 flex-1 flex flex-col justify-between">
                         <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors text-lg">${escapeHTML(key)}</h3>
