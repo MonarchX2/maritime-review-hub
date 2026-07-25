@@ -1,0 +1,117 @@
+body { 
+    -webkit-tap-highlight-color: transparent; 
+    scroll-behavior: smooth;
+}
+
+/* Smooth View Section Transitions */
+.view-section { 
+    display: none; 
+    opacity: 0; 
+}
+.view-section.active { 
+    display: block; 
+    animation: smoothSlideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; 
+}
+@keyframes smoothSlideUp { 
+    0% { opacity: 0; transform: translateY(20px) scale(0.98); } 
+    100% { opacity: 1; transform: translateY(0) scale(1); } 
+}
+
+/* Universal Interactive Element Animations */
+button, select, input {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+button:active:not(:disabled) { 
+    transform: scale(0.94); 
+}
+
+/* Choice Button Interaction Animations */
+.choice-btn {
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.choice-btn:hover:not(.dimmed):not(.selected-correct):not(.selected-wrong) {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    border-color: #3b82f6 !important;
+}
+.choice-btn.selected-correct { 
+    animation: popCorrect 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    background-color: #15803d !important; 
+    color: #ffffff !important; 
+    border-color: #14532d !important; 
+    border-width: 2px !important; 
+    font-weight: 700 !important; 
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important; 
+}
+
+.choice-btn.selected-wrong { 
+    animation: shakeWrong 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) forwards;
+    background-color: #b91c1c !important; 
+    color: #ffffff !important; 
+    border-color: #7f1d1d !important; 
+    border-width: 2px !important; 
+    font-weight: 700 !important; 
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important; 
+}
+.choice-btn.dimmed { 
+    opacity: 0.4; 
+    pointer-events: none; 
+    filter: grayscale(100%); 
+    transform: scale(0.98);
+}
+
+@keyframes popCorrect {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.04); }
+    100% { transform: scale(1); }
+}
+@keyframes shakeWrong {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-6px); }
+    40%, 80% { transform: translateX(6px); }
+}
+
+/* Folders & Accordions Smooth Expand */
+details > summary { list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+details[open] summary i.fa-chevron-down { 
+    transform: rotate(180deg); 
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+details summary i.fa-chevron-down {
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+details[open] summary ~ div { 
+    animation: folderSlideDown 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; 
+    transform-origin: top;
+}
+
+@keyframes folderSlideDown {
+    0% { opacity: 0; transform: translateY(-10px) scaleY(0.95); }
+    100% { opacity: 1; transform: translateY(0) scaleY(1); }
+}
+
+/* Dynamic Generated Card Stagger Animation */
+.animate-card-in {
+    animation: fadeScaleIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    opacity: 0;
+}
+@keyframes fadeScaleIn {
+    0% { opacity: 0; transform: translateY(20px) scale(0.96); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Timer Animation (Pop and Expand from Center) */
+@keyframes expandTimerCenter {
+    0% { transform: scaleX(0) scaleY(2); opacity: 0; } 
+    5% { transform: scaleX(0.05) scaleY(1); opacity: 1; } 
+    100% { transform: scaleX(1) scaleY(1); opacity: 1; }
+}
+.animate-timer-bar {
+    animation: expandTimerCenter 3s linear forwards;
+}
+
+/* Progress Bar Smoothing */
+#session-progress {
+    transition: width 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+}

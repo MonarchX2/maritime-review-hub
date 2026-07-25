@@ -1,0 +1,1215 @@
+    const DB_URL = "https://script.google.com/macros/s/AKfycbx4HFy5LmX_CFZMTOdl809OrnsgxzQvpzHDOhrMK3yk7fNZb7Gp2pImwBCS_I1Gx-D20g/exec";
+    
+let state = {
+db: [],
+categorySummary: [],
+stats: { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} },
+prefs: { darkMode: true, layoutMode: 'grid' }, // Added layoutMode
+session: { active: false, questions: [], currentIndex: 0, userAnswers: {}, autoNextTimeout: null }
+};
+
+    let adminState = {
+        token: "",
+        subjects: []
+    };
+    
+    let chartInstance = null;
+
+    function escapeHTML(str) {
+        if (!str) return '';
+        return str.toString().replace(/[&<>'"]/g, tag => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+        }[tag]));
+    }
+
+    async function loadState() {
+        const savedStats = localStorage.getItem('mrh_stats');
+        const savedPrefs = localStorage.getItem('mrh_prefs');
+        
+        try {
+            const savedDb = await idbKeyval.get('mrh_db');
+            if (savedDb) {
+                // MIGRATION: Ensure all existing DB items use the new unique ID format
+                state.db = savedDb.map(q => {
+                    if (q.ID && !q.ID.toString().includes('::')) {
+                        let cleanId = q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, '');
+                        q.ID = `${q.Subject}::${cleanId}`;
+                    }
+                    return q;
+                });
+            }
+        } catch (err) {
+            console.error("Error loading DB from IndexedDB", err);
+        }
+        
+        if (savedStats) state.stats = JSON.parse(savedStats);
+        if (savedPrefs) state.prefs = JSON.parse(savedPrefs);
+
+        if (!state.stats.subjectAccuracy) state.stats.subjectAccuracy = {};
+        if (state.prefs.darkMode) document.documentElement.classList.add('dark');
+        
+        document.getElementById('db-size-display').innerText = state.db.length;
+        populateFilters(); 
+        updateDashboard();
+        updateThemeButton(); 
+    }
+
+    async function saveState() {
+        localStorage.setItem('mrh_stats', JSON.stringify(state.stats));
+        localStorage.setItem('mrh_prefs', JSON.stringify(state.prefs));
+        updateDashboard();
+    }
+
+    function updateDashboard() {
+        const statTotal = document.getElementById('stat-total');
+        if (statTotal) statTotal.innerText = state.stats.totalAnswered;
+        
+        const statCorrect = document.getElementById('stat-correct');
+        if (statCorrect) statCorrect.innerText = state.stats.correct;
+
+        const dbSize = document.getElementById('db-size-display');
+        if (dbSize) dbSize.innerText = state.db.length;
+
+        if (typeof checkSavedSession === 'function') checkSavedSession();
+        if (typeof renderCategoryProgress === 'function') renderCategoryProgress();
+    }
+
+    let settingsClickCount = 0;
+    let settingsClickTimeout = null;
+
+    function navigate(viewId) {
+
+        if (viewId === 'settings') {
+            settingsClickCount++;
+            clearTimeout(settingsClickTimeout);
+            
+            // If clicked 5 times, show the button
+            if (settingsClickCount >= 5) {
+                const adminBtn = document.getElementById('btn-admin-nav');
+                adminBtn.classList.remove('hidden');
+                adminBtn.classList.add('animate-card-in'); // Adds a nice fade-in animation
+                settingsClickCount = 0; // Reset counter after unlocking
+            } else {
+                // Reset the counter if they stop clicking for 2 seconds
+                settingsClickTimeout = setTimeout(() => {
+                    settingsClickCount = 0;
+                }, 2000);
+            }
+        }
+
+        if (state.session.active && viewId !== 'practice' && !confirm("You have an active session. Do you want to pause and return? Your progress will be saved.")) return;
+        
+        if (state.session.active && viewId !== 'practice') {
+            saveSessionProgress(); 
+            state.session.active = false; 
+        }
+
+        updateDashboard();
+
+        document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+        document.getElementById(`view-${viewId}`).classList.add('active');
+        
+        if(viewId === 'stats') renderCharts();
+        
+        if(viewId === 'admin' && adminState.token) {
+            loadAdminSubjects();
+        }
+    }
+
+    async function syncDatabase() {
+        const url = DB_URL; 
+        const statusEl = document.getElementById('sync-status');
+        if (statusEl) {
+            statusEl.classList.remove('hidden');
+            statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Fetching subjects...';
+            statusEl.className = "text-sm mt-3 font-medium bg-blue-50 text-blue-600 p-3 rounded-lg animate-pulse";
+        }
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error("Network response failed");
+            const summaryData = await response.json();
+
+            if (summaryData && summaryData.length > 0) {
+                state.categorySummary = summaryData;
+                saveState();
+                
+                if (statusEl) {
+                    statusEl.innerHTML = `<i class="fa-solid fa-check-circle mr-1"></i> Success! Loaded ${summaryData.length} subjects.`;
+                    statusEl.className = "text-sm mt-3 font-medium bg-green-50 text-green-600 p-3 rounded-lg animate-card-in";
+                }
+                
+                if (typeof populateFilters === "function") populateFilters();
+                if (typeof renderCategoryProgress === "function") renderCategoryProgress();
+            } else {
+                if (statusEl) {
+                    statusEl.innerText = "Error: Connected, but no subjects found.";
+                    statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+                }
+            }
+        } catch (err) {
+            console.error(err);
+            if (statusEl) {
+                statusEl.innerText = "Connection Error. Ensure you deployed the Apps Script correctly.";
+                statusEl.className = "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+            }
+            
+            const catList = document.getElementById('category-list');
+            if (catList && state.categorySummary.length === 0) {
+                catList.innerHTML = `
+                    <div class="text-center py-10 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 animate-card-in">
+                        <i class="fa-solid fa-triangle-exclamation text-3xl text-red-500 mb-3 hover:scale-110 transition-transform"></i>
+                        <h3 class="font-bold text-red-700 dark:text-red-400">Database Connection Failed</h3>
+                        <p class="text-sm text-red-600 dark:text-red-300 mt-1">Please check your internet connection or go to Settings to try syncing again.</p>
+                    </div>`;
+            }
+        }
+    }
+
+    async function adminLogin() {
+        const pass = document.getElementById('admin-password').value;
+        if(!pass) return;
+
+        const btn = document.getElementById('btn-admin-login');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Verifying...';
+        btn.disabled = true;
+
+        try {
+            const response = await fetch(DB_URL, {
+                method: 'POST',
+                redirect: 'follow',
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify({
+                    type: "verify_admin",
+                    token: pass
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.status === "success") {
+                adminState.token = pass;
+                document.getElementById('admin-login-error').classList.add('hidden');
+                document.getElementById('admin-login-section').classList.add('hidden');
+                document.getElementById('admin-dashboard-section').classList.remove('hidden');
+                loadAdminSubjects();
+            } else {
+                const errEl = document.getElementById('admin-login-error');
+                errEl.innerText = "Incorrect password.";
+                errEl.classList.remove('hidden');
+            }
+        } catch(e) {
+            alert("Network error while verifying password.");
+            console.error(e);
+        } finally {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+
+    function loadAdminSubjects() {
+        if (!state.categorySummary || state.categorySummary.length === 0) {
+            document.getElementById('admin-subject-list').innerHTML = `
+                <p class="text-center text-gray-500 dark:text-gray-400 py-6 animate-pulse">
+                    No subjects found. Please go to Settings and Sync your Database first.
+                </p>`;
+            return;
+        }
+
+        adminState.subjects = state.categorySummary.map(cat => cat.Subject);
+        renderAdminSubjectList();
+    }
+
+    function renderAdminSubjectList() {
+        const container = document.getElementById('admin-subject-list');
+        
+        container.innerHTML = adminState.subjects.map((subj, index) => `
+            <div class="animate-card-in bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 border border-gray-200 dark:border-gray-700 flex flex-col md:flex-row items-center gap-4" style="animation-delay: ${index * 0.05}s">
+                <div class="w-full md:w-1/3">
+                    <span class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">Current Subject Name</span>
+                    <div class="font-medium bg-gray-100 dark:bg-gray-700 p-2 rounded text-gray-700 dark:text-gray-200 truncate transition-colors" title="${escapeHTML(subj)}" id="old-subj-${index}">${escapeHTML(subj)}</div>
+                </div>
+                <i class="fa-solid fa-arrow-right text-gray-400 hidden md:block hover:scale-125 transition-transform"></i>
+                <i class="fa-solid fa-arrow-down text-gray-400 block md:hidden hover:scale-125 transition-transform"></i>
+                <div class="w-full md:w-2/3">
+                    <div class="flex justify-between items-end mb-1">
+                        <span class="text-xs font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">New Hierarchy Path</span>
+                        <span class="text-xs text-gray-400 font-mono transition-colors" id="char-count-${index}">${subj.length}/100</span>
+                    </div>
+                    <input type="text" 
+                            id="new-subj-${index}" 
+                            value="${escapeHTML(subj)}" 
+                            maxlength="100"
+                            oninput="document.getElementById('char-count-${index}').innerText = this.value.length + '/100'; 
+                                    this.value.length >= 90 ? document.getElementById('char-count-${index}').classList.add('text-red-500') : document.getElementById('char-count-${index}').classList.remove('text-red-500');"
+                            class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-brand-500 focus:ring-2 focus:ring-brand-500 outline-none transition-all duration-300 hover:shadow-sm">
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async function saveAdminChanges() {
+        const btn = document.getElementById('btn-admin-save');
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving...';
+        btn.disabled = true;
+
+        const updates = [];
+        adminState.subjects.forEach((subj, index) => {
+            const newName = document.getElementById(`new-subj-${index}`).value.trim();
+            if (newName !== subj && newName !== "") {
+                updates.push({ oldName: subj, newName: newName });
+            }
+        });
+
+        if (updates.length === 0) {
+            alert("No changes detected.");
+            btn.innerHTML = originalHTML;
+            btn.disabled = false;
+            return;
+        }
+
+        try {
+            const response = await fetch(DB_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                    type: "admin_update",
+                    token: adminState.token,
+                    updates: updates
+                })
+            });
+
+            const result = await response.json();
+            
+            if (result.status === "success") {
+                alert("Hierarchy Updated! Fetching the latest layout...");
+                await syncDatabase(); 
+                loadAdminSubjects();  
+            } else {
+                alert("Failed: " + result.message);
+                if(result.message.includes("Unauthorized")) {
+                    document.getElementById('admin-dashboard-section').classList.add('hidden');
+                    document.getElementById('admin-login-section').classList.remove('hidden');
+                    document.getElementById('admin-login-error').classList.remove('hidden');
+                    adminState.token = ""; 
+                }
+            }
+        } catch(e) {
+            alert("Network error.");
+            console.error(e);
+        } finally {
+            btn.innerHTML = originalHTML;
+            btn.disabled = false;
+        }
+    }
+
+    function populateFilters() {
+        const select = document.getElementById('filter-subject');
+        const subjects = [...new Set(state.db.map(q => q.Subject).filter(Boolean))];
+        
+        let tags = new Set();
+        state.db.forEach(q => {
+            if (q.Tags) {
+                q.Tags.split(',').map(t => t.trim()).forEach(t => tags.add(t));
+            }
+        });
+        tags = [...tags];
+
+        let html = '<option value="ALL">All Subjects (Randomized)</option>';
+        if(subjects.length > 0) {
+            html += '<optgroup label="Subjects">';
+            html += subjects.map(s => `<option value="SUBJ:${escapeHTML(s)}">${escapeHTML(s)}</option>`).join('');
+            html += '</optgroup>';
+        }
+        if(tags.length > 0) {
+            html += '<optgroup label="Tags">';
+            html += tags.map(t => `<option value="TAG:${escapeHTML(t)}">${escapeHTML(t)}</option>`).join('');
+            html += '</optgroup>';
+        }
+        
+        select.innerHTML = html;
+    }
+
+function prepareSessionPool(pool) {
+let randomizedPool = shuffleArray([...pool]); 
+
+return randomizedPool.map(originalQ => {
+    let q = { ...originalQ };
+    let validChoices = [];
+    
+    // Safely extract choices, strictly ignoring undefined/empty strings
+    const rawChoices = [q.ChoiceA, q.ChoiceB, q.ChoiceC, q.ChoiceD];
+    rawChoices.forEach(c => {
+        if (c !== undefined && c !== null && String(c).trim() !== "" && String(c).trim().toLowerCase() !== "undefined") {
+            validChoices.push(String(c).trim());
+        }
+    });
+    
+    // Robust text matching in case the DB answer is the text instead of the letter
+    let originalAns = String(q.Answer || "").trim().toUpperCase();
+    let correctText = "";
+    if (['A', 'B', 'C', 'D'].includes(originalAns)) {
+        correctText = String(originalQ[`Choice${originalAns}`] || "").trim();
+    } else {
+        correctText = String(q.Answer || "").trim();
+    }
+    
+    if (validChoices.length > 0) {
+        validChoices = shuffleArray(validChoices);
+        
+        q.ChoiceA = validChoices[0] || "";
+        q.ChoiceB = validChoices[1] || "";
+        q.ChoiceC = validChoices[2] || "";
+        q.ChoiceD = validChoices[3] || "";
+        
+        // Re-map the correct Answer letter based on the shuffled order
+        if (q.ChoiceA === correctText) q.Answer = 'A';
+        else if (q.ChoiceB === correctText) q.Answer = 'B';
+        else if (q.ChoiceC === correctText) q.Answer = 'C';
+        else if (q.ChoiceD === correctText) q.Answer = 'D';
+        else {
+            // Failsafe: if text mapping failed but it's a single choice flashcard, it defaults to A
+            if (validChoices.length === 1) q.Answer = 'A';
+        }
+    }
+    
+    return q;
+});
+}
+
+    function initSession() {
+        const filterVal = document.getElementById('filter-subject').value;
+        let pool = [];
+
+        if(filterVal === 'MISTAKES') {
+            pool = state.db.filter(q => state.stats.mistakes.includes(q.ID));
+        } else if (filterVal.startsWith('SUBJ:')) {
+            const subj = filterVal.replace('SUBJ:', '');
+            pool = state.db.filter(q => q.Subject === subj);
+        } else if (filterVal.startsWith('TAG:')) {
+            const tag = filterVal.replace('TAG:', '');
+            pool = state.db.filter(q => q.Tags && q.Tags.includes(tag));
+        } else {
+            pool = state.db;
+        }
+
+        if(pool.length === 0) { alert("No questions found for this filter."); return; }
+        pool = prepareSessionPool(pool);
+        
+        state.session = { 
+            active: true, questions: pool, 
+            currentIndex: 0, userAnswers: {}
+        };
+        
+        document.getElementById('session-setup').classList.add('hidden');
+        document.getElementById('session-active').classList.remove('hidden');
+        
+        renderQuestion();
+        saveSessionProgress();
+    }
+
+function renderQuestion() {
+stopVisualTimer();
+const q = state.session.questions[state.session.currentIndex];
+const userAnswer = state.session.userAnswers[state.session.currentIndex];
+
+const currentCard = state.session.currentIndex + 1;
+const totalCards = state.session.questions.length;
+document.getElementById('session-progress-text').innerText = `${currentCard} / ${totalCards}`;
+document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / totalCards) * 100}%`;
+
+document.getElementById('q-subject').innerText = q.Subject || 'General';
+
+let displayId = q.ID || `Q-${state.session.currentIndex}`;
+if (displayId.includes('::')) {
+    displayId = displayId.split('::').pop();
+}
+document.getElementById('q-id').innerText = displayId;
+
+document.getElementById('q-text').innerText = q.Question;
+
+const imgEl = document.getElementById('q-image');
+if(q.ImageURL && q.ImageURL.trim() !== "") {
+    imgEl.src = q.ImageURL; imgEl.classList.remove('hidden');
+} else {
+    imgEl.classList.add('hidden');
+}
+
+const choices = ['A', 'B', 'C', 'D'];
+let validChoicesCount = 0; 
+
+// First count how many valid choices there are
+choices.forEach(ch => {
+    const choiceText = q[`Choice${ch}`];
+    if (choiceText && choiceText.trim() !== "" && choiceText.toLowerCase() !== "undefined") {
+        validChoicesCount++;
+    }
+});
+
+choices.forEach(ch => {
+    const choiceText = q[`Choice${ch}`];
+    const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
+    
+    if (!choiceText || choiceText.trim() === "" || choiceText.toLowerCase() === "undefined") {
+        btn.classList.add('hidden');
+    } else {
+        btn.classList.remove('hidden');
+        document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = choiceText;
+        
+        btn.onclick = () => submitPracticeAnswer(ch, q.Answer);
+        btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium";
+        
+        if (userAnswer) {
+            btn.onclick = null;
+            // FAILSAFE: If it's a flashcard (1 choice), always mark it properly as correct
+            if (ch === q.Answer || validChoicesCount === 1) {
+                btn.classList.add('selected-correct');
+            } else if (userAnswer === ch) {
+                btn.classList.add('selected-wrong');
+            } else {
+                btn.classList.add('dimmed');
+            }
+        }
+    }
+});
+
+const qChoicesContainer = document.getElementById('q-choices');
+const activeRecallMask = document.getElementById('active-recall-mask');
+const expBox = document.getElementById('q-explanation-box');
+const btnNext = document.getElementById('btn-next');
+const btnPrev = document.getElementById('btn-prev');
+const btnReveal = document.getElementById('btn-reveal');
+
+btnPrev.disabled = state.session.currentIndex === 0;
+
+if (userAnswer) {
+    if (activeRecallMask) activeRecallMask.classList.add('hidden');
+    qChoicesContainer.classList.remove('hidden');
+    
+    showExplanation(q);
+    btnNext.disabled = false;
+    btnReveal.disabled = true;
+} else {
+    expBox.classList.add('hidden');
+    btnNext.disabled = true;
+    btnReveal.disabled = false;
+    
+    if (validChoicesCount <= 1) {
+        if (activeRecallMask) activeRecallMask.classList.add('hidden');
+        qChoicesContainer.classList.add('hidden');
+    } else {
+        if (activeRecallMask) activeRecallMask.classList.remove('hidden');
+        qChoicesContainer.classList.add('hidden');
+    }
+}
+}
+
+function renderCategoryProgress() {
+const container = document.getElementById('category-list');
+const isGrid = state.prefs.layoutMode === 'grid';
+
+// Update toggle button UI
+const layoutIcon = document.getElementById('layout-icon');
+const layoutText = document.getElementById('layout-text');
+if (layoutIcon && layoutText) {
+    layoutIcon.className = isGrid ? 'fa-solid fa-list text-brand-500' : 'fa-solid fa-table-cells text-brand-500';
+    layoutText.innerText = isGrid ? 'List View' : 'Grid View';
+}
+
+// Apply layout classes to the container
+container.className = isGrid 
+    ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' 
+    : 'space-y-4';
+
+// ... (Keep your existing tree generation logic here) ...
+
+function generateTreeHTML(node, depth = 0) {
+    let html = '';
+    let indexCounter = 0;
+    const keys = Object.keys(node);
+    // ... (Keep existing sorting logic) ...
+
+    for (const key of keys) {
+        const item = node[key];
+        const hasChildren = Object.keys(item._children).length > 0;
+        const hasData = item._data !== null;
+        const delay = indexCounter * 0.05;
+
+        if (hasChildren) {
+            // Adjust folder styling based on layout
+            const folderClass = depth === 0 
+                ? `bg-gray-50 dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm transition-all duration-500 hover:shadow-md animate-card-in ${isGrid ? 'flex flex-col h-full' : 'mb-4'}`
+                : `mt-2 border-l-2 border-brand-200 dark:border-brand-800 pl-2 transition-all duration-300 animate-card-in ${isGrid ? '' : 'mb-3'}`;
+
+            html += `
+                <details class="${folderClass} overflow-hidden" style="animation-delay: ${delay}s;">
+                    <summary class="p-4 font-bold text-gray-800 dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center select-none list-none [&::-webkit-details-marker]:hidden ${isGrid && depth === 0 ? 'bg-brand-500/10 dark:bg-brand-500/20 rounded-t-xl' : ''}">
+                        <i class="fa-solid fa-folder text-brand-500 mr-3 transform transition-transform group-hover:scale-110"></i> ${escapeHTML(key)}
+                        <i class="fa-solid fa-chevron-down text-gray-400 text-xs ml-auto"></i>
+                    </summary>
+                    <div class="p-2 pb-4 flex-grow ${depth === 0 ? 'px-4 border-t border-gray-200 dark:border-gray-700' : 'px-2'}">
+            `;
+            
+            if (hasData) html += generateCardHTML(item._data, key, 0, isGrid);
+            html += generateTreeHTML(item._children, depth + 1);
+            
+            html += `</div></details>`;
+        } else if (hasData) {
+            html += generateCardHTML(item._data, key, delay, isGrid);
+        }
+        indexCounter++;
+    }
+    return html;
+}
+
+        function generateCardHTML(cat, displayName, delay = 0) {
+            const subj = cat.Subject;
+            const safeSubj = escapeHTML(subj); 
+            const safeName = escapeHTML(displayName);
+            const totalQuestionsInDb = cat.QuestionCount; 
+            const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
+            
+            const dbQsForSubj = state.db.filter(q => q.Subject === subj).map(q => q.ID);
+            const completedCount = state.stats.completedQs.filter(id => dbQsForSubj.includes(id)).length;
+            const mistakesCount = state.stats.mistakes.filter(id => dbQsForSubj.includes(id)).length;
+            
+            const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
+            const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
+            const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
+
+            const isDownloaded = state.db.some(q => q.Subject === subj);
+            const statusBadge = isDownloaded 
+                ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i> Saved</span>`
+                : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i> Cloud</span>`;
+
+            const buttonText = completedCount === 0 ? 'Start' : 'Continue';
+
+            return `
+                <div class="animate-card-in ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 hover:shadow-brand-500/10 active:scale-[0.99] border transition-all duration-400 relative w-full mb-3 last:mb-0" style="animation-delay: ${delay}s;">
+                    <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
+                        <i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500 mb-2"></i>
+                        <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
+                    </div>
+
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
+                        <div>
+                            <div class="flex items-center gap-2 mb-1">
+                                <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors">
+                                    <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm"></i>
+                                    ${safeName}
+                                </h3>
+                                ${statusBadge}
+                            </div>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>
+                        </div>
+                        <div class="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+                            ${isDownloaded 
+                                ? `<button onclick="deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300" title="Delete Downloaded Data">
+                                        <i class="fa-solid fa-trash-can"></i>
+                                    </button>` 
+                                : `<div></div>`}
+                            <span class="text-sm font-black text-brand-600 dark:text-brand-400 transition-colors">${completedCount} / ${totalQuestionsInDb} Done</span>
+                        </div>
+                    </div>
+                    
+                    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden">
+                        <div class="bg-brand-500 h-full rounded-full transition-all duration-700 ease-out" style="width: ${progressPercent}%"></div>
+                    </div>
+                    
+                    <div class="flex gap-2 flex-wrap">
+                        <button onclick="fetchAndStartCategory('${safeSubj}', 'continue')" class="flex-1 bg-brand-600 text-white py-2 px-2 rounded-lg font-bold hover:bg-brand-700 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group">
+                            <i class="fa-solid fa-play mr-2 group-hover:scale-125 transition-transform"></i> ${buttonText}
+                        </button>
+                        ${mistakesCount > 0 ? `
+                        <button onclick="fetchAndStartCategory('${safeSubj}', 'mistakes')" class="flex-1 bg-orange-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-orange-600 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group">
+                            <i class="fa-solid fa-book mr-2 group-hover:-rotate-12 transition-transform"></i> Review ${mistakesCount}
+                        </button>
+                        ` : ''}
+                        <button onclick="resetCategory('${safeSubj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-sm border border-red-100 dark:border-red-800 hover:rotate-180" title="Reset Progress"><i class="fa-solid fa-rotate-left transition-transform"></i></button>
+                    </div>
+                </div>
+            `;
+        }
+
+        container.innerHTML = generateTreeHTML(tree);
+
+        container.querySelectorAll('details').forEach(details => {
+            const summaryText = details.querySelector('summary').textContent.trim();
+            if (openFolders.includes(summaryText)) {
+                details.setAttribute('open', '');
+            }
+
+            const summary = details.querySelector('summary');
+            const contentDiv = details.querySelector('summary ~ div');
+            const chevron = summary.querySelector('i.fa-chevron-down');
+
+            summary.addEventListener('click', function(e) {
+                e.preventDefault(); 
+                
+                if (details.open) {
+                    const startHeight = details.offsetHeight;
+                    details.style.height = startHeight + 'px';
+                    details.style.overflow = 'hidden';
+                    void details.offsetHeight; 
+                    
+                    details.style.transition = 'height 0.35s ease-in-out';
+                    details.style.height = summary.offsetHeight + 'px'; 
+                    if (chevron) chevron.style.transform = 'rotate(0deg)';
+                    
+                    setTimeout(() => {
+                        details.removeAttribute('open');
+                        details.style.height = '';
+                        details.style.transition = '';
+                        details.style.overflow = '';
+                    }, 350);
+                } else {
+                    details.setAttribute('open', ''); 
+                    const startHeight = summary.offsetHeight;
+                    const endHeight = summary.offsetHeight + contentDiv.offsetHeight;
+                    
+                    details.style.height = startHeight + 'px';
+                    details.style.overflow = 'hidden';
+                    void details.offsetHeight; 
+                    
+                    details.style.transition = 'height 0.35s ease-in-out';
+                    details.style.height = endHeight + 'px'; 
+                    if (chevron) chevron.style.transform = 'rotate(180deg)';
+                    
+                    setTimeout(() => {
+                        details.style.height = '';
+                        details.style.transition = '';
+                        details.style.overflow = '';
+                    }, 350);
+                }
+            });
+        });
+    }
+
+    async function fetchAndStartCategory(subject, mode) {
+        const loader = document.getElementById(`loading-${subject}`);
+        if (loader) loader.classList.remove('hidden'); 
+
+        let validQuestions = [];
+
+        try {
+            const response = await fetch(`${DB_URL}?subject=${encodeURIComponent(subject)}`);
+            const newQuestions = await response.json();
+
+            if (newQuestions.error) throw new Error(newQuestions.error);
+
+            validQuestions = newQuestions.filter(q => 
+                q.Question && q.Question.trim() !== "" &&
+                q.ChoiceA && q.ChoiceA.trim() !== "" &&
+                q.ChoiceB && q.ChoiceB.trim() !== ""
+            ).map(q => {
+                // NEW: Enforce unique IDs and strip prefix strings (e.g., "BSM-", "NAV-")
+                let cleanId = q.ID ? q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, '') : Math.random().toString(36).substr(2, 6);
+                // Combine subject and ID so there are never duplicates across folders
+                q.ID = `${q.Subject}::${cleanId}`;
+                return q;
+            });
+
+            const otherQuestions = state.db.filter(q => q.Subject !== subject);
+            state.db = [...otherQuestions, ...validQuestions];
+            
+            await idbKeyval.set('mrh_db', state.db);
+            
+        } catch (err) {
+            console.warn("Network request failed. Falling back to local cache.", err);
+            validQuestions = state.db.filter(q => q.Subject === subject);
+            
+            if (validQuestions.length === 0) {
+                alert(`Cannot start session. You are offline and "${subject}" has not been downloaded to your device yet.`);
+                if (loader) loader.classList.add('hidden');
+                return;
+            }
+        }
+
+        if (!state.stats.completedQs) state.stats.completedQs = [];
+
+        let pool = [];
+        if (mode === 'continue') {
+            pool = validQuestions.filter(q => !state.stats.completedQs.includes(q.ID));
+            if (pool.length === 0) {
+                alert(`You have answered all available questions for ${subject}! Reset the category to start over.`);
+                if (loader) loader.classList.add('hidden');
+                return;
+            }
+        } else if (mode === 'mistakes') {
+            pool = validQuestions.filter(q => state.stats.mistakes.includes(q.ID));
+            if (pool.length === 0) {
+                alert(`No mistakes to review for ${subject}! Great job.`);
+                if (loader) loader.classList.add('hidden');
+                return;
+            }
+        }
+
+        if (loader) loader.classList.add('hidden');
+        startCustomSession(pool);
+    }
+
+    function startCustomSession(pool) {
+        navigate('practice'); 
+        document.getElementById('session-setup').classList.add('hidden'); 
+        document.getElementById('session-active').classList.remove('hidden'); 
+        
+        pool = prepareSessionPool(pool);
+
+        state.session = { 
+            active: true, questions: pool, 
+            currentIndex: 0, userAnswers: {}
+        };
+        
+        renderQuestion();
+        saveSessionProgress();
+    }
+
+    function resetCategory(subject) {
+        if (confirm(`Are you sure you want to reset your accuracy and progress statistics for "${subject}"? This cannot be undone.`)) {
+            if (state.stats.subjectAccuracy[subject]) {
+                state.stats.subjectAccuracy[subject] = { total: 0, correct: 0 }; 
+            }
+            
+            const subjectQIDs = state.db.filter(q => q.Subject === subject).map(q => q.ID);
+            
+            if (state.stats.completedQs) {
+                state.stats.completedQs = state.stats.completedQs.filter(id => !subjectQIDs.includes(id));
+            }
+            
+            if (state.stats.mistakes) {
+                state.stats.mistakes = state.stats.mistakes.filter(id => !subjectQIDs.includes(id));
+            }
+            
+            saveState(); 
+            renderCategoryProgress(); 
+            if(chartInstance) renderCharts(); 
+        }
+    }
+
+    async function deleteSubjectData(subject) {
+        if(confirm(`Are you sure you want to delete the downloaded questions for "${subject}"? Your accuracy and progress stats will remain, but the app will remove the local data to save space.`)) {
+            state.db = state.db.filter(q => q.Subject !== subject);
+            await idbKeyval.set('mrh_db', state.db);
+            
+            const saved = localStorage.getItem('mrh_saved_session');
+            if (saved) {
+                try {
+                    const sessionObj = JSON.parse(saved);
+                    const hasDeletedQuestions = sessionObj.questions.some(q => q.Subject === subject);
+                    
+                    if (hasDeletedQuestions) {
+                        let newQuestions = [];
+                        let newUserAnswers = {};
+                        let keptBeforeCurrent = 0;
+                        
+                        let newIdx = 0;
+                        for (let i = 0; i < sessionObj.questions.length; i++) {
+                            if (sessionObj.questions[i].Subject !== subject) {
+                                newQuestions.push(sessionObj.questions[i]);
+                                
+                                if (sessionObj.userAnswers[i]) {
+                                    newUserAnswers[newIdx] = sessionObj.userAnswers[i];
+                                }
+                                
+                                if (i < sessionObj.currentIndex) {
+                                    keptBeforeCurrent++;
+                                }
+                                
+                                newIdx++;
+                            }
+                        }
+                        
+                        if (newQuestions.length === 0) {
+                            clearSessionProgress();
+                            state.session = { active: false, questions: [], currentIndex: 0, userAnswers: {} };
+                        } else {
+                            sessionObj.questions = newQuestions;
+                            sessionObj.userAnswers = newUserAnswers;
+                            sessionObj.currentIndex = Math.min(keptBeforeCurrent, newQuestions.length - 1);
+                            localStorage.setItem('mrh_saved_session', JSON.stringify(sessionObj));
+                            
+                            if (state.session.active) {
+                                state.session = sessionObj;
+                            }
+                        }
+                    }
+                } catch(e) {
+                    console.error("Error parsing saved session during deletion.", e);
+                }
+            }
+            updateDashboard(); 
+        }
+    }
+
+    function submitPracticeAnswer(selected, correct) {
+        const q = state.session.questions[state.session.currentIndex];
+        state.session.userAnswers[state.session.currentIndex] = selected;
+        
+        trackStats(q, selected === correct);
+
+        document.querySelectorAll('.choice-btn').forEach(btn => {
+            btn.onclick = null;
+            if(btn.dataset.choice === correct) btn.classList.add('selected-correct');
+            else if (btn.dataset.choice === selected) btn.classList.add('selected-wrong');
+            else btn.classList.add('dimmed');
+        });
+
+        showExplanation(q);
+        
+        document.getElementById('btn-next').disabled = false;
+        document.getElementById('btn-reveal').disabled = true;
+        document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
+
+        startVisualTimer();
+        if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
+        state.session.autoNextTimeout = setTimeout(() => {
+            nextQuestion();
+        }, 3000);
+    }
+
+    function showExplanation(q) {
+        const expBox = document.getElementById('q-explanation-box');
+        
+        if (q.Explanation && q.Explanation.trim() !== "") {
+            document.getElementById('q-explanation-text').innerText = q.Explanation;
+            expBox.classList.remove('hidden');
+        } else {
+            expBox.classList.add('hidden');
+        }
+    }
+
+    function nextQuestion() {
+        if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
+        stopVisualTimer();
+
+        if(state.session.currentIndex < state.session.questions.length - 1) {
+            state.session.currentIndex++;
+            renderQuestion();
+            saveSessionProgress();
+        } else {
+            alert("Practice Session Complete! Great job.");
+            clearSessionProgress(); 
+            endSession(false);
+        }
+    }
+
+    function prevQuestion() {
+        if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
+        stopVisualTimer();
+
+        if(state.session.currentIndex > 0) {
+            state.session.currentIndex--;
+            renderQuestion();
+        }
+        saveSessionProgress();
+    }
+
+    function trackStats(q, isCorrect) {
+        state.stats.totalAnswered++;
+        
+        const subj = q.Subject || "General";
+        if(!state.stats.subjectAccuracy[subj]) state.stats.subjectAccuracy[subj] = { total: 0, correct: 0 };
+        state.stats.subjectAccuracy[subj].total++;
+
+        if (!state.stats.completedQs) state.stats.completedQs = [];
+        if (!state.stats.completedQs.includes(q.ID)) {
+            state.stats.completedQs.push(q.ID);
+        }
+
+        if (isCorrect) {
+            state.stats.correct++;
+            state.stats.subjectAccuracy[subj].correct++;
+            state.stats.mistakes = state.stats.mistakes.filter(id => id !== q.ID); 
+        } else {
+            if(!state.stats.mistakes.includes(q.ID)) state.stats.mistakes.push(q.ID);
+        }
+        saveState();
+    }
+
+    function endSession(silent = false) {
+        const isLastQuestion = state.session.currentIndex >= state.session.questions.length - 1;
+        const isAnswered = state.session.userAnswers && state.session.userAnswers[state.session.currentIndex];
+        
+        if (isLastQuestion && isAnswered) {
+            clearSessionProgress();
+        } else {
+            saveSessionProgress(); 
+        }
+
+        state.session.active = false;
+        if(!silent) navigate('dashboard');
+    }
+
+    function renderCharts() {
+        if(chartInstance) chartInstance.destroy(); 
+        
+        const ctx = document.getElementById('chart-accuracy').getContext('2d');
+        const subjects = Object.keys(state.stats.subjectAccuracy);
+        
+        if(subjects.length === 0) {
+            subjects.push("COLREG", "Navigation", "Meteorology");
+            state.stats.subjectAccuracy = {
+                "COLREG": {total: 10, correct: 0}, "Navigation": {total: 10, correct: 0}, "Meteorology": {total: 10, correct: 0}
+            };
+        }
+
+        const labels = subjects;
+        const data = subjects.map(s => {
+            const d = state.stats.subjectAccuracy[s];
+            return d.total === 0 ? 0 : Math.round((d.correct / d.total) * 100);
+        });
+
+        chartInstance = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Accuracy %',
+                    data: data,
+                    backgroundColor: 'rgba(59, 130, 246, 0.2)', 
+                    borderColor: 'rgba(59, 130, 246, 1)',
+                    pointBackgroundColor: 'rgba(59, 130, 246, 1)',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { r: { beginAtZero: true, max: 100, ticks: { stepSize: 20 } } },
+                plugins: { legend: { display: false } },
+                animation: {
+                    duration: 1500,
+                    easing: 'easeOutQuart'
+                }
+            }
+        });
+    }
+
+    function toggleTheme() {
+        state.prefs.darkMode = !state.prefs.darkMode;
+        document.documentElement.classList.toggle('dark', state.prefs.darkMode);
+        saveState();
+        updateThemeButton();
+    }
+
+    function updateThemeButton() {
+        const btn = document.getElementById('btn-theme-toggle');
+        if (btn) {
+            btn.innerHTML = state.prefs.darkMode 
+                ? '<i class="fa-solid fa-sun mr-1 transition-transform transform hover:rotate-180 duration-500"></i> Switch to Light Mode' 
+                : '<i class="fa-solid fa-moon mr-1 transition-transform transform hover:rotate-12 duration-300"></i> Switch to Dark Mode';
+        }
+    }
+
+    function resetProgress() {
+        if(confirm("Are you sure? This deletes mistakes, all statistics, and your current saved session.")) {
+            state.stats = { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {}, completedQs: [] };
+            state.session = { active: false, questions: [], currentIndex: 0, userAnswers: {} };
+            
+            clearSessionProgress();
+            saveState(); 
+            alert("Progress Reset.");
+            
+            if(document.getElementById('view-stats').classList.contains('active')) renderCharts();
+        }
+    }
+
+    async function clearDatabase() {
+        if(confirm("WARNING: Are you sure you want to clear the locally saved database? You will need an active internet connection to sync the questions again. The app will reload to apply changes.")) {
+            await idbKeyval.del('mrh_db');
+            state.db = [];
+            clearSessionProgress();
+            window.location.reload();
+        }
+    }
+
+    function exportData() {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
+        const dlAnchorElem = document.createElement('a');
+        dlAnchorElem.setAttribute("href", dataStr);
+        dlAnchorElem.setAttribute("download", "mrh_backup.json");
+        dlAnchorElem.click();
+    }
+
+    function importData(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            try {
+                const importedState = JSON.parse(e.target.result);
+                if (importedState && importedState.stats && importedState.db) {
+                    state = importedState;
+                    saveState();
+                    await idbKeyval.set('mrh_db', state.db);
+                    alert("Data successfully restored!");
+                    window.location.reload();
+                } else {
+                    alert("Invalid backup file.");
+                }
+            } catch(err) {
+                alert("Error reading file.");
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    window.onload = () => {
+        loadState();
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').then(registration => {
+                registration.update(); 
+            });
+        }
+        syncDatabase();
+    };
+
+    function saveSessionProgress() {
+        if (!state.session.active) return;
+        localStorage.setItem('mrh_saved_session', JSON.stringify(state.session));
+    }
+
+    function checkSavedSession() {
+        const saved = localStorage.getItem('mrh_saved_session');
+        const resumeContainer = document.getElementById('resume-container');
+        
+        if (saved && resumeContainer) {
+            try {
+                const session = JSON.parse(saved);
+                const isLastQuestion = session.currentIndex >= session.questions.length - 1;
+                const isAnswered = session.userAnswers && session.userAnswers[session.currentIndex];
+                
+                if (isLastQuestion && isAnswered) {
+                    localStorage.removeItem('mrh_saved_session');
+                    resumeContainer.classList.add('hidden');
+                    return; 
+                }
+            } catch(e) {
+                console.error("Error checking session", e);
+            }
+
+            resumeContainer.classList.remove('hidden');
+        } else if (resumeContainer) {
+            resumeContainer.classList.add('hidden');
+        }
+    }
+
+    function resumeSession() {
+        const saved = localStorage.getItem('mrh_saved_session');
+        if (!saved) return;
+
+        state.session = JSON.parse(saved);
+
+        state.session.questions = state.session.questions.map((savedQ, index) => {
+            
+            // MIGRATION HELPER: Ensure session resumer works with the freshly updated IDs
+            let searchId = savedQ.ID;
+            if (searchId && !searchId.toString().includes('::')) {
+                let cleanId = searchId.toString().replace(/^[a-zA-Z]+[-\s]?/, '');
+                searchId = `${savedQ.Subject}::${cleanId}`;
+            }
+
+            const freshQ = state.db.find(dbQ => dbQ.ID === searchId || dbQ.ID === savedQ.ID);
+            
+            if (freshQ) {
+                savedQ.Question = freshQ.Question;
+                savedQ.Explanation = freshQ.Explanation;
+                
+                const realCorrectText = freshQ[`Choice${freshQ.Answer}`];
+                
+                if (savedQ.ChoiceA === realCorrectText) savedQ.Answer = 'A';
+                else if (savedQ.ChoiceB === realCorrectText) savedQ.Answer = 'B';
+                else if (savedQ.ChoiceC === realCorrectText) savedQ.Answer = 'C';
+                else if (savedQ.ChoiceD === realCorrectText) savedQ.Answer = 'D';
+                else {
+                    const freshShuffled = prepareSessionPool([freshQ])[0];
+                    savedQ.ChoiceA = freshShuffled.ChoiceA;
+                    savedQ.ChoiceB = freshShuffled.ChoiceB;
+                    savedQ.ChoiceC = freshShuffled.ChoiceC;
+                    savedQ.ChoiceD = freshShuffled.ChoiceD;
+                    savedQ.Answer = freshShuffled.Answer;
+                    
+                    if (state.session.userAnswers[index]) {
+                        delete state.session.userAnswers[index];
+                    }
+                }
+            }
+            return savedQ;
+        });
+
+        navigate('practice');
+        document.getElementById('session-setup').classList.add('hidden');
+        document.getElementById('session-active').classList.remove('hidden');
+
+        renderQuestion();
+    }
+
+    function clearSessionProgress() {
+        localStorage.removeItem('mrh_saved_session');
+        const resumeContainer = document.getElementById('resume-container');
+        if (resumeContainer) {
+            resumeContainer.classList.add('hidden');
+        }
+    }
+
+    function shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    }
+
+    function showMCQOptions() {
+document.getElementById('active-recall-mask').classList.add('hidden');
+document.getElementById('q-choices').classList.remove('hidden');
+}
+
+function revealAnswer() {
+if (!state.session.active) return;
+
+const q = state.session.questions[state.session.currentIndex];
+state.session.userAnswers[state.session.currentIndex] = "REVEALED";
+
+trackStats(q, false);
+
+document.getElementById('q-choices').classList.remove('hidden');
+const activeRecallMask = document.getElementById('active-recall-mask');
+if (activeRecallMask) activeRecallMask.classList.add('hidden');
+
+// Classes are now exclusively handled by renderQuestion() below
+renderQuestion(); 
+saveSessionProgress();
+startVisualTimer();
+
+if (state.session.autoNextTimeout) clearTimeout(state.session.autoNextTimeout);
+state.session.autoNextTimeout = setTimeout(() => {
+    nextQuestion();
+}, 3000);
+}
+
+    function startVisualTimer() {
+        const container = document.getElementById('auto-next-timer-container');
+        const bar = document.getElementById('auto-next-timer-bar');
+        
+        container.classList.remove('hidden');
+        
+        bar.classList.remove('animate-timer-bar');
+        void bar.offsetWidth; 
+        bar.classList.add('animate-timer-bar');
+    }
+
+    function stopVisualTimer() {
+        const container = document.getElementById('auto-next-timer-container');
+        const bar = document.getElementById('auto-next-timer-bar');
+        
+        container.classList.add('hidden');
+        bar.classList.remove('animate-timer-bar');
+    }
+
+    function toggleLayout() {
+state.prefs.layoutMode = state.prefs.layoutMode === 'grid' ? 'list' : 'grid';
+saveState();
+renderCategoryProgress();
+}
