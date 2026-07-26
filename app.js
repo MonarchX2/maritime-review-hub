@@ -530,8 +530,8 @@ function generateCardHTML(cat, displayName, delay = 0) {
 
             const isDownloaded = state.db.some(q => q.Subject === subj);
             const statusBadge = isDownloaded 
-                ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i> Saved</span>`
-                : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i> Cloud</span>`;
+                ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i></span>`
+                : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i></span>`;
 
             // Dynamic UI based on the global mode
             const primaryActionText = currentAppMode === 'review' ? 'Review Deck' : (completedCount === 0 ? 'Start Quiz' : 'Continue Quiz');
