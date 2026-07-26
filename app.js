@@ -1575,7 +1575,7 @@ function toggleAppMode() {
     currentAppMode = toggleElement.checked ? 'review' : 'quiz';
     
     // Update the label text
-    modeLabel.innerText = currentAppMode === 'review' ? 'Review Mode' : 'Quiz Mode';
+    modeLabel.innerText = currentAppMode === 'review' ? 'Study' : 'Quiz';
     
     // Re-render the dashboard cards instantly to reflect the new mode
     renderCategoryProgress(); 
