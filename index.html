@@ -113,7 +113,7 @@
                 </div>
 
                 <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 transition-colors duration-300">
-<div class="flex gap-2 mb-3 flex-wrap items-center w-full">
+                                <div class="flex gap-2 mb-3 flex-wrap items-center w-full">
                         <span class="bg-brand-100 text-brand-800 text-xs px-2 py-1 rounded font-semibold dark:bg-brand-900 dark:text-brand-200 transition-colors" id="q-subject">Subject</span>
                         <span class="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded font-semibold dark:bg-gray-700 dark:text-gray-300 transition-colors" id="q-id">ID</span>
                         
@@ -123,25 +123,25 @@
                         </button>
 
                         <!-- NEW SETTINGS BUTTON -->
-    <button onclick="openSessionSettingsModal()" id="btn-session-settings" class="text-gray-400 hover:text-brand-500 text-xs font-bold flex items-center gap-1 transition-all bg-white hover:bg-brand-50 dark:bg-gray-800 dark:hover:bg-brand-900/30 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-md shadow-sm active:scale-95">
-        <i class="fa-solid fa-gear"></i> Settings
-    </button>
-                    </div>
-                    <h3 class="text-xl font-medium mb-4 transition-colors" id="q-text">Loading question...</h3>
-                    
-                    <img id="q-image" src="" alt="Reference" class="hidden w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500 hover:scale-105">
+                        <button onclick="openSessionSettingsModal()" id="btn-session-settings" class="text-gray-400 hover:text-brand-500 text-xs font-bold flex items-center gap-1 transition-all bg-white hover:bg-brand-50 dark:bg-gray-800 dark:hover:bg-brand-900/30 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-md shadow-sm active:scale-95">
+                            <i class="fa-solid fa-gear"></i> Settings
+                        </button>
+                                        </div>
+                                        <h3 class="text-xl font-medium mb-4 transition-colors" id="q-text">Loading question...</h3>
+                                        
+                                        <img id="q-image" src="" alt="Reference" class="hidden w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500 hover:scale-105">
 
-<div id="active-recall-mask" class="hidden border border-gray-200 dark:border-gray-700 rounded-xl mt-6 bg-white dark:bg-gray-800 flex flex-col overflow-hidden animate-card-in shadow-sm">
-    <div class="p-8 flex flex-col items-center justify-center text-center">
-        <div class="bg-gray-50 dark:bg-gray-700 rounded-full w-12 h-12 flex items-center justify-center mb-4 border border-gray-100 dark:border-gray-600">
-            <i class="fa-regular fa-lightbulb text-gray-600 dark:text-gray-300 text-xl"></i>
-        </div>
-        <p class="text-gray-700 dark:text-gray-300 font-medium">Think of the answer first to do active recall</p>
-    </div>
-    <button id="btn-show-options" onclick="showMCQOptions()" class="w-full py-4 border-t border-gray-200 dark:border-gray-700 font-bold text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-        Show options
-    </button>
-</div>
+                    <div id="active-recall-mask" class="hidden border border-gray-200 dark:border-gray-700 rounded-xl mt-6 bg-white dark:bg-gray-800 flex flex-col overflow-hidden animate-card-in shadow-sm">
+                        <div class="p-8 flex flex-col items-center justify-center text-center">
+                            <div class="bg-gray-50 dark:bg-gray-700 rounded-full w-12 h-12 flex items-center justify-center mb-4 border border-gray-100 dark:border-gray-600">
+                                <i class="fa-regular fa-lightbulb text-gray-600 dark:text-gray-300 text-xl"></i>
+                            </div>
+                            <p class="text-gray-700 dark:text-gray-300 font-medium">Think of the answer first to do active recall</p>
+                        </div>
+                        <button id="btn-show-options" onclick="showMCQOptions()" class="w-full py-4 border-t border-gray-200 dark:border-gray-700 font-bold text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                            Show options
+                        </button>
+                    </div>
 
                     <div class="grid gap-3 mt-6" id="q-choices">
                         <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium" data-choice="A">A) <span id="choice-a-text"></span></button>
@@ -218,15 +218,66 @@
             </div>
         </section>
 
+        <!-- DECK MODE SELECT SECTION -->
+<section id="view-mode-select" class="view-section hidden">
+    <div class="flex items-center justify-between mb-6 gap-4">
+        <div class="flex items-center gap-4">
+            <button onclick="navigate('dashboard')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center">
+                <i class="fa-solid fa-arrow-left mr-2"></i> Back
+            </button>
+            <h2 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-100" id="mode-select-deck-title">Select Mode</h2>
+        </div>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto mt-12">
+        <!-- Review Mode Card -->
+        <button onclick="proceedToReview()" class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border-2 border-transparent hover:border-brand-500 dark:hover:border-brand-400 transition-all duration-300 text-left group flex flex-col justify-between">
+            <div>
+                <div class="w-14 h-14 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-eye"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">Review Deck</h3>
+                <p class="text-gray-500 dark:text-gray-400 text-sm">Read through all questions, correct answers, choices, and explanations at your own pace without scoring.</p>
+            </div>
+            <div class="mt-8 flex items-center text-brand-600 dark:text-brand-400 font-bold text-sm">
+                <span>Open Review</span>
+                <i class="fa-solid fa-arrow-right ml-2 group-hover:translate-x-1 transition-transform"></i>
+            </div>
+        </button>
+
+        <!-- Quiz Mode Card -->
+        <button onclick="proceedToQuiz()" class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border-2 border-transparent hover:border-brand-500 dark:hover:border-brand-400 transition-all duration-300 text-left group flex flex-col justify-between">
+            <div>
+                <div class="w-14 h-14 rounded-xl bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-brain"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">Take Quiz</h3>
+                <p class="text-gray-500 dark:text-gray-400 text-sm">Test your knowledge with interactive quiz sessions, track your scores, and practice challenging items.</p>
+            </div>
+            <div class="mt-8 flex items-center text-brand-600 dark:text-brand-400 font-bold text-sm">
+                <span>Start Quiz</span>
+                <i class="fa-solid fa-arrow-right ml-2 group-hover:translate-x-1 transition-transform"></i>
+            </div>
+        </button>
+    </div>
+</section>
+
         <!-- DECK REVIEW SECTION -->
-        <section id="view-deck-review" class="view-section">
-            <div class="flex items-center justify-between mb-6 gap-4">
+        <section id="view-deck-review" class="view-section hidden">
+            <div class="flex items-center justify-between mb-6 gap-4 flex-wrap">
                 <div class="flex items-center gap-4">
                     <button onclick="navigate('dashboard')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center">
                         <i class="fa-solid fa-arrow-left mr-2"></i> Back
                     </button>
-                    <h2 class="text-xl md:text-2xl font-bold truncate text-gray-800 dark:text-gray-100" id="deck-review-title">Review Deck</h2>
+                    <h2 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-100" id="deck-review-title">Review Deck</h2>
                 </div>
+                
+                <!-- Toggle Switch -->
+                <label class="inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="toggle-wrong-choices" class="sr-only peer" onchange="reRenderDeckReview()">
+                    <div class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"></div>
+                    <span class="ms-3 text-sm font-medium text-gray-700 dark:text-gray-300">Show wrong choices</span>
+                </label>
             </div>
             
             <div id="deck-review-list" class="space-y-4">
