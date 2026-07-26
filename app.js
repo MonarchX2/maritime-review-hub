@@ -562,7 +562,7 @@ function generateCardHTML(cat, displayName, delay = 0) {
                                         <i class="fa-solid fa-trash-can"></i>
                                     </button>` 
                                 : ``}
-                            <span class="text-sm font-black text-brand-600 dark:text-brand-400 transition-colors">${completedCount} / ${totalQuestionsInDb} Done</span>
+                            <span class="text-sm font-black text-brand-600 dark:text-brand-400 transition-colors">${completedCount} / ${totalQuestionsInDb}</span>
                         </div>
                     </div>
                     
@@ -1577,9 +1577,8 @@ function toggleAppMode() {
     // Update the label text
     modeLabel.innerText = currentAppMode === 'review' ? 'Review Mode' : 'Quiz Mode';
     
-    // Optional but recommended: Re-render your dashboard cards here so the 
-    // buttons inside the cards update their text to match the new mode instantly.
-    // e.g., renderDashboard(); 
+    // Re-render the dashboard cards instantly to reflect the new mode
+    renderCategoryProgress(); 
 }
 
 // 3. Centralized click handler for the deck
