@@ -65,6 +65,15 @@
                 </button>
             </div>
 
+            <div class="flex items-center gap-3">
+    <span id="modeLabel" class="text-sm font-bold text-gray-700 dark:text-gray-300 w-24 text-right transition-colors">Quiz Mode</span>
+    <label class="relative inline-flex items-center cursor-pointer">
+        <input type="checkbox" id="globalModeToggle" class="sr-only peer" onchange="toggleAppMode()">
+        <!-- The track -->
+        <div class="w-11 h-6 bg-brand-500 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+    </label>
+</div>
+
 <div class="flex justify-between items-center mb-4">
     <h3 class="text-lg font-bold">Subject Progress</h3>
     <button onclick="toggleLayout()" class="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg shadow-sm hover:shadow-md transition-all text-sm font-medium text-gray-700 dark:text-gray-200">

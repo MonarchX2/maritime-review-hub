@@ -513,77 +513,77 @@ function renderCategoryProgress() {
     }
 
     // Embed the original card generator
-    function generateCardHTML(cat, displayName, delay = 0) {
-        const subj = cat.Subject;
-        const safeSubj = escapeHTML(subj);
-        const safeName = escapeHTML(displayName);
-        const totalQuestionsInDb = cat.QuestionCount;
-        const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 };
+function generateCardHTML(cat, displayName, delay = 0) {
+            const subj = cat.Subject;
+            const safeSubj = escapeHTML(subj); 
+            const safeName = escapeHTML(displayName);
+            const totalQuestionsInDb = cat.QuestionCount; 
+            const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
+            
+            const dbQsForSubj = state.db.filter(q => q.Subject === subj).map(q => q.ID);
+            const completedCount = state.stats.completedQs ? state.stats.completedQs.filter(id => dbQsForSubj.includes(id)).length : 0;
+            const mistakesCount = state.stats.mistakes ? state.stats.mistakes.filter(id => dbQsForSubj.includes(id)).length : 0;
+            
+            const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
+            const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
+            const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
 
-        const dbQsForSubj = state.db.filter(q => q.Subject === subj).map(q => q.ID);
-        const completedCount = state.stats.completedQs ? state.stats.completedQs.filter(id => dbQsForSubj.includes(id)).length : 0;
-        const mistakesCount = state.stats.mistakes ? state.stats.mistakes.filter(id => dbQsForSubj.includes(id)).length : 0;
+            const isDownloaded = state.db.some(q => q.Subject === subj);
+            const statusBadge = isDownloaded 
+                ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i> Saved</span>`
+                : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i> Cloud</span>`;
 
-        const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
-        const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
-        const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
+            // Dynamic UI based on the global mode
+            const primaryActionText = currentAppMode === 'review' ? 'Review Deck' : (completedCount === 0 ? 'Start Quiz' : 'Continue Quiz');
+            const primaryActionIcon = currentAppMode === 'review' ? 'fa-eye' : 'fa-play';
+            const primaryActionColor = currentAppMode === 'review' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-brand-600 hover:bg-brand-700';
 
-        const isDownloaded = state.db.some(q => q.Subject === subj);
-        const statusBadge = isDownloaded
-            ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i> Saved</span>`
-            : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i> Cloud</span>`;
+            return `
+                <div onclick="handleDeckClick('${safeSubj}')" class="cursor-pointer animate-card-in ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 hover:shadow-brand-500/10 active:scale-[0.99] border transition-all duration-400 relative w-full mb-3 last:mb-0" style="animation-delay: ${delay}s;">
+                    <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
+                        <i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500 mb-2"></i>
+                        <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
+                    </div>
 
-        const buttonText = completedCount === 0 ? 'Start' : 'Continue';
-
-        return `
-                        <div onclick="openModeSelect('${safeSubj}')" class="cursor-pointer animate-card-in ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 hover:shadow-brand-500/10 active:scale-[0.99] border transition-all duration-400 relative w-full mb-3 last:mb-0" style="animation-delay: ${delay}s;">
-                            <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
-                                <i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500 mb-2"></i>
-                                <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
+                        <div>
+                            <div class="flex items-center gap-2 mb-1">
+                                <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors">
+                                    <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm"></i>
+                                    ${safeName}
+                                </h3>
+                                ${statusBadge}
                             </div>
-
-                            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
-                                <div>
-                                    <div class="flex items-center gap-2 mb-1">
-                                        <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors">
-                                            <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm"></i>
-                                            ${safeName}
-                                        </h3>
-                                        ${statusBadge}
-                                    </div>
-                                    <p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct / data.total) * 100) : 0}%</p>
-                                </div>
-                                <div class="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
-                                    <button onclick="event.stopPropagation(); reviewDeck('${safeSubj}')" class="text-gray-400 hover:text-brand-500 hover:scale-125 transition-all duration-300" title="Review Questions & Answers">
-                                        <i class="fa-solid fa-eye"></i>
-                                    </button>
-                                    ${isDownloaded
-                ? `<button onclick="event.stopPropagation(); deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300" title="Delete Downloaded Data">
-                                                <i class="fa-solid fa-trash-can"></i>
-                                            </button>`
-                : ``}
-                                    <span class="text-sm font-black text-brand-600 dark:text-brand-400 transition-colors">${completedCount} / ${totalQuestionsInDb} Done</span>
-                                </div>
-                            </div>
-                            
-                            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden">
-                                <div class="bg-brand-500 h-full rounded-full transition-all duration-700 ease-out" style="width: ${progressPercent}%"></div>
-                            </div>
-                            
-                            <div class="flex gap-2 flex-wrap" onclick="event.stopPropagation()">
-                                <button onclick="fetchAndStartCategory('${safeSubj}', 'continue')" class="flex-1 bg-brand-600 text-white py-2 px-2 rounded-lg font-bold hover:bg-brand-700 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group">
-                                    <i class="fa-solid fa-play mr-2 group-hover:scale-125 transition-transform"></i> ${buttonText}
-                                </button>
-                                    ${mistakesCount > 0 ? `
-                                    <button onclick="fetchAndStartCategory('${safeSubj}', 'mistakes')" class="flex-1 bg-yellow-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-yellow-600 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group" title="Review Mistakes">
-                                        <i class="fa-solid fa-triangle-exclamation mr-2 group-hover:scale-125 transition-transform"></i> Review (${mistakesCount})
-                                    </button>
-                                    ` : ''}
-                                <button onclick="resetCategory('${safeSubj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-sm border border-red-100 dark:border-red-800 hover:rotate-180" title="Reset Progress"><i class="fa-solid fa-rotate-left transition-transform"></i></button>
-                            </div>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>
                         </div>
-                    `;
-    }
+                        <div class="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+                            ${isDownloaded 
+                                ? `<button onclick="event.stopPropagation(); deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300" title="Delete Downloaded Data">
+                                        <i class="fa-solid fa-trash-can"></i>
+                                    </button>` 
+                                : ``}
+                            <span class="text-sm font-black text-brand-600 dark:text-brand-400 transition-colors">${completedCount} / ${totalQuestionsInDb} Done</span>
+                        </div>
+                    </div>
+                    
+                    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden">
+                        <div class="bg-brand-500 h-full rounded-full transition-all duration-700 ease-out" style="width: ${progressPercent}%"></div>
+                    </div>
+                    
+                    <div class="flex gap-2 flex-wrap" onclick="event.stopPropagation()">
+                        <button onclick="handleDeckClick('${safeSubj}')" class="flex-1 ${primaryActionColor} text-white py-2 px-2 rounded-lg font-bold active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group">
+                            <i class="fa-solid ${primaryActionIcon} mr-2 group-hover:scale-125 transition-transform"></i> ${primaryActionText}
+                        </button>
+                            ${mistakesCount > 0 ? `
+                            <button onclick="handleDeckClick('${safeSubj}', 'mistakes')" class="flex-1 bg-yellow-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-yellow-600 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group" title="Review Mistakes">
+                                <i class="fa-solid fa-triangle-exclamation mr-2 group-hover:scale-125 transition-transform"></i> Review (${mistakesCount})
+                            </button>
+                            ` : ''}
+                        <button onclick="resetCategory('${safeSubj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-sm border border-red-100 dark:border-red-800 hover:rotate-180" title="Reset Progress"><i class="fa-solid fa-rotate-left transition-transform"></i></button>
+                    </div>
+                </div>
+            `;
+        }
 
     keys.forEach((key, index) => {
         const item = currentNode[key];
@@ -1560,6 +1560,34 @@ function proceedToQuiz() {
     } else {
         console.warn("Quiz start function not found. Please connect your app's quiz initialization function here.");
         alert(`Starting quiz for: ${activeHubSubject}`);
+    }
+}
+
+// 1. Initialize global state (defaults to quiz mode)
+let currentAppMode = 'quiz'; 
+
+// 2. Handle the toggle switch
+function toggleAppMode() {
+    const toggleElement = document.getElementById('globalModeToggle');
+    const modeLabel = document.getElementById('modeLabel');
+    
+    // Update global state
+    currentAppMode = toggleElement.checked ? 'review' : 'quiz';
+    
+    // Update the label text
+    modeLabel.innerText = currentAppMode === 'review' ? 'Review Mode' : 'Quiz Mode';
+    
+    // Optional but recommended: Re-render your dashboard cards here so the 
+    // buttons inside the cards update their text to match the new mode instantly.
+    // e.g., renderDashboard(); 
+}
+
+// 3. Centralized click handler for the deck
+function handleDeckClick(subj, action = 'continue') {
+    if (currentAppMode === 'review') {
+        reviewDeck(subj);
+    } else {
+        fetchAndStartCategory(subj, action);
     }
 }
 
