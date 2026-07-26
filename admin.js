@@ -62,20 +62,20 @@ function loadAdminSubjects() {
 function renderAdminSubjectList() {
     const container = document.getElementById('admin-subject-list');
     
-    // 1. Group subjects strictly by their TOP-LEVEL parent folder
+    // 1. Group subjects by their FULL folder path
     const groupedSubjects = {};
     
     adminState.subjects.forEach((subj, index) => {
         const parts = subj.split('::');
         const deckName = parts.pop(); // The actual subject/deck name
         
-        // Always grab the very first item as the root folder
-        const topLevelFolder = parts.length > 0 ? parts[0] : 'Root Level';
+        // Grab all remaining parts to form the complete subfolder path
+        const folderPath = parts.length > 0 ? parts.join(' :: ') : 'Root Level';
         
-        if (!groupedSubjects[topLevelFolder]) {
-            groupedSubjects[topLevelFolder] = [];
+        if (!groupedSubjects[folderPath]) {
+            groupedSubjects[folderPath] = [];
         }
-        groupedSubjects[topLevelFolder].push({ 
+        groupedSubjects[folderPath].push({ 
             originalFull: subj, 
             deckName: deckName, 
             index: index 
