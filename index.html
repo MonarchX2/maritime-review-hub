@@ -71,10 +71,10 @@
                 <div class="flex items-center gap-4">
                     <!-- Review / Quiz Mode Toggle -->
                     <div class="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-1 rounded-lg shadow-sm">
-                        <span id="modeLabel" class="text-sm font-bold text-gray-700 dark:text-gray-300 w-24 text-right transition-colors">Quiz</span>
+                        <span id="modeLabel" class="text-sm font-bold text-gray-700 dark:text-gray-300  text-right transition-colors">Quiz</span>
                         <label class="relative inline-flex items-center cursor-pointer">
                             <input type="checkbox" id="globalModeToggle" class="sr-only peer" onchange="toggleAppMode()">
-                            <div class="w-11 h-6 bg-brand-500 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                            <div class=" h-6 bg-brand-500 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after: after:transition-all peer-checked:bg-purple-600"></div>
                         </label>
                     </div>
 
@@ -146,7 +146,7 @@
 
                     <div id="active-recall-mask" class="hidden border border-gray-200 dark:border-gray-700 rounded-xl mt-6 bg-white dark:bg-gray-800 flex flex-col overflow-hidden animate-card-in shadow-sm">
                         <div class="p-8 flex flex-col items-center justify-center text-center">
-                            <div class="bg-gray-50 dark:bg-gray-700 rounded-full w-12 h-12 flex items-center justify-center mb-4 border border-gray-100 dark:border-gray-600">
+                            <div class="bg-gray-50 dark:bg-gray-700 rounded-full  h-12 flex items-center justify-center mb-4 border border-gray-100 dark:border-gray-600">
                                 <i class="fa-regular fa-lightbulb text-gray-600 dark:text-gray-300 text-xl"></i>
                             </div>
                             <p class="text-gray-700 dark:text-gray-300 font-medium">Think of the answer first to do active recall</p>
@@ -246,7 +246,7 @@
         <!-- Review Mode Card -->
         <button onclick="proceedToReview()" class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border-2 border-transparent hover:border-brand-500 dark:hover:border-brand-400 transition-all duration-300 text-left group flex flex-col justify-between">
             <div>
-                <div class="w-14 h-14 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform">
+                <div class=" h-14 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform">
                     <i class="fa-solid fa-eye"></i>
                 </div>
                 <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">Review Deck</h3>
@@ -261,7 +261,7 @@
         <!-- Quiz Mode Card -->
         <button onclick="proceedToQuiz()" class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border-2 border-transparent hover:border-brand-500 dark:hover:border-brand-400 transition-all duration-300 text-left group flex flex-col justify-between">
             <div>
-                <div class="w-14 h-14 rounded-xl bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform">
+                <div class=" h-14 rounded-xl bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform">
                     <i class="fa-solid fa-brain"></i>
                 </div>
                 <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">Take Quiz</h3>
@@ -288,7 +288,7 @@
                 <!-- Toggle Switch -->
                 <label class="inline-flex items-center cursor-pointer">
                     <input type="checkbox" id="toggle-wrong-choices" class="sr-only peer" onchange="reRenderDeckReview()">
-                    <div class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"></div>
+                    <div class="relative  h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after: after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"></div>
                     <span class="ms-3 text-sm font-medium text-gray-700 dark:text-gray-300">Show wrong choices</span>
                 </label>
             </div>
@@ -432,7 +432,7 @@
             </div>
             <label class="relative inline-flex items-center cursor-pointer">
                 <input type="checkbox" id="toggle-active-recall" class="sr-only peer" onchange="toggleActiveRecall()">
-                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"></div>
+                <div class=" h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after: after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"></div>
             </label>
         </div>
         

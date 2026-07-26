@@ -110,13 +110,13 @@ function renderAdminSubjectList() {
         node.decks.forEach(subj => {
             innerHtml += `
                 <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row items-center gap-4 mt-3">
-                    <div class="w-full md:w-1/3">
+                    <div class="w-full md:/3">
                         <span class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Deck Name</span>
                         <div class="font-medium text-gray-700 dark:text-gray-200 truncate" title="${escapeHTML(subj.originalFull)}">${escapeHTML(subj.deckName)}</div>
                     </div>
                     <i class="fa-solid fa-arrow-right text-gray-400 hidden md:block"></i>
                     <i class="fa-solid fa-arrow-down text-gray-400 block md:hidden"></i>
-                    <div class="w-full md:w-2/3">
+                    <div class="w-full md:/3">
                         <div class="flex justify-between items-end mb-1">
                             <span class="text-xs font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">New Full Path</span>
                             <span class="text-xs text-gray-400 font-mono" id="char-count-${subj.index}">${subj.originalFull.length}/100</span>

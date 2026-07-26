@@ -591,7 +591,7 @@ function renderCategoryProgress() {
                     ` : ''}
 
                     <!-- Reset Button (Always visible, stays small) -->
-                    <button onclick="resetCategory('${safeSubj}')" class="w-10 sm:w-12 shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
+                    <button onclick="resetCategory('${safeSubj}')" class=" sm: shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
                         <i class="fa-solid fa-rotate-left"></i>
                     </button>
                 </div>
