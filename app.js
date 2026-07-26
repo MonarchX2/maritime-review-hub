@@ -514,7 +514,7 @@ function renderCategoryProgress() {
         html += `<div class="col-span-full text-center py-10 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">No decks found in this folder.</div>`;
     }
 
-    function generateCardHTML(cat, displayName, delay = 0) {
+function generateCardHTML(cat, displayName, delay = 0) {
         const subj = cat.Subject;
         const safeSubj = escapeHTML(subj); 
         const safeName = escapeHTML(displayName);
@@ -550,28 +550,32 @@ function renderCategoryProgress() {
 
         // Notice the 'h-full flex flex-col' in the main div, and 'mt-auto' on the button container
         return `
-            <div onclick="handleDeckClick('${safeSubj}')" class="cursor-pointer animate-card-in ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;">
+           <div onclick="handleDeckClick('${safeSubj}')" class="cursor-pointer animate-card-in ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;">
                 <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
                     <i class="fa-solid fa-spinner fa-spin text-3xl ${loaderColor} mb-2"></i>
                     <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
                 </div>
 
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
-                    <div>
-                        <div class="flex items-center gap-2 mb-1">
-                            <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors">
-                                <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm"></i>
-                                ${safeName}
+                <!-- Card Header -->
+                <div class="flex items-start justify-between mb-4 gap-2">
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-2 mb-1 min-w-0">
+                            <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors truncate min-w-0">
+                                <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm flex-shrink-0"></i>
+                                <span class="truncate">${safeName}</span>
                             </h3>
-                            ${statusBadge}
+                            <div class="flex-shrink-0">
+                                ${statusBadge}
+                            </div>
                         </div>
                         <p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>
                     </div>
-                    <div class="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+                    
+                    <div class="flex items-center gap-2 flex-shrink-0 pt-1">
                         ${isDownloaded 
-                            ? `<button onclick="event.stopPropagation(); deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300" title="Delete Downloaded Data">
-                                    <i class="fa-solid fa-trash-can"></i>
-                                </button>` 
+                            ? `<button onclick="event.stopPropagation(); deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>` 
                             : ``}
                         <span class="text-sm font-black ${themeColorText} transition-colors">${completedCount} / ${totalQuestionsInDb}</span>
                     </div>
@@ -584,13 +588,15 @@ function renderCategoryProgress() {
                 <div class="flex gap-2 mt-auto w-full" onclick="event.stopPropagation()">
                     <!-- Primary Action Button -->
                     <button onclick="handleDeckClick('${safeSubj}')" class="flex-1 ${primaryActionColor} text-white py-2 px-2 rounded-lg font-bold active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="${primaryActionText}">
-                        <i class="fa-solid ${primaryActionIcon} mr-1 sm:mr-2 group-hover:scale-125 transition-transform"></i> <span class="truncate">${primaryActionText.split(' ')[0]}</span>
+                        <i class="fa-solid ${primaryActionIcon} mr-1 sm:mr-2 group-hover:scale-125 transition-transform flex-shrink-0"></i> 
+                        <span class="truncate">${primaryActionText}</span>
                     </button>
                     
                     <!-- Review Mistakes Button (Only shows if mistakes exist) -->
                     ${mistakesCount > 0 ? `
                         <button onclick="handleDeckClick('${safeSubj}', 'mistakes')" class="flex-1 bg-yellow-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-yellow-600 active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="Review Mistakes">
-                            <i class="fa-solid fa-triangle-exclamation mr-1 sm:mr-2 group-hover:scale-125 transition-transform"></i> <span class="truncate">Review (${mistakesCount})</span>
+                            <i class="fa-solid fa-triangle-exclamation mr-1 sm:mr-2 group-hover:scale-125 transition-transform flex-shrink-0"></i> 
+                            <span class="truncate">Review (${mistakesCount})</span>
                         </button>
                     ` : ''}
 
