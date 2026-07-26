@@ -35,18 +35,24 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col transition-colors duration-500">
-    <header class="bg-brand-900 text-white p-4 flex justify-between items-center shadow-lg sticky top-0 z-50 w-full transition-all duration-300">
+<header class="bg-brand-900 text-white p-4 flex justify-between items-center shadow-lg sticky top-0 z-50 w-full transition-all duration-300">
         <button onclick="navigate('dashboard')" class="font-bold text-lg hover:text-brand-200 transition-colors text-left flex items-center transform hover:scale-105 active:scale-95 origin-left">
             <i class="fa-solid fa-anchor mr-2"></i> MRH
         </button>
-<div class="flex items-center gap-5">
+        <div class="flex items-center gap-5">
             <button id="btn-admin-nav" onclick="navigate('admin')" class="hidden hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="Admin Portal">
                 <i class="fa-solid fa-lock"></i>
             </button>
-            <!-- NEW: View Reports Button -->
+            <!-- View Reports Button -->
             <button onclick="navigate('reports'); loadReports();" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="View Reports" title="Community Reports">
                 <i class="fa-solid fa-flag"></i>
             </button>
+            <!-- MOVED: Theme Toggle Button (Sun/Moon) -->
+            <button onclick="toggleTheme()" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="Toggle Theme" title="Toggle Dark/Light Mode">
+                <i class="fa-solid fa-sun dark:hidden"></i>
+                <i class="fa-solid fa-moon hidden dark:inline"></i>
+            </button>
+            <!-- Settings Button -->
             <button onclick="navigate('settings')" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg hover:rotate-90" aria-label="Settings">
                 <i class="fa-solid fa-gear"></i>
             </button>
@@ -312,16 +318,6 @@
         <!-- SETTINGS SECTION -->
         <section id="view-settings" class="view-section">
             <h2 class="text-2xl font-bold mb-6">Settings</h2>
-            
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 mb-6 border border-gray-100 dark:border-gray-700 animate-card-in">
-                <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-paint-roller text-brand-500 mr-2"></i> Appearance</h3>
-                <div class="flex justify-between items-center">
-                    <span class="text-sm dark:text-gray-300 transition-colors">Theme</span>
-                    <button id="btn-theme-toggle" onclick="toggleTheme()" class="bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white px-4 py-2 rounded-lg font-bold hover:bg-gray-300 hover:shadow transform active:scale-95 transition-all duration-300">
-                        <!-- Text injected via JS -->
-                    </button>
-                </div>
-            </div>
 
             <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 mb-6 border border-gray-100 dark:border-gray-700 animate-card-in" style="animation-delay: 0.1s;">
                 <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-database text-brand-500 mr-2"></i> Database Sync</h3>
