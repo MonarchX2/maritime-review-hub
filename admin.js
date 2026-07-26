@@ -62,45 +62,53 @@ function loadAdminSubjects() {
 function renderAdminSubjectList() {
     const container = document.getElementById('admin-subject-list');
     
-    // 1. Group subjects by their FULL folder path
-    const groupedSubjects = {};
+    // 1. Build a hierarchical tree of folders and decks
+    const tree = { subfolders: {}, decks: [] };
     
     adminState.subjects.forEach((subj, index) => {
-        const parts = subj.split('::');
-        const deckName = parts.pop(); // The actual subject/deck name
+        // Split by '::' and extract the final deck name
+        const parts = subj.split('::').map(s => s.trim());
+        const deckName = parts.pop(); 
         
-        // Grab all remaining parts to form the complete subfolder path
-        const folderPath = parts.length > 0 ? parts.join(' :: ') : 'Root Level';
+        let currentNode = tree;
         
-        if (!groupedSubjects[folderPath]) {
-            groupedSubjects[folderPath] = [];
-        }
-        groupedSubjects[folderPath].push({ 
+        // Traverse down the folder path, creating subfolders if they don't exist
+        parts.forEach(part => {
+            if (!currentNode.subfolders[part]) {
+                currentNode.subfolders[part] = { subfolders: {}, decks: [] };
+            }
+            currentNode = currentNode.subfolders[part];
+        });
+        
+        // Add the deck to the deepest folder node it belongs to
+        currentNode.decks.push({ 
             originalFull: subj, 
             deckName: deckName, 
             index: index 
         });
     });
 
-    let html = '';
+    // Helper to recursively count all decks in a folder (including inside its subfolders)
+    function countTotalDecks(node) {
+        let count = node.decks.length;
+        for (const key in node.subfolders) {
+            count += countTotalDecks(node.subfolders[key]);
+        }
+        return count;
+    }
 
-    // 2. Render groups as collapsible <details> accordions
-    for (const [folder, subjects] of Object.entries(groupedSubjects)) {
-        html += `
-            <details class="mb-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 group shadow-sm">
-                <summary class="font-bold text-gray-700 dark:text-gray-300 p-4 cursor-pointer flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors rounded-xl outline-none list-none">
-                    <span class="flex items-center gap-2">
-                        <i class="fa-solid fa-folder text-brand-500"></i> ${escapeHTML(folder)}
-                        <span class="bg-gray-200 dark:bg-gray-700 text-xs px-2 py-1 rounded-full text-gray-600 dark:text-gray-400 font-semibold ml-2">${subjects.length} decks</span>
-                    </span>
-                    <i class="fa-solid fa-chevron-down text-gray-400 transition-transform duration-300 group-open:rotate-180"></i>
-                </summary>
-                
-                <div class="p-4 pt-0 mt-2 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-3">
-        `;
+    // 2. Recursive function to render nested groups as collapsible <details> accordions
+    function renderNode(node, folderName, depth = 0) {
+        let innerHtml = '';
         
-        subjects.forEach(subj => {
-            html += `
+        // Render subfolders first (folders appear above individual decks)
+        for (const [subName, subNode] of Object.entries(node.subfolders)) {
+            innerHtml += renderNode(subNode, subName, depth + 1);
+        }
+        
+        // Render decks for this specific folder
+        node.decks.forEach(subj => {
+            innerHtml += `
                 <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row items-center gap-4 mt-3">
                     <div class="w-full md:w-1/3">
                         <span class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Deck Name</span>
@@ -125,10 +133,33 @@ function renderAdminSubjectList() {
             `;
         });
 
-        html += `</div></details>`;
+        // If it's the root depth, just return the inner HTML without an accordion wrapper
+        if (depth === 0) return innerHtml;
+
+        const totalDecks = countTotalDecks(node);
+        
+        // Add left margin to visually indent nested subfolders based on depth
+        const indentClass = depth > 1 ? 'ml-4 md:ml-8' : '';
+
+        return `
+            <details class="${indentClass} mb-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 group shadow-sm">
+                <summary class="font-bold text-gray-700 dark:text-gray-300 p-4 cursor-pointer flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors rounded-xl outline-none list-none">
+                    <span class="flex items-center gap-2">
+                        <i class="fa-solid fa-folder text-brand-500"></i> ${escapeHTML(folderName)}
+                        <span class="bg-gray-200 dark:bg-gray-700 text-xs px-2 py-1 rounded-full text-gray-600 dark:text-gray-400 font-semibold ml-2">${totalDecks} deck${totalDecks !== 1 ? 's' : ''}</span>
+                    </span>
+                    <i class="fa-solid fa-chevron-down text-gray-400 transition-transform duration-300 group-open:rotate-180"></i>
+                </summary>
+                
+                <div class="p-4 pt-0 mt-2 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-3">
+                    ${innerHtml}
+                </div>
+            </details>
+        `;
     }
     
-    container.innerHTML = html;
+    // Inject the final generated HTML into the container
+    container.innerHTML = renderNode(tree, 'Root', 0) || '<p class="text-center text-gray-500 py-6">No subjects found.</p>';
 }
 
 async function saveAdminChanges() {
