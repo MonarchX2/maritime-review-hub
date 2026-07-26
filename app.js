@@ -554,11 +554,14 @@ const layoutClass = isGrid
                             <p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>
                         </div>
                         <div class="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+                            <button onclick="reviewDeck('${safeSubj}')" class="text-gray-400 hover:text-brand-500 hover:scale-125 transition-all duration-300" title="Review Questions & Answers">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
                             ${isDownloaded 
                                 ? `<button onclick="deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300" title="Delete Downloaded Data">
                                         <i class="fa-solid fa-trash-can"></i>
                                     </button>` 
-                                : `<div></div>`}
+                                : ``}
                             <span class="text-sm font-black text-brand-600 dark:text-brand-400 transition-colors">${completedCount} / ${totalQuestionsInDb} Done</span>
                         </div>
                     </div>
@@ -774,6 +777,101 @@ const layoutClass = isGrid
         }
     }
 
+        async function reviewDeck(subject) {
+        const loader = document.getElementById(`loading-${subject}`);
+        if (loader) loader.classList.remove('hidden'); 
+
+        let validQuestions = [];
+
+        try {
+            // First check if the questions are already saved in the local IndexedDB
+            validQuestions = state.db.filter(q => q.Subject === subject);
+            
+            // If not, fetch them from Google Sheets
+            if (validQuestions.length === 0) {
+                const response = await fetch(`${DB_URL}?subject=${encodeURIComponent(subject)}`);
+                const newQuestions = await response.json();
+
+                if (newQuestions.error) throw new Error(newQuestions.error);
+
+                validQuestions = newQuestions.filter(q => 
+                    q.Question && q.Question.trim() !== ""
+                ).map(q => {
+                    let cleanId = q.ID ? q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, '') : Math.random().toString(36).substr(2, 6);
+                    q.ID = `${q.Subject}::${cleanId}`;
+                    return q;
+                });
+
+                // Update local DB to avoid re-fetching later
+                const otherQuestions = state.db.filter(q => q.Subject !== subject);
+                state.db = [...otherQuestions, ...validQuestions];
+                await idbKeyval.set('mrh_db', state.db);
+            }
+        } catch (err) {
+            console.warn("Network request failed.", err);
+            if (validQuestions.length === 0) {
+                alert(`Cannot review deck. You are offline and "${subject}" has not been downloaded yet.`);
+                if (loader) loader.classList.add('hidden');
+                return;
+            }
+        }
+
+        if (loader) loader.classList.add('hidden');
+        renderDeckReview(subject, validQuestions);
+    }
+
+    function renderDeckReview(subject, questions) {
+        const container = document.getElementById('deck-review-list');
+        document.getElementById('deck-review-title').innerText = subject;
+        
+        let html = '';
+        
+        if (questions.length === 0) {
+            html = `<div class="text-center p-8 text-gray-500">No questions found for this deck.</div>`;
+        } else {
+            questions.forEach((q, index) => {
+                // Safely determine the correct answer string based on the letter mapping
+                let correctText = "";
+                let originalAns = String(q.Answer || "").trim().toUpperCase();
+                
+                if (['A', 'B', 'C', 'D'].includes(originalAns)) {
+                    correctText = q[`Choice${originalAns}`] || "Answer text missing";
+                } else {
+                    // Handle flashcard style where Answer is just the text
+                    correctText = q.Answer || "Answer text missing"; 
+                }
+                
+                html += `
+                    <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 animate-card-in" style="animation-delay: ${index * 0.02}s;">
+                        <div class="flex gap-2 mb-3">
+                            <span class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-300">Question ${index + 1}</span>
+                        </div>
+                        <p class="font-medium text-gray-800 dark:text-gray-100 mb-4 text-lg">${escapeHTML(q.Question)}</p>
+                        
+                        ${q.ImageURL ? `<img src="${q.ImageURL}" alt="Reference" class="w-full max-w-sm rounded-lg mb-4 border dark:border-gray-600 shadow-sm">` : ''}
+                        
+                        <div class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 p-3 rounded-r-lg">
+                            <p class="text-sm font-bold text-green-700 dark:text-green-400">
+                                <i class="fa-solid fa-check-circle mr-2"></i> ${escapeHTML(correctText)}
+                            </p>
+                        </div>
+                        
+                        ${q.Explanation && q.Explanation.trim() !== "" ? `
+                            <div class="mt-4 text-sm text-gray-700 dark:text-gray-300 bg-blue-50 dark:bg-gray-900/50 p-3 rounded-lg border border-blue-100 dark:border-gray-700">
+                                <strong class="text-blue-800 dark:text-blue-400"><i class="fa-solid fa-lightbulb mr-1"></i> Explanation:</strong> ${escapeHTML(q.Explanation)}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            });
+        }
+        
+        container.innerHTML = html;
+        
+        // Leverage your existing navigate router to switch to the new view
+        navigate('deck-review');
+    }
+    
     function submitPracticeAnswer(selected, correct) {
         const q = state.session.questions[state.session.currentIndex];
         state.session.userAnswers[state.session.currentIndex] = selected;
