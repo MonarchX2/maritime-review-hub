@@ -1116,8 +1116,8 @@ function updateThemeButton() {
     const btn = document.getElementById('btn-theme-toggle');
     if (btn) {
         btn.innerHTML = state.prefs.darkMode
-            ? '<i class="fa-solid fa-sun mr-1 transition-transform transform hover:rotate-180 duration-500"></i> Switch to Light Mode'
-            : '<i class="fa-solid fa-moon mr-1 transition-transform transform hover:rotate-12 duration-300"></i> Switch to Dark Mode';
+            ? '<i class="fa-solid fa-sun mr-1 transition-transform transform hover:rotate-180 duration-500"></i> Light Mode'
+            : '<i class="fa-solid fa-moon mr-1 transition-transform transform hover:rotate-12 duration-300"></i> Dark Mode';
     }
 }
 
