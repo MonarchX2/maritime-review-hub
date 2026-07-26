@@ -577,16 +577,28 @@ function renderCategoryProgress() {
                     <div class="${themeColorBg} h-full rounded-full transition-all duration-700 ease-out" style="width: ${progressPercent}%"></div>
                 </div>
                 
-                <div class="flex gap-2 flex-wrap mt-auto" onclick="event.stopPropagation()">
-                    <button onclick="handleDeckClick('${safeSubj}')" class="flex-1 ${primaryActionColor} text-white py-2 px-2 rounded-lg font-bold active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group">
-                        <i class="fa-solid ${primaryActionIcon} mr-2 group-hover:scale-125 transition-transform"></i> ${primaryActionText}
+<div class="grid grid-cols-3 gap-2 mt-auto" onclick="event.stopPropagation()">
+                    <button onclick="handleDeckClick('${safeSubj}')" class="${primaryActionColor} text-white py-2 px-1 rounded-lg font-bold active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="${primaryActionText}">
+                        <i class="fa-solid ${primaryActionIcon} mr-1 sm:mr-2 group-hover:scale-125 transition-transform"></i> <span class="truncate">${primaryActionText.split(' ')[0]}</span>
                     </button>
-                        ${mistakesCount > 0 ? `
-                        <button onclick="handleDeckClick('${safeSubj}', 'mistakes')" class="flex-1 bg-yellow-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-yellow-600 active:scale-95 text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group" title="Review Mistakes">
-                            <i class="fa-solid fa-triangle-exclamation mr-2 group-hover:scale-125 transition-transform"></i> Review (${mistakesCount})
+                    
+                    ${mistakesCount > 0 ? `
+                        <button onclick="handleDeckClick('${safeSubj}', 'mistakes')" class="bg-yellow-500 text-white py-2 px-1 rounded-lg font-bold hover:bg-yellow-600 active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="Review Mistakes">
+                            <i class="fa-solid fa-triangle-exclamation mr-1 sm:mr-2 group-hover:scale-125 transition-transform"></i> <span class="truncate">Review (${mistakesCount})</span>
                         </button>
-                        ` : ''}
-                    <button onclick="resetCategory('${safeSubj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 px-4 py-2 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-sm border border-red-100 dark:border-red-800 hover:rotate-180" title="Reset Progress"><i class="fa-solid fa-rotate-left transition-transform"></i></button>
+                    ` : `
+                        <button onclick="resetCategory('${safeSubj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                    `}
+
+                    ${mistakesCount > 0 ? `
+                        <button onclick="resetCategory('${safeSubj}')" class="bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                    ` : `
+                        <div></div>
+                    `}
                 </div>
             </div>
         `;
