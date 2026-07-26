@@ -112,9 +112,14 @@
             </div>
 
             <div id="session-active" class="hidden transition-all duration-500">
-                <div class="mb-6">
+                <div class="mb-6 flex justify-between items-center w-full">
                     <button onclick="navigate('dashboard')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95 flex items-center group">
                         <i class="fa-solid fa-arrow-left mr-2 group-hover:-translate-x-1 transition-transform"></i> Pause & Return
+                    </button>
+                    
+                    <!-- MOVED SETTINGS BUTTON (Icon Only) -->
+                    <button onclick="openSessionSettingsModal()" id="btn-session-settings" class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-10 h-10 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95 flex items-center justify-center group" title="Session Settings">
+                        <i class="fa-solid fa-gear group-hover:rotate-90 transition-transform"></i>
                     </button>
                 </div>
                 <div class="flex justify-between items-center mb-2">
@@ -126,23 +131,22 @@
                 </div>
 
                 <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 transition-colors duration-300">
-                                <div class="flex gap-2 mb-3 flex-wrap items-center w-full">
-                        <span class="bg-brand-100 text-brand-800 text-xs px-2 py-1 rounded font-semibold dark:bg-brand-900 dark:text-brand-200 transition-colors" id="q-subject">Subject</span>
-                        <span class="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded font-semibold dark:bg-gray-700 dark:text-gray-300 transition-colors" id="q-id">ID</span>
+                    <div class="flex gap-2 mb-3 items-center w-full">
+                        <!-- Subject Badge -->
+                        <span class="truncate min-w-0 bg-brand-100 text-brand-800 text-xs px-2 py-1 rounded font-semibold dark:bg-brand-900 dark:text-brand-200 transition-colors" id="q-subject">Subject</span>
                         
-                        <!-- NEW: Report Button -->
-                        <button onclick="openReportModal()" id="btn-open-report" class="ml-auto text-gray-400 hover:text-red-500 text-xs font-bold flex items-center gap-1 transition-all bg-white hover:bg-red-50 dark:bg-gray-800 dark:hover:bg-red-900/30 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-md shadow-sm active:scale-95">
-                            <i class="fa-solid fa-triangle-exclamation"></i> Report Issue
+                        <!-- ID Badge -->
+                        <span class="flex-shrink-0 bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded font-semibold dark:bg-gray-700 dark:text-gray-300 transition-colors" id="q-id">ID</span>
+                        
+                        <!-- REPORT BUTTON (Icon Only) -->
+                        <button onclick="openReportModal()" id="btn-open-report" class="flex-shrink-0 ml-auto text-gray-400 hover:text-red-500 text-xs font-bold flex items-center justify-center w-7 h-7 transition-all bg-white hover:bg-red-50 dark:bg-gray-800 dark:hover:bg-red-900/30 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95" title="Report Issue">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
                         </button>
-
-                        <!-- NEW SETTINGS BUTTON -->
-                        <button onclick="openSessionSettingsModal()" id="btn-session-settings" class="text-gray-400 hover:text-brand-500 text-xs font-bold flex items-center gap-1 transition-all bg-white hover:bg-brand-50 dark:bg-gray-800 dark:hover:bg-brand-900/30 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-md shadow-sm active:scale-95">
-                            <i class="fa-solid fa-gear"></i> Settings
-                        </button>
-                                        </div>
-                                        <h3 class="text-xl font-medium mb-4 transition-colors" id="q-text">Loading question...</h3>
-                                        
-                                        <img id="q-image" src="" alt="Reference" class="hidden w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500 hover:scale-105">
+                    </div>
+                    
+                    <h3 class="text-xl font-medium mb-4 transition-colors" id="q-text">Loading question...</h3>
+                    
+                    <img id="q-image" src="" alt="Reference" class="hidden w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500 hover:scale-105">
 
                     <div id="active-recall-mask" class="hidden border border-gray-200 dark:border-gray-700 rounded-xl mt-6 bg-white dark:bg-gray-800 flex flex-col overflow-hidden animate-card-in shadow-sm">
                         <div class="p-8 flex flex-col items-center justify-center text-center">
@@ -162,7 +166,7 @@
                         <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium" data-choice="C">C) <span id="choice-c-text"></span></button>
                         <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium" data-choice="D">D) <span id="choice-d-text"></span></button>
                     </div>
-                </div>
+            </div>
 
                 <div id="q-explanation-box" class="hidden bg-blue-50 dark:bg-gray-800 border-l-4 border-blue-500 p-4 rounded-r-xl mb-6 shadow-sm animate-card-in">
                     <h4 class="font-bold text-blue-800 dark:text-blue-300 mb-1 flex items-center"><i class="fa-solid fa-lightbulb mr-2 text-yellow-500 animate-pulse"></i> Explanation</h4>
