@@ -305,7 +305,11 @@ function renderQuestion() {
     document.getElementById('session-progress-text').innerText = `${currentCard} / ${totalCards}`;
     document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / totalCards) * 100}%`;
 
-    document.getElementById('q-subject').innerText = q.Subject || 'General';
+    // --- NEW SUBJECT TRIMMING LOGIC ---
+    const fullSubject = q.Subject || 'General';
+    const parts = fullSubject.split("::");
+    document.getElementById('q-subject').innerText = parts.slice(-2).join("::");
+    // ----------------------------------
 
     let displayId = q.ID || `Q-${state.session.currentIndex}`;
     if (displayId.includes('::')) {
