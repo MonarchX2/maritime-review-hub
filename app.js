@@ -9,10 +9,23 @@ let state = {
 };
 
 let chartInstance = null;
+let syncAbortController = null;
 
 // Add a simple UUID generator for telemetry tracking
 function generateUserId() {
-    return 'user_' + Math.random().toString(36).substr(2, 9);
+    if (window.crypto?.randomUUID) {
+        return "user_" + crypto.randomUUID();
+    }
+
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+
+    return (
+        "user_" +
+        [...bytes]
+            .map(b => b.toString(16).padStart(2, "0"))
+            .join("")
+    );
 }
 
 // Ensure prefs has a userId
@@ -21,23 +34,38 @@ if (!state.prefs.userId) {
 }
 
 function sendTelemetry(action, details) {
+    const controller = new AbortController();
+
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
     fetch(DB_URL, {
-        method: 'POST',
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        method: "POST",
+        headers: {
+            "Content-Type": "text/plain;charset=utf-8"
+        },
         body: JSON.stringify({
             type: "telemetry",
             userId: state.prefs.userId,
-            action: action,
-            details: details
-        })
-    }).catch(console.error); // Silently fail if offline so it doesn't interrupt the user
+            action,
+            details
+        }),
+        signal: controller.signal
+    })
+    .catch(() => {})
+    .finally(() => clearTimeout(timeout));
 }
+function escapeHTML(value) {
 
-function escapeHTML(str) {
-    if (!str) return '';
-    return str.toString().replace(/[&<>'"]/g, tag => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
-    }[tag]));
+    if (value === null || value === undefined)
+        return "";
+
+    return String(value).replace(/[&<>'"]/g, c => ({
+        "&":"&amp;",
+        "<":"&lt;",
+        ">":"&gt;",
+        "'":"&#39;",
+        '"':"&quot;"
+    }[c]));
 }
 
 async function loadState() {
@@ -61,7 +89,24 @@ async function loadState() {
     }
 
     if (savedStats) state.stats = JSON.parse(savedStats);
-    if (savedPrefs) state.prefs = JSON.parse(savedPrefs);
+    try {
+
+    if (savedPrefs) {
+
+        const prefs = JSON.parse(savedPrefs);
+
+        state.prefs = {
+            ...state.prefs,
+            ...prefs
+        };
+
+    }
+
+} catch (e) {
+
+    console.error("Invalid preferences.", e);
+
+}
 
     if (!state.stats.subjectAccuracy) state.stats.subjectAccuracy = {};
     if (state.prefs.darkMode) document.documentElement.classList.add('dark');
@@ -82,9 +127,27 @@ async function loadState() {
 }
 
 async function saveState() {
-    localStorage.setItem('mrh_stats', JSON.stringify(state.stats));
-    localStorage.setItem('mrh_prefs', JSON.stringify(state.prefs));
+
+    try {
+
+        localStorage.setItem(
+            "mrh_stats",
+            JSON.stringify(state.stats)
+        );
+
+        localStorage.setItem(
+            "mrh_prefs",
+            JSON.stringify(state.prefs)
+        );
+
+    } catch (e) {
+
+        console.error(e);
+
+    }
+
     updateDashboard();
+
 }
 
 function updateDashboard() {
@@ -144,6 +207,11 @@ function navigate(viewId) {
 }
 
 async function syncDatabase() {
+        if (syncAbortController) {
+        syncAbortController.abort();
+    }
+
+    syncAbortController = new AbortController();
     const url = DB_URL;
     const statusEl = document.getElementById('sync-status');
     if (statusEl) {
@@ -153,7 +221,9 @@ async function syncDatabase() {
     }
 
     try {
-        const response = await fetch(url);
+        const response = await fetch(url, {
+    signal: syncAbortController.signal
+});
         if (!response.ok) throw new Error("Network response failed");
         const summaryData = await response.json();
 
@@ -298,6 +368,12 @@ function initSession() {
     if (pool.length === 0) { alert("No questions found for this filter."); return; }
     pool = prepareSessionPool(pool);
 
+    clearTimeout(state.session.autoNextTimeout);
+
+if (typeof stopVisualTimer === "function") {
+    stopVisualTimer();
+}
+
     state.session = {
         active: true, questions: pool,
         currentIndex: 0, userAnswers: {}
@@ -318,15 +394,19 @@ function renderQuestion() {
     const currentCard = state.session.currentIndex + 1;
     const totalCards = state.session.questions.length;
     document.getElementById('session-progress-text').innerText = `${currentCard} / ${totalCards}`;
-    document.getElementById('session-progress').style.width = `${((state.session.currentIndex) / totalCards) * 100}%`;
-
+    document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / totalCards) * 100}%`;
     // --- NEW SUBJECT TRIMMING LOGIC ---
     const fullSubject = q.Subject || 'General';
-    const parts = fullSubject.split("::");
-    document.getElementById('q-subject').innerText = parts.slice(-2).join("::");
-    // ----------------------------------
+const parts = String(fullSubject).split("::");
 
-    let displayId = q.ID || `Q-${state.session.currentIndex}`;
+document.getElementById("q-subject").innerText =
+parts.length >= 2
+    ? parts.slice(-2).join(" :: ")
+    : fullSubject;    // ----------------------------------
+
+    let displayId =
+q.ID ??
+`Q-${state.session.currentIndex + 1}`;
     if (displayId.includes('::')) {
         displayId = displayId.split('::').pop();
     }
@@ -336,8 +416,16 @@ function renderQuestion() {
 
     const imgEl = document.getElementById('q-image');
     if (q.ImageURL && q.ImageURL.trim() !== "") {
-        imgEl.src = q.ImageURL;
-        imgEl.alt = q.Question ? `Reference for: ${q.Question.substring(0, 50)}...` : "Question reference image";
+imgEl.onload = () => {
+    imgEl.classList.remove("hidden");
+};
+
+imgEl.onerror = () => {
+    imgEl.removeAttribute("src");
+    imgEl.classList.add("hidden");
+};
+
+imgEl.src = q.ImageURL;        imgEl.alt = q.Question ? `Reference for: ${q.Question.substring(0, 50)}...` : "Question reference image";
         imgEl.classList.remove('hidden');
     } else {
         imgEl.classList.add('hidden');
@@ -359,14 +447,39 @@ function renderQuestion() {
         const choiceText = q[`Choice${ch}`];
         const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
 
-        if (!choiceText || choiceText.trim() === "" || choiceText.toLowerCase() === "undefined") {
+        const cleanChoice = String(choiceText ?? "").trim();
+
+if (
+    cleanChoice === "" ||
+    cleanChoice.toLowerCase() === "undefined"
+) {
             btn.classList.add('hidden');
         } else {
             btn.classList.remove('hidden');
-            document.getElementById(`choice-${ch.toLowerCase()}-text`).innerText = choiceText;
+            document.getElementById(
+    `choice-${ch.toLowerCase()}-text`
+).textContent = cleanChoice;
 
-            btn.onclick = () => submitPracticeAnswer(ch, q.Answer);
-            btn.className = "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium";
+            btn.onclick = () => {
+
+    if (btn.disabled) return;
+
+    btn.disabled = true;
+
+    submitPracticeAnswer(ch, q.Answer);
+
+};
+            btn.classList.remove(
+    "selected-correct",
+    "selected-wrong",
+    "dimmed",
+    "hidden"
+);
+
+btn.disabled = false;
+
+btn.className =
+    "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium";
         }
     });
 
@@ -378,7 +491,7 @@ function renderQuestion() {
     const btnPrev = document.getElementById('btn-prev');
     const btnReveal = document.getElementById('btn-reveal');
 
-    btnPrev.disabled = state.session.currentIndex === 0;
+    btnPrev.disabled = state.session.currentIndex <= 0;
 
     // Apply Active Recall / Answered State logic ONCE at the end
     if (userAnswer) {
@@ -390,7 +503,9 @@ function renderQuestion() {
         btnReveal.disabled = true;
 
         // --- RESTORE THIS MISSING LOGIC BLOCK ---
-        document.querySelectorAll('.choice-btn').forEach(btn => {
+        qChoicesContainer
+.querySelectorAll(".choice-btn")
+.forEach(btn => {
             btn.onclick = null; // Prevent changing answers
             const choice = btn.dataset.choice;
 
@@ -416,7 +531,10 @@ function renderQuestion() {
             qChoicesContainer.classList.add('hidden');
         } else {
             // It's multiple choice: Check Active Recall Preference
-            if (state.prefs.activeRecall !== false) {
+            const activeRecallEnabled =
+Boolean(state.prefs.activeRecall);
+
+if (activeRecallEnabled) {
                 if (activeRecallMask) activeRecallMask.classList.remove('hidden');
                 qChoicesContainer.classList.add('hidden');
             } else {
@@ -983,7 +1101,9 @@ function submitPracticeAnswer(selected, correct) {
 
     trackStats(q, selected === correct);
 
-    document.querySelectorAll('.choice-btn').forEach(btn => {
+    qChoicesContainer
+.querySelectorAll(".choice-btn")
+.forEach(btn => {
         btn.onclick = null;
         if (btn.dataset.choice === correct) btn.classList.add('selected-correct');
         else if (btn.dataset.choice === selected) btn.classList.add('selected-wrong');
