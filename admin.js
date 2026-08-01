@@ -55,24 +55,24 @@ function loadAdminSubjects() {
         return;
     }
 
-    adminState.subjects = state.categorySummary.map(cat => cat.Subject);
+    // FIX: Store the entire object so we don't lose the password
+    adminState.subjects = state.categorySummary; 
     renderAdminSubjectList();
 }
 
 function renderAdminSubjectList() {
     const container = document.getElementById('admin-subject-list');
-    
-    // 1. Build a hierarchical tree of folders and decks
     const tree = { subfolders: {}, decks: [] };
     
-    adminState.subjects.forEach((subj, index) => {
-        // Split by '::' and extract the final deck name
-        const parts = subj.split('::').map(s => s.trim());
+    adminState.subjects.forEach((cat, index) => {
+        // FIX: Extract name and password safely
+        const subjString = cat.Subject;
+        const passString = cat.Password || cat.password || ""; 
+        
+        const parts = subjString.split('::').map(s => s.trim());
         const deckName = parts.pop(); 
         
         let currentNode = tree;
-        
-        // Traverse down the folder path, creating subfolders if they don't exist
         parts.forEach(part => {
             if (!currentNode.subfolders[part]) {
                 currentNode.subfolders[part] = { subfolders: {}, decks: [] };
@@ -80,15 +80,14 @@ function renderAdminSubjectList() {
             currentNode = currentNode.subfolders[part];
         });
         
-        // Add the deck to the deepest folder node it belongs to
         currentNode.decks.push({ 
-            originalFull: subj, 
+            originalFull: subjString, 
             deckName: deckName, 
-            index: index 
+            index: index,
+            password: passString // Now we have the password!
         });
     });
 
-    // Helper to recursively count all decks in a folder (including inside its subfolders)
     function countTotalDecks(node) {
         let count = node.decks.length;
         for (const key in node.subfolders) {
@@ -97,16 +96,13 @@ function renderAdminSubjectList() {
         return count;
     }
 
-    // 2. Recursive function to render nested groups as collapsible <details> accordions
     function renderNode(node, folderName, depth = 0) {
         let innerHtml = '';
         
-        // Render subfolders first (folders appear above individual decks)
         for (const [subName, subNode] of Object.entries(node.subfolders)) {
             innerHtml += renderNode(subNode, subName, depth + 1);
         }
         
-        // Render decks for this specific folder
         node.decks.forEach(subj => {
             innerHtml += `
                 <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row items-center gap-4 mt-3">
@@ -128,17 +124,24 @@ function renderAdminSubjectList() {
                                 oninput="document.getElementById('char-count-${subj.index}').innerText = this.value.length + '/100'; 
                                         this.value.length >= 90 ? this.previousElementSibling.classList.add('text-red-500') : this.previousElementSibling.classList.remove('text-red-500');"
                                 class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-brand-500 focus:ring-2 outline-none transition-all">
+                        
+                        <div class="flex justify-between items-end mt-3 mb-1">
+                            <span class="text-xs font-bold text-red-500 uppercase tracking-wider"><i class="fa-solid fa-lock mr-1"></i> Deck Password</span>
+                        </div>
+                        <!-- FIX: Password value now dynamically injects -->
+                        <input type="text" 
+                                id="deck-pass-${subj.index}" 
+                                value="${escapeHTML(subj.password)}" 
+                                placeholder="Leave blank for public access"
+                                class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-red-500 focus:ring-2 outline-none transition-all">
                     </div>
                 </div>
             `;
         });
 
-        // If it's the root depth, just return the inner HTML without an accordion wrapper
         if (depth === 0) return innerHtml;
 
         const totalDecks = countTotalDecks(node);
-        
-        // Add left margin to visually indent nested subfolders based on depth
         const indentClass = depth > 1 ? 'ml-4 md:ml-8' : '';
 
         return `
@@ -150,7 +153,6 @@ function renderAdminSubjectList() {
                     </span>
                     <i class="fa-solid fa-chevron-down text-gray-400 transition-transform duration-300 group-open:rotate-180"></i>
                 </summary>
-                
                 <div class="p-4 pt-0 mt-2 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-3">
                     ${innerHtml}
                 </div>
@@ -158,21 +160,31 @@ function renderAdminSubjectList() {
         `;
     }
     
-    // Inject the final generated HTML into the container
     container.innerHTML = renderNode(tree, 'Root', 0) || '<p class="text-center text-gray-500 py-6">No subjects found.</p>';
 }
 
 async function saveAdminChanges() {
     const btn = document.getElementById('btn-admin-save');
     const originalHTML = btn.innerHTML;
+    
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving...';
     btn.disabled = true;
 
     const updates = [];
-    adminState.subjects.forEach((subj, index) => {
-        const newName = document.getElementById(`new-subj-${index}`).value.trim();
-        if (newName !== subj && newName !== "") {
-            updates.push({ oldName: subj, newName: newName });
+    adminState.subjects.forEach((cat, index) => {
+        const originalName = cat.Subject;
+        const originalPass = cat.Password || cat.password || "";
+        
+        const newName = document.getElementById(`new-subj-${index}`).value.trim() || originalName; 
+        const deckPass = document.getElementById(`deck-pass-${index}`).value.trim();
+        
+        // FIX: Compare against original names and original passwords
+        if (newName !== originalName || deckPass !== originalPass) {
+            updates.push({ 
+                oldName: originalName, 
+                newName: newName, 
+                password: deckPass 
+            });
         }
     });
 
@@ -186,14 +198,9 @@ async function saveAdminChanges() {
     try {
         const response = await fetch(DB_URL, {
             method: 'POST',
-            headers: { "Content-Type": "text/plain;charset=utf-8" }, // ADD THIS LINE
-            body: JSON.stringify({
-                type: "admin_update",
-                token: adminState.token,
-                updates: updates
-            })
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ type: "admin_update", token: adminState.token, updates: updates })
         });
-
         const result = await response.json();
         
         if (result.status === "success") {
@@ -202,12 +209,6 @@ async function saveAdminChanges() {
             loadAdminSubjects();  
         } else {
             alert("Failed: " + result.message);
-            if(result.message.includes("Unauthorized")) {
-                document.getElementById('admin-dashboard-section').classList.add('hidden');
-                document.getElementById('admin-login-section').classList.remove('hidden');
-                document.getElementById('admin-login-error').classList.remove('hidden');
-                adminState.token = ""; 
-            }
         }
     } catch(e) {
         alert("Network error.");

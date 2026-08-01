@@ -4,8 +4,7 @@ let state = {
     db: [],
     categorySummary: [],
     stats: { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} },
-    prefs: { darkMode: true, layoutMode: 'grid', activeRecall: true }, // Added activeRecall
-    session: { active: false, questions: [], currentIndex: 0, userAnswers: {}, autoNextTimeout: null },
+    prefs: { darkMode: true, layoutMode: 'grid', activeRecall: true, shuffleChoices: true, shuffleQuestions: true },    session: { active: false, questions: [], currentIndex: 0, userAnswers: {}, autoNextTimeout: null },
     currentPath: []
 };
 
@@ -71,6 +70,15 @@ async function loadState() {
     populateFilters();
     updateDashboard();
     updateThemeButton();
+
+    if (!localStorage.getItem('mrh_sync_prompted')) {
+        setTimeout(() => {
+            if (confirm("Would you like to sync your progress between devices? You can create a simple username/password to save your statistics to the cloud.")) {
+                navigate('sync');
+            }
+            localStorage.setItem('mrh_sync_prompted', 'true');
+        }, 3000); // Waits 3 seconds after dashboard load
+    }
 }
 
 async function saveState() {
@@ -213,7 +221,12 @@ function populateFilters() {
 }
 
 function prepareSessionPool(pool) {
-    let randomizedPool = shuffleArray([...pool]);
+    let randomizedPool = [...pool];
+
+    // Only shuffle the question order if the preference is true
+    if (state.prefs.shuffleQuestions !== false) {
+        randomizedPool = shuffleArray(randomizedPool);
+    }
 
     // Basic SRS: Sort questions so those in the 'mistakes' array have a higher chance of appearing first
     randomizedPool.sort((a, b) => {
@@ -246,7 +259,9 @@ function prepareSessionPool(pool) {
         }
 
         if (validChoices.length > 0) {
-            validChoices = shuffleArray(validChoices);
+            if (state.prefs.shuffleChoices !== false) {
+                validChoices = shuffleArray(validChoices);
+            }
 
             q.ChoiceA = validChoices[0] || "";
             q.ChoiceB = validChoices[1] || "";
@@ -548,6 +563,9 @@ function generateCardHTML(cat, displayName, delay = 0) {
         const themeShadowHover = isReview ? 'hover:shadow-purple-500/10' : 'hover:shadow-brand-500/10';
         const loaderColor = isReview ? 'text-purple-500' : 'text-brand-500';
 
+        const isLocked = cat.Locked === true; // Requires backend to return "Locked: true" in categorySummary
+        const lockIcon = isLocked ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected"></i>` : '';
+        
         // Notice the 'h-full flex flex-col' in the main div, and 'mt-auto' on the button container
         return `
            <div onclick="handleDeckClick('${safeSubj}')" class="cursor-pointer animate-card-in ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;">
@@ -562,7 +580,7 @@ function generateCardHTML(cat, displayName, delay = 0) {
                         <div class="flex items-center gap-2 mb-1 min-w-0">
                             <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors truncate min-w-0">
                                 <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm flex-shrink-0"></i>
-                                <span class="truncate">${safeName}</span>
+                                <span class="truncate">${safeName}</span> ${lockIcon}
                             </h3>
                             <div class="flex-shrink-0">
                                 ${statusBadge}
@@ -651,14 +669,18 @@ function generateCardHTML(cat, displayName, delay = 0) {
     container.innerHTML = html;
 }
 
-async function fetchAndStartCategory(subject, mode) {
+async function fetchAndStartCategory(subject, mode, pass = null) {
     const loader = document.getElementById(`loading-${subject}`);
     if (loader) loader.classList.remove('hidden');
 
     let validQuestions = [];
 
     try {
-        const response = await fetch(`${DB_URL}?subject=${encodeURIComponent(subject)}`);
+        // Append the password to the query string if it exists
+        let fetchUrl = `${DB_URL}?subject=${encodeURIComponent(subject)}`;
+        if (pass) fetchUrl += `&password=${encodeURIComponent(pass)}`;
+
+        const response = await fetch(fetchUrl);
         const newQuestions = await response.json();
 
         if (newQuestions.error) throw new Error(newQuestions.error);
@@ -1534,9 +1556,9 @@ function showToast(message, type = 'success') {
 }
 
 function openSessionSettingsModal() {
-    // Sync the toggle visually with the saved preference
     document.getElementById('toggle-active-recall').checked = state.prefs.activeRecall !== false;
-
+    document.getElementById('toggle-shuffle-choices').checked = state.prefs.shuffleChoices !== false;
+   
     const modal = document.getElementById('session-settings-modal');
     const inner = modal.querySelector('div');
     modal.classList.remove('hidden');
@@ -1613,11 +1635,118 @@ function toggleAppMode() {
 
 // 3. Centralized click handler for the deck
 function handleDeckClick(subj, action = 'continue') {
+    const deckInfo = state.categorySummary.find(c => c.Subject === subj);
+    let pass = null;
+
+    if (deckInfo && deckInfo.Locked) {
+        pass = prompt(`This deck is locked. Enter password for ${subj}:`);
+        if (pass === null) return; // User cancelled
+    }
+
     if (currentAppMode === 'review') {
-        reviewDeck(subj);
+        reviewDeck(subj, pass); // Backend will need to verify this 'pass' variable
     } else {
-        fetchAndStartCategory(subj, action);
+        fetchAndStartCategory(subj, action, pass);
     }
 }
 
-// NOTE: Don't forget to delete the old handleGlobalSearch() function if you haven't already!
+function toggleShuffleChoices() {
+    const isChecked = document.getElementById('toggle-shuffle-choices').checked;
+    state.prefs.shuffleChoices = isChecked;
+    saveState();
+
+    if (state.session.active) {
+        // Re-prepare the remaining un-answered questions in the pool
+        const remainingQuestions = state.session.questions.slice(state.session.currentIndex);
+        const reprepared = prepareSessionPool(remainingQuestions);
+        
+        // Stitch them back into the session
+        state.session.questions.splice(state.session.currentIndex, reprepared.length, ...reprepared);
+        
+        // Re-render the current question to reflect the immediate change
+        renderQuestion();
+    }
+}
+
+function toggleShuffleQuestions() {
+    const isChecked = document.getElementById('toggle-shuffle-questions').checked;
+    state.prefs.shuffleQuestions = isChecked;
+    saveState();
+    
+    // Note: Question shuffling only applies when a new session is started.
+    // It will not actively re-order an ongoing session.
+}
+
+async function autoSaveDeckPassword(deckPath, newPassword) {
+    try {
+        const response = await fetch(DB_URL, {
+            method: 'POST',
+            redirect: 'follow',
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({
+                type: "admin_update_password", // You must handle this in your Google Apps Script
+                token: adminState.token,
+                deck: deckPath,
+                password: newPassword
+            })
+        });
+
+        const result = await response.json();
+        
+        if (result.status === "success") {
+            // Optional: Show a small success toast/notification here
+            console.log(`Password for ${deckPath} updated successfully.`);
+        } else {
+            alert("Failed to update password: " + result.message);
+        }
+    } catch(e) {
+        alert("Network error while auto-saving password.");
+        console.error(e);
+    }
+}
+
+let userState = {
+    username: "",
+    isLoggedIn: false
+};
+
+async function userLogin(username, password) {
+    // Assuming you have a button to change its state during loading
+    const btn = document.getElementById('btn-user-login'); 
+    if (btn) {
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Verifying...';
+        btn.disabled = true;
+    }
+
+    try {
+        const response = await fetch(DB_URL, {
+            method: 'POST',
+            redirect: 'follow',
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({
+                type: "verify_user", // You must handle this in your Google Apps Script to read the USER sheet
+                username: username,
+                password: password
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.status === "success") {
+            userState.username = username;
+            userState.isLoggedIn = true;
+            alert("Login successful!");
+            // Add navigation logic here, e.g., navigate('dashboard');
+        } else {
+            alert("Incorrect username or password.");
+        }
+    } catch(e) {
+        alert("Network error while verifying user.");
+        console.error(e);
+    } finally {
+        if (btn) {
+            btn.innerHTML = 'Login';
+            btn.disabled = false;
+        }
+    }
+}

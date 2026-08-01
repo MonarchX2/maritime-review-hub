@@ -52,15 +52,49 @@
                 <i class="fa-solid fa-sun dark:hidden"></i>
                 <i class="fa-solid fa-moon hidden dark:inline"></i>
             </button>
+            <!-- Sync Button
+            <button onclick="navigate('sync')" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="Cloud Sync" title="Sync Progress">
+    <i class="fa-solid fa-cloud"></i>
+</button>
+ -->
             <!-- Settings Button -->
             <button onclick="navigate('settings')" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg hover:rotate-90" aria-label="Settings">
                 <i class="fa-solid fa-gear"></i>
             </button>
+
         </div>
     </header>
 
     <main class="flex-1 p-4 md:p-8 overflow-y-auto w-full max-w-5xl mx-auto">        
+                
+        <!-- SYNC SECTION
+        <section id="view-sync" class="view-section hidden">
+    <div class="flex items-center gap-4 mb-6">
+        <button onclick="navigate('dashboard')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center">
+            <i class="fa-solid fa-arrow-left mr-2"></i> Back
+        </button>
+        <h2 class="text-2xl font-bold">Cloud Sync</h2>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 max-w-md mx-auto animate-card-in">
+        <div class="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 p-4 mb-6 rounded-r-lg">
+            <p class="text-sm text-yellow-800 dark:text-yellow-300">
+                <i class="fa-solid fa-triangle-exclamation mr-1"></i> 
+                <strong>Privacy Reminder:</strong> Do not use your real name, email, or personal passwords. This system is strictly for saving quiz progress on this website only. Create a simple, memorable dummy account.
+            </p>
+        </div>
         
+        <input type="text" id="sync-username" placeholder="Sync Username" class="w-full p-3 mb-4 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-brand-500 outline-none">
+        <input type="password" id="sync-password" placeholder="Sync Password" class="w-full p-3 mb-6 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-brand-500 outline-none">
+        
+        <div class="flex gap-4">
+            <button onclick="syncPush()" class="flex-1 bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 active:scale-95 transition-all"><i class="fa-solid fa-cloud-arrow-up mr-2"></i> Save</button>
+            <button onclick="syncPull()" class="flex-1 bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 active:scale-95 transition-all"><i class="fa-solid fa-cloud-arrow-down mr-2"></i> Load</button>
+        </div>
+    </div>
+</section>
+ -->
+
         <!-- DASHBOARD SECTION -->
         <section id="view-dashboard" class="view-section active">
             <div id="resume-container" class="hidden mb-8 animate-card-in">
@@ -337,6 +371,22 @@
             </div>
             --->
             
+            <div class="mt-6 border-t dark:border-gray-700 pt-4">
+                <label class="flex items-center justify-between cursor-pointer mb-2">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Shuffle Choices</span>
+                    <input type="checkbox" id="toggle-shuffle-choices" class="sr-only peer" onchange="toggleShuffleChoices()">
+                    <div class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"></div>
+                </label>
+                <label class="flex items-center justify-between cursor-pointer mb-2">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Shuffle Questions</span>
+                    <input type="checkbox" id="toggle-shuffle-questions" class="sr-only peer" onchange="toggleShuffleQuestions()">
+                    <div class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"></div>
+                </label>
+                <p class="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded border border-yellow-200 dark:border-yellow-800">
+                    <i class="fa-solid fa-triangle-exclamation mr-1"></i> Warning: Disabling shuffling may lead to memorization of question order, which can affect the effectiveness of your practice sessions.
+                </p>
+            </div>
+
             <div class="flex flex-col gap-4 border-t dark:border-gray-700 pt-4 mt-4 animate-card-in" style="animation-delay: 0.3s;">
                 <span class="font-medium text-red-500 animate-pulse">Danger Zone</span>
                 <div class="flex justify-between items-center">
