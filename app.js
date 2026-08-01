@@ -13,19 +13,18 @@ let syncAbortController = null;
 
 // Add a simple UUID generator for telemetry tracking
 function generateUserId() {
-    if (window.crypto?.randomUUID) {
+    if (window.crypto && window.crypto.randomUUID) {
         return "user_" + crypto.randomUUID();
     }
+    
+    if (window.crypto && window.crypto.getRandomValues) {
+        const bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        return "user_" + [...bytes].map(b => b.toString(16).padStart(2, "0")).join("");
+    }
 
-    const bytes = new Uint8Array(16);
-    crypto.getRandomValues(bytes);
-
-    return (
-        "user_" +
-        [...bytes]
-            .map(b => b.toString(16).padStart(2, "0"))
-            .join("")
-    );
+    // Ultimate fallback for non-secure contexts
+    return "user_" + Math.random().toString(36).substring(2, 15);
 }
 
 // Ensure prefs has a userId
@@ -1077,8 +1076,7 @@ function renderDeckReview(subject, questions) {
                         </div>
                         <p class="font-medium text-gray-800 dark:text-gray-100 mb-2 text-lg">${escapeHTML(q.Question)}</p>
                         
-                        ${q.ImageURL ? `<img src="${q.ImageURL}" alt="Reference" class="w-full max-w-sm rounded-lg mt-4 border dark:border-gray-600 shadow-sm">` : ''}
-                        
+                        ${q.ImageURL ? `<img src="${escapeHTML(q.ImageURL)}" alt="Reference" class="...">` : ''}                        
                         ${choicesHTML}
                         
                         ${q.Explanation && q.Explanation.trim() !== "" ? `
@@ -1101,14 +1099,15 @@ function submitPracticeAnswer(selected, correct) {
 
     trackStats(q, selected === correct);
 
-    qChoicesContainer
-.querySelectorAll(".choice-btn")
-.forEach(btn => {
-        btn.onclick = null;
-        if (btn.dataset.choice === correct) btn.classList.add('selected-correct');
-        else if (btn.dataset.choice === selected) btn.classList.add('selected-wrong');
-        else btn.classList.add('dimmed');
-    });
+    // FIX: Select the element directly using document.getElementById
+    document.getElementById('q-choices')
+        .querySelectorAll(".choice-btn")
+        .forEach(btn => {
+            btn.onclick = null;
+            if (btn.dataset.choice === correct) btn.classList.add('selected-correct');
+            else if (btn.dataset.choice === selected) btn.classList.add('selected-wrong');
+            else btn.classList.add('dimmed');
+        });
 
     showExplanation(q);
 
@@ -1342,14 +1341,19 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-window.onload = () => {
-    loadState();
+window.onload = async () => {
+    // 1. Wait for the local database and preferences to load completely
+    await loadState(); 
+
+    // 2. Register the Service Worker for offline capabilities
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js').then(registration => {
             registration.update();
         });
     }
-    syncDatabase();
+    
+    // 3. Sync with Google Sheets now that state is safely initialized
+    syncDatabase(); 
 };
 
 function saveSessionProgress() {
