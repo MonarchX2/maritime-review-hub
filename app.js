@@ -1802,19 +1802,24 @@ function toggleAppMode() {
 }
 
 // 3. Centralized click handler for the deck
+// State variables to remember what deck the user clicked before the modal popped up
+let pendingDeckSubject = null;
+let pendingDeckAction = null;
+
 function handleDeckClick(subj, action = 'continue') {
     const deckInfo = state.categorySummary.find(c => c.Subject === subj);
-    let pass = null;
 
+    // If locked, open the custom modal and STOP execution.
     if (deckInfo && deckInfo.Locked) {
-        pass = prompt(`This deck is locked. Enter password for ${subj}:`);
-        if (pass === null) return; // User cancelled
+        openDeckPasswordModal(subj, action);
+        return; 
     }
 
+    // If it's NOT locked, proceed normally
     if (currentAppMode === 'review') {
-        reviewDeck(subj, pass); // Backend will need to verify this 'pass' variable
+        reviewDeck(subj, null); 
     } else {
-        fetchAndStartCategory(subj, action, pass);
+        fetchAndStartCategory(subj, action, null);
     }
 }
 
@@ -1945,6 +1950,36 @@ function closeFolderPasswordModal() {
     }, 300);
 }
 
+function openDeckPasswordModal(subject, action) {
+    pendingDeckSubject = subject;
+    pendingDeckAction = action;
+    
+    const messageEl = document.getElementById('deck-password-message');
+    if (messageEl) {
+        // Extract just the deck name (e.g., "Prelims" instead of "BSMT::3.1::Prelims")
+        const shortName = subject.split('::').pop();
+        messageEl.innerText = `The deck "${escapeHTML(shortName)}" requires a password.`;
+    }
+    
+    const modal = document.getElementById('deck-password-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        setTimeout(() => modal.classList.remove('opacity-0'), 10);
+    }
+}
+
+function closeDeckPasswordModal() {
+    const modal = document.getElementById('deck-password-modal');
+    if (modal) {
+        modal.classList.add('opacity-0');
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            const inputEl = document.getElementById('deck-password-input');
+            if (inputEl) inputEl.value = ''; 
+        }, 300);
+    }
+}
+
 // Hook up the "Unlock Folder" button inside the modal
 document.getElementById('btn-submit-folder-password').addEventListener('click', async () => {
     const pass = document.getElementById('folder-password-input').value;
@@ -1984,3 +2019,26 @@ document.getElementById('btn-submit-folder-password').addEventListener('click', 
         btn.disabled = false;
     }
 });
+
+// Hook up the "Unlock Deck" button inside the modal
+const btnSubmitDeckPassword = document.getElementById('btn-submit-deck-password');
+if (btnSubmitDeckPassword) {
+    btnSubmitDeckPassword.addEventListener('click', () => {
+        const pass = document.getElementById('deck-password-input').value;
+        
+        if (!pass) {
+            alert("Please enter a password.");
+            return;
+        }
+
+        // Close the modal
+        closeDeckPasswordModal();
+
+        // Resume the flow exactly where we left off, passing the entered password to the backend
+        if (currentAppMode === 'review') {
+            reviewDeck(pendingDeckSubject, pass);
+        } else {
+            fetchAndStartCategory(pendingDeckSubject, pendingDeckAction, pass);
+        }
+    });
+}

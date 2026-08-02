@@ -491,40 +491,5 @@
     <!-- TOAST CONTAINER -->
     <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
     
-    <!-- NEW: HTML-BASED FRONTEND FIXES (ADDED FIX) -->
-    <script>
-        // 1. GLOBAL FETCH INTERCEPTOR
-        // This automatically applies `redirect: "follow"` to all POST requests sent from app.js 
-        // to Google Apps Script, completely fixing the backend connection issue without 
-        // requiring you to manually edit the fetch logic inside app.js.
-        const originalFetch = window.fetch;
-        window.fetch = async function() {
-            let [resource, config] = arguments;
-            
-            // If the request is a POST (like telemetry or submit_report), force the redirect
-            if (config && config.method === 'POST') {
-                config.redirect = 'follow'; 
-            }
-            
-            return originalFetch.apply(this, [resource, config]);
-        };
-
-        // 2. HELPER FUNCTIONS FOR THE NEW DECK PASSWORD MODAL
-        // These handle the opening/closing animations of the new UI element.
-        function openDeckPasswordModal() {
-            const modal = document.getElementById('deck-password-modal');
-            modal.classList.remove('hidden');
-            setTimeout(() => modal.classList.remove('opacity-0'), 10);
-        }
-
-        function closeDeckPasswordModal() {
-            const modal = document.getElementById('deck-password-modal');
-            modal.classList.add('opacity-0');
-            setTimeout(() => {
-                modal.classList.add('hidden');
-                document.getElementById('deck-password-input').value = ''; // clear input
-            }, 300);
-        }
-    </script>
 </body>
 </html>
