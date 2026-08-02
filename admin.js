@@ -46,37 +46,72 @@ async function adminLogin() {
     }
 }
 
-function loadAdminSubjects() {
-    if (!state.categorySummary || state.categorySummary.length === 0) {
-        document.getElementById('admin-subject-list').innerHTML = `
-            <p class="text-center text-gray-500 dark:text-gray-400 py-6 animate-pulse">
-                No subjects found. Please go to Settings and Sync your Database first.
-            </p>`;
-        return;
-    }
+async function loadAdminSubjects() {
+    const container = document.getElementById('admin-subject-list');
+    container.innerHTML = `<p class="text-center text-brand-500 py-6"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Fetching secure database...</p>`;
 
-    // FIX: Store the entire object so we don't lose the password
-    adminState.subjects = state.categorySummary; 
-    renderAdminSubjectList();
+    try {
+        // Fetch the secure list (including passwords) using the admin token
+        const response = await fetch(DB_URL, {
+            method: 'POST',
+            redirect: 'follow',
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ 
+                type: "admin_get_subjects", 
+                token: adminState.token 
+            })
+        });
+
+        const secureSubjects = await response.json();
+
+        // Check if the backend explicitly returned an error or if the response is completely missing
+        if (secureSubjects.status === "error" || !Array.isArray(secureSubjects)) {
+            container.innerHTML = `<p class="text-center text-red-500 py-6">Failed to load secure subjects. Check backend configuration.</p>`;
+            return;
+        }
+
+        // If it's an empty array, it will safely pass through and your renderer will show "No subjects found."
+
+        adminState.subjects = secureSubjects; 
+        renderAdminSubjectList();
+        
+    } catch (e) {
+        console.error(e);
+        // Fallback to public cache if the network fails
+        if (state.categorySummary && state.categorySummary.length > 0) {
+            adminState.subjects = state.categorySummary;
+            renderAdminSubjectList();
+        } else {
+            container.innerHTML = `<p class="text-center text-red-500 py-6">Network error. Could not load database.</p>`;
+        }
+    }
 }
 
 function renderAdminSubjectList() {
     const container = document.getElementById('admin-subject-list');
-    const tree = { subfolders: {}, decks: [] };
+    const tree = { subfolders: {}, decks: [], folderPass: '' }; // Added folderPass state
     
     adminState.subjects.forEach((cat, index) => {
-        // FIX: Extract name and password safely
         const subjString = cat.Subject;
         const passString = cat.Password || cat.password || ""; 
-        
         const parts = subjString.split('::').map(s => s.trim());
+        
+        // Handle true folder locks
+        if (cat.IsFolder) {
+            let currentNode = tree;
+            parts.forEach(part => {
+                if (!currentNode.subfolders[part]) currentNode.subfolders[part] = { subfolders: {}, decks: [], folderPass: '' };
+                currentNode = currentNode.subfolders[part];
+            });
+            currentNode.folderPass = passString; // Assign password to the folder
+            return; // Stop here, it's not a deck
+        }
+
         const deckName = parts.pop(); 
         
         let currentNode = tree;
         parts.forEach(part => {
-            if (!currentNode.subfolders[part]) {
-                currentNode.subfolders[part] = { subfolders: {}, decks: [] };
-            }
+            if (!currentNode.subfolders[part]) currentNode.subfolders[part] = { subfolders: {}, decks: [], folderPass: '' };
             currentNode = currentNode.subfolders[part];
         });
         
@@ -84,23 +119,46 @@ function renderAdminSubjectList() {
             originalFull: subjString, 
             deckName: deckName, 
             index: index,
-            password: passString // Now we have the password!
+            password: passString 
         });
     });
 
     function countTotalDecks(node) {
         let count = node.decks.length;
-        for (const key in node.subfolders) {
-            count += countTotalDecks(node.subfolders[key]);
-        }
+        for (const key in node.subfolders) count += countTotalDecks(node.subfolders[key]);
         return count;
     }
 
-    function renderNode(node, folderName, depth = 0) {
+    function renderNode(node, folderName, depth = 0, currentPath = '') {
         let innerHtml = '';
+        const fullPath = depth === 0 ? '' : (currentPath ? `${currentPath}::${folderName}` : folderName);
+
+        // TRUE FOLDER LOCK UI
+        if (depth > 0 && (Object.keys(node.subfolders).length > 0 || node.decks.length > 0)) {
+            innerHtml += `
+                <div class="mb-4 p-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg shadow-sm">
+                    <label class="text-sm font-bold text-red-700 dark:text-red-400 block mb-2">
+                        <i class="fa-solid fa-lock mr-1"></i> Lock Entire '${escapeHTML(folderName)}' Folder
+                    </label>
+                    <p class="text-xs text-red-600 dark:text-red-300 mb-2">Setting a password here locks the folder itself. Users cannot open it to see subfolders or decks without this password.</p>
+                    
+                    <input type="text" 
+                        class="folder-pass-input w-full p-2 border border-red-300 dark:border-red-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-red-500 focus:ring-2 outline-none transition-all" 
+                        placeholder="Leave blank for public folder..."
+                        data-path="${escapeHTML(fullPath)}"
+                        data-orig="${escapeHTML(node.folderPass || '')}"
+                        value="${escapeHTML(node.folderPass || '')}">
+                    
+                    <!-- ADDED THE MISSING BUTTON -->
+                    <button onclick="cascadePassword(this)" class="mt-3 w-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 py-2 rounded font-bold hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors shadow-sm active:scale-95 text-sm flex items-center justify-center">
+                        <i class="fa-solid fa-angles-down mr-2"></i> Apply to all nested decks
+                    </button>
+                </div>
+            `;
+        }
         
         for (const [subName, subNode] of Object.entries(node.subfolders)) {
-            innerHtml += renderNode(subNode, subName, depth + 1);
+            innerHtml += renderNode(subNode, subName, depth + 1, fullPath);
         }
         
         node.decks.forEach(subj => {
@@ -128,7 +186,6 @@ function renderAdminSubjectList() {
                         <div class="flex justify-between items-end mt-3 mb-1">
                             <span class="text-xs font-bold text-red-500 uppercase tracking-wider"><i class="fa-solid fa-lock mr-1"></i> Deck Password</span>
                         </div>
-                        <!-- FIX: Password value now dynamically injects -->
                         <input type="text" 
                                 id="deck-pass-${subj.index}" 
                                 value="${escapeHTML(subj.password)}" 
@@ -171,14 +228,28 @@ async function saveAdminChanges() {
     btn.disabled = true;
 
     const updates = [];
+    
+    // 1. Gather Folder Passwords
+    document.querySelectorAll('.folder-pass-input').forEach(input => {
+        const path = input.getAttribute('data-path');
+        const pass = input.value.trim();
+        const orig = input.getAttribute('data-orig');
+        
+        if (pass !== orig) {
+            updates.push({ oldName: path, newName: path, password: pass });
+        }
+    });
+
+    // 2. Gather Deck Passwords
     adminState.subjects.forEach((cat, index) => {
+        if (cat.IsFolder) return; // Handled above
+
         const originalName = cat.Subject;
         const originalPass = cat.Password || cat.password || "";
         
         const newName = document.getElementById(`new-subj-${index}`).value.trim() || originalName; 
         const deckPass = document.getElementById(`deck-pass-${index}`).value.trim();
         
-        // FIX: Compare against original names and original passwords
         if (newName !== originalName || deckPass !== originalPass) {
             updates.push({ 
                 oldName: originalName, 
@@ -204,9 +275,8 @@ async function saveAdminChanges() {
         const result = await response.json();
         
         if (result.status === "success") {
-            alert("Hierarchy Updated! Fetching the latest layout...");
-            await syncDatabase(); 
-            loadAdminSubjects();  
+            alert("Changes saved! Refreshing secure layout...");
+            await loadAdminSubjects(); 
         } else {
             alert("Failed: " + result.message);
         }
@@ -293,3 +363,28 @@ async function adminLoadReports() {
             alert("Network error.");
         }
     }
+
+window.cascadePassword = function(btn) {
+    // Find the input box right next to the button
+    const input = btn.previousElementSibling;
+    const folderPath = input.getAttribute('data-path');
+    const pass = input.value;
+
+    let count = 0;
+    
+    // Find all decks that belong to this folder and update their textboxes visually
+    adminState.subjects.forEach((subj, index) => {
+        if (subj.Subject.startsWith(folderPath + '::') || subj.Subject === folderPath) {
+            const deckInput = document.getElementById(`deck-pass-${index}`);
+            if (deckInput) {
+                deckInput.value = pass;
+                // Highlight the box briefly so the admin sees it changed
+                deckInput.classList.add('bg-red-100', 'dark:bg-red-900/30');
+                setTimeout(() => deckInput.classList.remove('bg-red-100', 'dark:bg-red-900/30'), 1000);
+                count++;
+            }
+        }
+    });
+    
+    alert(`Applied to ${count} deck(s)! You can now customize individual decks below if needed before clicking Save.`);
+};

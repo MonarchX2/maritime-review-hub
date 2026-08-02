@@ -39,6 +39,7 @@ function sendTelemetry(action, details) {
 
     fetch(DB_URL, {
         method: "POST",
+        redirect: "follow",
         headers: {
             "Content-Type": "text/plain;charset=utf-8"
         },
@@ -476,9 +477,6 @@ if (
 );
 
 btn.disabled = false;
-
-btn.className =
-    "choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium";
         }
     });
 
@@ -544,7 +542,19 @@ if (activeRecallEnabled) {
     }
 }
 
-function enterFolder(folderName) {
+function enterFolder(folderName, isLockedFolder) {
+    // 1. Construct the full path string (e.g., "BSMT::3.1::Prelims")
+    const fullPath = state.currentPath && state.currentPath.length > 0
+        ? state.currentPath.join("::") + "::" + folderName
+        : folderName;
+
+    // 2. Use the passed argument directly instead of searching the undefined state object
+    if (isLockedFolder) {
+        openFolderPasswordModal(fullPath, folderName);
+        return; 
+    }
+
+    // 3. If it's NOT locked, proceed normally
     if (!state.currentPath) state.currentPath = [];
     state.currentPath.push(folderName);
     renderCategoryProgress();
@@ -745,45 +755,59 @@ function generateCardHTML(cat, displayName, delay = 0) {
     }
 
     keys.forEach((key, index) => {
-        const item = currentNode[key];
-        const hasChildren = Object.keys(item._children).length > 0;
-        const hasData = item._data !== null;
-        const delay = index * 0.05;
+            const item = currentNode[key];
+            const hasChildren = Object.keys(item._children).length > 0;
+            const hasData = item._data !== null;
+            
+            // NEW: Check if this item is explicitly flagged as a folder from the database
+            const isExplicitFolder = hasData && item._data.IsFolder === true; 
+            
+            const delay = index * 0.05;
 
-        if (hasChildren && !hasData) {
-            const totalCards = getFolderStats(item);
-            const folderClass = isGrid ? 'h-full min-h-[140px]' : 'h-auto';
+            // UPDATED: Render as a folder if it has children OR if it's explicitly marked as a folder lock
+            if (hasChildren || isExplicitFolder) {
+                const totalCards = getFolderStats(item);
+                const folderClass = isGrid ? 'h-full min-h-[140px]' : 'h-auto';
 
-            // Sync folder colors based on Quiz/Review Mode
-            const isReview = currentAppMode === 'review';
-            const folderColorClass = isReview 
-                ? 'bg-purple-500 dark:bg-purple-700 group-hover:bg-purple-600 dark:group-hover:bg-purple-600' 
-                : 'bg-brand-500 dark:bg-brand-700 group-hover:bg-brand-600 dark:group-hover:bg-brand-600';
-            const folderTextHover = isReview
-                ? 'group-hover:text-purple-600 dark:group-hover:text-purple-400'
-                : 'group-hover:text-brand-600 dark:group-hover:text-brand-400';
+                // Sync folder colors based on Quiz/Review Mode
+                const isReview = currentAppMode === 'review';
+                const folderColorClass = isReview 
+                    ? 'bg-purple-500 dark:bg-purple-700 group-hover:bg-purple-600 dark:group-hover:bg-purple-600' 
+                    : 'bg-brand-500 dark:bg-brand-700 group-hover:bg-brand-600 dark:group-hover:bg-brand-600';
+                const folderTextHover = isReview
+                    ? 'group-hover:text-purple-600 dark:group-hover:text-purple-400'
+                    : 'group-hover:text-brand-600 dark:group-hover:text-brand-400';
 
-            html += `
-                <div onclick="enterFolder('${escapeHTML(key)}')" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1" style="animation-delay: ${delay}s;">
-                    <div class="h-12 ${folderColorClass} transition-colors relative">                        
-                        <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
-                    </div>
-                    <div class="p-4 flex-1 flex flex-col justify-between">
-                        <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg">${escapeHTML(key)}</h3>
-                        <div class="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400 mt-2">
-                            <span>${totalCards} cards</span>
-                            <span class="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full text-xs font-semibold">Subdeck</span>
+                // NEW: Show a lock icon on the folder if it has a password set
+                const isLocked = hasData && item._data.Locked === true;
+                const lockIcon = isLocked ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected Folder"></i>` : '';
+
+                html += `
+                    <div onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1" style="animation-delay: ${delay}s;">
+                        <div class="h-12 ${folderColorClass} transition-colors relative">                        
+                            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
                         </div>
-                    </div>
-                </div>`;
-        } else if (hasData) {
-            html += generateCardHTML(item._data, key, delay);
-        }
-    });
+                        <div class="p-4 flex-1 flex flex-col justify-between">
+                            <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg flex items-center">
+                                ${escapeHTML(key)} ${lockIcon}
+                            </h3>
+                            <div class="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400 mt-2">
+                                <span>${totalCards} cards</span>
+                                <span class="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full text-xs font-semibold">Subdeck</span>
+                            </div>
+                        </div>
+                    </div>`;
+                    
+            } 
+            // UPDATED: Only render as a Deck Card if it has data AND is NOT a folder
+            else if (hasData && !isExplicitFolder) {
+                html += generateCardHTML(item._data, key, delay);
+            }
+        });
 
-    html += `</div>`;
-    container.className = "transition-all duration-500";
-    container.innerHTML = html;
+        html += `</div>`;
+        container.className = "transition-all duration-500";
+        container.innerHTML = html;
 }
 
 async function fetchAndStartCategory(subject, mode, pass = null) {
@@ -800,16 +824,19 @@ async function fetchAndStartCategory(subject, mode, pass = null) {
         const response = await fetch(fetchUrl);
         const newQuestions = await response.json();
 
-        if (newQuestions.error) throw new Error(newQuestions.error);
+        // STRICT LOCK CHECK: Stop execution if the server throws a password error
+        if (newQuestions.error) {
+            alert(newQuestions.error); // Show "Incorrect Password" or similar message
+            if (loader) loader.classList.add('hidden');
+            return; 
+        }
 
         validQuestions = newQuestions.filter(q =>
             q.Question && q.Question.trim() !== "" &&
             q.ChoiceA && q.ChoiceA.trim() !== "" &&
             q.ChoiceB && q.ChoiceB.trim() !== ""
         ).map(q => {
-            // NEW: Enforce unique IDs and strip prefix strings (e.g., "BSM-", "NAV-")
             let cleanId = q.ID ? q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, '') : Math.random().toString(36).substr(2, 6);
-            // Combine subject and ID so there are never duplicates across folders
             q.ID = `${q.Subject}::${cleanId}`;
             return q;
         });
@@ -946,22 +973,37 @@ async function deleteSubjectData(subject) {
     }
 }
 
-async function reviewDeck(subject) {
+async function reviewDeck(subject, pass = null) {
     const loader = document.getElementById(`loading-${subject}`);
     if (loader) loader.classList.remove('hidden');
 
     let validQuestions = [];
 
     try {
-        // First check if the questions are already saved in the local IndexedDB
-        validQuestions = state.db.filter(q => q.Subject === subject);
+        let needsFetch = false;
 
-        // If not, fetch them from Google Sheets
-        if (validQuestions.length === 0) {
-            const response = await fetch(`${DB_URL}?subject=${encodeURIComponent(subject)}`);
+        // If a password is required, we must fetch from the server to verify it
+        if (pass) {
+            needsFetch = true;
+        } else {
+            // Check if questions are already saved in the local IndexedDB
+            validQuestions = state.db.filter(q => q.Subject === subject);
+            if (validQuestions.length === 0) needsFetch = true;
+        }
+
+        if (needsFetch) {
+            let fetchUrl = `${DB_URL}?subject=${encodeURIComponent(subject)}`;
+            if (pass) fetchUrl += `&password=${encodeURIComponent(pass)}`;
+            
+            const response = await fetch(fetchUrl);
             const newQuestions = await response.json();
 
-            if (newQuestions.error) throw new Error(newQuestions.error);
+            // STRICT LOCK CHECK: Stop execution if backend rejects password
+            if (newQuestions.error) {
+                alert(newQuestions.error);
+                if (loader) loader.classList.add('hidden');
+                return;
+            }
 
             validQuestions = newQuestions.filter(q =>
                 q.Question && q.Question.trim() !== ""
@@ -1572,6 +1614,7 @@ async function submitReport() {
     try {
         const response = await fetch(DB_URL, {
             method: 'POST',
+            redirect: "follow",
             headers: { "Content-Type": "text/plain;charset=utf-8" }, // ADDED HEADER
             body: JSON.stringify({
                 type: "submit_report",
@@ -1625,6 +1668,7 @@ async function loadReports() {
     try {
         const response = await fetch(DB_URL, {
             method: 'POST',
+            redirect: "follow",
             headers: { "Content-Type": "text/plain;charset=utf-8" }, // ADDED HEADER
             body: JSON.stringify({ type: "get_reports", role: "user" })
         });
@@ -1874,3 +1918,69 @@ async function userLogin(username, password) {
         }
     }
 }
+
+// State variables to remember which folder the user is trying to unlock
+let pendingLockedFolderPath = null;
+let pendingLockedFolderName = null;
+
+// Opens the modal from index.html
+function openFolderPasswordModal(fullPath, folderName) {
+    pendingLockedFolderPath = fullPath;
+    pendingLockedFolderName = folderName;
+    
+    document.getElementById('folder-password-message').innerText = `The folder "${folderName}" requires a password to view its contents.`;
+    
+    const modal = document.getElementById('folder-password-modal');
+    modal.classList.remove('hidden');
+    setTimeout(() => modal.classList.remove('opacity-0'), 10);
+}
+
+// Closes the modal from index.html
+function closeFolderPasswordModal() {
+    const modal = document.getElementById('folder-password-modal');
+    modal.classList.add('opacity-0');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        document.getElementById('folder-password-input').value = ''; 
+    }, 300);
+}
+
+// Hook up the "Unlock Folder" button inside the modal
+document.getElementById('btn-submit-folder-password').addEventListener('click', async () => {
+    const pass = document.getElementById('folder-password-input').value;
+    const btn = document.getElementById('btn-submit-folder-password');
+    
+    if (!pass) {
+        alert("Please enter a password.");
+        return;
+    }
+
+    btn.innerText = "Verifying...";
+    btn.disabled = true;
+
+    try {
+        // We can cleverly use your existing doGet route to verify the password!
+        // If the password is wrong, your backend returns { error: "Incorrect Password." }
+        const response = await fetch(`${DB_URL}?subject=${encodeURIComponent(pendingLockedFolderPath)}&password=${encodeURIComponent(pass)}`);
+        const result = await response.json();
+
+        // Check if your Apps Script returned the error block
+        if (result.error) {
+            alert(result.error);
+        } else {
+            // Password is correct! (Folders return empty arrays [] on success)
+            closeFolderPasswordModal();
+            
+            // Push the folder to the path and re-render
+            if (!state.currentPath) state.currentPath = [];
+            state.currentPath.push(pendingLockedFolderName);
+            renderCategoryProgress();
+        }
+    } catch (error) {
+        console.error("Verification failed", error);
+        alert("Network error while verifying the folder password.");
+    } finally {
+        btn.innerText = "Unlock Folder";
+        btn.disabled = false;
+    }
+});
