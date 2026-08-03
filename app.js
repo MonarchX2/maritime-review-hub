@@ -1,10 +1,12 @@
 const DB_URL = "https://script.google.com/macros/s/AKfycbx4HFy5LmX_CFZMTOdl809OrnsgxzQvpzHDOhrMK3yk7fNZb7Gp2pImwBCS_I1Gx-D20g/exec";
 
+
+
 let state = {
     db: [],
     categorySummary: [],
     stats: { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} },
-    prefs: { darkMode: true, layoutMode: 'grid', activeRecall: true, shuffleChoices: true, shuffleQuestions: true },    session: { active: false, questions: [], currentIndex: 0, userAnswers: {}, autoNextTimeout: null },
+    prefs: { darkMode: true, layoutMode: 'grid', activeRecall: true, shuffleChoices: true, shuffleQuestions: true, hideABCD: true, showWrongChoices: false },    session: { active: false, questions: [], currentIndex: 0, userAnswers: {}, autoNextTimeout: null },
     currentPath: []
 };
 
@@ -54,6 +56,7 @@ function sendTelemetry(action, details) {
     .catch(() => {})
     .finally(() => clearTimeout(timeout));
 }
+
 function escapeHTML(value) {
 
     if (value === null || value === undefined)
@@ -397,7 +400,7 @@ function renderQuestion() {
     document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / totalCards) * 100}%`;
     // --- NEW SUBJECT TRIMMING LOGIC ---
     const fullSubject = q.Subject || 'General';
-const parts = String(fullSubject).split("::");
+    const parts = String(fullSubject).split("::");
 
 document.getElementById("q-subject").innerText =
 parts.length >= 2
@@ -412,7 +415,7 @@ q.ID ??
     }
     document.getElementById('q-id').innerText = displayId;
 
-    document.getElementById('q-text').innerText = q.Question;
+    document.getElementById('q-text').innerHTML = formatQuestionText(q.Question);
 
     const imgEl = document.getElementById('q-image');
     if (q.ImageURL && q.ImageURL.trim() !== "") {
@@ -657,102 +660,122 @@ function renderCategoryProgress() {
     }
 
 function generateCardHTML(cat, displayName, delay = 0) {
-        const subj = cat.Subject;
-        const safeSubj = escapeHTML(subj); 
-        const safeName = escapeHTML(displayName);
-        const totalQuestionsInDb = cat.QuestionCount; 
-        const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
+    const subj = cat.Subject;
+    const safeSubj = escapeHTML(subj); 
+    const safeName = escapeHTML(displayName);
+    const totalQuestionsInDb = cat.QuestionCount; 
+    const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
+    
+    const dbQsForSubj = state.db.filter(q => q.Subject === subj).map(q => q.ID);
+    const completedCount = state.stats.completedQs ? state.stats.completedQs.filter(id => dbQsForSubj.includes(id)).length : 0;
+    const mistakesCount = state.stats.mistakes ? state.stats.mistakes.filter(id => dbQsForSubj.includes(id)).length : 0;
+    
+    const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
+    const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
+    const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
+
+    const isDownloaded = state.db.some(q => q.Subject === subj);
+    const statusBadge = isDownloaded 
+        ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i></span>`
+        : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i></span>`;
+
+    const isReview = currentAppMode === 'review';
+    
+    // Mode-specific UI Colors
+    const primaryActionText = isReview ? 'Review Deck' : (completedCount === 0 ? 'Start Quiz' : 'Continue Quiz');
+    const primaryActionIcon = isReview ? 'fa-eye' : 'fa-play';
+    const primaryActionColor = isReview ? 'bg-purple-600 hover:bg-purple-700' : 'bg-brand-600 hover:bg-brand-700';
+    const themeColorText = isReview ? 'text-purple-600 dark:text-purple-400' : 'text-brand-600 dark:text-brand-400';
+    const themeColorBg = isReview ? 'bg-purple-500' : 'bg-brand-500';
+    const themeShadowHover = isReview ? 'hover:shadow-purple-500/10' : 'hover:shadow-brand-500/10';
+    const loaderColor = isReview ? 'text-purple-500' : 'text-brand-500';
+
+    const isLocked = cat.Locked === true; 
+    const lockIcon = isLocked ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected"></i>` : '';
+
+    // --- Dynamic UI Logic for Study Mode vs Quiz Mode ---
+    let statsHTML = '';
+    let progressBarHTML = '';
+    let countBadgeHTML = '';
+    let resetBtnHTML = '';
+
+    // If it's Quiz mode, show stats and progress
+    if (!isReview) {
+        statsHTML = `<p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>`;
+        countBadgeHTML = `
+            <div class="flex items-center gap-2 flex-shrink-0 pt-1">
+                ${isDownloaded ? `<button onclick="event.stopPropagation(); deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>` : ``}
+                <span class="text-sm font-black ${themeColorText} transition-colors">${completedCount} / ${totalQuestionsInDb}</span>
+            </div>`;
+        progressBarHTML = `
+            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden">
+                <div class="${themeColorBg} h-full rounded-full transition-all duration-700 ease-out" style="width: ${progressPercent}%"></div>
+            </div>`;
         
-        const dbQsForSubj = state.db.filter(q => q.Subject === subj).map(q => q.ID);
-        const completedCount = state.stats.completedQs ? state.stats.completedQs.filter(id => dbQsForSubj.includes(id)).length : 0;
-        const mistakesCount = state.stats.mistakes ? state.stats.mistakes.filter(id => dbQsForSubj.includes(id)).length : 0;
-        
-        const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
-        const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
-        const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
-
-        const isDownloaded = state.db.some(q => q.Subject === subj);
-        const statusBadge = isDownloaded 
-            ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i></span>`
-            : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i></span>`;
-
-        // Dynamic UI and Theme syncing based on the global mode
-        const isReview = currentAppMode === 'review';
-        
-        // Button Logic
-        const primaryActionText = isReview ? 'Review Deck' : (completedCount === 0 ? 'Start Quiz' : 'Continue Quiz');
-        const primaryActionIcon = isReview ? 'fa-eye' : 'fa-play';
-        const primaryActionColor = isReview ? 'bg-purple-600 hover:bg-purple-700' : 'bg-brand-600 hover:bg-brand-700';
-
-        // Deck Color Logic (Syncing hover shadows, progress bar, text colors)
-        const themeColorText = isReview ? 'text-purple-600 dark:text-purple-400' : 'text-brand-600 dark:text-brand-400';
-        const themeColorBg = isReview ? 'bg-purple-500' : 'bg-brand-500';
-        const themeShadowHover = isReview ? 'hover:shadow-purple-500/10' : 'hover:shadow-brand-500/10';
-        const loaderColor = isReview ? 'text-purple-500' : 'text-brand-500';
-
-        const isLocked = cat.Locked === true; // Requires backend to return "Locked: true" in categorySummary
-        const lockIcon = isLocked ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected"></i>` : '';
-        
-        // Notice the 'h-full flex flex-col' in the main div, and 'mt-auto' on the button container
-        return `
-           <div onclick="handleDeckClick('${safeSubj}')" class="cursor-pointer animate-card-in ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;">
-                <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
-                    <i class="fa-solid fa-spinner fa-spin text-3xl ${loaderColor} mb-2"></i>
-                    <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
-                </div>
-
-                <!-- Card Header -->
-                <div class="flex items-start justify-between mb-4 gap-2">
-                    <div class="min-w-0 flex-1">
-                        <div class="flex items-center gap-2 mb-1 min-w-0">
-                            <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors truncate min-w-0">
-                                <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm flex-shrink-0"></i>
-                                <span class="truncate">${safeName}</span> ${lockIcon}
-                            </h3>
-                            <div class="flex-shrink-0">
-                                ${statusBadge}
-                            </div>
-                        </div>
-                        <p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>
-                    </div>
-                    
-                    <div class="flex items-center gap-2 flex-shrink-0 pt-1">
-                        ${isDownloaded 
-                            ? `<button onclick="event.stopPropagation(); deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data">
-                                <i class="fa-solid fa-trash-can"></i>
-                            </button>` 
-                            : ``}
-                        <span class="text-sm font-black ${themeColorText} transition-colors">${completedCount} / ${totalQuestionsInDb}</span>
-                    </div>
-                </div>
-                
-                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden">
-                    <div class="${themeColorBg} h-full rounded-full transition-all duration-700 ease-out" style="width: ${progressPercent}%"></div>
-                </div>
-                
-                <div class="flex gap-2 mt-auto w-full" onclick="event.stopPropagation()">
-                    <!-- Primary Action Button -->
-                    <button onclick="handleDeckClick('${safeSubj}')" class="flex-1 ${primaryActionColor} text-white py-2 px-2 rounded-lg font-bold active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="${primaryActionText}">
-                        <i class="fa-solid ${primaryActionIcon} mr-1 sm:mr-2 group-hover:scale-125 transition-transform flex-shrink-0"></i> 
-                        <span class="truncate">${primaryActionText}</span>
-                    </button>
-                    
-                    <!-- Review Mistakes Button (Only shows if mistakes exist) -->
-                    ${mistakesCount > 0 ? `
-                        <button onclick="handleDeckClick('${safeSubj}', 'mistakes')" class="flex-1 bg-yellow-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-yellow-600 active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="Review Mistakes">
-                            <i class="fa-solid fa-triangle-exclamation mr-1 sm:mr-2 group-hover:scale-125 transition-transform flex-shrink-0"></i> 
-                            <span class="truncate">Review (${mistakesCount})</span>
-                        </button>
-                    ` : ''}
-
-                    <!-- Reset Button (Always visible, stays small) -->
-                    <button onclick="resetCategory('${safeSubj}')" class="w-10 sm:w-12 shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
-                        <i class="fa-solid fa-rotate-left"></i>
-                    </button>
-                </div>
-            </div>
-        `;
+        // Only show Reset Progress if they actually have progress (completed count > 0 or mistakes > 0)
+        if (completedCount > 0 || mistakesCount > 0) {
+            resetBtnHTML = `
+                <button onclick="resetCategory('${safeSubj}')" class="w-10 sm:w-12 shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
+                    <i class="fa-solid fa-rotate-left"></i>
+                </button>`;
+        }
+    } else {
+        // In Study Mode, just show the delete button if downloaded
+        if (isDownloaded) {
+             countBadgeHTML = `
+                <div class="flex items-center gap-2 flex-shrink-0 pt-1">
+                    <button onclick="event.stopPropagation(); deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>
+                </div>`;
+        }
     }
+    
+    return `
+       <div onclick="handleDeckClick('${safeSubj}')" class="cursor-pointer animate-card-in ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;">
+            <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
+                <i class="fa-solid fa-spinner fa-spin text-3xl ${loaderColor} mb-2"></i>
+                <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
+            </div>
+
+            <!-- Card Header -->
+            <div class="flex items-start justify-between mb-4 gap-2">
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2 mb-1 min-w-0">
+                        <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors truncate min-w-0">
+                            <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm flex-shrink-0"></i>
+                            <span class="truncate">${safeName}</span> ${lockIcon}
+                        </h3>
+                        <div class="flex-shrink-0">
+                            ${statusBadge}
+                        </div>
+                    </div>
+                    ${statsHTML}
+                </div>
+                ${countBadgeHTML}
+            </div>
+            
+            ${progressBarHTML}
+            
+            <div class="flex gap-2 mt-auto w-full" onclick="event.stopPropagation()">
+                <!-- Primary Action Button -->
+                <button onclick="handleDeckClick('${safeSubj}')" class="flex-1 ${primaryActionColor} text-white py-2 px-2 rounded-lg font-bold active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="${primaryActionText}">
+                    <i class="fa-solid ${primaryActionIcon} mr-1 sm:mr-2 group-hover:scale-125 transition-transform flex-shrink-0"></i> 
+                    <span class="truncate">${primaryActionText}</span>
+                </button>
+                
+                <!-- Review Mistakes Button (Only shows in Quiz Mode if mistakes exist) -->
+                ${(!isReview && mistakesCount > 0) ? `
+                    <button onclick="handleDeckClick('${safeSubj}', 'mistakes')" class="flex-1 bg-yellow-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-yellow-600 active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="Review Mistakes">
+                        <i class="fa-solid fa-triangle-exclamation mr-1 sm:mr-2 group-hover:scale-125 transition-transform flex-shrink-0"></i> 
+                        <span class="truncate">Review (${mistakesCount})</span>
+                    </button>
+                ` : ''}
+
+                <!-- Reset Button -->
+                ${resetBtnHTML}
+            </div>
+        </div>
+    `;
+}
 
     keys.forEach((key, index) => {
             const item = currentNode[key];
@@ -1047,9 +1070,16 @@ function renderDeckReview(subject, questions) {
     const container = document.getElementById('deck-review-list');
     document.getElementById('deck-review-title').innerText = subject;
 
-    // Check if the toggle exists and is checked
-    const toggleEl = document.getElementById('toggle-wrong-choices');
-    const showWrong = toggleEl ? toggleEl.checked : false;
+    // Retrieve saved user preferences
+    const showWrong = state.prefs.showWrongChoices !== false; // Defaults true
+    const hideABCD = state.prefs.hideABCD === true; 
+
+    // Sync toggle switch states with saved preferences
+    const wrongToggle = document.getElementById('toggle-wrong-choices');
+    if (wrongToggle) wrongToggle.checked = showWrong;
+
+    const hideABCDToggle = document.getElementById('toggle-hide-abcd');
+    if (hideABCDToggle) hideABCDToggle.checked = hideABCD;
 
     let html = '';
 
@@ -1057,7 +1087,6 @@ function renderDeckReview(subject, questions) {
         html = `<div class="text-center p-8 text-gray-500">No questions found for this deck.</div>`;
     } else {
         questions.forEach((q, index) => {
-            // Safely parse the answer, preventing "undefined" literals
             let ansStr = q.Answer ? String(q.Answer).trim() : "";
             let isMultipleChoice = ['A', 'B', 'C', 'D'].includes(ansStr.toUpperCase());
 
@@ -1070,7 +1099,6 @@ function renderDeckReview(subject, questions) {
                 correctText = "Answer missing from database";
             }
 
-            // Generate HTML for the choices
             let choicesHTML = "";
             if (isMultipleChoice && showWrong) {
                 const letters = ['A', 'B', 'C', 'D'];
@@ -1078,62 +1106,101 @@ function renderDeckReview(subject, questions) {
 
                 letters.forEach(letter => {
                     let choiceText = q[`Choice${letter}`];
+                    let prefix = hideABCD ? '' : `${letter}. `; // Hide A/B/C/D based on toggle
+                    
                     if (choiceText) {
                         let isCorrect = (letter === ansStr.toUpperCase());
                         if (isCorrect) {
                             choicesHTML += `
-                                    <div class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 p-3 rounded-r-lg">
-                                        <p class="text-sm font-bold text-green-700 dark:text-green-400">
-                                            <i class="fa-solid fa-check-circle mr-2"></i> ${letter}. ${escapeHTML(choiceText)}
-                                        </p>
-                                    </div>
-                                `;
+                                <div class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 p-3 rounded-r-lg">
+                                    <p class="text-sm font-bold text-green-700 dark:text-green-400">
+                                        <i class="fa-solid fa-check-circle mr-2"></i> ${prefix}${escapeHTML(choiceText)}
+                                    </p>
+                                </div>`;
                         } else {
                             choicesHTML += `
-                                    <div class="bg-gray-50 dark:bg-gray-800/50 border-l-4 border-gray-300 dark:border-gray-600 p-3 rounded-r-lg opacity-70">
-                                        <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                            <i class="fa-solid fa-times mr-2 opacity-50"></i> ${letter}. ${escapeHTML(choiceText)}
-                                        </p>
-                                    </div>
-                                `;
+                                <div class="bg-gray-50 dark:bg-gray-800/50 border-l-4 border-gray-300 dark:border-gray-600 p-3 rounded-r-lg opacity-70">
+                                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                                        <i class="fa-solid fa-times mr-2 opacity-50"></i> ${prefix}${escapeHTML(choiceText)}
+                                    </p>
+                                </div>`;
                         }
                     }
                 });
                 choicesHTML += `</div>`;
             } else {
-                // Default view (Only correct answer OR Identification question)
+                let prefix = hideABCD ? '' : (isMultipleChoice ? `${ansStr.toUpperCase()}. ` : '');
                 choicesHTML = `
-                        <div class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 p-3 rounded-r-lg mt-4">
-                            <p class="text-sm font-bold text-green-700 dark:text-green-400">
-                                <i class="fa-solid fa-check-circle mr-2"></i> ${isMultipleChoice ? `${ansStr.toUpperCase()}. ` : ''}${escapeHTML(correctText)}
-                            </p>
-                        </div>
-                    `;
+                    <div class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 p-3 rounded-r-lg mt-4">
+                        <p class="text-sm font-bold text-green-700 dark:text-green-400">
+                            <i class="fa-solid fa-check-circle mr-2"></i> ${prefix}${escapeHTML(correctText)}
+                        </p>
+                    </div>`;
             }
 
             html += `
-                    <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 animate-card-in" style="animation-delay: ${index * 0.02}s;">
-                        <div class="flex gap-2 mb-3">
-                            <span class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-300">Question ${index + 1}</span>
-                        </div>
-                        <p class="font-medium text-gray-800 dark:text-gray-100 mb-2 text-lg">${escapeHTML(q.Question)}</p>
+                <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 animate-card-in" style="animation-delay: ${index * 0.02}s;">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-300">Question ${index + 1}</span>
                         
-                        ${q.ImageURL ? `<img src="${escapeHTML(q.ImageURL)}" alt="Reference" class="...">` : ''}                        
-                        ${choicesHTML}
-                        
-                        ${q.Explanation && q.Explanation.trim() !== "" ? `
-                            <div class="mt-4 text-sm text-gray-700 dark:text-gray-300 bg-blue-50 dark:bg-gray-900/50 p-3 rounded-lg border border-blue-100 dark:border-gray-700">
-                                <strong class="text-blue-800 dark:text-blue-400"><i class="fa-solid fa-lightbulb mr-1"></i> Explanation:</strong> ${escapeHTML(q.Explanation)}
-                            </div>
-                        ` : ''}
+                        <!-- ADDED REPORT BUTTON HERE -->
+                        <button onclick="openReportModalFromStudy('${q.ID}')" class="text-gray-400 hover:text-red-500 text-xs font-bold flex items-center justify-center w-7 h-7 bg-white hover:bg-red-50 dark:bg-gray-800 dark:hover:bg-red-900/30 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95 transition-all">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                        </button>
                     </div>
-                `;
+                    
+                    <!-- Formatted Question Text -->
+                    <p class="font-medium text-gray-800 dark:text-gray-100 mb-2 text-lg">${formatQuestionText(q.Question)}</p>
+                    
+                    ${q.ImageURL ? `<img src="${escapeHTML(q.ImageURL)}" alt="Reference" class="w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500">` : ''}                        
+                    ${choicesHTML}
+                    
+                    ${q.Explanation && q.Explanation.trim() !== "" ? `
+                        <div class="mt-4 text-sm text-gray-700 dark:text-gray-300 bg-blue-50 dark:bg-gray-900/50 p-3 rounded-lg border border-blue-100 dark:border-gray-700">
+                            <strong class="text-blue-800 dark:text-blue-400"><i class="fa-solid fa-lightbulb mr-1"></i> Explanation:</strong> ${escapeHTML(q.Explanation)}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
         });
     }
 
     container.innerHTML = html;
     navigate('deck-review');
+
+    // Automatically restore scroll progress based on the subject
+    setTimeout(() => {
+        const scrollContainer = document.querySelector('main'); // Adjust if your scroll container is different
+        const savedScroll = state.prefs.studyProgress?.[subject] || 0;
+        if (scrollContainer) scrollContainer.scrollTop = savedScroll;
+    }, 100);
 }
+
+// Add logic to save reading progress and toggles
+function toggleHideABCD() {
+    const isChecked = document.getElementById('toggle-hide-abcd').checked;
+    state.prefs.hideABCD = isChecked;
+    saveState();
+    reRenderDeckReview();
+}
+
+function toggleShowWrongChoices() {
+    const isChecked = document.getElementById('toggle-wrong-choices').checked;
+    state.prefs.showWrongChoices = isChecked;
+    saveState();
+    reRenderDeckReview();
+}
+
+// Add this at the bottom of your script file to track reading progress
+document.querySelector('main').addEventListener('scroll', (e) => {
+    if (document.getElementById('view-deck-review').classList.contains('active') && currentReviewSubject) {
+        if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
+        state.prefs.studyProgress[currentReviewSubject] = e.target.scrollTop;
+        
+        clearTimeout(window.scrollSaveTimeout);
+        window.scrollSaveTimeout = setTimeout(() => saveState(), 1000); // Debounce to prevent lag
+    }
+});
 
 function submitPracticeAnswer(selected, correct) {
     const q = state.session.questions[state.session.currentIndex];
@@ -1324,45 +1391,6 @@ async function clearDatabase() {
         clearSessionProgress();
         window.location.reload();
     }
-}
-
-function exportData() {
-    const jsonStr = JSON.stringify(state);
-    const blob = new Blob([jsonStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-
-    const dlAnchorElem = document.createElement('a');
-    dlAnchorElem.setAttribute("href", url);
-    dlAnchorElem.setAttribute("download", "mrh_backup.json");
-    document.body.appendChild(dlAnchorElem); // Required for Firefox
-    dlAnchorElem.click();
-
-    document.body.removeChild(dlAnchorElem);
-    URL.revokeObjectURL(url); // Clean up memory
-}
-
-function importData(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async function (e) {
-        try {
-            const importedState = JSON.parse(e.target.result);
-            // Stricter validation
-            if (importedState && typeof importedState.stats === 'object' && Array.isArray(importedState.db)) {
-                state = importedState;
-                saveState();
-                await idbKeyval.set('mrh_db', state.db);
-                showToast("Data successfully restored!", "success");
-                setTimeout(() => window.location.reload(), 1500);
-            } else {
-                showToast("Invalid backup file format.", "error");
-            }
-        } catch (err) {
-            showToast("Error reading JSON file.", "error");
-        }
-    };
-    reader.readAsText(file);
 }
 
 document.addEventListener('keydown', (e) => {
@@ -2041,4 +2069,56 @@ if (btnSubmitDeckPassword) {
             fetchAndStartCategory(pendingDeckSubject, pendingDeckAction, pass);
         }
     });
+}
+
+// Add this helper function to your JS
+function openReportModalFromStudy(questionId) {
+    // Find the question in the DB
+    const q = state.db.find(item => item.ID === questionId);
+    if (!q) return;
+
+    // Temporarily trick the app into thinking this is the active session question so the submit function works
+    state.session.active = true; // Temporary
+    state.session.questions = [q];
+    state.session.currentIndex = 0;
+    
+    // Check if already reported
+    const reportedQs = JSON.parse(localStorage.getItem('mrh_reported_qs') || '[]');
+    if (reportedQs.includes(q.ID)) {
+        alert("You have already reported this question. Thank you for your feedback!");
+        return;
+    }
+
+    document.getElementById('report-type').value = "";
+    document.getElementById('report-comments').value = "";
+
+    const modal = document.getElementById('report-modal');
+    const inner = modal.querySelector('div');
+    modal.classList.remove('hidden');
+
+    setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        inner.classList.remove('scale-95', 'opacity-0');
+    }, 10);
+}
+
+function togglePasswordVisibility(inputId, btnElement) {
+    const input = document.getElementById(inputId);
+    const icon = btnElement.querySelector('i');
+    
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.replace('fa-eye', 'fa-eye-slash');
+    } else {
+        input.type = 'password';
+        icon.classList.replace('fa-eye-slash', 'fa-eye');
+    }
+}
+
+function formatQuestionText(text) {
+    if (!text) return "";
+    let formatted = escapeHTML(text);
+    // Finds Roman numerals that have a space after the dot and adds breaks
+    formatted = formatted.replace(/(?:\s|^)(I{1,3}\.|IV\.|V\.|VI{1,3}\.|IX\.|X\.)\s/g, '<br><br><span class="font-bold text-brand-600 dark:text-brand-400">$1</span> ');
+    return formatted;
 }
