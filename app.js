@@ -7,7 +7,8 @@ let state = {
     categorySummary: [],
     stats: { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} },
     prefs: { darkMode: true, layoutMode: 'grid', activeRecall: true, shuffleChoices: true, shuffleQuestions: true, hideABCD: true, showWrongChoices: false },    session: { active: false, questions: [], currentIndex: 0, userAnswers: {}, autoNextTimeout: null },
-    currentPath: []
+    currentPath: [],
+    reportQuestion: null
 };
 
 let chartInstance = null;
@@ -1191,17 +1192,6 @@ function toggleShowWrongChoices() {
     reRenderDeckReview();
 }
 
-// Add this at the bottom of your script file to track reading progress
-document.querySelector('main').addEventListener('scroll', (e) => {
-    if (document.getElementById('view-deck-review').classList.contains('active') && currentReviewSubject) {
-        if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
-        state.prefs.studyProgress[currentReviewSubject] = e.target.scrollTop;
-        
-        clearTimeout(window.scrollSaveTimeout);
-        window.scrollSaveTimeout = setTimeout(() => saveState(), 1000); // Debounce to prevent lag
-    }
-});
-
 function submitPracticeAnswer(selected, correct) {
     const q = state.session.questions[state.session.currentIndex];
     state.session.userAnswers[state.session.currentIndex] = selected;
@@ -1613,6 +1603,9 @@ function openReportModal() {
 }
 
 function closeReportModal() {
+    // Clear the variable in case they cancel
+    state.reportQuestion = null;
+    
     const modal = document.getElementById('report-modal');
     const inner = modal.querySelector('div');
     modal.classList.add('opacity-0');
@@ -1620,7 +1613,7 @@ function closeReportModal() {
 
     setTimeout(() => {
         modal.classList.add('hidden');
-    }, 300); // Matches Tailwind transition duration
+    }, 300); 
 }
 
 async function submitReport() {
@@ -1637,13 +1630,21 @@ async function submitReport() {
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Sending...';
     btn.disabled = true;
 
-    const q = state.session.questions[state.session.currentIndex];
+    // Pull from reportQuestion if it exists, otherwise fallback to active session
+    const q = state.reportQuestion || state.session.questions[state.session.currentIndex];
+
+    if (!q) {
+        alert("Error: No question found to report.");
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        return;
+    }
 
     try {
         const response = await fetch(DB_URL, {
             method: 'POST',
             redirect: "follow",
-            headers: { "Content-Type": "text/plain;charset=utf-8" }, // ADDED HEADER
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify({
                 type: "submit_report",
                 questionId: q.ID,
@@ -1674,11 +1675,18 @@ async function submitReport() {
                     btn.classList.replace('hover:bg-green-600', 'hover:bg-red-600');
                 }, 500);
 
-                if (state.session.userAnswers[state.session.currentIndex]) {
-                    nextQuestion();
-                } else {
-                    revealAnswer();
+                // ONLY trigger quiz navigation if we are actually in a quiz
+                if (!state.reportQuestion) {
+                    if (state.session.userAnswers[state.session.currentIndex]) {
+                        nextQuestion();
+                    } else {
+                        revealAnswer();
+                    }
                 }
+                
+                // Clear the temporary state after successful submission
+                state.reportQuestion = null;
+
             }, 1500);
         }
     } catch (err) {
@@ -1802,12 +1810,8 @@ function proceedToReview() {
 }
 
 function proceedToQuiz() {
-    // Replace 'startQuiz(activeHubSubject)' with whatever function name your app uses to launch a quiz session for a subject
-    if (typeof startQuiz === 'function') {
-        startQuiz(activeHubSubject);
-    } else {
-        console.warn("Quiz start function not found. Please connect your app's quiz initialization function here.");
-        alert(`Starting quiz for: ${activeHubSubject}`);
+    if (activeHubSubject) {
+        fetchAndStartCategory(activeHubSubject, 'continue');
     }
 }
 
@@ -2077,10 +2081,8 @@ function openReportModalFromStudy(questionId) {
     const q = state.db.find(item => item.ID === questionId);
     if (!q) return;
 
-    // Temporarily trick the app into thinking this is the active session question so the submit function works
-    state.session.active = true; // Temporary
-    state.session.questions = [q];
-    state.session.currentIndex = 0;
+    // Attach it to state instead of hijacking the session
+    state.reportQuestion = q;
     
     // Check if already reported
     const reportedQs = JSON.parse(localStorage.getItem('mrh_reported_qs') || '[]');
@@ -2122,3 +2124,18 @@ function formatQuestionText(text) {
     formatted = formatted.replace(/(?:\s|^)(I{1,3}\.|IV\.|V\.|VI{1,3}\.|IX\.|X\.)\s/g, '<br><br><span class="font-bold text-brand-600 dark:text-brand-400">$1</span> ');
     return formatted;
 }
+
+window.addEventListener('DOMContentLoaded', () => {
+    const mainEl = document.querySelector('main');
+    if (mainEl) {
+        mainEl.addEventListener('scroll', (e) => {
+            if (document.getElementById('view-deck-review').classList.contains('active') && currentReviewSubject) {
+                if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
+                state.prefs.studyProgress[currentReviewSubject] = e.target.scrollTop;
+
+                clearTimeout(window.scrollSaveTimeout);
+                window.scrollSaveTimeout = setTimeout(() => saveState(), 1000);
+            }
+        });
+    }
+});

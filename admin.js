@@ -1,6 +1,7 @@
 let adminState = {
     token: "",
-    subjects: []
+    subjects: [],
+    reports: []
 };
 
 async function adminLogin() {
@@ -179,8 +180,9 @@ function renderAdminSubjectList() {
                                 id="new-subj-${subj.index}" 
                                 value="${escapeHTML(subj.originalFull)}" 
                                 maxlength="100"
-                                oninput="document.getElementById('char-count-${subj.index}').innerText = this.value.length + '/100'; 
-                                        this.value.length >= 90 ? this.previousElementSibling.classList.add('text-red-500') : this.previousElementSibling.classList.remove('text-red-500');"
+                                oninput="const countEl = document.getElementById('char-count-${subj.index}');
+                                countEl.innerText = this.value.length + '/100';
+                                this.value.length >= 90 ? countEl.classList.add('text-red-500') : countEl.classList.remove('text-red-500');"
                                 class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-brand-500 focus:ring-2 outline-none transition-all">
                         
                         <div class="flex justify-between items-end mt-3 mb-1">
@@ -247,9 +249,14 @@ async function saveAdminChanges() {
         const originalName = cat.Subject;
         const originalPass = cat.Password || cat.password || "";
         
-        const newName = document.getElementById(`new-subj-${index}`).value.trim() || originalName; 
-        const deckPass = document.getElementById(`deck-pass-${index}`).value.trim();
-        
+        const newNameInput = document.getElementById(`new-subj-${index}`);
+        const deckPassInput = document.getElementById(`deck-pass-${index}`);
+
+        if (!newNameInput || !deckPassInput) return;
+
+        const newName = newNameInput.value.trim() || originalName; 
+        const deckPass = deckPassInput.value.trim();
+
         if (newName !== originalName || deckPass !== originalPass) {
             updates.push({ 
                 oldName: originalName, 
@@ -290,79 +297,85 @@ async function saveAdminChanges() {
 }
 
 async function adminLoadReports() {
-        const container = document.getElementById('admin-reports-list');
-        container.innerHTML = `<p class="text-center text-gray-500 py-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading reports...</p>`;
-        
-        try {
-            const response = await fetch(DB_URL, {
-                method: 'POST',
-                headers: { "Content-Type": "text/plain;charset=utf-8" }, // ADD THIS LINE
-                body: JSON.stringify({ type: "get_reports", role: "admin", token: adminState.token })
-            });
-            const reports = await response.json();
+    const container = document.getElementById('admin-reports-list');
+    container.innerHTML = `<p class="text-center text-gray-500 py-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading reports...</p>`;
+    
+    try {
+        const response = await fetch(DB_URL, {
+            method: 'POST',
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ type: "get_reports", role: "admin", token: adminState.token })
+        });
+        const reports = await response.json();
 
-            if (reports.length === 0) {
-                container.innerHTML = `<div class="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-xl text-center text-gray-500">No reports found in the database.</div>`;
-                return;
-            }
+        if (reports.length === 0) {
+            container.innerHTML = `<div class="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-xl text-center text-gray-500">No reports found in the database.</div>`;
+            return;
+        }
 
-            let html = '';
-            reports.forEach(r => {
-                if(r.status === 'Resolved') return; // Only show pending in admin dashboard to keep it clean
+        // Store reports in state so we can access full details in the modal
+        adminState.reports = reports; 
 
-                html += `
-                    <div class="bg-white dark:bg-gray-800 p-5 rounded-xl border-l-4 border-yellow-500 shadow-sm relative group">
-                        <div class="flex justify-between items-start mb-2">
-                            <span class="text-xs font-mono text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">ID: ${escapeHTML(r.questionId)}</span>
-                            <span class="text-xs text-gray-400">${new Date(r.timestamp).toLocaleString()}</span>
-                        </div>
-                        <div class="text-xs text-brand-500 font-bold uppercase tracking-wider mb-1">${escapeHTML(r.subject)}</div>
-                        <h4 class="font-bold text-gray-800 dark:text-gray-100 mb-2">${escapeHTML(r.errorType)}</h4>
-                        <div class="bg-gray-50 dark:bg-gray-900 p-3 rounded-lg text-sm text-gray-700 dark:text-gray-300 mb-3 border border-gray-200 dark:border-gray-700">
-                            <strong>Q:</strong> ${escapeHTML(r.questionText)}
-                        </div>
-                        ${r.comments ? `<p class="text-sm text-gray-600 dark:text-gray-400 mb-4 bg-yellow-50 dark:bg-yellow-900/10 p-2 rounded border border-yellow-100 dark:border-yellow-900/30"><i class="fa-solid fa-comment text-yellow-600 mr-2"></i>${escapeHTML(r.comments)}</p>` : ''}
-                        
-                        <div class="flex gap-2">
-                            <button onclick="adminActionReport('${r.id}', 'resolve')" class="flex-1 bg-green-500 text-white px-4 py-2 rounded font-bold hover:bg-green-600 shadow-sm active:scale-95 transition-all"><i class="fa-solid fa-check mr-2"></i> Mark Resolved</button>
-                            <button onclick="adminActionReport('${r.id}', 'delete')" class="bg-red-100 text-red-600 px-4 py-2 rounded font-bold hover:bg-red-200 shadow-sm active:scale-95 transition-all" title="Hard Delete from Sheet"><i class="fa-solid fa-trash-can"></i></button>
-                        </div>
+        let html = '';
+        reports.forEach(r => {
+            if(r.status === 'Resolved') return;
+
+            html += `
+                <div class="bg-white dark:bg-gray-800 p-5 rounded-xl border-l-4 border-yellow-500 shadow-sm relative group mb-4">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-xs font-mono text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">ID: ${escapeHTML(r.questionId)}</span>
+                        <span class="text-xs text-gray-400">${new Date(r.timestamp).toLocaleString()}</span>
                     </div>
-                `;
-            });
-            
-            container.innerHTML = html || `<div class="text-center text-green-500 py-4 font-bold"><i class="fa-solid fa-check-circle mr-2"></i>All caught up! No pending reports.</div>`;
-        } catch (e) {
-            container.innerHTML = `<div class="text-red-500 text-center">Failed to fetch admin reports.</div>`;
-        }
-    }
-
-    async function adminActionReport(reportId, action) {
-        if (action === 'delete' && !confirm("Are you sure you want to permanently delete this report from Google Sheets? (Users will not see it as 'Resolved')")) return;
+                    <div class="text-xs text-brand-500 font-bold uppercase tracking-wider mb-1">${escapeHTML(r.subject)}</div>
+                    <h4 class="font-bold text-gray-800 dark:text-gray-100 mb-2">${escapeHTML(r.errorType)}</h4>
+                    <div class="bg-gray-50 dark:bg-gray-900 p-3 rounded-lg text-sm text-gray-700 dark:text-gray-300 mb-3 border border-gray-200 dark:border-gray-700">
+                        <strong>Q:</strong> ${escapeHTML(r.questionText)}
+                    </div>
+                    ${r.comments ? `<p class="text-sm text-gray-600 dark:text-gray-400 mb-4 bg-yellow-50 dark:bg-yellow-900/10 p-2 rounded border border-yellow-100 dark:border-yellow-900/30"><i class="fa-solid fa-comment text-yellow-600 mr-2"></i>${escapeHTML(r.comments)}</p>` : ''}
+                    
+                    <div class="flex gap-2 flex-wrap">
+                        <!-- ADDED: Edit Question Button -->
+                        <button onclick="openEditModal('${r.id}')" class="flex-1 bg-blue-500 text-white px-4 py-2 rounded font-bold hover:bg-blue-600 shadow-sm active:scale-95 transition-all"><i class="fa-solid fa-pen mr-2"></i> Edit Data</button>
+                        
+                        <button onclick="adminActionReport('${r.id}', 'resolve')" class="flex-1 bg-green-500 text-white px-4 py-2 rounded font-bold hover:bg-green-600 shadow-sm active:scale-95 transition-all"><i class="fa-solid fa-check mr-2"></i> Mark Resolved</button>
+                        <button onclick="adminActionReport('${r.id}', 'delete')" class="bg-red-100 text-red-600 px-4 py-2 rounded font-bold hover:bg-red-200 shadow-sm active:scale-95 transition-all" title="Hard Delete from Sheet"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>
+                </div>
+            `;
+        });
         
-        try {
-            const response = await fetch(DB_URL, {
-                method: 'POST',
-                headers: { "Content-Type": "text/plain;charset=utf-8" }, // ADD THIS LINE
-                body: JSON.stringify({
-                    type: "admin_resolve_report",
-                    token: adminState.token,
-                    reportId: reportId,
-                    action: action
-                })
-            });
-            
-            const result = await response.json();
-            if (result.status === "success") {
-                alert(action === 'resolve' ? "Report marked as resolved! Users will see this status for 24 hours." : "Report permanently deleted.");
-                adminLoadReports(); // Refresh the list
-            } else {
-                alert("Failed: " + result.message);
-            }
-        } catch (e) {
-            alert("Network error.");
-        }
+        container.innerHTML = html || `<div class="text-center text-green-500 py-4 font-bold"><i class="fa-solid fa-check-circle mr-2"></i>All caught up! No pending reports.</div>`;
+    } catch (e) {
+        container.innerHTML = `<div class="text-red-500 text-center">Failed to fetch admin reports.</div>`;
     }
+}
+
+async function adminActionReport(reportId, action) {
+    if (action === 'delete' && !confirm("Are you sure you want to permanently delete this report from Google Sheets? (Users will not see it as 'Resolved')")) return;
+    
+    try {
+        const response = await fetch(DB_URL, {
+            method: 'POST',
+            headers: { "Content-Type": "text/plain;charset=utf-8" }, // ADD THIS LINE
+            body: JSON.stringify({
+                type: "admin_resolve_report",
+                token: adminState.token,
+                reportId: reportId,
+                action: action
+            })
+        });
+        
+        const result = await response.json();
+        if (result.status === "success") {
+            alert(action === 'resolve' ? "Report marked as resolved! Users will see this status for 24 hours." : "Report permanently deleted.");
+            adminLoadReports(); // Refresh the list
+        } else {
+            alert("Failed: " + result.message);
+        }
+    } catch (e) {
+        alert("Network error.");
+    }
+}
 
 window.cascadePassword = function(btn) {
     // Find the input box right next to the button
@@ -388,3 +401,99 @@ window.cascadePassword = function(btn) {
     
     alert(`Applied to ${count} deck(s)! You can now customize individual decks below if needed before clicking Save.`);
 };
+
+function openEditModal(reportId) {
+    const report = adminState.reports.find(r => r.id === reportId);
+    if (!report) return;
+
+    document.getElementById('edit-report-id').value = report.id;
+    document.getElementById('edit-question-id').value = report.questionId;
+    
+    document.getElementById('edit-q-text').value = report.questionText || "";
+    document.getElementById('edit-q-optA').value = report.optionA || "";
+    document.getElementById('edit-q-optB').value = report.optionB || "";
+    document.getElementById('edit-q-optC').value = report.optionC || "";
+    document.getElementById('edit-q-optD').value = report.optionD || "";
+    document.getElementById('edit-q-answer').value = report.correctAnswer || "";
+
+    // Handle your custom Tailwind animations
+    const modal = document.getElementById('admin-edit-modal');
+    const inner = modal.querySelector('div');
+    
+    modal.classList.remove('hidden');
+    // small delay allows the display:block to register before applying opacity
+    setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        inner.classList.remove('scale-95');
+    }, 10);
+}
+
+function closeEditModal() {
+    const modal = document.getElementById('admin-edit-modal');
+    const inner = modal.querySelector('div');
+    
+    modal.classList.add('opacity-0');
+    inner.classList.add('scale-95');
+    
+    // Wait for the 300ms transition duration to finish before hiding it from the DOM
+    setTimeout(() => {
+        modal.classList.add('hidden');
+    }, 300);
+}
+
+async function saveEditedQuestion() {
+    const reportId = document.getElementById('edit-report-id').value;
+    const questionId = document.getElementById('edit-question-id').value;
+    
+    const report = adminState.reports.find(r => r.id === reportId);
+    if (!report) {
+        alert("Report reference not found.");
+        return;
+    }
+
+    const saveBtn = document.getElementById('btn-save-edit');
+    const originalText = saveBtn.innerHTML;
+    saveBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving...`;
+    saveBtn.disabled = true;
+
+    const payload = {
+        type: "admin_edit_question",
+        token: adminState.token,
+        subject: report.subject,
+        questionId: questionId,
+        questionText: document.getElementById('edit-q-text').value,
+        optionA: document.getElementById('edit-q-optA').value,
+        optionB: document.getElementById('edit-q-optB').value,
+        optionC: document.getElementById('edit-q-optC').value,
+        optionD: document.getElementById('edit-q-optD').value,
+        correctAnswer: document.getElementById('edit-q-answer').value
+    };
+
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === "success") {
+            alert("Question updated and cache rebuilt successfully!");
+            closeEditModal();
+            
+            // Optionally auto-resolve the report after updating
+            if (typeof resolveReport === "function") {
+                resolveReport(reportId, 'resolve');
+            }
+        } else {
+            alert("Error: " + (result.message || "Failed to update question."));
+        }
+    } catch (err) {
+        console.error("Save error:", err);
+        alert("Network error while trying to save question changes.");
+    } finally {
+        saveBtn.innerHTML = originalText;
+        saveBtn.disabled = false;
+    }
+}

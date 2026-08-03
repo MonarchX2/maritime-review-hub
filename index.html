@@ -425,89 +425,142 @@
             </div>
         </div>
 
-<!-- NEW: DECK PASSWORD MODAL OVERLAY (ADDED FIX) -->
-<div id="deck-password-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
-    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700">
-        
-        <div class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3">
-            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
-                <i class="fa-solid fa-lock text-brand-500 mr-2"></i> Deck Locked
-            </h3>
-            
-            <div class="flex items-center gap-4">
-                <!-- Request Access Link -->
-                <a href="mailto:admin@example.com?subject=Requesting%20Access%20to%20MRH" class="text-sm text-brand-600 hover:text-brand-500 font-bold flex items-center">
-                    <i class="fa-solid fa-envelope mr-1"></i> Request Access
-                </a>
+        <!-- NEW: DECK PASSWORD MODAL OVERLAY (ADDED FIX) -->
+        <div id="deck-password-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700">
                 
-                <!-- Close Button -->
-                <button onclick="closeDeckPasswordModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                    <i class="fa-solid fa-xmark text-xl"></i>
-                </button>
+                <div class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3">
+                    <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+                        <i class="fa-solid fa-lock text-brand-500 mr-2"></i> Deck Locked
+                    </h3>
+                    
+                    <div class="flex items-center gap-4">
+                        <!-- Request Access Link -->
+                        <a href="mailto:admin@example.com?subject=Requesting%20Access%20to%20MRH" class="text-sm text-brand-600 hover:text-brand-500 font-bold flex items-center">
+                            <i class="fa-solid fa-envelope mr-1"></i> Request Access
+                        </a>
+                        
+                        <!-- Close Button -->
+                        <button onclick="closeDeckPasswordModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                            <i class="fa-solid fa-xmark text-xl"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <p id="deck-password-message" class="text-sm text-gray-600 dark:text-gray-300 mb-4">This deck requires a password to access.</p>
+                
+                <div class="relative w-full mb-6">
+                    <!-- Input is type="password" initially -->
+                    <input type="password" id="deck-password-input" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 pr-12" placeholder="Enter Password">
+                    
+                    <!-- Eye Toggle Button -->
+                    <button onclick="togglePasswordVisibility('deck-password-input', this)" class="absolute right-3 top-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+                        <i class="fa-solid fa-eye text-lg"></i>
+                    </button>
+                </div>
+                
+                <div class="flex gap-3">
+                    <button onclick="closeDeckPasswordModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all">Cancel</button>
+                    <!-- In app.js, your download logic should hook into this button -->
+                    <button id="btn-submit-deck-password" class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center">Unlock</button>
+                </div>
             </div>
         </div>
-        
-        <p id="deck-password-message" class="text-sm text-gray-600 dark:text-gray-300 mb-4">This deck requires a password to access.</p>
-        
-        <div class="relative w-full mb-6">
-            <!-- Input is type="password" initially -->
-            <input type="password" id="deck-password-input" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 pr-12" placeholder="Enter Password">
-            
-            <!-- Eye Toggle Button -->
-            <button onclick="togglePasswordVisibility('deck-password-input', this)" class="absolute right-3 top-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
-                <i class="fa-solid fa-eye text-lg"></i>
-            </button>
+
+        <!-- NEW: FOLDER PASSWORD MODAL OVERLAY -->
+        <div id="folder-password-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700">
+                
+                <div class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3">
+                    <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+                        <i class="fa-solid fa-folder-closed text-brand-500 mr-2"></i> Folder Locked
+                    </h3>
+
+                        <div class="flex items-center gap-4">
+                            <!-- Request Access Link -->
+                            <a href="mailto:admin@example.com?subject=Requesting%20Access%20to%20MRH" class="text-sm text-brand-600 hover:text-brand-500 font-bold flex items-center">
+                                <i class="fa-solid fa-envelope mr-1"></i> Request Access
+                            </a>
+
+                            <button onclick="closeFolderPasswordModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                <i class="fa-solid fa-xmark text-xl"></i>
+                            </button>
+                        </div>
+                </div>
+                
+                <p class="text-sm text-gray-600 dark:text-gray-300 mb-4" id="folder-password-message">This folder requires a password to view its contents.</p>
+                
+                <div class="relative w-full mb-6">
+                    <!-- Input is type="password" initially -->
+                    <input type="password" id="folder-password-input" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 pr-12" placeholder="Enter Folder Password">
+                    
+                    <!-- Eye Toggle Button -->
+                    <button onclick="togglePasswordVisibility('folder-password-input', this)" class="absolute right-3 top-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+                        <i class="fa-solid fa-eye text-lg"></i>
+                    </button>
+                </div>
+                
+                <div class="flex gap-3">
+                    <button onclick="closeFolderPasswordModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all">Cancel</button>
+                    <!-- Hook this up in app.js to process the folder password -->
+                    <button id="btn-submit-folder-password" class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center">Unlock Folder</button>
+                </div>
+            </div>
         </div>
-        
-        <div class="flex gap-3">
-            <button onclick="closeDeckPasswordModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all">Cancel</button>
-            <!-- In app.js, your download logic should hook into this button -->
-            <button id="btn-submit-deck-password" class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center">Unlock</button>
-        </div>
-    </div>
-</div>
 
-<!-- NEW: FOLDER PASSWORD MODAL OVERLAY -->
-<div id="folder-password-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
-    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700">
-        
-        <div class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3">
-            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
-                <i class="fa-solid fa-folder-closed text-brand-500 mr-2"></i> Folder Locked
-            </h3>
-
-                <div class="flex items-center gap-4">
-                    <!-- Request Access Link -->
-                    <a href="mailto:admin@example.com?subject=Requesting%20Access%20to%20MRH" class="text-sm text-brand-600 hover:text-brand-500 font-bold flex items-center">
-                        <i class="fa-solid fa-envelope mr-1"></i> Request Access
-                    </a>
-
-                    <button onclick="closeFolderPasswordModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+        <!-- ADMIN EDIT QUESTION MODAL -->
+        <div id="admin-edit-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-2xl w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700 max-h-[90vh] overflow-y-auto">
+                
+                <div class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3">
+                    <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+                        <i class="fa-solid fa-pen-to-square text-brand-500 mr-2"></i> Edit Question Data
+                    </h3>
+                    <button onclick="closeEditModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                         <i class="fa-solid fa-xmark text-xl"></i>
                     </button>
                 </div>
-        </div>
-        
-        <p class="text-sm text-gray-600 dark:text-gray-300 mb-4" id="folder-password-message">This folder requires a password to view its contents.</p>
-        
-        <div class="relative w-full mb-6">
-            <!-- Input is type="password" initially -->
-            <input type="password" id="folder-password-input" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 pr-12" placeholder="Enter Folder Password">
-            
-            <!-- Eye Toggle Button -->
-            <button onclick="togglePasswordVisibility('folder-password-input', this)" class="absolute right-3 top-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
-                <i class="fa-solid fa-eye text-lg"></i>
-            </button>
-        </div>
-        
-        <div class="flex gap-3">
-            <button onclick="closeFolderPasswordModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all">Cancel</button>
-            <!-- Hook this up in app.js to process the folder password -->
-            <button id="btn-submit-folder-password" class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center">Unlock Folder</button>
-        </div>
-    </div>
-</div>
+                
+                <input type="hidden" id="edit-report-id">
+                <input type="hidden" id="edit-question-id">
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-semibold mb-2">Question Text</label>
+                        <textarea id="edit-q-text" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 resize-none" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-semibold mb-2">Option A</label>
+                            <input type="text" id="edit-q-optA" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold mb-2">Option B</label>
+                            <input type="text" id="edit-q-optB" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold mb-2">Option C</label>
+                            <input type="text" id="edit-q-optC" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold mb-2">Option D</label>
+                            <input type="text" id="edit-q-optD" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                    </div>
 
+                    <div>
+                        <label class="block text-sm font-semibold mb-2">Correct Answer (e.g., A)</label>
+                        <input type="text" id="edit-q-answer" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button onclick="closeEditModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all">Cancel</button>
+                    <button id="btn-save-edit" onclick="saveEditedQuestion()" class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center">Save Changes</button>
+                </div>
+            </div>
+        </div>
     </main>
 
     <script src="app.js"></script>
