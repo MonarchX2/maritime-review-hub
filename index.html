@@ -43,6 +43,9 @@
             <button id="btn-admin-nav" onclick="navigate('admin')" class="hidden hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="Admin Portal">
                 <i class="fa-solid fa-lock"></i>
             </button>
+            <button onclick="openGeneralFeedbackModal()" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="Submit Feedback" title="Submit App Feedback/Bug">
+    <i class="fa-solid fa-bug"></i>
+</button>
             <!-- View Reports Button -->
             <button onclick="navigate('reports'); loadReports();" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="View Reports" title="Community Reports">
                 <i class="fa-solid fa-flag"></i>
@@ -72,11 +75,18 @@
                 </button>
             </div>
 
-        <!-- Subject Progress Header Row -->
-        <div class="flex flex-row justify-between items-center mb-4 gap-2">
+            <!-- Subject Progress Header Row -->
+            <div class="flex flex-row justify-between items-center mb-4 gap-2">
             <h2 class="text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100 truncate">Subject Progress</h2>
-            
+
             <div class="flex items-center gap-2 flex-shrink-0">
+                <!-- Deck Source Filter (Feature 4) -->
+                <select id="deck-source-filter" onchange="renderCategoryProgress()" class="bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-colors text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 outline-none cursor-pointer">
+                    <option value="all">All Decks</option>
+                    <option value="downloaded">Downloaded</option>
+                    <option value="cloud">Cloud Only</option>
+                </select>
+
                 <!-- Mode Toggle -->
                 <label class="flex items-center cursor-pointer bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-colors">
                     <span id="modeLabel" class="mr-2 text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Quiz</span>
@@ -97,7 +107,7 @@
                     <span id="layout-text">List View</span>
                 </button>
             </div>
-        </div>
+            </div>
             
             <div id="category-list" class="transition-all duration-500">
                 <div id="dashboard-loading" class="flex flex-col items-center justify-center py-12 animate-pulse">
@@ -275,7 +285,7 @@
 
                     <!-- CORRECTED -->
                     <label class="inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="toggle-wrong-choices" class="sr-only peer" onchange="toggleShowWrongChoices()">
+                        <input type="checkbox" id="toggle-wrong-choices" class="sr-only peer" onchange="toggleShowWrongChoices()" checked>
                         <div class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"></div>
                         <span class="ms-3 text-sm font-medium text-gray-700 dark:text-gray-300">Show wrong choices</span>
                     </label>
@@ -332,7 +342,17 @@
             
             <div id="admin-login-section" class="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-sm hover:shadow-lg transition-shadow max-w-md mx-auto border border-gray-100 dark:border-gray-700 animate-card-in">
                 <h2 class="text-xl font-bold mb-4 text-center transition-colors">Authentication Required</h2>
-                <input type="password" id="admin-password" class="w-full p-3 border rounded-lg mb-4 bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-brand-500 transition-all outline-none" placeholder="Enter Admin Password">
+                
+                <!-- Password Input with Toggle -->
+                <div class="relative w-full mb-4">
+                    <input type="password" id="admin-password" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-brand-500 transition-all outline-none pr-12" placeholder="Enter Admin Password">
+                    
+                    <!-- Eye Toggle Button -->
+                    <button type="button" onclick="togglePasswordVisibility('admin-password', this)" class="absolute right-3 top-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+                        <i class="fa-solid fa-eye text-lg"></i>
+                    </button>
+                </div>
+
                 <button id="btn-admin-login" onclick="adminLogin()" class="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 hover:-translate-y-1 hover:shadow-lg active:scale-95 transition-all duration-300">Log In</button>                
                 <p id="admin-login-error" class="text-red-500 text-sm mt-3 hidden text-center animate-bounce">Incorrect password.</p>
             </div>
@@ -371,57 +391,111 @@
             </div>
         </section>
 
-        <!-- REPORT MODAL OVERLAY -->
-        <div id="report-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
-            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700">
-                <div class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3">
-                    <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100"><i class="fa-solid fa-flag text-red-500 mr-2"></i> Report Question Error</h3>
-                    <button onclick="closeReportModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><i class="fa-solid fa-xmark text-xl"></i></button>
+        <!-- Feature 1: Edit Report Modal (Instructions instead of email) -->
+        <div id="report-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden opacity-0 transition-opacity duration-300 flex items-center justify-center p-4">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 flex flex-col max-h-[90vh]">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100"><i class="fa-solid fa-flag text-red-500 mr-2"></i> Report Question</h3>
+                    <button onclick="closeReportModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
                 </div>
-                
-                <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Please specify the issue. False or spam reports will be ignored.</p>
-                
-                <label class="block text-sm font-semibold mb-2">Error Type</label>
-                <select id="report-type" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white mb-4 focus:ring-2 focus:ring-brand-500 outline-none">
-                    <option value="" disabled selected>Select an issue...</option>
-                    <option value="Incorrect Answer Key">Incorrect Answer Key</option>
-                    <option value="Incomplete/Missing Choices">Incomplete/Missing Choices</option>
-                    <option value="Typo / Grammatical Error">Typo / Grammatical Error</option>
-                    <option value="Ambiguous / Unclear Question">Ambiguous / Unclear Question</option>
-                    <option value="Missing or Broken Image">Missing or Broken Image</option>
-                    <option value="Other">Other</option>
-                </select>
-
-                <label class="block text-sm font-semibold mb-2">Additional Comments (Optional)</label>
-                <textarea id="report-comments" rows="3" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white mb-6 focus:ring-2 focus:ring-brand-500 outline-none resize-none" placeholder="Briefly describe what needs fixing..."></textarea>
-                
-                <div class="flex gap-3">
-                    <button onclick="closeReportModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all">Cancel</button>
-                    <button id="btn-submit-report" onclick="submitReport()" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center">Submit Report</button>
+                <p class="text-sm text-gray-600 dark:text-gray-300 mb-4 bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-100 dark:border-gray-600">
+                    <i class="fa-solid fa-circle-info text-blue-500 mr-1"></i> <strong>Instructions:</strong> Describe the issue clearly. This report will be publicly visible.
+                </p>
+                <div class="space-y-4 overflow-y-auto pr-2">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Error Type *</label>
+                        <select id="report-type" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-200 outline-none">
+                            <option value="" disabled selected>Select an issue...</option>
+                            <option value="Incorrect Answer Key">Incorrect Answer Key</option>
+                            <option value="Incomplete/Missing Choices">Incomplete/Missing Choices</option>
+                            <option value="Typo / Grammatical Error">Typo / Grammatical Error</option>
+                            <option value="Ambiguous / Unclear Question">Ambiguous / Unclear Question</option>
+                            <option value="Missing or Broken Image">Missing or Broken Image</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Comments</label>
+                        <textarea id="report-comments" rows="3" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-200 outline-none resize-none" placeholder="Provide details..."></textarea>
+                    </div>
+                </div>
+                <div class="mt-6 flex justify-end gap-3 border-t border-gray-100 dark:border-gray-700 pt-4">
+                    <button onclick="closeReportModal()" class="px-5 py-2.5 rounded-xl font-bold bg-gray-100 hover:bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300 transition-colors">Cancel</button>
+                    <button id="btn-submit-report" onclick="submitReport()" class="px-5 py-2.5 rounded-xl font-bold text-white bg-red-500 hover:bg-red-600 transition-colors shadow-md">Submit</button>
                 </div>
             </div>
         </div>
 
-        <!-- SESSION SETTINGS MODAL OVERLAY -->
-        <div id="session-settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
-            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700">
-                <div class="flex justify-between items-center mb-6 border-b dark:border-gray-700 pb-3">
-                    <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100"><i class="fa-solid fa-sliders text-brand-500 mr-2"></i> Session Settings</h3>
-                    <button onclick="closeSessionSettingsModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><i class="fa-solid fa-xmark text-xl"></i></button>
+        <!-- Feature 10: General App Bug Report Modal -->
+        <div id="feedback-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden opacity-0 transition-opacity duration-300 flex items-center justify-center p-4">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100"><i class="fa-solid fa-bug text-brand-500 mr-2"></i> Report App Bug / Feedback</h3>
+                    <button onclick="closeGeneralFeedbackModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                </div>
+                <textarea id="feedback-comments" rows="4" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-200 outline-none resize-none mb-4" placeholder="Describe the issue or feature request..."></textarea>
+                <div class="flex justify-end gap-3">
+                    <button onclick="closeGeneralFeedbackModal()" class="px-5 py-2.5 rounded-xl font-bold bg-gray-100 hover:bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300 transition-colors">Cancel</button>
+                    <button id="btn-submit-feedback" onclick="submitGeneralFeedback()" class="px-5 py-2.5 rounded-xl font-bold text-white bg-brand-500 hover:bg-brand-600 transition-colors">Submit</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Combined Session Settings Modal -->
+        <div id="session-settings-modal" class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 border border-gray-200 dark:border-gray-700">
+                
+                <!-- Header -->
+                <div class="flex justify-between items-center mb-6 border-b border-gray-100 dark:border-gray-700 pb-3">
+                    <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+                        <i class="fa-solid fa-sliders text-brand-500 mr-2"></i> Session Settings
+                    </h3>
+                    <button onclick="closeSessionSettingsModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
                 </div>
                 
-                <div class="flex justify-between items-center mb-6">
-                    <div class="pr-4">
-                        <span class="block text-sm font-bold text-gray-800 dark:text-gray-200">Active Recall Mode</span>
-                        <span class="text-xs text-gray-500">Hide choices initially to test your memory.</span>
+                <!-- Settings Options -->
+                <div class="space-y-6 mb-6">
+                    
+                    <!-- Active Recall Toggle -->
+                    <div class="flex justify-between items-center">
+                        <div class="pr-4">
+                            <span class="block text-sm font-bold text-gray-800 dark:text-gray-200">Active Recall Mode</span>
+                            <span class="text-xs text-gray-500">Hide choices initially to test your memory.</span>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="toggle-active-recall" class="sr-only peer" onchange="toggleActiveRecall()" checked>
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"></div>
+                        </label>
                     </div>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="toggle-active-recall" class="sr-only peer" onchange="toggleActiveRecall()">
-                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"></div>
-                    </label>
+
+                    <!-- Shuffle Choices Toggle -->
+                    <div class="flex justify-between items-center">
+                        <div class="pr-4">
+                            <span class="block text-sm font-bold text-gray-800 dark:text-gray-200">Shuffle Choices</span>
+                            <span class="text-xs text-gray-500">Randomize the order of multiple-choice answers.</span>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="toggle-shuffle-choices" class="sr-only peer" onchange="toggleShuffleChoices()" checked>
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"></div>
+                        </label>
+                    </div>
+
+                    <!-- Question Type Override Dropdown -->
+                    <div class="flex flex-col gap-2 pt-4 border-t border-gray-100 dark:border-gray-700">
+                        <label class="text-sm font-bold text-gray-800 dark:text-gray-200">Question Type Override</label>
+                        <select id="toggle-question-type" onchange="changeQuestionTypeMode(this.value)" class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2.5 text-sm text-gray-700 dark:text-gray-200 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors">
+                            <option value="auto">Auto (Mixed)</option>
+                            <option value="ident">Identification Only</option>
+                        </select>
+                    </div>
+                    
                 </div>
-                
-                <button onclick="closeSessionSettingsModal()" class="w-full bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95">Done</button>
             </div>
         </div>
 

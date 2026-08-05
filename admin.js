@@ -328,15 +328,29 @@ async function adminLoadReports() {
                     </div>
                     <div class="text-xs text-brand-500 font-bold uppercase tracking-wider mb-1">${escapeHTML(r.subject)}</div>
                     <h4 class="font-bold text-gray-800 dark:text-gray-100 mb-2">${escapeHTML(r.errorType)}</h4>
-                    <div class="bg-gray-50 dark:bg-gray-900 p-3 rounded-lg text-sm text-gray-700 dark:text-gray-300 mb-3 border border-gray-200 dark:border-gray-700">
-                        <strong>Q:</strong> ${escapeHTML(r.questionText)}
+                    
+                    <!-- UPDATED: Question Context with Choices and Answer -->
+                    <div class="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg text-sm text-gray-700 dark:text-gray-300 mb-3 border border-gray-200 dark:border-gray-700">
+                        <div class="mb-3">
+                            <strong class="text-gray-900 dark:text-white">Q:</strong> ${escapeHTML(r.questionText || 'N/A')}
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 py-3 border-t border-gray-200 dark:border-gray-700 text-xs">
+                            <div class="truncate" title="${escapeHTML(r.optionA || '')}"><strong class="text-gray-500 mr-1">A:</strong> ${escapeHTML(r.optionA || 'N/A')}</div>
+                            <div class="truncate" title="${escapeHTML(r.optionB || '')}"><strong class="text-gray-500 mr-1">B:</strong> ${escapeHTML(r.optionB || 'N/A')}</div>
+                            <div class="truncate" title="${escapeHTML(r.optionC || '')}"><strong class="text-gray-500 mr-1">C:</strong> ${escapeHTML(r.optionC || 'N/A')}</div>
+                            <div class="truncate" title="${escapeHTML(r.optionD || '')}"><strong class="text-gray-500 mr-1">D:</strong> ${escapeHTML(r.optionD || 'N/A')}</div>
+                        </div>
+
+                        <div class="pt-3 border-t border-gray-200 dark:border-gray-700">
+                            <strong class="text-green-600 dark:text-green-400 mr-1">Answer:</strong> ${escapeHTML(r.correctAnswer || 'N/A')}
+                        </div>
                     </div>
+
                     ${r.comments ? `<p class="text-sm text-gray-600 dark:text-gray-400 mb-4 bg-yellow-50 dark:bg-yellow-900/10 p-2 rounded border border-yellow-100 dark:border-yellow-900/30"><i class="fa-solid fa-comment text-yellow-600 mr-2"></i>${escapeHTML(r.comments)}</p>` : ''}
                     
                     <div class="flex gap-2 flex-wrap">
-                        <!-- ADDED: Edit Question Button -->
                         <button onclick="openEditModal('${r.id}')" class="flex-1 bg-blue-500 text-white px-4 py-2 rounded font-bold hover:bg-blue-600 shadow-sm active:scale-95 transition-all"><i class="fa-solid fa-pen mr-2"></i> Edit Data</button>
-                        
                         <button onclick="adminActionReport('${r.id}', 'resolve')" class="flex-1 bg-green-500 text-white px-4 py-2 rounded font-bold hover:bg-green-600 shadow-sm active:scale-95 transition-all"><i class="fa-solid fa-check mr-2"></i> Mark Resolved</button>
                         <button onclick="adminActionReport('${r.id}', 'delete')" class="bg-red-100 text-red-600 px-4 py-2 rounded font-bold hover:bg-red-200 shadow-sm active:scale-95 transition-all" title="Hard Delete from Sheet"><i class="fa-solid fa-trash-can"></i></button>
                     </div>

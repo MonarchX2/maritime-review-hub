@@ -13,8 +13,6 @@ let state = {
 
 let chartInstance = null;
 let syncAbortController = null;
-
-// Add a simple UUID generator for telemetry tracking
 function generateUserId() {
     if (window.crypto && window.crypto.randomUUID) {
         return "user_" + crypto.randomUUID();
@@ -25,12 +23,8 @@ function generateUserId() {
         crypto.getRandomValues(bytes);
         return "user_" + [...bytes].map(b => b.toString(16).padStart(2, "0")).join("");
     }
-
-    // Ultimate fallback for non-secure contexts
     return "user_" + Math.random().toString(36).substring(2, 15);
 }
-
-// Ensure prefs has a userId
 if (!state.prefs.userId) {
     state.prefs.userId = generateUserId();
 }
@@ -79,7 +73,6 @@ async function loadState() {
     try {
         const savedDb = await idbKeyval.get('mrh_db');
         if (savedDb) {
-            // MIGRATION: Ensure all existing DB items use the new unique ID format
             state.db = savedDb.map(q => {
                 if (q.ID && !q.ID.toString().includes('::')) {
                     let cleanId = q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, '');
@@ -106,11 +99,11 @@ async function loadState() {
 
     }
 
-} catch (e) {
+        } catch (e) {
 
     console.error("Invalid preferences.", e);
 
-}
+        }
 
     if (!state.stats.subjectAccuracy) state.stats.subjectAccuracy = {};
     if (state.prefs.darkMode) document.documentElement.classList.add('dark');
@@ -119,15 +112,6 @@ async function loadState() {
     populateFilters();
     updateDashboard();
     updateThemeButton();
-
-    if (!localStorage.getItem('mrh_sync_prompted')) {
-        setTimeout(() => {
-            if (confirm("Would you like to sync your progress between devices? You can create a simple username/password to save your statistics to the cloud.")) {
-                navigate('sync');
-            }
-            localStorage.setItem('mrh_sync_prompted', 'true');
-        }, 3000); // Waits 3 seconds after dashboard load
-    }
 }
 
 async function saveState() {
@@ -176,15 +160,12 @@ function navigate(viewId) {
     if (viewId === 'settings') {
         settingsClickCount++;
         clearTimeout(settingsClickTimeout);
-
-        // If clicked 5 times, show the button
         if (settingsClickCount >= 5) {
             const adminBtn = document.getElementById('btn-admin-nav');
             adminBtn.classList.remove('hidden');
-            adminBtn.classList.add('animate-card-in'); // Adds a nice fade-in animation
-            settingsClickCount = 0; // Reset counter after unlocking
+            adminBtn.classList.add('animate-card-in');
+            settingsClickCount = 0;
         } else {
-            // Reset the counter if they stop clicking for 2 seconds
             settingsClickTimeout = setTimeout(() => {
                 settingsClickCount = 0;
             }, 2000);
@@ -208,6 +189,8 @@ function navigate(viewId) {
     if (viewId === 'admin' && adminState.token) {
         loadAdminSubjects();
     }
+
+    sendTelemetry('navigate', { view: viewId });
 }
 
 async function syncDatabase() {
@@ -296,17 +279,12 @@ function populateFilters() {
 
 function prepareSessionPool(pool) {
     let randomizedPool = [...pool];
-
-    // Only shuffle the question order if the preference is true
     if (state.prefs.shuffleQuestions !== false) {
         randomizedPool = shuffleArray(randomizedPool);
     }
-
-    // Basic SRS: Sort questions so those in the 'mistakes' array have a higher chance of appearing first
     randomizedPool.sort((a, b) => {
         const aIsMistake = state.stats.mistakes.includes(a.ID);
         const bIsMistake = state.stats.mistakes.includes(b.ID);
-        // 70% chance to bump a mistake up if compared against a non-mistake
         if (aIsMistake && !bIsMistake) return Math.random() > 0.3 ? -1 : 1;
         if (!aIsMistake && bIsMistake) return Math.random() > 0.3 ? 1 : -1;
         return 0;
@@ -315,19 +293,17 @@ function prepareSessionPool(pool) {
     return randomizedPool.map(originalQ => {
         let q = { ...originalQ };
         let validChoices = [];
-
-        // Safely extract choices, strictly ignoring undefined/empty strings
         const rawChoices = [q.ChoiceA, q.ChoiceB, q.ChoiceC, q.ChoiceD];
         rawChoices.forEach(c => {
             if (c !== undefined && c !== null && String(c).trim() !== "" && String(c).trim().toLowerCase() !== "undefined") {
-                validChoices.push(String(c).trim()); // SANITIZED
+                validChoices.push(String(c).trim());
             }
         });
 
         let originalAns = String(q.Answer || "").trim().toUpperCase();
         let correctText = "";
         if (['A', 'B', 'C', 'D'].includes(originalAns)) {
-            correctText = String(originalQ[`Choice${originalAns}`] || "").trim(); // SANITIZED
+            correctText = String(originalQ[`Choice${originalAns}`] || "").trim();
         } else {
             correctText = String(q.Answer || "").trim();
         }
@@ -341,8 +317,6 @@ function prepareSessionPool(pool) {
             q.ChoiceB = validChoices[1] || "";
             q.ChoiceC = validChoices[2] || "";
             q.ChoiceD = validChoices[3] || "";
-
-            // Re-map correct Answer using strict trim matching
             if (q.ChoiceA.trim() === correctText) q.Answer = 'A';
             else if (q.ChoiceB.trim() === correctText) q.Answer = 'B';
             else if (q.ChoiceC.trim() === correctText) q.Answer = 'C';
@@ -388,6 +362,7 @@ if (typeof stopVisualTimer === "function") {
 
     renderQuestion();
     saveSessionProgress();
+    sendTelemetry('start_session', { subject: filterVal, poolSize: pool.length });
 }
 
 function renderQuestion() {
@@ -399,22 +374,22 @@ function renderQuestion() {
     const totalCards = state.session.questions.length;
     document.getElementById('session-progress-text').innerText = `${currentCard} / ${totalCards}`;
     document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / totalCards) * 100}%`;
-    // --- NEW SUBJECT TRIMMING LOGIC ---
     const fullSubject = q.Subject || 'General';
     const parts = String(fullSubject).split("::");
 
 document.getElementById("q-subject").innerText =
 parts.length >= 2
     ? parts.slice(-2).join(" :: ")
-    : fullSubject;    // ----------------------------------
+    : fullSubject;
 
-    let displayId =
-q.ID ??
-`Q-${state.session.currentIndex + 1}`;
-    if (displayId.includes('::')) {
-        displayId = displayId.split('::').pop();
-    }
-    document.getElementById('q-id').innerText = displayId;
+let displayId = q.ID ?? `Q-${state.session.currentIndex + 1}`;
+
+if (displayId.includes('::')) {
+    const match = displayId.match(/::.*?\b(\d+)\s*$/);
+    displayId = match ? match[1] : displayId.split('::').pop();
+}
+
+document.getElementById('q-id').innerText = "Question " + displayId;
 
     document.getElementById('q-text').innerHTML = formatQuestionText(q.Question);
 
@@ -429,62 +404,39 @@ imgEl.onerror = () => {
     imgEl.classList.add("hidden");
 };
 
-imgEl.src = q.ImageURL;        imgEl.alt = q.Question ? `Reference for: ${q.Question.substring(0, 50)}...` : "Question reference image";
+imgEl.src = q.ImageURL;        
+imgEl.alt = q.Question ? `Reference for: ${q.Question.substring(0, 50)}...` : "Question reference image";
         imgEl.classList.remove('hidden');
     } else {
         imgEl.classList.add('hidden');
     }
 
-    const choices = ['A', 'B', 'C', 'D'];
+const choices = ['A', 'B', 'C', 'D'];
     let validChoicesCount = 0;
+    const isForcedIdent = state.prefs.qTypeOverride === 'ident';
 
-    // Count valid choices
-    choices.forEach(ch => {
-        const choiceText = q[`Choice${ch}`];
-        if (choiceText && choiceText.trim() !== "" && choiceText.toLowerCase() !== "undefined") {
-            validChoicesCount++;
-        }
-    });
-
-    // Render choice buttons (Removed the misplaced active recall logic from here)
     choices.forEach(ch => {
         const choiceText = q[`Choice${ch}`];
         const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
-
         const cleanChoice = String(choiceText ?? "").trim();
 
-if (
-    cleanChoice === "" ||
-    cleanChoice.toLowerCase() === "undefined"
-) {
+        if (cleanChoice === "" || cleanChoice.toLowerCase() === "undefined") {
             btn.classList.add('hidden');
         } else {
+            validChoicesCount++;
             btn.classList.remove('hidden');
-            document.getElementById(
-    `choice-${ch.toLowerCase()}-text`
-).textContent = cleanChoice;
-
+            document.getElementById(`choice-${ch.toLowerCase()}-text`).innerHTML = formatQuestionText(cleanChoice);
+            
             btn.onclick = () => {
-
-    if (btn.disabled) return;
-
-    btn.disabled = true;
-
-    submitPracticeAnswer(ch, q.Answer);
-
-};
-            btn.classList.remove(
-    "selected-correct",
-    "selected-wrong",
-    "dimmed",
-    "hidden"
-);
-
-btn.disabled = false;
+                if (btn.disabled) return;
+                btn.disabled = true;
+                submitPracticeAnswer(ch, q.Answer);
+            };
+            btn.classList.remove("selected-correct", "selected-wrong", "dimmed", "hidden");
+            btn.disabled = false;
         }
     });
 
-    // Grab elements AFTER the loop
     const qChoicesContainer = document.getElementById('q-choices');
     const activeRecallMask = document.getElementById('active-recall-mask');
     const expBox = document.getElementById('q-explanation-box');
@@ -494,48 +446,49 @@ btn.disabled = false;
 
     btnPrev.disabled = state.session.currentIndex <= 0;
 
-    // Apply Active Recall / Answered State logic ONCE at the end
     if (userAnswer) {
         if (activeRecallMask) activeRecallMask.classList.add('hidden');
+        
         qChoicesContainer.classList.remove('hidden');
-
         showExplanation(q);
-        btnNext.disabled = false;
-        btnReveal.disabled = true;
-
-        // --- RESTORE THIS MISSING LOGIC BLOCK ---
-        qChoicesContainer
-.querySelectorAll(".choice-btn")
-.forEach(btn => {
-            btn.onclick = null; // Prevent changing answers
+        
+        qChoicesContainer.querySelectorAll(".choice-btn").forEach(btn => {
+            btn.onclick = null; 
             const choice = btn.dataset.choice;
 
             if (choice === q.Answer) {
                 btn.classList.add('selected-correct');
-            } else if (choice === userAnswer) {
-                btn.classList.add('selected-wrong');
+                btn.classList.remove('hidden'); // Always ensure the correct answer is visible
             } else {
-                btn.classList.add('dimmed');
+                // FIX: Hide wrong answers entirely if in Identification Mode
+                if (isForcedIdent) {
+                    btn.classList.add('hidden'); 
+                } else {
+                    // Standard MCQ behavior
+                    if (choice === userAnswer) {
+                        btn.classList.add('selected-wrong');
+                    } else {
+                        btn.classList.add('dimmed');
+                    }
+                }
             }
         });
-        // ----------------------------------------
+
+        btnNext.disabled = false;
+        btnReveal.disabled = true;
 
     } else {
         expBox.classList.add('hidden');
         btnNext.disabled = true;
         btnReveal.disabled = false;
-        // ... (keep the rest of your else block identical)
 
-        if (validChoicesCount <= 1) {
-            // It's a flashcard (no choices to hide)
+        if (validChoicesCount <= 1 || isForcedIdent) {
             if (activeRecallMask) activeRecallMask.classList.add('hidden');
             qChoicesContainer.classList.add('hidden');
         } else {
-            // It's multiple choice: Check Active Recall Preference
-            const activeRecallEnabled =
-Boolean(state.prefs.activeRecall);
+            const activeRecallEnabled = Boolean(state.prefs.activeRecall);
 
-if (activeRecallEnabled) {
+            if (activeRecallEnabled) {
                 if (activeRecallMask) activeRecallMask.classList.remove('hidden');
                 qChoicesContainer.classList.add('hidden');
             } else {
@@ -547,18 +500,15 @@ if (activeRecallEnabled) {
 }
 
 function enterFolder(folderName, isLockedFolder) {
-    // 1. Construct the full path string (e.g., "BSMT::3.1::Prelims")
     const fullPath = state.currentPath && state.currentPath.length > 0
         ? state.currentPath.join("::") + "::" + folderName
         : folderName;
 
-    // 2. Use the passed argument directly instead of searching the undefined state object
     if (isLockedFolder) {
         openFolderPasswordModal(fullPath, folderName);
         return; 
     }
 
-    // 3. If it's NOT locked, proceed normally
     if (!state.currentPath) state.currentPath = [];
     state.currentPath.push(folderName);
     renderCategoryProgress();
@@ -567,9 +517,9 @@ function enterFolder(folderName, isLockedFolder) {
 function goToPath(index) {
     if (!state.currentPath) state.currentPath = [];
     if (index === -1) {
-        state.currentPath = []; // Go to Root/Home
+        state.currentPath = [];
     } else {
-        state.currentPath = state.currentPath.slice(0, index + 1); // Go to specific breadcrumb
+        state.currentPath = state.currentPath.slice(0, index + 1);
     }
     renderCategoryProgress();
 }
@@ -577,16 +527,12 @@ function goToPath(index) {
 function renderCategoryProgress() {
     const container = document.getElementById('category-list');
     const isGrid = state.prefs.layoutMode === 'grid';
-
-    // Update toggle button UI
     const layoutIcon = document.getElementById('layout-icon');
     const layoutText = document.getElementById('layout-text');
     if (layoutIcon && layoutText) {
         layoutIcon.className = isGrid ? 'fa-solid fa-list text-brand-500' : 'fa-solid fa-table-cells text-brand-500';
         layoutText.innerText = isGrid ? 'List View' : 'Grid View';
     }
-
-    // --- 1. BUILD THE HIERARCHY TREE ---
     let tree = {};
     if (state.categorySummary && state.categorySummary.length > 0) {
         state.categorySummary.forEach(cat => {
@@ -605,8 +551,6 @@ function renderCategoryProgress() {
             });
         });
     }
-
-    // --- 2. TRAVERSE TO CURRENT PATH ---
     if (!state.currentPath) state.currentPath = [];
     let currentNode = tree;
     let pathValid = true;
@@ -624,8 +568,6 @@ function renderCategoryProgress() {
         state.currentPath = [];
         currentNode = tree;
     }
-
-    // --- 3. HELPER FOR FOLDER CARD STATS ---
     function getFolderStats(node) {
         let total = 0;
         if (node._data) total += node._data.QuestionCount || 0;
@@ -634,8 +576,6 @@ function renderCategoryProgress() {
         }
         return total;
     }
-
-    // --- 4. RENDER BREADCRUMBS ---
     let html = `
         <div class="flex items-center gap-2 mb-6 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto pb-2 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
             <button onclick="goToPath(-1)" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2">
@@ -652,186 +592,191 @@ function renderCategoryProgress() {
         : 'flex flex-col space-y-4';
 
     html += `<div class="${layoutClass}">`;
-
-    // --- 5. RENDER CURRENT LEVEL ITEMS ---
     const keys = Object.keys(currentNode).sort();
+    const sourceFilter = document.getElementById('deck-source-filter')?.value || 'all';
+    function nodeMatchesFilter(node, filter) {
+        if (filter === 'all') return true;
+        if (node._data !== null && !node._data.IsFolder) {
+            const isDownloaded = state.db.some(q => q.Subject === node._data.Subject);
+            if (filter === 'downloaded') return isDownloaded;
+            if (filter === 'cloud') return !isDownloaded;
+        }
+        const childKeys = Object.keys(node._children || {});
+        if (childKeys.length > 0) {
+            return childKeys.some(childKey => nodeMatchesFilter(node._children[childKey], filter));
+        }
+        return false;
+    }
+    let visibleKeys = keys.filter(key => {
+        return nodeMatchesFilter(currentNode[key], sourceFilter);
+    });
 
-    if (keys.length === 0) {
-        html += `<div class="col-span-full text-center py-10 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">No decks found in this folder.</div>`;
+    if (visibleKeys.length === 0) {
+        html += `<div class="col-span-full text-center py-10 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">No decks match your filter.</div>`;
     }
 
-function generateCardHTML(cat, displayName, delay = 0) {
-    const subj = cat.Subject;
-    const safeSubj = escapeHTML(subj); 
-    const safeName = escapeHTML(displayName);
-    const totalQuestionsInDb = cat.QuestionCount; 
-    const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
-    
-    const dbQsForSubj = state.db.filter(q => q.Subject === subj).map(q => q.ID);
-    const completedCount = state.stats.completedQs ? state.stats.completedQs.filter(id => dbQsForSubj.includes(id)).length : 0;
-    const mistakesCount = state.stats.mistakes ? state.stats.mistakes.filter(id => dbQsForSubj.includes(id)).length : 0;
-    
-    const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
-    const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
-    const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
-
-    const isDownloaded = state.db.some(q => q.Subject === subj);
-    const statusBadge = isDownloaded 
-        ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i></span>`
-        : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i></span>`;
-
-    const isReview = currentAppMode === 'review';
-    
-    // Mode-specific UI Colors
-    const primaryActionText = isReview ? 'Review Deck' : (completedCount === 0 ? 'Start Quiz' : 'Continue Quiz');
-    const primaryActionIcon = isReview ? 'fa-eye' : 'fa-play';
-    const primaryActionColor = isReview ? 'bg-purple-600 hover:bg-purple-700' : 'bg-brand-600 hover:bg-brand-700';
-    const themeColorText = isReview ? 'text-purple-600 dark:text-purple-400' : 'text-brand-600 dark:text-brand-400';
-    const themeColorBg = isReview ? 'bg-purple-500' : 'bg-brand-500';
-    const themeShadowHover = isReview ? 'hover:shadow-purple-500/10' : 'hover:shadow-brand-500/10';
-    const loaderColor = isReview ? 'text-purple-500' : 'text-brand-500';
-
-    const isLocked = cat.Locked === true; 
-    const lockIcon = isLocked ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected"></i>` : '';
-
-    // --- Dynamic UI Logic for Study Mode vs Quiz Mode ---
-    let statsHTML = '';
-    let progressBarHTML = '';
-    let countBadgeHTML = '';
-    let resetBtnHTML = '';
-
-    // If it's Quiz mode, show stats and progress
-    if (!isReview) {
-        statsHTML = `<p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>`;
-        countBadgeHTML = `
-            <div class="flex items-center gap-2 flex-shrink-0 pt-1">
-                ${isDownloaded ? `<button onclick="event.stopPropagation(); deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>` : ``}
-                <span class="text-sm font-black ${themeColorText} transition-colors">${completedCount} / ${totalQuestionsInDb}</span>
-            </div>`;
-        progressBarHTML = `
-            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden">
-                <div class="${themeColorBg} h-full rounded-full transition-all duration-700 ease-out" style="width: ${progressPercent}%"></div>
-            </div>`;
+    function generateCardHTML(cat, displayName, delay = 0) {
+        const subj = cat.Subject;
+        const safeSubj = escapeHTML(subj); 
+        const safeName = escapeHTML(displayName);
+        const totalQuestionsInDb = cat.QuestionCount; 
+        const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
         
-        // Only show Reset Progress if they actually have progress (completed count > 0 or mistakes > 0)
-        if (completedCount > 0 || mistakesCount > 0) {
-            resetBtnHTML = `
-                <button onclick="resetCategory('${safeSubj}')" class="w-10 sm:w-12 shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
-                    <i class="fa-solid fa-rotate-left"></i>
-                </button>`;
-        }
-    } else {
-        // In Study Mode, just show the delete button if downloaded
-        if (isDownloaded) {
-             countBadgeHTML = `
+        const dbQsForSubj = state.db.filter(q => q.Subject === subj).map(q => q.ID);
+        const completedCount = state.stats.completedQs ? state.stats.completedQs.filter(id => dbQsForSubj.includes(id)).length : 0;
+        const mistakesCount = state.stats.mistakes ? state.stats.mistakes.filter(id => dbQsForSubj.includes(id)).length : 0;
+        
+        const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
+        const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
+        const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
+
+        const isDownloaded = state.db.some(q => q.Subject === subj);
+        const statusBadge = isDownloaded 
+            ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i></span>`
+            : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i></span>`;
+
+        const isReview = currentAppMode === 'review';
+        
+        const primaryActionText = isReview ? 'Review Deck' : (completedCount === 0 ? 'Start Quiz' : 'Continue Quiz');
+        const primaryActionIcon = isReview ? 'fa-eye' : 'fa-play';
+        const primaryActionColor = isReview ? 'bg-purple-600 hover:bg-purple-700' : 'bg-brand-600 hover:bg-brand-700';
+        const themeColorText = isReview ? 'text-purple-600 dark:text-purple-400' : 'text-brand-600 dark:text-brand-400';
+        const themeColorBg = isReview ? 'bg-purple-500' : 'bg-brand-500';
+        const themeShadowHover = isReview ? 'hover:shadow-purple-500/10' : 'hover:shadow-brand-500/10';
+        const loaderColor = isReview ? 'text-purple-500' : 'text-brand-500';
+
+        const isLocked = cat.Locked === true; 
+        const lockIcon = isLocked ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected"></i>` : '';
+
+        let statsHTML = '';
+        let progressBarHTML = '';
+        let countBadgeHTML = '';
+        let resetBtnHTML = '';
+
+        if (!isReview) {
+            statsHTML = `<p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>`;
+            countBadgeHTML = `
                 <div class="flex items-center gap-2 flex-shrink-0 pt-1">
-                    <button onclick="event.stopPropagation(); deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>
+                    ${isDownloaded ? `<button onclick="event.stopPropagation(); deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>` : ``}
+                    <span class="text-sm font-black ${themeColorText} transition-colors">${completedCount} / ${totalQuestionsInDb}</span>
                 </div>`;
+            progressBarHTML = `
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden">
+                    <div class="${themeColorBg} h-full rounded-full transition-all duration-700 ease-out" style="width: ${progressPercent}%"></div>
+                </div>`;
+            
+            if (completedCount > 0 || mistakesCount > 0) {
+                resetBtnHTML = `
+                    <button onclick="resetCategory('${safeSubj}')" class="w-10 sm:w-12 shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
+                        <i class="fa-solid fa-rotate-left"></i>
+                    </button>`;
+            }
+        } else {
+            if (isDownloaded) {
+                countBadgeHTML = `
+                    <div class="flex items-center gap-2 flex-shrink-0 pt-1">
+                        <button onclick="event.stopPropagation(); deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>`;
+            }
         }
-    }
-    
-    return `
-       <div onclick="handleDeckClick('${safeSubj}')" class="cursor-pointer animate-card-in ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;">
-            <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
-                <i class="fa-solid fa-spinner fa-spin text-3xl ${loaderColor} mb-2"></i>
-                <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
-            </div>
-
-            <!-- Card Header -->
-            <div class="flex items-start justify-between mb-4 gap-2">
-                <div class="min-w-0 flex-1">
-                    <div class="flex items-center gap-2 mb-1 min-w-0">
-                        <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors truncate min-w-0">
-                            <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm flex-shrink-0"></i>
-                            <span class="truncate">${safeName}</span> ${lockIcon}
-                        </h3>
-                        <div class="flex-shrink-0">
-                            ${statusBadge}
-                        </div>
-                    </div>
-                    ${statsHTML}
+        
+        return `
+        <div onclick="handleDeckClick('${safeSubj}')" class="cursor-pointer animate-card-in ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;">
+                <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
+                    <i class="fa-solid fa-spinner fa-spin text-3xl ${loaderColor} mb-2"></i>
+                    <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
                 </div>
-                ${countBadgeHTML}
-            </div>
-            
-            ${progressBarHTML}
-            
-            <div class="flex gap-2 mt-auto w-full" onclick="event.stopPropagation()">
-                <!-- Primary Action Button -->
-                <button onclick="handleDeckClick('${safeSubj}')" class="flex-1 ${primaryActionColor} text-white py-2 px-2 rounded-lg font-bold active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="${primaryActionText}">
-                    <i class="fa-solid ${primaryActionIcon} mr-1 sm:mr-2 group-hover:scale-125 transition-transform flex-shrink-0"></i> 
-                    <span class="truncate">${primaryActionText}</span>
-                </button>
-                
-                <!-- Review Mistakes Button (Only shows in Quiz Mode if mistakes exist) -->
-                ${(!isReview && mistakesCount > 0) ? `
-                    <button onclick="handleDeckClick('${safeSubj}', 'mistakes')" class="flex-1 bg-yellow-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-yellow-600 active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="Review Mistakes">
-                        <i class="fa-solid fa-triangle-exclamation mr-1 sm:mr-2 group-hover:scale-125 transition-transform flex-shrink-0"></i> 
-                        <span class="truncate">Review (${mistakesCount})</span>
-                    </button>
-                ` : ''}
 
-                <!-- Reset Button -->
-                ${resetBtnHTML}
-            </div>
-        </div>
-    `;
-}
-
-    keys.forEach((key, index) => {
-            const item = currentNode[key];
-            const hasChildren = Object.keys(item._children).length > 0;
-            const hasData = item._data !== null;
-            
-            // NEW: Check if this item is explicitly flagged as a folder from the database
-            const isExplicitFolder = hasData && item._data.IsFolder === true; 
-            
-            const delay = index * 0.05;
-
-            // UPDATED: Render as a folder if it has children OR if it's explicitly marked as a folder lock
-            if (hasChildren || isExplicitFolder) {
-                const totalCards = getFolderStats(item);
-                const folderClass = isGrid ? 'h-full min-h-[140px]' : 'h-auto';
-
-                // Sync folder colors based on Quiz/Review Mode
-                const isReview = currentAppMode === 'review';
-                const folderColorClass = isReview 
-                    ? 'bg-purple-500 dark:bg-purple-700 group-hover:bg-purple-600 dark:group-hover:bg-purple-600' 
-                    : 'bg-brand-500 dark:bg-brand-700 group-hover:bg-brand-600 dark:group-hover:bg-brand-600';
-                const folderTextHover = isReview
-                    ? 'group-hover:text-purple-600 dark:group-hover:text-purple-400'
-                    : 'group-hover:text-brand-600 dark:group-hover:text-brand-400';
-
-                // NEW: Show a lock icon on the folder if it has a password set
-                const isLocked = hasData && item._data.Locked === true;
-                const lockIcon = isLocked ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected Folder"></i>` : '';
-
-                html += `
-                    <div onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1" style="animation-delay: ${delay}s;">
-                        <div class="h-12 ${folderColorClass} transition-colors relative">                        
-                            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
-                        </div>
-                        <div class="p-4 flex-1 flex flex-col justify-between">
-                            <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg flex items-center">
-                                ${escapeHTML(key)} ${lockIcon}
+                <!-- Card Header -->
+                <div class="flex items-start justify-between mb-4 gap-2">
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-2 mb-1 min-w-0">
+                            <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors truncate min-w-0">
+                                <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm flex-shrink-0"></i>
+                                <span class="truncate">${safeName}</span> ${lockIcon}
                             </h3>
-                            <div class="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400 mt-2">
-                                <span>${totalCards} cards</span>
-                                <span class="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full text-xs font-semibold">Subdeck</span>
+                            <div class="flex-shrink-0">
+                                ${statusBadge}
                             </div>
                         </div>
-                    </div>`;
+                        ${statsHTML}
+                    </div>
+                    ${countBadgeHTML}
+                </div>
+                
+                ${progressBarHTML}
+                
+                <div class="flex gap-2 mt-auto w-full" onclick="event.stopPropagation()">
+                    <!-- Primary Action Button -->
+                    <button onclick="handleDeckClick('${safeSubj}')" class="flex-1 ${primaryActionColor} text-white py-2 px-2 rounded-lg font-bold active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="${primaryActionText}">
+                        <i class="fa-solid ${primaryActionIcon} mr-1 sm:mr-2 group-hover:scale-125 transition-transform flex-shrink-0"></i> 
+                        <span class="truncate">${primaryActionText}</span>
+                    </button>
                     
-            } 
-            // UPDATED: Only render as a Deck Card if it has data AND is NOT a folder
-            else if (hasData && !isExplicitFolder) {
-                html += generateCardHTML(item._data, key, delay);
-            }
-        });
+                    <!-- Review Mistakes Button (Only shows in Quiz Mode if mistakes exist) -->
+                    ${(!isReview && mistakesCount > 0) ? `
+                        <button onclick="handleDeckClick('${safeSubj}', 'mistakes')" class="flex-1 bg-yellow-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-yellow-600 active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="Review Mistakes">
+                            <i class="fa-solid fa-triangle-exclamation mr-1 sm:mr-2 group-hover:scale-125 transition-transform flex-shrink-0"></i> 
+                            <span class="truncate">Review (${mistakesCount})</span>
+                        </button>
+                    ` : ''}
 
-        html += `</div>`;
-        container.className = "transition-all duration-500";
-        container.innerHTML = html;
+                    <!-- Reset Button -->
+                    ${resetBtnHTML}
+                </div>
+            </div>
+        `;
+    }
+
+    visibleKeys.forEach((key, index) => {
+        const item = currentNode[key];
+        const hasChildren = Object.keys(item._children).length > 0;
+        const hasData = item._data !== null;
+        
+        const isExplicitFolder = hasData && item._data.IsFolder === true; 
+        
+        const delay = index * 0.05;
+
+        if (hasChildren || isExplicitFolder) {
+            const totalCards = getFolderStats(item);
+            const folderClass = isGrid ? 'h-full min-h-[140px]' : 'h-auto';
+
+            const isReview = currentAppMode === 'review';
+            const folderColorClass = isReview 
+                ? 'bg-purple-500 dark:bg-purple-700 group-hover:bg-purple-600 dark:group-hover:bg-purple-600' 
+                : 'bg-brand-500 dark:bg-brand-700 group-hover:bg-brand-600 dark:group-hover:bg-brand-600';
+            const folderTextHover = isReview
+                ? 'group-hover:text-purple-600 dark:group-hover:text-purple-400'
+                : 'group-hover:text-brand-600 dark:group-hover:text-brand-400';
+
+            const isLocked = hasData && item._data.Locked === true;
+            const lockIcon = isLocked ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected Folder"></i>` : '';
+
+            html += `
+                <div onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1" style="animation-delay: ${delay}s;">
+                    <div class="h-12 ${folderColorClass} transition-colors relative">                        
+                        <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
+                    </div>
+                    <div class="p-4 flex-1 flex flex-col justify-between">
+                        <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg flex items-center">
+                            ${escapeHTML(key)} ${lockIcon}
+                        </h3>
+                        <div class="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400 mt-2">
+                            <span>${totalCards} cards</span>
+                            <span class="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full text-xs font-semibold">Deck</span>
+                        </div>
+                    </div>
+                </div>`;
+                
+        } 
+        else if (hasData && !isExplicitFolder) {
+            html += generateCardHTML(item._data, key, delay);
+        }
+    });
+
+    html += `</div>`;
+    container.className = "transition-all duration-500";
+    container.innerHTML = html;
 }
 
 async function fetchAndStartCategory(subject, mode, pass = null) {
@@ -841,16 +786,13 @@ async function fetchAndStartCategory(subject, mode, pass = null) {
     let validQuestions = [];
 
     try {
-        // Append the password to the query string if it exists
         let fetchUrl = `${DB_URL}?subject=${encodeURIComponent(subject)}`;
         if (pass) fetchUrl += `&password=${encodeURIComponent(pass)}`;
 
         const response = await fetch(fetchUrl);
         const newQuestions = await response.json();
-
-        // STRICT LOCK CHECK: Stop execution if the server throws a password error
         if (newQuestions.error) {
-            alert(newQuestions.error); // Show "Incorrect Password" or similar message
+            alert(newQuestions.error);
             if (loader) loader.classList.add('hidden');
             return; 
         }
@@ -1005,12 +947,9 @@ async function reviewDeck(subject, pass = null) {
 
     try {
         let needsFetch = false;
-
-        // If a password is required, we must fetch from the server to verify it
         if (pass) {
             needsFetch = true;
         } else {
-            // Check if questions are already saved in the local IndexedDB
             validQuestions = state.db.filter(q => q.Subject === subject);
             if (validQuestions.length === 0) needsFetch = true;
         }
@@ -1021,8 +960,6 @@ async function reviewDeck(subject, pass = null) {
             
             const response = await fetch(fetchUrl);
             const newQuestions = await response.json();
-
-            // STRICT LOCK CHECK: Stop execution if backend rejects password
             if (newQuestions.error) {
                 alert(newQuestions.error);
                 if (loader) loader.classList.add('hidden');
@@ -1036,8 +973,6 @@ async function reviewDeck(subject, pass = null) {
                 q.ID = `${q.Subject}::${cleanId}`;
                 return q;
             });
-
-            // Update local DB to avoid re-fetching later
             const otherQuestions = state.db.filter(q => q.Subject !== subject);
             state.db = [...otherQuestions, ...validQuestions];
             await idbKeyval.set('mrh_db', state.db);
@@ -1055,12 +990,10 @@ async function reviewDeck(subject, pass = null) {
     renderDeckReview(subject, validQuestions);
 }
 
-// --- DECK REVIEW LOGIC ---
 let currentReviewSubject = "";
 let currentReviewQuestions = [];
 
 function reRenderDeckReview() {
-    // Triggers when the toggle switch is clicked
     renderDeckReview(currentReviewSubject, currentReviewQuestions);
 }
 
@@ -1071,113 +1004,209 @@ function renderDeckReview(subject, questions) {
     const container = document.getElementById('deck-review-list');
     document.getElementById('deck-review-title').innerText = subject;
 
-    // Retrieve saved user preferences
-    const showWrong = state.prefs.showWrongChoices !== false; // Defaults true
+    const globalShowWrong = state.prefs.showWrongChoices !== false;
     const hideABCD = state.prefs.hideABCD === true; 
+    let layout = state.prefs.studyLayout || 'scroll';
+    let pageSize = state.prefs.studyPageSize || 50;
 
-    // Sync toggle switch states with saved preferences
+    if (!state.prefs.studyProgress[subject]) {
+        state.prefs.studyProgress[subject] = { page: 1, index: 0, scrollY: 0 };
+    }
+    let progress = state.prefs.studyProgress[subject];
+    let currentPage = progress.page || 1;
+    let currentIndex = progress.index || 0;
+
     const wrongToggle = document.getElementById('toggle-wrong-choices');
-    if (wrongToggle) wrongToggle.checked = showWrong;
-
+    if (wrongToggle) wrongToggle.checked = globalShowWrong;
     const hideABCDToggle = document.getElementById('toggle-hide-abcd');
     if (hideABCDToggle) hideABCDToggle.checked = hideABCD;
 
-    let html = '';
+    let html = `
+        <div class="flex flex-wrap gap-3 mb-6 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+            <div class="flex flex-col gap-1 w-full sm:w-auto">
+                <label class="text-xs font-bold text-gray-500 uppercase">Study Layout</label>
+                <select class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2 text-sm text-gray-700 dark:text-gray-200" onchange="changeStudyLayout(this.value)">
+                    <option value="scroll" ${layout === 'scroll' ? 'selected' : ''}>Scroll List</option>
+                    <option value="single" ${layout === 'single' ? 'selected' : ''}>Single Flashcard</option>
+                </select>
+            </div>
+            
+            ${layout === 'scroll' ? `
+            <div class="flex flex-col gap-1 w-full sm:w-auto">
+                <label class="text-xs font-bold text-gray-500 uppercase">Questions Per Page</label>
+                <select class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2 text-sm text-gray-700 dark:text-gray-200" onchange="changeStudyPageSize(this.value)">
+                    ${[5, 10, 15, 25, 50, 100, 'All'].map(size => `<option value="${size}" ${pageSize == size ? 'selected' : ''}>Group by ${size}</option>`).join('')}
+                </select>
+            </div>
+            ` : ''}
+        </div>
+    `;
 
     if (questions.length === 0) {
-        html = `<div class="text-center p-8 text-gray-500">No questions found for this deck.</div>`;
+        container.innerHTML = html + `<div class="text-center p-8 text-gray-500">No questions found for this deck.</div>`;
+        navigate('deck-review');
+        return;
+    }
+
+    let displayQuestions = [];
+    let totalPages = 1;
+
+    if (layout === 'single') {
+        if (currentIndex < 0) currentIndex = 0;
+        if (currentIndex >= questions.length) currentIndex = questions.length - 1;
+        progress.index = currentIndex;
+        
+        displayQuestions = [questions[currentIndex]];
     } else {
-        questions.forEach((q, index) => {
-            let ansStr = q.Answer ? String(q.Answer).trim() : "";
-            let isMultipleChoice = ['A', 'B', 'C', 'D'].includes(ansStr.toUpperCase());
+        if (pageSize === 'All') {
+            displayQuestions = questions;
+        } else {
+            totalPages = Math.ceil(questions.length / pageSize);
+            if (currentPage < 1) currentPage = 1;
+            if (currentPage > totalPages) currentPage = totalPages;
+            progress.page = currentPage;
 
-            let correctText = ansStr;
-            if (isMultipleChoice) {
-                correctText = q[`Choice${ansStr.toUpperCase()}`] || ansStr;
-            }
+            let start = (currentPage - 1) * pageSize;
+            displayQuestions = questions.slice(start, start + pageSize);
+        }
+    }
 
-            if (!correctText || correctText.toLowerCase() === "undefined") {
-                correctText = "Answer missing from database";
-            }
+    displayQuestions.forEach((q) => {
+        let originalIndex = questions.indexOf(q);
+        
+        let rawQuestionText = q.Question ? String(q.Question) : "";
+        let cleanQuestionText = rawQuestionText.replace(/^\s*\d+\.\s*/, ''); 
 
-            let choicesHTML = "";
-            if (isMultipleChoice && showWrong) {
-                const letters = ['A', 'B', 'C', 'D'];
-                choicesHTML = `<div class="mt-4 flex flex-col gap-2">`;
+        let ansStr = q.Answer ? String(q.Answer).trim() : "";
+        let isMultipleChoice = ['A', 'B', 'C', 'D'].includes(ansStr.toUpperCase());
 
-                letters.forEach(letter => {
-                    let choiceText = q[`Choice${letter}`];
-                    let prefix = hideABCD ? '' : `${letter}. `; // Hide A/B/C/D based on toggle
-                    
-                    if (choiceText) {
-                        let isCorrect = (letter === ansStr.toUpperCase());
-                        if (isCorrect) {
-                            choicesHTML += `
-                                <div class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 p-3 rounded-r-lg">
-                                    <p class="text-sm font-bold text-green-700 dark:text-green-400">
-                                        <i class="fa-solid fa-check-circle mr-2"></i> ${prefix}${escapeHTML(choiceText)}
-                                    </p>
-                                </div>`;
-                        } else {
-                            choicesHTML += `
-                                <div class="bg-gray-50 dark:bg-gray-800/50 border-l-4 border-gray-300 dark:border-gray-600 p-3 rounded-r-lg opacity-70">
-                                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                        <i class="fa-solid fa-times mr-2 opacity-50"></i> ${prefix}${escapeHTML(choiceText)}
-                                    </p>
-                                </div>`;
-                        }
+        let correctText = ansStr;
+        if (isMultipleChoice) {
+            correctText = q[`Choice${ansStr.toUpperCase()}`] || ansStr;
+        }
+        if (!correctText || correctText.toLowerCase() === "undefined") {
+            correctText = "Answer missing from database";
+        }
+
+        let showWrongForThisQ = state.prefs.qToggles?.[q.ID];
+        if (showWrongForThisQ === undefined) showWrongForThisQ = globalShowWrong;
+
+        let choicesHTML = "";
+        if (isMultipleChoice && showWrongForThisQ) {
+            const letters = ['A', 'B', 'C', 'D'];
+            choicesHTML = `<div class="mt-4 flex flex-col gap-2">`;
+            letters.forEach(letter => {
+                let choiceText = q[`Choice${letter}`];
+                let prefix = hideABCD ? '' : `${letter}. `;
+                
+                if (choiceText) {
+                    let isCorrect = (letter === ansStr.toUpperCase());
+                    if (isCorrect) {
+                        choicesHTML += `
+                            <div class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 p-3 rounded-r-lg">
+                                <p class="text-sm font-bold text-green-700 dark:text-green-400">
+                                    <i class="fa-solid fa-check-circle mr-2"></i> ${prefix}${escapeHTML(choiceText)}
+                                </p>
+                            </div>`;
+                    } else {
+                        choicesHTML += `
+                            <div class="bg-gray-50 dark:bg-gray-800/50 border-l-4 border-gray-300 dark:border-gray-600 p-3 rounded-r-lg opacity-70">
+                                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                                    <i class="fa-solid fa-times mr-2 opacity-50"></i> ${prefix}${escapeHTML(choiceText)}
+                                </p>
+                            </div>`;
                     }
-                });
-                choicesHTML += `</div>`;
-            } else {
-                let prefix = hideABCD ? '' : (isMultipleChoice ? `${ansStr.toUpperCase()}. ` : '');
-                choicesHTML = `
-                    <div class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 p-3 rounded-r-lg mt-4">
-                        <p class="text-sm font-bold text-green-700 dark:text-green-400">
-                            <i class="fa-solid fa-check-circle mr-2"></i> ${prefix}${escapeHTML(correctText)}
-                        </p>
-                    </div>`;
-            }
+                }
+            });
+            choicesHTML += `</div>`;
+        } else {
+            let prefix = hideABCD ? '' : (isMultipleChoice ? `${ansStr.toUpperCase()}. ` : '');
+            choicesHTML = `
+                <div class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 p-3 rounded-r-lg mt-4">
+                    <p class="text-sm font-bold text-green-700 dark:text-green-400">
+                        ${prefix}${escapeHTML(correctText)} <!-- Feature #22: Removed check icon -->
+                    </p>
+                </div>`;
+        }
+        let reportClass = globallyReportedQs.has(q.ID) 
+            ? 'text-red-500 bg-red-50 dark:bg-red-900/30' 
+            : 'text-gray-400 bg-white dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-500';
 
-            html += `
-                <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 animate-card-in" style="animation-delay: ${index * 0.02}s;">
-                    <div class="flex justify-between items-center mb-3">
-                        <span class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-300">Question ${index + 1}</span>
-                        
-                        <!-- ADDED REPORT BUTTON HERE -->
-                        <button onclick="openReportModalFromStudy('${q.ID}')" class="text-gray-400 hover:text-red-500 text-xs font-bold flex items-center justify-center w-7 h-7 bg-white hover:bg-red-50 dark:bg-gray-800 dark:hover:bg-red-900/30 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95 transition-all">
+        html += `
+            <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 animate-card-in">
+                <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 dark:border-gray-700">
+                    <span class="bg-brand-50 text-brand-600 text-xs px-2 py-1 rounded font-bold dark:bg-brand-900/30 dark:text-brand-400">Question ${originalIndex + 1}</span>
+                    
+                    <div class="flex gap-2">
+                        <!-- Feature 16: Individual Toggle Button -->
+                        <button onclick="toggleSpecificChoices('${q.ID}')" class="text-xs font-bold px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded transition-colors">
+                            ${showWrongForThisQ ? '<i class="fa-solid fa-eye-slash mr-1"></i> Hide Choices' : '<i class="fa-solid fa-eye mr-1"></i> Show Choices'}
+                        </button>
+
+                        <button onclick="openReportModalFromStudy('${q.ID}')" class="${reportClass} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95 transition-all" title="${globallyReportedQs.has(q.ID) ? 'Active Community Report' : 'Report Issue'}">
                             <i class="fa-solid fa-triangle-exclamation"></i>
                         </button>
                     </div>
-                    
-                    <!-- Formatted Question Text -->
-                    <p class="font-medium text-gray-800 dark:text-gray-100 mb-2 text-lg">${formatQuestionText(q.Question)}</p>
-                    
-                    ${q.ImageURL ? `<img src="${escapeHTML(q.ImageURL)}" alt="Reference" class="w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500">` : ''}                        
-                    ${choicesHTML}
-                    
-                    ${q.Explanation && q.Explanation.trim() !== "" ? `
-                        <div class="mt-4 text-sm text-gray-700 dark:text-gray-300 bg-blue-50 dark:bg-gray-900/50 p-3 rounded-lg border border-blue-100 dark:border-gray-700">
-                            <strong class="text-blue-800 dark:text-blue-400"><i class="fa-solid fa-lightbulb mr-1"></i> Explanation:</strong> ${escapeHTML(q.Explanation)}
-                        </div>
-                    ` : ''}
                 </div>
-            `;
-        });
+                
+                <p class="font-medium text-gray-800 dark:text-gray-100 mb-2 text-lg">${formatQuestionText(cleanQuestionText)}</p>
+                
+                ${q.ImageURL ? `<img src="${escapeHTML(q.ImageURL)}" alt="Reference" class="w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500">` : ''}                        
+                ${choicesHTML}
+                
+                ${q.Explanation && q.Explanation.trim() !== "" ? `
+                    <div class="mt-4 text-sm text-gray-700 dark:text-gray-300 bg-blue-50 dark:bg-gray-900/50 p-3 rounded-lg border border-blue-100 dark:border-gray-700">
+                        <strong class="text-blue-800 dark:text-blue-400"><i class="fa-solid fa-lightbulb mr-1"></i> Explanation:</strong> ${escapeHTML(q.Explanation)}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    });
+    if (layout === 'single') {
+        html += `
+            <div class="flex justify-between items-center mt-6 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 sticky bottom-4 z-10 gap-2">
+                <button onclick="changeStudyIndex(-1)" ${currentIndex === 0 ? 'disabled' : ''} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
+                    <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Prev</span>
+                </button>
+                <button onclick="navigate('dashboard')" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-bold whitespace-nowrap">
+                    <i class="fa-solid fa-house mr-1"></i>
+                </button>
+                <span class="text-sm font-bold text-gray-600 dark:text-gray-300 flex-1 text-center">${currentIndex + 1} / ${questions.length}</span>
+                <button onclick="changeStudyIndex(1)" ${currentIndex === questions.length - 1 ? 'disabled' : ''} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
+                    <span class="hidden sm:inline mr-1">Next</span> <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+        `;
+    } else if (pageSize !== 'All' && totalPages > 1) {
+        html += `
+            <div class="flex justify-between items-center mt-6 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 sticky bottom-4 z-10 gap-2">
+                <button onclick="changeStudyPage(-1)" ${currentPage === 1 ? 'disabled' : ''} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
+                    <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Prev</span>
+                </button>
+                <button onclick="navigate('dashboard')" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-bold whitespace-nowrap">
+                    <i class="fa-solid fa-house mr-1"></i>
+                </button>
+                <span class="text-sm font-bold text-gray-600 dark:text-gray-300 flex-1 text-center">Pg ${currentPage} / ${totalPages}</span>
+                <button onclick="changeStudyPage(1)" ${currentPage === totalPages ? 'disabled' : ''} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
+                    <span class="hidden sm:inline mr-1">Next</span> <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+        `;
     }
 
     container.innerHTML = html;
     navigate('deck-review');
 
-    // Automatically restore scroll progress based on the subject
     setTimeout(() => {
-        const scrollContainer = document.querySelector('main'); // Adjust if your scroll container is different
-        const savedScroll = state.prefs.studyProgress?.[subject] || 0;
-        if (scrollContainer) scrollContainer.scrollTop = savedScroll;
+        const scrollContainer = document.querySelector('main');
+        if (scrollContainer && layout === 'scroll') {
+            scrollContainer.scrollTop = progress.scrollY || 0;
+        }
     }, 100);
+
+    sendTelemetry('start_review', { subject: subject, poolSize: questions.length });
 }
 
-// Add logic to save reading progress and toggles
 function toggleHideABCD() {
     const isChecked = document.getElementById('toggle-hide-abcd').checked;
     state.prefs.hideABCD = isChecked;
@@ -1197,8 +1226,6 @@ function submitPracticeAnswer(selected, correct) {
     state.session.userAnswers[state.session.currentIndex] = selected;
 
     trackStats(q, selected === correct);
-
-    // FIX: Select the element directly using document.getElementById
     document.getElementById('q-choices')
         .querySelectorAll(".choice-btn")
         .forEach(btn => {
@@ -1225,7 +1252,7 @@ function showExplanation(q) {
     const expBox = document.getElementById('q-explanation-box');
 
     if (q.Explanation && q.Explanation.trim() !== "") {
-        document.getElementById('q-explanation-text').innerText = q.Explanation;
+        document.getElementById('q-explanation-text').innerHTML = formatQuestionText(q.Explanation);
         expBox.classList.remove('hidden');
     } else {
         expBox.classList.add('hidden');
@@ -1278,6 +1305,7 @@ function trackStats(q, isCorrect) {
         if (!state.stats.mistakes.includes(q.ID)) state.stats.mistakes.push(q.ID);
     }
     saveState();
+    sendTelemetry('answer_question', { qId: q.ID, isCorrect });
 }
 
 function endSession(silent = false) {
@@ -1292,12 +1320,14 @@ function endSession(silent = false) {
 
     state.session.active = false;
     if (!silent) navigate('dashboard');
+
+    sendTelemetry('end_session', { totalAnswered: state.session.currentIndex });
 }
 
 function renderCharts() {
     if (typeof Chart === 'undefined') {
         console.warn("Chart.js is still loading...");
-        setTimeout(renderCharts, 500); // Retry after 500ms
+        setTimeout(renderCharts, 500);
         return;
     }
 
@@ -1308,11 +1338,9 @@ function renderCharts() {
     let data = [];
 
     if (labels.length === 0) {
-        // Use local placeholder arrays instead of mutating the global state
         labels = ["COLREG", "Navigation", "Meteorology"];
-        data = [0, 0, 0]; // 0% accuracy for placeholders
+        data = [0, 0, 0];
     } else {
-        // Map actual data
         data = labels.map(s => {
             const d = state.stats.subjectAccuracy[s];
             return d.total === 0 ? 0 : Math.round((d.correct / d.total) * 100);
@@ -1401,19 +1429,28 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-window.onload = async () => {
-    // 1. Wait for the local database and preferences to load completely
-    await loadState(); 
+let globallyReportedQs = new Set();
 
-    // 2. Register the Service Worker for offline capabilities
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js').then(registration => {
-            registration.update();
+async function fetchGlobalReports() {
+    try {
+        const response = await fetch(DB_URL, {
+            method: 'POST',
+            redirect: "follow",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ type: "get_reports", role: "user" })
         });
+        const reports = await response.json();
+        if (Array.isArray(reports)) globallyReportedQs = new Set(reports.map(r => r.questionId));
+    } catch(e) { }
+}
+
+window.onload = async () => {
+    await loadState(); 
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').then(reg => reg.update());
     }
-    
-    // 3. Sync with Google Sheets now that state is safely initialized
     syncDatabase(); 
+    fetchGlobalReports();
 };
 
 function saveSessionProgress() {
@@ -1454,7 +1491,6 @@ function resumeSession() {
 
     state.session.questions = state.session.questions.map((savedQ, index) => {
 
-        // MIGRATION HELPER: Ensure session resumer works with the freshly updated IDs
         let searchId = savedQ.ID;
         if (searchId && !searchId.toString().includes('::')) {
             let cleanId = searchId.toString().replace(/^[a-zA-Z]+[-\s]?/, '');
@@ -1522,8 +1558,6 @@ function revealAnswer() {
 
     const q = state.session.questions[state.session.currentIndex];
     state.session.userAnswers[state.session.currentIndex] = "REVEALED";
-
-    // Count choices to determine if it's a flashcard
     let validChoicesCount = 0;
     ['A', 'B', 'C', 'D'].forEach(ch => {
         const choiceText = q[`Choice${ch}`];
@@ -1531,8 +1565,6 @@ function revealAnswer() {
             validChoicesCount++;
         }
     });
-
-    // Only mark as incorrect if it's a multiple-choice question
     if (validChoicesCount > 1) {
         trackStats(q, false);
     }
@@ -1576,9 +1608,6 @@ function toggleLayout() {
     renderCategoryProgress();
 }
 
-// ==========================================
-// REPORTING SYSTEM LOGIC
-// ==========================================
 function openReportModal() {
     const q = state.session.questions[state.session.currentIndex];
     const reportedQs = JSON.parse(localStorage.getItem('mrh_reported_qs') || '[]');
@@ -1594,8 +1623,6 @@ function openReportModal() {
     const modal = document.getElementById('report-modal');
     const inner = modal.querySelector('div');
     modal.classList.remove('hidden');
-
-    // Slight delay for animation
     setTimeout(() => {
         modal.classList.remove('opacity-0');
         inner.classList.remove('scale-95', 'opacity-0');
@@ -1603,7 +1630,6 @@ function openReportModal() {
 }
 
 function closeReportModal() {
-    // Clear the variable in case they cancel
     state.reportQuestion = null;
     
     const modal = document.getElementById('report-modal');
@@ -1630,7 +1656,6 @@ async function submitReport() {
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Sending...';
     btn.disabled = true;
 
-    // Pull from reportQuestion if it exists, otherwise fallback to active session
     const q = state.reportQuestion || state.session.questions[state.session.currentIndex];
 
     if (!q) {
@@ -1651,7 +1676,9 @@ async function submitReport() {
                 subject: q.Subject,
                 questionText: q.Question,
                 errorType: typeEl.value,
-                comments: comments
+                comments: comments,
+                choices: { A: q.ChoiceA, B: q.ChoiceB, C: q.ChoiceC, D: q.ChoiceD },
+                correctAnswer: q.Answer
             })
         });
 
@@ -1675,7 +1702,6 @@ async function submitReport() {
                     btn.classList.replace('hover:bg-green-600', 'hover:bg-red-600');
                 }, 500);
 
-                // ONLY trigger quiz navigation if we are actually in a quiz
                 if (!state.reportQuestion) {
                     if (state.session.userAnswers[state.session.currentIndex]) {
                         nextQuestion();
@@ -1684,7 +1710,6 @@ async function submitReport() {
                     }
                 }
                 
-                // Clear the temporary state after successful submission
                 state.reportQuestion = null;
 
             }, 1500);
@@ -1705,7 +1730,7 @@ async function loadReports() {
         const response = await fetch(DB_URL, {
             method: 'POST',
             redirect: "follow",
-            headers: { "Content-Type": "text/plain;charset=utf-8" }, // ADDED HEADER
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify({ type: "get_reports", role: "user" })
         });
         const reports = await response.json();
@@ -1760,9 +1785,17 @@ function showToast(message, type = 'success') {
 }
 
 function openSessionSettingsModal() {
-    document.getElementById('toggle-active-recall').checked = state.prefs.activeRecall !== false;
-    document.getElementById('toggle-shuffle-choices').checked = state.prefs.shuffleChoices !== false;
-   
+    const recallToggle = document.getElementById('toggle-active-recall');
+    if (recallToggle) recallToggle.checked = state.prefs.activeRecall !== false;
+
+    const choicesToggle = document.getElementById('toggle-shuffle-choices');
+    if (choicesToggle) choicesToggle.checked = state.prefs.shuffleChoices !== false;
+    const questionsToggle = document.getElementById('toggle-shuffle-questions');
+    if (questionsToggle) questionsToggle.checked = state.prefs.shuffleQuestions !== false;
+
+    const qTypeSelect = document.getElementById('toggle-question-type');
+    if (qTypeSelect) qTypeSelect.value = state.prefs.qTypeOverride || 'auto';
+
     const modal = document.getElementById('session-settings-modal');
     const inner = modal.querySelector('div');
     modal.classList.remove('hidden');
@@ -1787,15 +1820,13 @@ function closeSessionSettingsModal() {
 function toggleActiveRecall() {
     const isChecked = document.getElementById('toggle-active-recall').checked;
     state.prefs.activeRecall = isChecked;
-    saveState(); // Saves the preference to localStorage
+    saveState();
 
-    // Re-render immediately so changes take effect without going to the next question
     if (state.session.active) {
         renderQuestion();
     }
 }
 
-// --- MODE SELECT HUB LOGIC ---
 let activeHubSubject = "";
 
 function openModeSelect(subject) {
@@ -1805,7 +1836,6 @@ function openModeSelect(subject) {
 }
 
 function proceedToReview() {
-    // Calls your existing review function with the selected subject
     reviewDeck(activeHubSubject);
 }
 
@@ -1815,39 +1845,30 @@ function proceedToQuiz() {
     }
 }
 
-// 1. Initialize global state (defaults to quiz mode)
 let currentAppMode = 'quiz'; 
 
-// 2. Handle the toggle switch
 function toggleAppMode() {
     const toggleElement = document.getElementById('globalModeToggle');
     const modeLabel = document.getElementById('modeLabel');
     
-    // Update global state
     currentAppMode = toggleElement.checked ? 'review' : 'quiz';
     
-    // Update the label text
     modeLabel.innerText = currentAppMode === 'review' ? 'Study' : 'Quiz';
     
-    // Re-render the dashboard cards instantly to reflect the new mode
     renderCategoryProgress(); 
+
+    sendTelemetry('toggle_mode', { mode: currentAppMode });
 }
 
-// 3. Centralized click handler for the deck
-// State variables to remember what deck the user clicked before the modal popped up
 let pendingDeckSubject = null;
 let pendingDeckAction = null;
 
 function handleDeckClick(subj, action = 'continue') {
     const deckInfo = state.categorySummary.find(c => c.Subject === subj);
-
-    // If locked, open the custom modal and STOP execution.
     if (deckInfo && deckInfo.Locked) {
         openDeckPasswordModal(subj, action);
         return; 
     }
-
-    // If it's NOT locked, proceed normally
     if (currentAppMode === 'review') {
         reviewDeck(subj, null); 
     } else {
@@ -1861,14 +1882,9 @@ function toggleShuffleChoices() {
     saveState();
 
     if (state.session.active) {
-        // Re-prepare the remaining un-answered questions in the pool
         const remainingQuestions = state.session.questions.slice(state.session.currentIndex);
         const reprepared = prepareSessionPool(remainingQuestions);
-        
-        // Stitch them back into the session
         state.session.questions.splice(state.session.currentIndex, reprepared.length, ...reprepared);
-        
-        // Re-render the current question to reflect the immediate change
         renderQuestion();
     }
 }
@@ -1878,8 +1894,6 @@ function toggleShuffleQuestions() {
     state.prefs.shuffleQuestions = isChecked;
     saveState();
     
-    // Note: Question shuffling only applies when a new session is started.
-    // It will not actively re-order an ongoing session.
 }
 
 async function autoSaveDeckPassword(deckPath, newPassword) {
@@ -1889,7 +1903,7 @@ async function autoSaveDeckPassword(deckPath, newPassword) {
             redirect: 'follow',
             headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify({
-                type: "admin_update_password", // You must handle this in your Google Apps Script
+                type: "admin_update_password",
                 token: adminState.token,
                 deck: deckPath,
                 password: newPassword
@@ -1899,7 +1913,6 @@ async function autoSaveDeckPassword(deckPath, newPassword) {
         const result = await response.json();
         
         if (result.status === "success") {
-            // Optional: Show a small success toast/notification here
             console.log(`Password for ${deckPath} updated successfully.`);
         } else {
             alert("Failed to update password: " + result.message);
@@ -1916,7 +1929,6 @@ let userState = {
 };
 
 async function userLogin(username, password) {
-    // Assuming you have a button to change its state during loading
     const btn = document.getElementById('btn-user-login'); 
     if (btn) {
         btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Verifying...';
@@ -1929,7 +1941,7 @@ async function userLogin(username, password) {
             redirect: 'follow',
             headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify({
-                type: "verify_user", // You must handle this in your Google Apps Script to read the USER sheet
+                type: "verify_user",
                 username: username,
                 password: password
             })
@@ -1941,7 +1953,6 @@ async function userLogin(username, password) {
             userState.username = username;
             userState.isLoggedIn = true;
             alert("Login successful!");
-            // Add navigation logic here, e.g., navigate('dashboard');
         } else {
             alert("Incorrect username or password.");
         }
@@ -1956,11 +1967,9 @@ async function userLogin(username, password) {
     }
 }
 
-// State variables to remember which folder the user is trying to unlock
 let pendingLockedFolderPath = null;
 let pendingLockedFolderName = null;
 
-// Opens the modal from index.html
 function openFolderPasswordModal(fullPath, folderName) {
     pendingLockedFolderPath = fullPath;
     pendingLockedFolderName = folderName;
@@ -1972,7 +1981,6 @@ function openFolderPasswordModal(fullPath, folderName) {
     setTimeout(() => modal.classList.remove('opacity-0'), 10);
 }
 
-// Closes the modal from index.html
 function closeFolderPasswordModal() {
     const modal = document.getElementById('folder-password-modal');
     modal.classList.add('opacity-0');
@@ -1988,7 +1996,6 @@ function openDeckPasswordModal(subject, action) {
     
     const messageEl = document.getElementById('deck-password-message');
     if (messageEl) {
-        // Extract just the deck name (e.g., "Prelims" instead of "BSMT::3.1::Prelims")
         const shortName = subject.split('::').pop();
         messageEl.innerText = `The deck "${escapeHTML(shortName)}" requires a password.`;
     }
@@ -2012,7 +2019,6 @@ function closeDeckPasswordModal() {
     }
 }
 
-// Hook up the "Unlock Folder" button inside the modal
 document.getElementById('btn-submit-folder-password').addEventListener('click', async () => {
     const pass = document.getElementById('folder-password-input').value;
     const btn = document.getElementById('btn-submit-folder-password');
@@ -2026,19 +2032,12 @@ document.getElementById('btn-submit-folder-password').addEventListener('click', 
     btn.disabled = true;
 
     try {
-        // We can cleverly use your existing doGet route to verify the password!
-        // If the password is wrong, your backend returns { error: "Incorrect Password." }
         const response = await fetch(`${DB_URL}?subject=${encodeURIComponent(pendingLockedFolderPath)}&password=${encodeURIComponent(pass)}`);
         const result = await response.json();
-
-        // Check if your Apps Script returned the error block
         if (result.error) {
             alert(result.error);
         } else {
-            // Password is correct! (Folders return empty arrays [] on success)
             closeFolderPasswordModal();
-            
-            // Push the folder to the path and re-render
             if (!state.currentPath) state.currentPath = [];
             state.currentPath.push(pendingLockedFolderName);
             renderCategoryProgress();
@@ -2052,8 +2051,8 @@ document.getElementById('btn-submit-folder-password').addEventListener('click', 
     }
 });
 
-// Hook up the "Unlock Deck" button inside the modal
 const btnSubmitDeckPassword = document.getElementById('btn-submit-deck-password');
+
 if (btnSubmitDeckPassword) {
     btnSubmitDeckPassword.addEventListener('click', () => {
         const pass = document.getElementById('deck-password-input').value;
@@ -2062,11 +2061,7 @@ if (btnSubmitDeckPassword) {
             alert("Please enter a password.");
             return;
         }
-
-        // Close the modal
         closeDeckPasswordModal();
-
-        // Resume the flow exactly where we left off, passing the entered password to the backend
         if (currentAppMode === 'review') {
             reviewDeck(pendingDeckSubject, pass);
         } else {
@@ -2075,16 +2070,10 @@ if (btnSubmitDeckPassword) {
     });
 }
 
-// Add this helper function to your JS
 function openReportModalFromStudy(questionId) {
-    // Find the question in the DB
     const q = state.db.find(item => item.ID === questionId);
     if (!q) return;
-
-    // Attach it to state instead of hijacking the session
     state.reportQuestion = q;
-    
-    // Check if already reported
     const reportedQs = JSON.parse(localStorage.getItem('mrh_reported_qs') || '[]');
     if (reportedQs.includes(q.ID)) {
         alert("You have already reported this question. Thank you for your feedback!");
@@ -2120,22 +2109,158 @@ function togglePasswordVisibility(inputId, btnElement) {
 function formatQuestionText(text) {
     if (!text) return "";
     let formatted = escapeHTML(text);
-    // Finds Roman numerals that have a space after the dot and adds breaks
-    formatted = formatted.replace(/(?:\s|^)(I{1,3}\.|IV\.|V\.|VI{1,3}\.|IX\.|X\.)\s/g, '<br><br><span class="font-bold text-brand-600 dark:text-brand-400">$1</span> ');
+    
+    const listRegex = /(?:\s|^)((?:\d+|[A-Za-z]|[IVXLCDMivxlcdm]{1,4})\.)\s/g;
+    
+    formatted = formatted.replace(listRegex, '<br><br>');
+    
+    if (formatted.startsWith('<br><br>')) {
+        formatted = formatted.substring(8);
+    }
+    
     return formatted;
 }
 
+if (!state.prefs.studyLayout) state.prefs.studyLayout = 'scroll';
+if (!state.prefs.studyPageSize) state.prefs.studyPageSize = 50;
+if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
+if (!state.prefs.qToggles) state.prefs.qToggles = {};
+
+function changeStudyLayout(layout) {
+    state.prefs.studyLayout = layout;
+    saveState();
+    reRenderDeckReview();
+}
+
+function changeStudyPageSize(size) {
+    state.prefs.studyPageSize = size === 'All' ? 'All' : parseInt(size);
+    let subject = currentReviewSubject;
+    if (!state.prefs.studyProgress[subject]) state.prefs.studyProgress[subject] = { page: 1, index: 0, scrollY: 0 };
+    state.prefs.studyProgress[subject].page = 1;
+    saveState();
+    reRenderDeckReview();
+}
+
+function changeStudyPage(delta) {
+    let subject = currentReviewSubject;
+    state.prefs.studyProgress[subject].page += delta;
+    saveState();
+    reRenderDeckReview();
+    const scrollContainer = document.querySelector('main');
+    if(scrollContainer) scrollContainer.scrollTop = 0;
+}
+
+function changeStudyIndex(delta) {
+    let subject = currentReviewSubject;
+    state.prefs.studyProgress[subject].index += delta;
+    saveState();
+    reRenderDeckReview();
+}
+
+function toggleSpecificChoices(qId) {
+    if (!state.prefs.qToggles) state.prefs.qToggles = {};
+    let currentState = state.prefs.qToggles[qId];
+    if (currentState === undefined) {
+        currentState = state.prefs.showWrongChoices !== false;
+    }
+    
+    state.prefs.qToggles[qId] = !currentState;
+    saveState();
+    reRenderDeckReview();
+}
+
+let lastScrollTop = 0;
 window.addEventListener('DOMContentLoaded', () => {
     const mainEl = document.querySelector('main');
-    if (mainEl) {
+    const headerEl = document.querySelector('header');
+    if (headerEl) headerEl.classList.add('transition-transform', 'duration-300');
+
+    if (mainEl && headerEl) {
         mainEl.addEventListener('scroll', (e) => {
+            const currentScroll = e.target.scrollTop;
+            if (currentScroll > lastScrollTop && currentScroll > 50) {
+                headerEl.classList.add('-translate-y-full');
+            } else {
+                headerEl.classList.remove('-translate-y-full');
+            }
+            lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
+
             if (document.getElementById('view-deck-review').classList.contains('active') && currentReviewSubject) {
                 if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
-                state.prefs.studyProgress[currentReviewSubject] = e.target.scrollTop;
-
+                if (!state.prefs.studyProgress[currentReviewSubject]) {
+                    state.prefs.studyProgress[currentReviewSubject] = { page: 1, index: 0, scrollY: 0 };
+                }
+                state.prefs.studyProgress[currentReviewSubject].scrollY = currentScroll;
                 clearTimeout(window.scrollSaveTimeout);
                 window.scrollSaveTimeout = setTimeout(() => saveState(), 1000);
             }
         });
     }
 });
+function toggleStudyFullscreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+            console.warn(`Error attempting to enable fullscreen: ${err.message}`);
+        });
+    } else {
+        document.exitFullscreen();
+    }
+}
+
+if (!state.prefs.qTypeOverride) state.prefs.qTypeOverride = 'auto';
+
+function changeQuestionTypeMode(mode) {
+    if (mode === 'ident') {
+        alert("Warning: You are hiding choices for Multiple Choice questions. Context-sensitive questions (e.g., 'All of the above', 'Both A and B') may be difficult to answer without seeing the options.");
+    }
+    state.prefs.qTypeOverride = mode;
+    saveState();
+    
+    if (state.session.active) renderQuestion(); 
+}
+
+function openGeneralFeedbackModal() {
+    const modal = document.getElementById('feedback-modal');
+    document.getElementById('feedback-comments').value = "";
+    modal.classList.remove('hidden');
+    setTimeout(() => { modal.classList.remove('opacity-0'); modal.querySelector('div').classList.remove('scale-95'); }, 10);
+}
+
+function closeGeneralFeedbackModal() {
+    const modal = document.getElementById('feedback-modal');
+    modal.classList.add('opacity-0');
+    modal.querySelector('div').classList.add('scale-95');
+    setTimeout(() => modal.classList.add('hidden'), 300); 
+}
+
+async function submitGeneralFeedback() {
+    const comments = document.getElementById('feedback-comments').value.trim();
+    if (!comments) return alert("Please enter your feedback.");
+    const btn = document.getElementById('btn-submit-feedback');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Sending...';
+    btn.disabled = true;
+
+    try {
+        await fetch(DB_URL, {
+            method: 'POST',
+            redirect: "follow",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ type: "submit_feedback", comments: comments, userId: state.prefs.userId })
+        });
+        btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Sent!';
+        btn.classList.replace('bg-brand-500', 'bg-green-500');
+        setTimeout(() => {
+            closeGeneralFeedbackModal();
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+                btn.classList.replace('bg-green-500', 'bg-brand-500');
+            }, 500);
+        }, 1500);
+    } catch (err) {
+        alert("Network error.");
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
