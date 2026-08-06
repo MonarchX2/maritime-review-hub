@@ -6,9 +6,10 @@ let state = {
     db: [],
     categorySummary: [],
     stats: { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} },
-    prefs: { darkMode: true, layoutMode: 'grid', activeRecall: true, shuffleChoices: true, shuffleQuestions: true, hideABCD: true, showWrongChoices: false },    session: { active: false, questions: [], currentIndex: 0, userAnswers: {}, autoNextTimeout: null },
+    prefs: { darkMode: true, layoutMode: 'grid', activeRecall: true, shuffleChoices: true, shuffleQuestions: true, hideABCD: false, quizHideABCD: false, showWrongChoices: false, archivedDecks: [] },    
+    session: { active: false, questions: [], currentIndex: 0, userAnswers: {}, autoNextTimeout: null },
     currentPath: [],
-    reportQuestion: null
+    reportQuestion: null,
 };
 
 let chartInstance = null;
@@ -85,30 +86,35 @@ async function loadState() {
         console.error("Error loading DB from IndexedDB", err);
     }
 
-    if (savedStats) state.stats = JSON.parse(savedStats);
-    try {
-
-    if (savedPrefs) {
-
-        const prefs = JSON.parse(savedPrefs);
-
-        state.prefs = {
-            ...state.prefs,
-            ...prefs
-        };
-
+    if (savedStats) {
+        try {
+            state.stats = JSON.parse(savedStats);
+        } catch (e) {
+            console.error("Stats corrupted, resetting to default.", e);
+            state.stats = { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} };
+        }
     }
 
+    if (savedPrefs) {
+        try {
+            const prefs = JSON.parse(savedPrefs);
+            state.prefs = {
+                ...state.prefs,
+                ...prefs
+            };
         } catch (e) {
-
-    console.error("Invalid preferences.", e);
-
+            console.error("Invalid preferences.", e);
         }
+    }
 
     if (!state.stats.subjectAccuracy) state.stats.subjectAccuracy = {};
-    if (state.prefs.darkMode) document.documentElement.classList.add('dark');
+    if (state.prefs?.darkMode) document.documentElement.classList.add('dark');
 
-    document.getElementById('db-size-display').innerText = state.db.length;
+    const dbSizeEl = document.getElementById('db-size-display');
+    if (dbSizeEl) {
+        dbSizeEl.innerText = state.db ? state.db.length : 0;
+    }
+
     populateFilters();
     updateDashboard();
     updateThemeButton();
@@ -209,8 +215,9 @@ async function syncDatabase() {
 
     try {
         const response = await fetch(url, {
-    signal: syncAbortController.signal
-});
+            signal: syncAbortController.signal,
+            redirect: "follow"
+        });
         if (!response.ok) throw new Error("Network response failed");
         const summaryData = await response.json();
 
@@ -377,43 +384,44 @@ function renderQuestion() {
     const fullSubject = q.Subject || 'General';
     const parts = String(fullSubject).split("::");
 
-document.getElementById("q-subject").innerText =
-parts.length >= 2
-    ? parts.slice(-2).join(" :: ")
-    : fullSubject;
+    document.getElementById("q-subject").innerText =
+        parts.length >= 2
+            ? parts.slice(-2).join(" :: ")
+            : fullSubject;
 
-let displayId = q.ID ?? `Q-${state.session.currentIndex + 1}`;
+    let displayId = q.ID ?? `Q-${state.session.currentIndex + 1}`;
 
-if (displayId.includes('::')) {
-    const match = displayId.match(/::.*?\b(\d+)\s*$/);
-    displayId = match ? match[1] : displayId.split('::').pop();
-}
+    if (displayId.includes('::')) {
+        const match = displayId.match(/::.*?\b(\d+)\s*$/);
+        displayId = match ? match[1] : displayId.split('::').pop();
+    }
 
-document.getElementById('q-id').innerText = "Question " + displayId;
+    document.getElementById('q-id').innerText = "Question " + displayId;
 
     document.getElementById('q-text').innerHTML = formatQuestionText(q.Question);
 
     const imgEl = document.getElementById('q-image');
     if (q.ImageURL && q.ImageURL.trim() !== "") {
-imgEl.onload = () => {
-    imgEl.classList.remove("hidden");
-};
+        imgEl.onload = () => {
+            imgEl.classList.remove("hidden");
+        };
 
-imgEl.onerror = () => {
-    imgEl.removeAttribute("src");
-    imgEl.classList.add("hidden");
-};
+        imgEl.onerror = () => {
+            imgEl.removeAttribute("src");
+            imgEl.classList.add("hidden");
+        };
 
-imgEl.src = q.ImageURL;        
-imgEl.alt = q.Question ? `Reference for: ${q.Question.substring(0, 50)}...` : "Question reference image";
+        imgEl.src = q.ImageURL;        
+        imgEl.alt = q.Question ? `Reference for: ${q.Question.substring(0, 50)}...` : "Question reference image";
         imgEl.classList.remove('hidden');
     } else {
         imgEl.classList.add('hidden');
     }
 
-const choices = ['A', 'B', 'C', 'D'];
+    const choices = ['A', 'B', 'C', 'D'];
     let validChoicesCount = 0;
     const isForcedIdent = state.prefs.qTypeOverride === 'ident';
+    const hideABCD = state.prefs.quizHideABCD === true || isForcedIdent || validChoicesCount <= 1;
 
     choices.forEach(ch => {
         const choiceText = q[`Choice${ch}`];
@@ -425,7 +433,9 @@ const choices = ['A', 'B', 'C', 'D'];
         } else {
             validChoicesCount++;
             btn.classList.remove('hidden');
-            document.getElementById(`choice-${ch.toLowerCase()}-text`).innerHTML = formatQuestionText(cleanChoice);
+            
+            const prefixHtml = hideABCD ? '' : `<span class="choice-prefix font-bold mr-2">${ch}.</span>`;
+            document.getElementById(`choice-${ch.toLowerCase()}-text`).innerHTML = prefixHtml + formatQuestionText(cleanChoice);
             
             btn.onclick = () => {
                 if (btn.disabled) return;
@@ -458,13 +468,11 @@ const choices = ['A', 'B', 'C', 'D'];
 
             if (choice === q.Answer) {
                 btn.classList.add('selected-correct');
-                btn.classList.remove('hidden'); // Always ensure the correct answer is visible
+                btn.classList.remove('hidden');
             } else {
-                // FIX: Hide wrong answers entirely if in Identification Mode
                 if (isForcedIdent) {
                     btn.classList.add('hidden'); 
                 } else {
-                    // Standard MCQ behavior
                     if (choice === userAnswer) {
                         btn.classList.add('selected-wrong');
                     } else {
@@ -496,6 +504,23 @@ const choices = ['A', 'B', 'C', 'D'];
                 qChoicesContainer.classList.remove('hidden');
             }
         }
+    }
+
+    const isPureIdent = validChoicesCount <= 1 || isForcedIdent;
+    const activeRecallToggle = document.getElementById('toggle-active-recall');
+    const shuffleChoicesToggle = document.getElementById('toggle-shuffle-choices');
+
+    if (activeRecallToggle) {
+        activeRecallToggle.disabled = isPureIdent;
+        activeRecallToggle.parentElement.classList.toggle('opacity-50', isPureIdent); 
+        activeRecallToggle.parentElement.classList.toggle('cursor-not-allowed', isPureIdent);
+        activeRecallToggle.parentElement.classList.toggle('pointer-events-none', isPureIdent);
+    }
+    
+    if (shuffleChoicesToggle) {
+        shuffleChoicesToggle.disabled = isPureIdent;
+        shuffleChoicesToggle.parentElement.classList.toggle('opacity-50', isPureIdent);
+        shuffleChoicesToggle.parentElement.classList.toggle('cursor-not-allowed', isPureIdent);
     }
 }
 
@@ -594,21 +619,56 @@ function renderCategoryProgress() {
     html += `<div class="${layoutClass}">`;
     const keys = Object.keys(currentNode).sort();
     const sourceFilter = document.getElementById('deck-source-filter')?.value || 'all';
-    function nodeMatchesFilter(node, filter) {
+
+    // CHANGED: Added currentKey and deep folder archive checks
+    function nodeMatchesFilter(node, filter, currentKey = null) {
+        const archivedDecks = state.prefs?.archivedDecks || [];
+        let isArchived = false;
+
+        // Check if the specific node/deck is archived
+        if (node._data && node._data.Subject && archivedDecks.includes(node._data.Subject)) {
+            isArchived = true;
+        }
+        // Check if the top-level root folder of this node is archived
+        if (node._data && node._data.Subject) {
+            const topLevel = node._data.Subject.split('::')[0];
+            if (archivedDecks.includes(topLevel)) {
+                isArchived = true;
+            }
+        }
+        // Check if the folder itself is archived while rendering the home view
+        if (currentKey && (!state.currentPath || state.currentPath.length === 0)) {
+            if (archivedDecks.includes(currentKey)) {
+                isArchived = true;
+            }
+        }
+        // Inherit archive state if we are inside a folder whose root is archived
+        if (state.currentPath && state.currentPath.length > 0 && archivedDecks.includes(state.currentPath[0])) {
+            isArchived = true;
+        }
+
+        if (filter === 'archived') return isArchived;
+        if (isArchived) return false;
+
         if (filter === 'all') return true;
-        if (node._data !== null && !node._data.IsFolder) {
-            const isDownloaded = state.db.some(q => q.Subject === node._data.Subject);
+
+        if (node._data !== null && node._data !== undefined && !node._data.IsFolder) {
+            const isDownloaded = (state.db || []).some(q => q.Subject === node._data.Subject);
             if (filter === 'downloaded') return isDownloaded;
             if (filter === 'cloud') return !isDownloaded;
         }
+
         const childKeys = Object.keys(node._children || {});
         if (childKeys.length > 0) {
-            return childKeys.some(childKey => nodeMatchesFilter(node._children[childKey], filter));
+            return childKeys.some(childKey => nodeMatchesFilter(node._children[childKey], filter, childKey));
         }
+
         return false;
     }
+
+    // CHANGED: Pass the current key for folder evaluation
     let visibleKeys = keys.filter(key => {
-        return nodeMatchesFilter(currentNode[key], sourceFilter);
+        return nodeMatchesFilter(currentNode[key], sourceFilter, key);
     });
 
     if (visibleKeys.length === 0) {
@@ -620,23 +680,35 @@ function renderCategoryProgress() {
         const safeSubj = escapeHTML(subj); 
         const safeName = escapeHTML(displayName);
         const totalQuestionsInDb = cat.QuestionCount; 
-        const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
+
+        // CHANGED: Restrict Archive Icon to Root Path only
+        const isRoot = (!state.currentPath || state.currentPath.length === 0);
+        const isArchived = (state.prefs?.archivedDecks || []).includes(subj);
+        const archiveIconColor = isArchived ? 'text-amber-500 hover:text-amber-600' : 'text-gray-400 hover:text-brand-500';
         
+        let archiveBtnHTML = '';
+        if (isRoot) {
+            archiveBtnHTML = `
+                <button onclick="event.stopPropagation(); toggleArchiveDeck('${safeSubj}')" 
+                        class="transition-all transform hover:scale-110 active:scale-90 ${archiveIconColor} p-1" 
+                        title="${isArchived ? 'Unarchive Deck' : 'Archive Deck'}">
+                    <i class="fa-solid fa-box-archive"></i>
+                </button>
+            `;
+        }
+
+        const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 }; 
         const dbQsForSubj = state.db.filter(q => q.Subject === subj).map(q => q.ID);
         const completedCount = state.stats.completedQs ? state.stats.completedQs.filter(id => dbQsForSubj.includes(id)).length : 0;
         const mistakesCount = state.stats.mistakes ? state.stats.mistakes.filter(id => dbQsForSubj.includes(id)).length : 0;
-        
         const progressPercent = totalQuestionsInDb > 0 ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100)) : 0;
         const isCompleted = totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
         const cardClasses = isCompleted ? 'bg-green-50 dark:bg-green-900/30 border-green-300' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
-
         const isDownloaded = state.db.some(q => q.Subject === subj);
         const statusBadge = isDownloaded 
             ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i></span>`
             : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i></span>`;
-
         const isReview = currentAppMode === 'review';
-        
         const primaryActionText = isReview ? 'Review Deck' : (completedCount === 0 ? 'Start Quiz' : 'Continue Quiz');
         const primaryActionIcon = isReview ? 'fa-eye' : 'fa-play';
         const primaryActionColor = isReview ? 'bg-purple-600 hover:bg-purple-700' : 'bg-brand-600 hover:bg-brand-700';
@@ -644,7 +716,6 @@ function renderCategoryProgress() {
         const themeColorBg = isReview ? 'bg-purple-500' : 'bg-brand-500';
         const themeShadowHover = isReview ? 'hover:shadow-purple-500/10' : 'hover:shadow-brand-500/10';
         const loaderColor = isReview ? 'text-purple-500' : 'text-brand-500';
-
         const isLocked = cat.Locked === true; 
         const lockIcon = isLocked ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected"></i>` : '';
 
@@ -657,6 +728,7 @@ function renderCategoryProgress() {
             statsHTML = `<p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>`;
             countBadgeHTML = `
                 <div class="flex items-center gap-2 flex-shrink-0 pt-1">
+                    ${archiveBtnHTML}
                     ${isDownloaded ? `<button onclick="event.stopPropagation(); deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>` : ``}
                     <span class="text-sm font-black ${themeColorText} transition-colors">${completedCount} / ${totalQuestionsInDb}</span>
                 </div>`;
@@ -672,12 +744,11 @@ function renderCategoryProgress() {
                     </button>`;
             }
         } else {
-            if (isDownloaded) {
-                countBadgeHTML = `
-                    <div class="flex items-center gap-2 flex-shrink-0 pt-1">
-                        <button onclick="event.stopPropagation(); deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>
-                    </div>`;
-            }
+            countBadgeHTML = `
+                <div class="flex items-center gap-2 flex-shrink-0 pt-1">
+                    ${archiveBtnHTML}
+                    ${isDownloaded ? `<button onclick="event.stopPropagation(); deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>` : ``}
+                </div>`;
         }
         
         return `
@@ -713,7 +784,7 @@ function renderCategoryProgress() {
                         <span class="truncate">${primaryActionText}</span>
                     </button>
                     
-                    <!-- Review Mistakes Button (Only shows in Quiz Mode if mistakes exist) -->
+                    <!-- Review Mistakes Button -->
                     ${(!isReview && mistakesCount > 0) ? `
                         <button onclick="handleDeckClick('${safeSubj}', 'mistakes')" class="flex-1 bg-yellow-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-yellow-600 active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="Review Mistakes">
                             <i class="fa-solid fa-triangle-exclamation mr-1 sm:mr-2 group-hover:scale-125 transition-transform flex-shrink-0"></i> 
@@ -734,7 +805,6 @@ function renderCategoryProgress() {
         const hasData = item._data !== null;
         
         const isExplicitFolder = hasData && item._data.IsFolder === true; 
-        
         const delay = index * 0.05;
 
         if (hasChildren || isExplicitFolder) {
@@ -752,8 +822,25 @@ function renderCategoryProgress() {
             const isLocked = hasData && item._data.Locked === true;
             const lockIcon = isLocked ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected Folder"></i>` : '';
 
+            // CHANGED: Support Archiving Folders at the Root layer
+            const isRoot = (!state.currentPath || state.currentPath.length === 0);
+            let archiveBtnHtml = '';
+            
+            if (isRoot) {
+                const isArchived = (state.prefs?.archivedDecks || []).includes(key);
+                const archiveIconColor = isArchived ? 'text-amber-300 hover:text-amber-200' : 'text-white/60 hover:text-white';
+                archiveBtnHtml = `
+                    <button onclick="event.stopPropagation(); toggleArchiveDeck('${escapeHTML(key)}')"
+                            class="absolute top-2 right-2 transition-all transform hover:scale-110 active:scale-90 ${archiveIconColor} p-1 z-10"
+                            title="${isArchived ? 'Unarchive Folder' : 'Archive Folder'}">
+                        <i class="fa-solid fa-box-archive text-lg drop-shadow-md"></i>
+                    </button>
+                `;
+            }
+
             html += `
-                <div onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1" style="animation-delay: ${delay}s;">
+                <div onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
+                    ${archiveBtnHtml}
                     <div class="h-12 ${folderColorClass} transition-colors relative">                        
                         <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
                     </div>
@@ -1021,26 +1108,32 @@ function renderDeckReview(subject, questions) {
     const hideABCDToggle = document.getElementById('toggle-hide-abcd');
     if (hideABCDToggle) hideABCDToggle.checked = hideABCD;
 
-    let html = `
-        <div class="flex flex-wrap gap-3 mb-6 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+let html = `
+    <details class="group bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 transition-all duration-300">
+        <summary class="p-4 cursor-pointer font-bold text-gray-700 dark:text-gray-200 flex justify-between items-center select-none">
+            <span><i class="fa-solid fa-sliders mr-2"></i> Study Settings</span>
+            <i class="fa-solid fa-chevron-down transition-transform group-open:rotate-180"></i>
+        </summary>
+        <div class="p-4 border-t border-gray-100 dark:border-gray-700 flex flex-wrap gap-4 bg-gray-50 dark:bg-gray-800/50">
+            
             <div class="flex flex-col gap-1 w-full sm:w-auto">
-                <label class="text-xs font-bold text-gray-500 uppercase">Study Layout</label>
-                <select class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2 text-sm text-gray-700 dark:text-gray-200" onchange="changeStudyLayout(this.value)">
+                <label class="text-xs font-bold text-gray-500 uppercase">Layout</label>
+                <select class="..." onchange="changeStudyLayout(this.value)">
                     <option value="scroll" ${layout === 'scroll' ? 'selected' : ''}>Scroll List</option>
                     <option value="single" ${layout === 'single' ? 'selected' : ''}>Single Flashcard</option>
                 </select>
             </div>
-            
+
             ${layout === 'scroll' ? `
             <div class="flex flex-col gap-1 w-full sm:w-auto">
-                <label class="text-xs font-bold text-gray-500 uppercase">Questions Per Page</label>
-                <select class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2 text-sm text-gray-700 dark:text-gray-200" onchange="changeStudyPageSize(this.value)">
-                    ${[5, 10, 15, 25, 50, 100, 'All'].map(size => `<option value="${size}" ${pageSize == size ? 'selected' : ''}>Group by ${size}</option>`).join('')}
+                <label class="text-xs font-bold text-gray-500 uppercase">Per Page</label>
+                <select class="..." onchange="changeStudyPageSize(this.value)">
+                    ${[5, 10, 15, 25, 50, 100, 'All'].map(size => `<option value="${size}" ${pageSize == size ? 'selected' : ''}>${size}</option>`).join('')}
                 </select>
-            </div>
-            ` : ''}
+            </div>` : ''}
         </div>
-    `;
+    </details>
+`;
 
     if (questions.length === 0) {
         container.innerHTML = html + `<div class="text-center p-8 text-gray-500">No questions found for this deck.</div>`;
@@ -1069,6 +1162,34 @@ function renderDeckReview(subject, questions) {
             let start = (currentPage - 1) * pageSize;
             displayQuestions = questions.slice(start, start + pageSize);
         }
+    }
+
+    if (layout === 'single') {
+    html += `
+        <div class="flex justify-between items-center mb-6 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 sticky top-4 z-20 gap-2">
+            <button onclick="changeStudyIndex(-1)" ${currentIndex === 0 ? 'disabled' : ''} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
+                <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Prev</span>
+            </button>
+            
+            <span class="text-sm font-bold text-gray-600 dark:text-gray-300 flex-1 text-center">Card ${currentIndex + 1} / ${questions.length}</span>
+            
+            <button onclick="changeStudyIndex(1)" ${currentIndex === questions.length - 1 ? 'disabled' : ''} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
+                <span class="hidden sm:inline mr-1">Next</span> <i class="fa-solid fa-arrow-right"></i>
+            </button>
+        </div>
+    `;
+    } else if (pageSize !== 'All' && totalPages > 1) {
+        html += `
+            <div class="flex justify-between items-center mt-6 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 sticky bottom-4 z-10 gap-2">
+                <button onclick="changeStudyPage(-1)" ${currentPage === 1 ? 'disabled' : ''} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
+                    <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Prev</span>
+                </button>
+                <span class="text-sm font-bold text-gray-600 dark:text-gray-300 flex-1 text-center">Page ${currentPage} / ${totalPages}</span>
+                <button onclick="changeStudyPage(1)" ${currentPage === totalPages ? 'disabled' : ''} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
+                    <span class="hidden sm:inline mr-1">Next</span> <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+        `;
     }
 
     displayQuestions.forEach((q) => {
@@ -1128,6 +1249,7 @@ function renderDeckReview(subject, questions) {
                     </p>
                 </div>`;
         }
+
         let reportClass = globallyReportedQs.has(q.ID) 
             ? 'text-red-500 bg-red-50 dark:bg-red-900/30' 
             : 'text-gray-400 bg-white dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-500';
@@ -1162,37 +1284,6 @@ function renderDeckReview(subject, questions) {
             </div>
         `;
     });
-    if (layout === 'single') {
-        html += `
-            <div class="flex justify-between items-center mt-6 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 sticky bottom-4 z-10 gap-2">
-                <button onclick="changeStudyIndex(-1)" ${currentIndex === 0 ? 'disabled' : ''} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
-                    <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Prev</span>
-                </button>
-                <button onclick="navigate('dashboard')" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-bold whitespace-nowrap">
-                    <i class="fa-solid fa-house mr-1"></i>
-                </button>
-                <span class="text-sm font-bold text-gray-600 dark:text-gray-300 flex-1 text-center">${currentIndex + 1} / ${questions.length}</span>
-                <button onclick="changeStudyIndex(1)" ${currentIndex === questions.length - 1 ? 'disabled' : ''} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
-                    <span class="hidden sm:inline mr-1">Next</span> <i class="fa-solid fa-arrow-right"></i>
-                </button>
-            </div>
-        `;
-    } else if (pageSize !== 'All' && totalPages > 1) {
-        html += `
-            <div class="flex justify-between items-center mt-6 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 sticky bottom-4 z-10 gap-2">
-                <button onclick="changeStudyPage(-1)" ${currentPage === 1 ? 'disabled' : ''} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
-                    <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Prev</span>
-                </button>
-                <button onclick="navigate('dashboard')" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-bold whitespace-nowrap">
-                    <i class="fa-solid fa-house mr-1"></i>
-                </button>
-                <span class="text-sm font-bold text-gray-600 dark:text-gray-300 flex-1 text-center">Pg ${currentPage} / ${totalPages}</span>
-                <button onclick="changeStudyPage(1)" ${currentPage === totalPages ? 'disabled' : ''} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
-                    <span class="hidden sm:inline mr-1">Next</span> <i class="fa-solid fa-arrow-right"></i>
-                </button>
-            </div>
-        `;
-    }
 
     container.innerHTML = html;
     navigate('deck-review');
@@ -1208,10 +1299,23 @@ function renderDeckReview(subject, questions) {
 }
 
 function toggleHideABCD() {
-    const isChecked = document.getElementById('toggle-hide-abcd').checked;
-    state.prefs.hideABCD = isChecked;
+    const isHidden = document.getElementById('toggle-hide-abcd').checked;
+    state.prefs.hideABCD = isHidden;
     saveState();
-    reRenderDeckReview();
+    
+    reRenderDeckReview(); 
+}
+
+function toggleQuizHideABCD() {
+    const isHidden = document.getElementById('toggle-quiz-hide-abcd').checked;
+    
+    if (!state.prefs) state.prefs = {};
+    state.prefs.quizHideABCD = isHidden;
+    saveState();
+    
+    if (document.getElementById('view-practice').classList.contains('active')) {
+        renderQuestion();
+    }
 }
 
 function toggleShowWrongChoices() {
@@ -1219,6 +1323,27 @@ function toggleShowWrongChoices() {
     state.prefs.showWrongChoices = isChecked;
     saveState();
     reRenderDeckReview();
+}
+
+function toggleArchiveDeck(subjectId) {
+    if (!state.prefs.archivedDecks) {
+        state.prefs.archivedDecks = [];
+    }
+    
+    const index = state.prefs.archivedDecks.indexOf(subjectId);
+    
+    if (index > -1) {
+        state.prefs.archivedDecks.splice(index, 1);
+        showToast("Deck unarchived");
+    } else {
+        state.prefs.archivedDecks.push(subjectId);
+        showToast("Deck archived");
+    }
+    
+    saveState();
+    
+    // Refresh the dashboard to instantly hide/show the deck based on the current filter
+    renderCategoryProgress(); 
 }
 
 function submitPracticeAnswer(selected, correct) {
@@ -1324,17 +1449,32 @@ function endSession(silent = false) {
     sendTelemetry('end_session', { totalAnswered: state.session.currentIndex });
 }
 
+let chartRetryCount = 0;
+
 function renderCharts() {
     if (typeof Chart === 'undefined') {
         console.warn("Chart.js is still loading...");
-        setTimeout(renderCharts, 500);
+        if (chartRetryCount < 10) { // Retries every 500ms for up to 5 seconds
+            chartRetryCount++;
+            setTimeout(renderCharts, 500);
+        } else {
+            console.error("Chart.js failed to load entirely.");
+        }
         return;
     }
+    
+    chartRetryCount = 0; // Reset counter on successful load
 
-    if (chartInstance) chartInstance.destroy();
+    const canvas = document.getElementById('chart-accuracy');
+    if (!canvas) return; // Guard against running when element is missing
 
-    const ctx = document.getElementById('chart-accuracy').getContext('2d');
-    let labels = Object.keys(state.stats.subjectAccuracy);
+    if (typeof chartInstance !== 'undefined' && chartInstance) {
+        chartInstance.destroy();
+    }
+
+    const ctx = canvas.getContext('2d');
+    const accuracyMap = state.stats?.subjectAccuracy || {};
+    let labels = Object.keys(accuracyMap);
     let data = [];
 
     if (labels.length === 0) {
@@ -1342,8 +1482,9 @@ function renderCharts() {
         data = [0, 0, 0];
     } else {
         data = labels.map(s => {
-            const d = state.stats.subjectAccuracy[s];
-            return d.total === 0 ? 0 : Math.round((d.correct / d.total) * 100);
+            const d = accuracyMap[s];
+            if (!d || !d.total) return 0;
+            return Math.round((d.correct / d.total) * 100);
         });
     }
 
@@ -1497,7 +1638,7 @@ function resumeSession() {
             searchId = `${savedQ.Subject}::${cleanId}`;
         }
 
-        const freshQ = state.db.find(dbQ => dbQ.ID === searchId || dbQ.ID === savedQ.ID);
+        const freshQ = (state.db || []).find(dbQ => dbQ.ID === searchId || dbQ.ID === savedQ.ID);
 
         if (freshQ) {
             savedQ.Question = freshQ.Question;
@@ -1521,6 +1662,8 @@ function resumeSession() {
                     delete state.session.userAnswers[index];
                 }
             }
+        } else {
+            console.warn(`Question ${searchId || savedQ.ID} not found in DB. Falling back to saved session data.`);
         }
         return savedQ;
     });
@@ -1569,6 +1712,8 @@ function revealAnswer() {
         trackStats(q, false);
     }
 
+    trackStats(q, false);
+
     document.getElementById('q-choices').classList.remove('hidden');
     const activeRecallMask = document.getElementById('active-recall-mask');
     if (activeRecallMask) activeRecallMask.classList.add('hidden');
@@ -1609,23 +1754,38 @@ function toggleLayout() {
 }
 
 function openReportModal() {
-    const q = state.session.questions[state.session.currentIndex];
-    const reportedQs = JSON.parse(localStorage.getItem('mrh_reported_qs') || '[]');
+    const q = state.session?.questions?.[state.session?.currentIndex];
+    if (!q) return;
+
+    let reportedQs = [];
+    try {
+        reportedQs = JSON.parse(localStorage.getItem('mrh_reported_qs') || '[]');
+    } catch (e) {
+        console.warn("Reported QS array corrupted. Resetting.", e);
+        localStorage.setItem('mrh_reported_qs', '[]');
+    }
 
     if (reportedQs.includes(q.ID)) {
         alert("You have already reported this question. Thank you for your feedback!");
         return;
     }
 
-    document.getElementById('report-type').value = "";
-    document.getElementById('report-comments').value = "";
+    state.reportQuestion = q;
+
+    const reportType = document.getElementById('report-type');
+    const reportComments = document.getElementById('report-comments');
+    if (reportType) reportType.value = "";
+    if (reportComments) reportComments.value = "";
 
     const modal = document.getElementById('report-modal');
+    if (!modal) return;
+    
     const inner = modal.querySelector('div');
     modal.classList.remove('hidden');
+
     setTimeout(() => {
         modal.classList.remove('opacity-0');
-        inner.classList.remove('scale-95', 'opacity-0');
+        if (inner) inner.classList.remove('scale-95', 'opacity-0');
     }, 10);
 }
 
@@ -1790,8 +1950,12 @@ function openSessionSettingsModal() {
 
     const choicesToggle = document.getElementById('toggle-shuffle-choices');
     if (choicesToggle) choicesToggle.checked = state.prefs.shuffleChoices !== false;
+    
     const questionsToggle = document.getElementById('toggle-shuffle-questions');
     if (questionsToggle) questionsToggle.checked = state.prefs.shuffleQuestions !== false;
+
+    const quizHideToggle = document.getElementById('toggle-quiz-hide-abcd');
+    if (quizHideToggle) quizHideToggle.checked = state.prefs.quizHideABCD === true;
 
     const qTypeSelect = document.getElementById('toggle-question-type');
     if (qTypeSelect) qTypeSelect.value = state.prefs.qTypeOverride || 'auto';
@@ -2071,25 +2235,38 @@ if (btnSubmitDeckPassword) {
 }
 
 function openReportModalFromStudy(questionId) {
-    const q = state.db.find(item => item.ID === questionId);
+    const q = (state.db || []).find(item => item.ID === questionId);
     if (!q) return;
-    state.reportQuestion = q;
-    const reportedQs = JSON.parse(localStorage.getItem('mrh_reported_qs') || '[]');
+
+    let reportedQs = [];
+    try {
+        reportedQs = JSON.parse(localStorage.getItem('mrh_reported_qs') || '[]');
+    } catch (e) {
+        console.warn("Reported QS array corrupted. Resetting.", e);
+        localStorage.setItem('mrh_reported_qs', '[]');
+    }
+
     if (reportedQs.includes(q.ID)) {
         alert("You have already reported this question. Thank you for your feedback!");
         return;
     }
 
-    document.getElementById('report-type').value = "";
-    document.getElementById('report-comments').value = "";
+    state.reportQuestion = q;
+
+    const reportType = document.getElementById('report-type');
+    const reportComments = document.getElementById('report-comments');
+    if (reportType) reportType.value = "";
+    if (reportComments) reportComments.value = "";
 
     const modal = document.getElementById('report-modal');
+    if (!modal) return;
+
     const inner = modal.querySelector('div');
     modal.classList.remove('hidden');
 
     setTimeout(() => {
         modal.classList.remove('opacity-0');
-        inner.classList.remove('scale-95', 'opacity-0');
+        if (inner) inner.classList.remove('scale-95', 'opacity-0');
     }, 10);
 }
 
@@ -2211,11 +2388,13 @@ if (!state.prefs.qTypeOverride) state.prefs.qTypeOverride = 'auto';
 
 function changeQuestionTypeMode(mode) {
     if (mode === 'ident') {
-        alert("Warning: You are hiding choices for Multiple Choice questions. Context-sensitive questions (e.g., 'All of the above', 'Both A and B') may be difficult to answer without seeing the options.");
+        alert("Warning: You are hiding choices for Multiple Choice questions.");
+    } else if (mode === 'mcq') {
+        alert("Warning: Strict MCQ mode enabled. Choices WILL return undefined if there are no other choices present in the database. (This is an experimental feature)");
     }
+    
     state.prefs.qTypeOverride = mode;
     saveState();
-    
     if (state.session.active) renderQuestion(); 
 }
 

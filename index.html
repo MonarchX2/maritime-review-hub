@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Maritime Review Hub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">    
+<title>Maritime Review Hub</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1e3a8a">
@@ -81,10 +81,10 @@
 
             <div class="flex items-center gap-2 flex-shrink-0">
                 <!-- Deck Source Filter (Feature 4) -->
-                <select id="deck-source-filter" onchange="renderCategoryProgress()" class="bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-colors text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 outline-none cursor-pointer">
-                    <option value="all">All Decks</option>
+                <select id="deck-source-filter" onchange="renderCategoryProgress()" class="bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-colors text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 outline-none cursor-pointer">                    <option value="all">All Decks</option>
                     <option value="downloaded">Downloaded</option>
                     <option value="cloud">Cloud Only</option>
+                    <option value="archived">Archived</option>
                 </select>
 
                 <!-- Mode Toggle -->
@@ -102,9 +102,9 @@
                 </label>
 
                 <!-- List/Grid View Button -->
-                <button onclick="toggleLayout()" class="justify-center bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 sm:px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm transition-all text-[10px] sm:text-xs font-bold whitespace-nowrap">
+                <button onclick="toggleLayout()" class="bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-colors">
                     <i id="layout-icon" class="fa-solid fa-list text-brand-500 mr-1.5 sm:mr-2"></i> 
-                    <span id="layout-text">List View</span>
+                    <span id="layout-text" class="hidden sm:inline">List View</span>
                 </button>
             </div>
             </div>
@@ -135,21 +135,22 @@
             </div>
 
             <div id="session-active" class="hidden transition-all duration-500">
-                <div class="mb-6 flex justify-between items-center w-full">
-                    <button onclick="navigate('dashboard')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95 flex items-center group">
-                        <i class="fa-solid fa-arrow-left mr-2 group-hover:-translate-x-1 transition-transform"></i> Pause & Return
-                    </button>
-                    
-                    <button onclick="openSessionSettingsModal()" id="btn-session-settings" class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-10 h-10 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95 flex items-center justify-center group" title="Session Settings">
-                        <i class="fa-solid fa-gear group-hover:rotate-90 transition-transform"></i>
-                    </button>
-                </div>
-                <div class="flex justify-between items-center mb-2">
-                    <span class="text-sm font-semibold text-gray-500 dark:text-gray-400 transition-colors">Card Progress</span>
-                    <span class="text-sm font-bold text-brand-600 dark:text-brand-400" id="session-progress-text">0 / 0</span>
-                </div>
-                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-8 overflow-hidden">
-                    <div class="bg-brand-500 h-full rounded-full transition-all duration-500 ease-out" id="session-progress" style="width: 0%"></div>
+                <div class="sticky top-[68px] z-40 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-sm -mx-4 px-4 py-4 sm:mx-0 sm:px-0 sm:py-0 sm:bg-transparent sm:backdrop-blur-none sm:static mb-6 border-b sm:border-0 border-gray-200 dark:border-gray-700">
+                    <div class="flex justify-between items-center w-full mb-4">
+                        <button onclick="navigate('dashboard')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95 flex items-center group">
+                            <i class="fa-solid fa-arrow-left mr-2 group-hover:-translate-x-1 transition-transform"></i> Pause & Return
+                        </button>
+                        <button onclick="openSessionSettingsModal()" id="btn-session-settings" class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-10 h-10 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95 flex items-center justify-center group" title="Session Settings">
+                            <i class="fa-solid fa-gear group-hover:rotate-90 transition-transform"></i>
+                        </button>
+                    </div>
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-sm font-semibold text-gray-500 dark:text-gray-400 transition-colors">Card Progress</span>
+                        <span class="text-sm font-bold text-brand-600 dark:text-brand-400" id="session-progress-text">0 / 0</span>
+                    </div>
+                    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden shadow-inner">
+                        <div class="bg-brand-500 h-full rounded-full transition-all duration-500 ease-out" id="session-progress" style="width: 0%"></div>
+                    </div>
                 </div>
 
                 <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 transition-colors duration-300">
@@ -178,12 +179,20 @@
                         </button>
                     </div>
 
-                    <div class="grid gap-3 mt-6" id="q-choices">
-                        <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium" data-choice="A">A) <span id="choice-a-text"></span></button>
-                        <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium" data-choice="B">B) <span id="choice-b-text"></span></button>
-                        <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium" data-choice="C">C) <span id="choice-c-text"></span></button>
-                        <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium" data-choice="D">D) <span id="choice-d-text"></span></button>
-                    </div>
+                <div class="grid gap-3 mt-6" id="q-choices">
+                    <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start" data-choice="A">
+                        <span class="choice-prefix font-bold mr-2 min-w-[20px]">A)</span> <span id="choice-a-text" class="flex-1"></span>
+                    </button>
+                    <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start" data-choice="B">
+                        <span class="choice-prefix font-bold mr-2 min-w-[20px]">B)</span> <span id="choice-b-text" class="flex-1"></span>
+                    </button>
+                    <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start" data-choice="C">
+                        <span class="choice-prefix font-bold mr-2 min-w-[20px]">C)</span> <span id="choice-c-text" class="flex-1"></span>
+                    </button>
+                    <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start" data-choice="D">
+                        <span class="choice-prefix font-bold mr-2 min-w-[20px]">D)</span> <span id="choice-d-text" class="flex-1"></span>
+                    </button>
+                </div>
             </div>
 
                 <div id="q-explanation-box" class="hidden bg-blue-50 dark:bg-gray-800 border-l-4 border-blue-500 p-4 rounded-r-xl mb-6 shadow-sm animate-card-in">
@@ -206,8 +215,7 @@
                 </div>
 
                 <div id="auto-next-timer-container" class="hidden mt-6 h-1.5 w-full max-w-sm mx-auto rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden shadow-inner transition-opacity duration-300">
-                    <div id="auto-next-timer-bar" class="bg-brand-500 h-full w-full origin-center scale-x-0 rounded-full"></div>
-                </div>
+                <div id="auto-next-timer-bar" class="bg-brand-500 h-full w-full origin-left scale-x-0 rounded-full"></div>                </div>
             </div>
         </section>
 
@@ -276,18 +284,19 @@
                     <h2 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-100" id="deck-review-title">Review Deck</h2>
                 </div>
                 
-                <div class="flex items-center gap-6 flex-wrap">
+                <div class="flex items-center gap-4 flex-wrap bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm w-full md:w-auto">
                     <label class="inline-flex items-center cursor-pointer">
                         <input type="checkbox" id="toggle-hide-abcd" class="sr-only peer" onchange="toggleHideABCD()" checked>
-                        <div class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"></div>
-                        <span class="ms-3 text-sm font-medium text-gray-700 dark:text-gray-300">Hide ABCD</span>
+                        <div class="relative w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"></div>
+                        <span class="ms-2 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Hide ABCD</span>
                     </label>
 
-                    <!-- CORRECTED -->
+                    <div class="hidden md:block w-px h-5 bg-gray-300 dark:bg-gray-600"></div> <!-- Vertical Divider -->
+
                     <label class="inline-flex items-center cursor-pointer">
                         <input type="checkbox" id="toggle-wrong-choices" class="sr-only peer" onchange="toggleShowWrongChoices()" checked>
-                        <div class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"></div>
-                        <span class="ms-3 text-sm font-medium text-gray-700 dark:text-gray-300">Show wrong choices</span>
+                        <div class="relative w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"></div>
+                        <span class="ms-2 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Show Wrong Choices</span>
                     </label>
                 </div>
             </div>
@@ -461,7 +470,6 @@
                 
                 <!-- Settings Options -->
                 <div class="space-y-6 mb-6">
-                    
                     <!-- Active Recall Toggle -->
                     <div class="flex justify-between items-center">
                         <div class="pr-4">
@@ -481,7 +489,18 @@
                             <span class="text-xs text-gray-500">Randomize the order of multiple-choice answers.</span>
                         </div>
                         <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" id="toggle-shuffle-choices" class="sr-only peer" onchange="toggleShuffleChoices()" checked>
+                            <input type="checkbox" id="toggle-modal-shuffle-choices" class="sr-only peer" onchange="toggleShuffleChoices()" checked>                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"></div>
+                        </label>
+                    </div>
+
+                    <!-- Hide ABCD Labels Toggle -->
+                    <div class="flex justify-between items-center">
+                        <div class="pr-4">
+                            <span class="block text-sm font-bold text-gray-800 dark:text-gray-200">Hide ABCD Labels</span>
+                            <span class="text-xs text-gray-500">Remove letter prefixes from choices for pure recall.</span>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="toggle-quiz-hide-abcd" class="sr-only peer" onchange="toggleQuizHideABCD()">
                             <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"></div>
                         </label>
                     </div>
@@ -491,7 +510,8 @@
                         <label class="text-sm font-bold text-gray-800 dark:text-gray-200">Question Type Override</label>
                         <select id="toggle-question-type" onchange="changeQuestionTypeMode(this.value)" class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2.5 text-sm text-gray-700 dark:text-gray-200 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors">
                             <option value="auto">Auto (Mixed)</option>
-                            <option value="ident">Identification Only</option>
+                            <option value="mcq">Multiple Choices</option>
+                            <option value="ident">Identification</option>
                         </select>
                     </div>
                     
@@ -500,7 +520,7 @@
         </div>
 
         <!-- NEW: DECK PASSWORD MODAL OVERLAY (ADDED FIX) -->
-        <div id="deck-password-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
+        <div id="deck-password-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
             <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700">
                 
                 <div class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3">
@@ -542,7 +562,7 @@
         </div>
 
         <!-- NEW: FOLDER PASSWORD MODAL OVERLAY -->
-        <div id="folder-password-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
+        <div id="folder-password-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
             <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700">
                 
                 <div class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3">
@@ -583,7 +603,7 @@
         </div>
 
         <!-- ADMIN EDIT QUESTION MODAL -->
-        <div id="admin-edit-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
+        <div id="admin-edit-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
             <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-2xl w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700 max-h-[90vh] overflow-y-auto">
                 
                 <div class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3">

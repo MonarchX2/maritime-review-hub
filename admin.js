@@ -52,7 +52,6 @@ async function loadAdminSubjects() {
     container.innerHTML = `<p class="text-center text-brand-500 py-6"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Fetching secure database...</p>`;
 
     try {
-        // Fetch the secure list (including passwords) using the admin token
         const response = await fetch(DB_URL, {
             method: 'POST',
             redirect: 'follow',
@@ -64,21 +63,16 @@ async function loadAdminSubjects() {
         });
 
         const secureSubjects = await response.json();
-
-        // Check if the backend explicitly returned an error or if the response is completely missing
         if (secureSubjects.status === "error" || !Array.isArray(secureSubjects)) {
             container.innerHTML = `<p class="text-center text-red-500 py-6">Failed to load secure subjects. Check backend configuration.</p>`;
             return;
         }
-
-        // If it's an empty array, it will safely pass through and your renderer will show "No subjects found."
 
         adminState.subjects = secureSubjects; 
         renderAdminSubjectList();
         
     } catch (e) {
         console.error(e);
-        // Fallback to public cache if the network fails
         if (state.categorySummary && state.categorySummary.length > 0) {
             adminState.subjects = state.categorySummary;
             renderAdminSubjectList();
@@ -96,8 +90,6 @@ function renderAdminSubjectList() {
         const subjString = cat.Subject;
         const passString = cat.Password || cat.password || ""; 
         const parts = subjString.split('::').map(s => s.trim());
-        
-        // Handle true folder locks
         if (cat.IsFolder) {
             let currentNode = tree;
             parts.forEach(part => {
@@ -133,8 +125,6 @@ function renderAdminSubjectList() {
     function renderNode(node, folderName, depth = 0, currentPath = '') {
         let innerHtml = '';
         const fullPath = depth === 0 ? '' : (currentPath ? `${currentPath}::${folderName}` : folderName);
-
-        // TRUE FOLDER LOCK UI
         if (depth > 0 && (Object.keys(node.subfolders).length > 0 || node.decks.length > 0)) {
             innerHtml += `
                 <div class="mb-4 p-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg shadow-sm">
@@ -230,8 +220,6 @@ async function saveAdminChanges() {
     btn.disabled = true;
 
     const updates = [];
-    
-    // 1. Gather Folder Passwords
     document.querySelectorAll('.folder-pass-input').forEach(input => {
         const path = input.getAttribute('data-path');
         const pass = input.value.trim();
@@ -241,8 +229,6 @@ async function saveAdminChanges() {
             updates.push({ oldName: path, newName: path, password: pass });
         }
     });
-
-    // 2. Gather Deck Passwords
     adminState.subjects.forEach((cat, index) => {
         if (cat.IsFolder) return; // Handled above
 
@@ -312,8 +298,6 @@ async function adminLoadReports() {
             container.innerHTML = `<div class="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-xl text-center text-gray-500">No reports found in the database.</div>`;
             return;
         }
-
-        // Store reports in state so we can access full details in the modal
         adminState.reports = reports; 
 
         let html = '';
@@ -392,20 +376,16 @@ async function adminActionReport(reportId, action) {
 }
 
 window.cascadePassword = function(btn) {
-    // Find the input box right next to the button
     const input = btn.previousElementSibling;
     const folderPath = input.getAttribute('data-path');
     const pass = input.value;
 
     let count = 0;
-    
-    // Find all decks that belong to this folder and update their textboxes visually
     adminState.subjects.forEach((subj, index) => {
         if (subj.Subject.startsWith(folderPath + '::') || subj.Subject === folderPath) {
             const deckInput = document.getElementById(`deck-pass-${index}`);
             if (deckInput) {
                 deckInput.value = pass;
-                // Highlight the box briefly so the admin sees it changed
                 deckInput.classList.add('bg-red-100', 'dark:bg-red-900/30');
                 setTimeout(() => deckInput.classList.remove('bg-red-100', 'dark:bg-red-900/30'), 1000);
                 count++;
@@ -429,13 +409,10 @@ function openEditModal(reportId) {
     document.getElementById('edit-q-optC').value = report.optionC || "";
     document.getElementById('edit-q-optD').value = report.optionD || "";
     document.getElementById('edit-q-answer').value = report.correctAnswer || "";
-
-    // Handle your custom Tailwind animations
     const modal = document.getElementById('admin-edit-modal');
     const inner = modal.querySelector('div');
     
     modal.classList.remove('hidden');
-    // small delay allows the display:block to register before applying opacity
     setTimeout(() => {
         modal.classList.remove('opacity-0');
         inner.classList.remove('scale-95');
@@ -448,8 +425,6 @@ function closeEditModal() {
     
     modal.classList.add('opacity-0');
     inner.classList.add('scale-95');
-    
-    // Wait for the 300ms transition duration to finish before hiding it from the DOM
     setTimeout(() => {
         modal.classList.add('hidden');
     }, 300);
@@ -495,8 +470,6 @@ async function saveEditedQuestion() {
         if (result.status === "success") {
             alert("Question updated and cache rebuilt successfully!");
             closeEditModal();
-            
-            // Optionally auto-resolve the report after updating
             if (typeof resolveReport === "function") {
                 resolveReport(reportId, 'resolve');
             }

@@ -1,4 +1,4 @@
-const CACHE_NAME = '1'; // Bumped version to force update
+const CACHE_NAME = '2'; // Bumped version to force update
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -13,7 +13,6 @@ const ASSETS_TO_CACHE = [
 ];
 
 self.addEventListener('install', (event) => {
-    // skipWaiting forces the waiting Service Worker to become the active Service Worker immediately.
     self.skipWaiting();
     event.waitUntil(
         caches.open(CACHE_NAME)
@@ -22,10 +21,7 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-    // clients.claim() tells the Service Worker to take control of the page immediately.
     event.waitUntil(clients.claim());
-    
-    // Clean up old caches
     event.waitUntil(
         caches.keys().then((cacheNames) => {
             return Promise.all(
@@ -38,10 +34,7 @@ self.addEventListener('activate', (event) => {
         })
     );
 });
-
-// Network-First Strategy
 self.addEventListener('fetch', (event) => {
-    // FIX: Ignore POST requests and bypass caching for the Google Apps Script API
     if (event.request.method !== 'GET' || event.request.url.includes('script.google.com')) {
         return; 
     }
@@ -58,7 +51,6 @@ self.addEventListener('fetch', (event) => {
                 return networkResponse;
             })
             .catch(() => {
-                // Fallback to cache if network fails
                 return caches.match(event.request);
             })
     );
