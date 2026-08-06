@@ -1,186 +1,218 @@
-/* =========================================
-   1. CSS Variables (Theming & Animation)
-   ========================================= 
-   Change colors and timings here to update the whole UI instantly. */
 :root {
-    /* Colors */
-    --color-btn-hover: #3b82f6;
-    --color-correct-bg: #15803d;
-    --color-correct-border: #14532d;
-    --color-wrong-bg: #b91c1c;
-    --color-wrong-border: #7f1d1d;
-    --color-text-white: #ffffff;
+  /* Colors */
+  --color-btn-hover: #3b82f6;
+  --color-correct-bg: #15803d;
+  --color-correct-border: #14532d;
+  --color-wrong-bg: #b91c1c;
+  --color-wrong-border: #7f1d1d;
+  --color-text-white: #ffffff;
 
-    /* Easing & Timings */
-    --ease-base: cubic-bezier(0.4, 0, 0.2, 1);
-    --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
-    --ease-bounce: cubic-bezier(0.25, 0.8, 0.25, 1);
-    --ease-shake: cubic-bezier(0.36, 0.07, 0.19, 0.97);
-    
-    --time-fast: 0.3s;
-    --time-med: 0.5s;
-    --time-slow: 0.6s;
+  /* Easing & Timings */
+  --ease-base: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-bounce: cubic-bezier(0.25, 0.8, 0.25, 1);
+  --ease-shake: cubic-bezier(0.36, 0.07, 0.19, 0.97);
+
+  --time-fast: 0.3s;
+  --time-med: 0.5s;
+  --time-slow: 0.6s;
 }
 
-/* =========================================
-   2. Base & Universal Styles
-   ========================================= */
-body { 
-    -webkit-tap-highlight-color: transparent; 
-    scroll-behavior: smooth;
+body {
+  -webkit-tap-highlight-color: transparent;
+  scroll-behavior: smooth;
 }
 
-button, select, input {
-    transition: all var(--time-fast) var(--ease-base);
+button,
+select,
+input {
+  transition: all var(--time-fast) var(--ease-base);
 }
 
-button:active:not(:disabled) { 
-    transform: scale(0.94); 
+button:active:not(:disabled) {
+  transform: scale(0.94);
 }
 
-/* =========================================
-   3. Layout & Views
-   ========================================= */
-.view-section { 
-    display: none; 
-    opacity: 0; 
+.view-section {
+  display: none;
+  opacity: 0;
 }
 
-.view-section.active { 
-    display: block; 
-    animation: smoothSlideUp var(--time-med) var(--ease-smooth) forwards; 
+.view-section.active {
+  display: block;
+  animation: smoothSlideUp var(--time-med) var(--ease-smooth) forwards;
 }
 
-/* =========================================
-   4. Choice Buttons (No !important needed)
-   ========================================= */
 .choice-btn {
-    transition: all var(--time-fast) var(--ease-bounce);
-    /* Prevents layout jumping when border-width changes later */
-    border: 2px solid transparent; 
+  transition: all var(--time-fast) var(--ease-bounce);
+  /* Prevents layout jumping when border-width changes later */
+  border: 2px solid transparent;
 }
 
 .choice-btn:hover:not(.dimmed):not(.selected-correct):not(.selected-wrong) {
-    transform: translateY(-3px);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-    border-color: var(--color-btn-hover);
+  transform: translateY(-3px);
+  box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  border-color: var(--color-btn-hover);
 }
 
-/* Added 'button' tag to increase specificity naturally without !important */
-button.choice-btn.selected-correct { 
-    animation: popCorrect var(--time-slow) var(--ease-smooth) forwards;
-    background-color: var(--color-correct-bg); 
-    color: var(--color-text-white); 
-    border-color: var(--color-correct-border); 
-    font-weight: 700; 
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); 
+button.choice-btn.selected-correct {
+  animation: popCorrect var(--time-slow) var(--ease-smooth) forwards;
+  background-color: var(--color-correct-bg);
+  color: var(--color-text-white);
+  border-color: var(--color-correct-border);
+  font-weight: 700;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
-button.choice-btn.selected-wrong { 
-    animation: shakeWrong var(--time-med) var(--ease-shake) forwards;
-    background-color: var(--color-wrong-bg); 
-    color: var(--color-text-white); 
-    border-color: var(--color-wrong-border); 
-    font-weight: 700; 
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); 
+button.choice-btn.selected-wrong {
+  animation: shakeWrong var(--time-med) var(--ease-shake) forwards;
+  background-color: var(--color-wrong-bg);
+  color: var(--color-text-white);
+  border-color: var(--color-wrong-border);
+  font-weight: 700;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
-button.choice-btn.dimmed { 
-    opacity: 0.4; 
-    pointer-events: none; 
-    filter: grayscale(100%); 
-    transform: scale(0.98);
+button.choice-btn.dimmed {
+  opacity: 0.4;
+  pointer-events: none;
+  filter: grayscale(100%);
+  transform: scale(0.98);
 }
 
-/* =========================================
-   5. Accordions & Folders
-   ========================================= */
-details > summary { 
-    list-style: none; 
+details > summary {
+  list-style: none;
 }
 
-details > summary::-webkit-details-marker { 
-    display: none; 
+details > summary::-webkit-details-marker {
+  display: none;
 }
 
 details summary i.fa-chevron-down {
-    transition: transform 0.4s var(--ease-base);
+  transition: transform 0.4s var(--ease-base);
 }
 
-details[open] summary i.fa-chevron-down { 
-    transform: rotate(180deg); 
+details[open] summary i.fa-chevron-down {
+  transform: rotate(180deg);
 }
 
-details[open] summary ~ div { 
-    animation: folderSlideDown var(--time-med) var(--ease-smooth) forwards; 
-    transform-origin: top;
+details[open] summary ~ div {
+  animation: folderSlideDown var(--time-med) var(--ease-smooth) forwards;
+  transform-origin: top;
 }
 
-/* =========================================
-   6. Dynamic Elements & Components
-   ========================================= */
 .animate-card-in {
-    animation: fadeScaleIn var(--time-med) var(--ease-smooth) forwards;
-    opacity: 0;
+  animation: fadeScaleIn var(--time-med) var(--ease-smooth) forwards;
+  opacity: 0;
 }
 
 .animate-timer-bar {
-    animation: expandTimerCenter 3s linear forwards;
+  animation: expandTimerCenter 3s linear forwards;
 }
 
-/* Used a class instead of ID for better reusability if needed */
 .session-progress,
 #session-progress {
-    transition: width var(--time-slow) cubic-bezier(0.25, 1, 0.5, 1);
+  transition: width var(--time-slow) cubic-bezier(0.25, 1, 0.5, 1);
 }
 
-.toast-enter { 
-    animation: slideInRight var(--time-fast) var(--ease-smooth) forwards; 
+.toast-enter {
+  animation: slideInRight var(--time-fast) var(--ease-smooth) forwards;
 }
 
-/* =========================================
-   7. Keyframes
-   ========================================= */
-@keyframes smoothSlideUp { 
-    0% { opacity: 0; transform: translateY(20px) scale(0.98); } 
-    100% { opacity: 1; transform: translateY(0) scale(1); } 
+@keyframes smoothSlideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes popCorrect {
-    0% { transform: scale(1); }
-    40% { transform: scale(1.04); }
-    100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 @keyframes shakeWrong {
-    0%, 100% { transform: translateX(0); }
-    20%, 60% { transform: translateX(-6px); }
-    40%, 80% { transform: translateX(6px); }
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
 }
 
 @keyframes folderSlideDown {
-    0% { opacity: 0; transform: translateY(-10px) scaleY(0.95); }
-    100% { opacity: 1; transform: translateY(0) scaleY(1); }
+  0% {
+    opacity: 0;
+    transform: translateY(-10px) scaleY(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
 }
 
 @keyframes fadeScaleIn {
-    0% { opacity: 0; transform: translateY(20px) scale(0.96); }
-    100% { opacity: 1; transform: translateY(0) scale(1); }
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes expandTimerCenter {
-    0% { transform: scaleX(0) scaleY(2); opacity: 0; } 
-    5% { transform: scaleX(0.05) scaleY(1); opacity: 1; } 
-    100% { transform: scaleX(1) scaleY(1); opacity: 1; }
+  0% {
+    transform: scaleX(0) scaleY(2);
+    opacity: 0;
+  }
+  5% {
+    transform: scaleX(0.05) scaleY(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1) scaleY(1);
+    opacity: 1;
+  }
 }
 
 @keyframes slideInRight {
-    0% { transform: translateX(100%); opacity: 0; }
-    100% { transform: translateX(0); opacity: 1; }
+  0% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 @media (max-width: 768px) and (orientation: portrait) {
-    #layout-toggle-container {
-        display: none !important;
-    }
+  #layout-toggle-container {
+    display: none !important;
+  }
 }

@@ -50,26 +50,25 @@ if (!state.prefs.userId) {
 }
 
 function sendTelemetry(action, details) {
-  const controller = new AbortController();
+  const payload = JSON.stringify({
+    type: "telemetry",
+    userId: state.prefs.userId,
+    action,
+    details,
+  });
 
-  const timeout = setTimeout(() => controller.abort(), 5000);
-
-  fetch(DB_URL, {
-    method: "POST",
-    redirect: "follow",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8",
-    },
-    body: JSON.stringify({
-      type: "telemetry",
-      userId: state.prefs.userId,
-      action,
-      details,
-    }),
-    signal: controller.signal,
-  })
-    .catch(() => {})
-    .finally(() => clearTimeout(timeout));
+  if (navigator.sendBeacon) {
+    const blob = new Blob([payload], { type: "text/plain;charset=utf-8" });
+    navigator.sendBeacon(DB_URL, blob);
+  } else {
+    fetch(DB_URL, {
+      method: "POST",
+      redirect: "follow",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: payload,
+      keepalive: true,
+    }).catch(() => {});
+  }
 }
 
 function escapeHTML(value) {
@@ -505,7 +504,6 @@ function renderQuestion() {
     imgEl.classList.add("hidden");
   }
 
-  // Use the helper function here!
   const { isIdent: isPureIdent } = getQuestionTypeMode(q);
   const isForcedMCQ = state.prefs.qTypeOverride === "mcq";
   const hideABCD = state.prefs.quizHideABCD === true || isPureIdent;
@@ -634,6 +632,19 @@ function renderQuestion() {
     );
   }
 }
+
+const nextIndex = state.session.currentIndex + 1;
+const upcomingQuestions = state.session.questions.slice(
+  nextIndex,
+  nextIndex + 2,
+);
+
+upcomingQuestions.forEach((nextQ) => {
+  if (nextQ && nextQ.ImageURL) {
+    const imgPreload = new Image();
+    imgPreload.src = nextQ.ImageURL;
+  }
+});
 
 function enterFolder(folderName, isLockedFolder) {
   const fullPath =
@@ -1217,30 +1228,45 @@ async function fetchDeckQuestions(
   loaderElement = null,
   customFilter = null,
 ) {
-  if (loaderElement) loaderElement.classList.remove("hidden");
+  let cachedQuestions = state.db.filter((q) => q.Subject === subject);
+  if (typeof customFilter === "function") {
+    cachedQuestions = cachedQuestions.filter(customFilter);
+  }
 
+  if (cachedQuestions.length > 0 && !pass) {
+    fetchDeckQuestionsFromNetwork(subject, pass, customFilter).catch(() => {});
+    return cachedQuestions;
+  }
+
+  return await fetchDeckQuestionsFromNetwork(
+    subject,
+    pass,
+    customFilter,
+    loaderElement,
+  );
+}
+
+async function fetchDeckQuestionsFromNetwork(
+  subject,
+  pass,
+  customFilter,
+  loaderElement = null,
+) {
+  if (loaderElement) loaderElement.classList.remove("hidden");
   try {
     let fetchUrl = `${DB_URL}?subject=${encodeURIComponent(subject)}`;
     if (pass) fetchUrl += `&password=${encodeURIComponent(pass)}`;
 
     const response = await fetch(fetchUrl);
     const newQuestions = await response.json();
+    if (newQuestions.error) throw new Error(newQuestions.error);
 
-    if (newQuestions.error) {
-      throw new Error(newQuestions.error);
-    }
-
-    // Apply base filter (must have a valid Question text)
     let validQuestions = newQuestions.filter(
       (q) => q.Question && q.Question.trim() !== "",
     );
-
-    // Apply additional custom filter if provided (e.g., requiring choices for MCQs)
-    if (typeof customFilter === "function") {
+    if (typeof customFilter === "function")
       validQuestions = validQuestions.filter(customFilter);
-    }
 
-    // Format IDs
     validQuestions = validQuestions.map((q) => {
       let cleanId = q.ID
         ? q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, "")
@@ -1249,21 +1275,14 @@ async function fetchDeckQuestions(
       return q;
     });
 
-    // Update local cache
     const otherQuestions = state.db.filter((q) => q.Subject !== subject);
     state.db = [...otherQuestions, ...validQuestions];
     await idbKeyval.set("mrh_db", state.db);
 
     return validQuestions;
   } catch (err) {
-    console.warn("Network request failed or returned an error.", err);
-
-    // Fallback to local cache
-    let cachedQuestions = state.db.filter((q) => q.Subject === subject);
-    if (typeof customFilter === "function") {
-      cachedQuestions = cachedQuestions.filter(customFilter);
-    }
-    return cachedQuestions;
+    console.warn("Network fetch failed.", err);
+    return state.db.filter((q) => q.Subject === subject);
   } finally {
     if (loaderElement) loaderElement.classList.add("hidden");
   }
@@ -2810,6 +2829,7 @@ async function submitGeneralFeedback() {
 }
 
 let lastScrollTop = 0;
+let isTicking = false;
 
 window.addEventListener("DOMContentLoaded", () => {
   const mainEl = document.querySelector("main");
@@ -2818,31 +2838,41 @@ window.addEventListener("DOMContentLoaded", () => {
 
   if (mainEl && headerEl) {
     mainEl.addEventListener("scroll", (e) => {
-      const currentScroll = e.target.scrollTop;
-      if (currentScroll > lastScrollTop && currentScroll > 50) {
-        headerEl.classList.add("-translate-y-full");
-      } else {
-        headerEl.classList.remove("-translate-y-full");
-      }
-      lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
+      if (!isTicking) {
+        window.requestAnimationFrame(() => {
+          const currentScroll = e.target.scrollTop;
 
-      if (
-        document
-          .getElementById("view-deck-review")
-          .classList.contains("active") &&
-        currentReviewSubject
-      ) {
-        if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
-        if (!state.prefs.studyProgress[currentReviewSubject]) {
-          state.prefs.studyProgress[currentReviewSubject] = {
-            page: 1,
-            index: 0,
-            scrollY: 0,
-          };
-        }
-        state.prefs.studyProgress[currentReviewSubject].scrollY = currentScroll;
-        clearTimeout(window.scrollSaveTimeout);
-        window.scrollSaveTimeout = setTimeout(() => saveState(), 1000);
+          if (currentScroll > lastScrollTop && currentScroll > 50) {
+            headerEl.classList.add("-translate-y-full");
+          } else {
+            headerEl.classList.remove("-translate-y-full");
+          }
+          lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
+
+          if (
+            document
+              .getElementById("view-deck-review")
+              .classList.contains("active") &&
+            currentReviewSubject
+          ) {
+            if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
+            if (!state.prefs.studyProgress[currentReviewSubject]) {
+              state.prefs.studyProgress[currentReviewSubject] = {
+                page: 1,
+                index: 0,
+                scrollY: 0,
+              };
+            }
+            state.prefs.studyProgress[currentReviewSubject].scrollY =
+              currentScroll;
+            clearTimeout(window.scrollSaveTimeout);
+            window.scrollSaveTimeout = setTimeout(() => saveState(), 1000);
+          }
+
+          isTicking = false;
+        });
+
+        isTicking = true;
       }
     });
   }
