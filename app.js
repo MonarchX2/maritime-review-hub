@@ -1,17 +1,5 @@
 const DB_URL = "https://script.google.com/macros/s/AKfycbx4HFy5LmX_CFZMTOdl809OrnsgxzQvpzHDOhrMK3yk7fNZb7Gp2pImwBCS_I1Gx-D20g/exec";
 
-const DOM = {
-    app: document.getElementById('app'),
-    qContainer: document.getElementById('q-container'),
-    qChoices: document.getElementById('q-choices'),
-    qQuestion: document.getElementById('q-question'),
-    btnReveal: document.getElementById('btn-reveal'),
-    btnNext: document.getElementById('btn-next'),
-    btnPrev: document.getElementById('btn-prev'),
-    studyProgress: document.getElementById('study-progress'),
-    archiveBtn: document.getElementById('archive-btn')
-};
-
 let state = {
     db: [],
     categorySummary: [],
@@ -82,15 +70,19 @@ async function loadState() {
     const savedPrefs = localStorage.getItem('mrh_prefs');
 
     try {
-        const savedDb = await idbKeyval.get('mrh_db');
-        if (savedDb) {
-            state.db = savedDb.map(q => {
-                if (q.ID && !q.ID.toString().includes('::')) {
-                    let cleanId = q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, '');
-                    q.ID = `${q.Subject}::${cleanId}`;
-                }
-                return q;
-            });
+        if (typeof idbKeyval !== 'undefined') {
+            const savedDb = await idbKeyval.get('mrh_db');
+            if (savedDb) {
+                state.db = savedDb.map(q => {
+                    if (q.ID && !q.ID.toString().includes('::')) {
+                        let cleanId = q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, '');
+                        q.ID = `${q.Subject}::${cleanId}`;
+                    }
+                    return q;
+                });
+            }
+        } else {
+            console.warn("idbKeyval library not loaded.");
         }
     } catch (err) {
         console.error("Error loading DB from IndexedDB", err);
@@ -202,8 +194,11 @@ function navigate(viewId) {
 
     if (viewId === 'stats') renderCharts();
 
-    if (viewId === 'admin' && adminState.token) {
-        loadAdminSubjects();
+    // FIXED: Safely check if adminState is defined globally
+    if (viewId === 'admin' && typeof adminState !== 'undefined' && adminState.token) {
+        if (typeof loadAdminSubjects === 'function') {
+            loadAdminSubjects();
+        }
     }
 
     sendTelemetry('navigate', { view: viewId });
@@ -319,10 +314,11 @@ function prepareSessionPool(pool) {
 
         let originalAns = String(q.Answer || "").trim().toUpperCase();
         let correctText = "";
+        
         if (['A', 'B', 'C', 'D'].includes(originalAns)) {
-            correctText = String(originalQ[`Choice${originalAns}`] || "").trim();
+            correctText = String(originalQ[`Choice${originalAns}`] || "").trim().toLowerCase();
         } else {
-            correctText = String(q.Answer || "").trim();
+            correctText = String(q.Answer || "").trim().toLowerCase();
         }
 
         if (validChoices.length > 0) {
@@ -334,11 +330,13 @@ function prepareSessionPool(pool) {
             q.ChoiceB = validChoices[1] || "";
             q.ChoiceC = validChoices[2] || "";
             q.ChoiceD = validChoices[3] || "";
-            if (q.ChoiceA.trim() === correctText) q.Answer = 'A';
-            else if (q.ChoiceB.trim() === correctText) q.Answer = 'B';
-            else if (q.ChoiceC.trim() === correctText) q.Answer = 'C';
-            else if (q.ChoiceD.trim() === correctText) q.Answer = 'D';
+            
+            if (q.ChoiceA.trim().toLowerCase() === correctText) q.Answer = 'A';
+            else if (q.ChoiceB.trim().toLowerCase() === correctText) q.Answer = 'B';
+            else if (q.ChoiceC.trim().toLowerCase() === correctText) q.Answer = 'C';
+            else if (q.ChoiceD.trim().toLowerCase() === correctText) q.Answer = 'D';
             else if (validChoices.length === 1) q.Answer = 'A';
+            else q.Answer = 'A';
         }
         return q;
     });
@@ -1552,7 +1550,10 @@ async function clearDatabase() {
 }
 
 document.addEventListener('keydown', (e) => {
-    if (!state.session.active || document.getElementById('report-modal').classList.contains('hidden') === false) return;
+    const reportModal = document.getElementById('report-modal');
+    const isReportModalOpen = reportModal && !reportModal.classList.contains('hidden');
+    
+    if (!state.session.active || isReportModalOpen) return;
 
     const key = e.key.toUpperCase();
     const isAnswered = state.session.userAnswers[state.session.currentIndex];
@@ -1586,6 +1587,12 @@ async function fetchGlobalReports() {
 
 window.onload = async () => {
     await loadState(); 
+    
+    const toggleElement = document.getElementById('globalModeToggle');
+    if (toggleElement) {
+        currentAppMode = toggleElement.checked ? 'review' : 'quiz';
+    }
+
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js').then(reg => reg.update());
     }
@@ -1595,7 +1602,13 @@ window.onload = async () => {
 
 function saveSessionProgress() {
     if (!state.session.active) return;
-    localStorage.setItem('mrh_saved_session', JSON.stringify(state.session));
+    
+    try {
+        localStorage.setItem('mrh_saved_session', JSON.stringify(state.session));
+    } catch (e) {
+        console.warn("Storage quota exceeded. Could not save session progress.", e);
+        showToast("Storage full. Progress won't be saved.", "error");
+    }
 }
 
 function checkSavedSession() {
@@ -1658,7 +1671,9 @@ function resumeSession() {
                 savedQ.Answer = freshShuffled.Answer;
 
                 if (state.session.userAnswers[index]) {
-                    delete state.session.userAnswers[index];
+                    // FIXED: Replaced 'delete' with setting to null 
+                    // to prevent array/object indexing bugs
+                    state.session.userAnswers[index] = null;
                 }
             }
         } else {
@@ -2015,12 +2030,15 @@ function toggleAppMode() {
     const toggleElement = document.getElementById('globalModeToggle');
     const modeLabel = document.getElementById('modeLabel');
     
+    if (!toggleElement) return;
+
     currentAppMode = toggleElement.checked ? 'review' : 'quiz';
     
-    modeLabel.innerText = currentAppMode === 'review' ? 'Study' : 'Quiz';
+    if (modeLabel) {
+        modeLabel.innerText = currentAppMode === 'review' ? 'Study' : 'Quiz';
+    }
     
     renderCategoryProgress(); 
-
     sendTelemetry('toggle_mode', { mode: currentAppMode });
 }
 
@@ -2061,6 +2079,8 @@ function toggleShuffleQuestions() {
 }
 
 async function autoSaveDeckPassword(deckPath, newPassword) {
+    const safeToken = typeof adminState !== 'undefined' ? adminState.token : null;
+
     try {
         const response = await fetch(DB_URL, {
             method: 'POST',
@@ -2068,7 +2088,7 @@ async function autoSaveDeckPassword(deckPath, newPassword) {
             headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify({
                 type: "admin_update_password",
-                token: adminState.token,
+                token: safeToken, 
                 deck: deckPath,
                 password: newPassword
             })
