@@ -1,6 +1,16 @@
 const DB_URL = "https://script.google.com/macros/s/AKfycbx4HFy5LmX_CFZMTOdl809OrnsgxzQvpzHDOhrMK3yk7fNZb7Gp2pImwBCS_I1Gx-D20g/exec";
 
-
+const DOM = {
+    app: document.getElementById('app'),
+    qContainer: document.getElementById('q-container'),
+    qChoices: document.getElementById('q-choices'),
+    qQuestion: document.getElementById('q-question'),
+    btnReveal: document.getElementById('btn-reveal'),
+    btnNext: document.getElementById('btn-next'),
+    btnPrev: document.getElementById('btn-prev'),
+    studyProgress: document.getElementById('study-progress'),
+    archiveBtn: document.getElementById('archive-btn')
+};
 
 let state = {
     db: [],
@@ -381,36 +391,24 @@ function renderQuestion() {
     const totalCards = state.session.questions.length;
     document.getElementById('session-progress-text').innerText = `${currentCard} / ${totalCards}`;
     document.getElementById('session-progress').style.width = `${((state.session.currentIndex + 1) / totalCards) * 100}%`;
+    
     const fullSubject = q.Subject || 'General';
     const parts = String(fullSubject).split("::");
-
     document.getElementById("q-subject").innerText =
-        parts.length >= 2
-            ? parts.slice(-2).join(" :: ")
-            : fullSubject;
+        parts.length >= 2 ? parts.slice(-2).join(" :: ") : fullSubject;
 
     let displayId = q.ID ?? `Q-${state.session.currentIndex + 1}`;
-
     if (displayId.includes('::')) {
         const match = displayId.match(/::.*?\b(\d+)\s*$/);
         displayId = match ? match[1] : displayId.split('::').pop();
     }
-
     document.getElementById('q-id').innerText = "Question " + displayId;
-
     document.getElementById('q-text').innerHTML = formatQuestionText(q.Question);
 
     const imgEl = document.getElementById('q-image');
     if (q.ImageURL && q.ImageURL.trim() !== "") {
-        imgEl.onload = () => {
-            imgEl.classList.remove("hidden");
-        };
-
-        imgEl.onerror = () => {
-            imgEl.removeAttribute("src");
-            imgEl.classList.add("hidden");
-        };
-
+        imgEl.onload = () => imgEl.classList.remove("hidden");
+        imgEl.onerror = () => { imgEl.removeAttribute("src"); imgEl.classList.add("hidden"); };
         imgEl.src = q.ImageURL;        
         imgEl.alt = q.Question ? `Reference for: ${q.Question.substring(0, 50)}...` : "Question reference image";
         imgEl.classList.remove('hidden');
@@ -418,32 +416,40 @@ function renderQuestion() {
         imgEl.classList.add('hidden');
     }
 
-    const choices = ['A', 'B', 'C', 'D'];
-    let validChoicesCount = 0;
-    const isForcedIdent = state.prefs.qTypeOverride === 'ident';
-    const hideABCD = state.prefs.quizHideABCD === true || isForcedIdent || validChoicesCount <= 1;
+    // Use the helper function here!
+    const { isIdent: isPureIdent } = getQuestionTypeMode(q);
+    const isForcedMCQ = state.prefs.qTypeOverride === 'mcq';
+    const hideABCD = state.prefs.quizHideABCD === true || isPureIdent;
 
+    const choices = ['A', 'B', 'C', 'D'];
     choices.forEach(ch => {
         const choiceText = q[`Choice${ch}`];
         const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
-        const cleanChoice = String(choiceText ?? "").trim();
+        let cleanChoice = String(choiceText ?? "").trim();
 
-        if (cleanChoice === "" || cleanChoice.toLowerCase() === "undefined") {
+        btn.classList.remove('selected-correct', 'selected-wrong', 'dimmed');
+        btn.onclick = null;
+
+        if (isForcedMCQ && cleanChoice === "") {
+            cleanChoice = "undefined";
+        }
+
+        if (!isForcedMCQ && (cleanChoice === "" || cleanChoice.toLowerCase() === "undefined")) {
             btn.classList.add('hidden');
         } else {
-            validChoicesCount++;
             btn.classList.remove('hidden');
+            const prefixRegex = new RegExp(`^${ch}[\\.\\)\\-]\\s*`, 'i');
+            const displayText = cleanChoice.replace(prefixRegex, '');
             
-            const prefixHtml = hideABCD ? '' : `<span class="choice-prefix font-bold mr-2">${ch}.</span>`;
-            document.getElementById(`choice-${ch.toLowerCase()}-text`).innerHTML = prefixHtml + formatQuestionText(cleanChoice);
-            
-            btn.onclick = () => {
-                if (btn.disabled) return;
-                btn.disabled = true;
-                submitPracticeAnswer(ch, q.Answer);
-            };
-            btn.classList.remove("selected-correct", "selected-wrong", "dimmed", "hidden");
-            btn.disabled = false;
+            if (hideABCD) {
+                btn.innerHTML = displayText;
+            } else {
+                btn.innerHTML = `<span class="font-bold mr-2">${ch})</span> ${displayText}`;
+            }
+
+            if (!userAnswer) {
+                btn.onclick = () => submitPracticeAnswer(ch, q.Answer);
+            }
         }
     });
 
@@ -458,7 +464,6 @@ function renderQuestion() {
 
     if (userAnswer) {
         if (activeRecallMask) activeRecallMask.classList.add('hidden');
-        
         qChoicesContainer.classList.remove('hidden');
         showExplanation(q);
         
@@ -470,7 +475,7 @@ function renderQuestion() {
                 btn.classList.add('selected-correct');
                 btn.classList.remove('hidden');
             } else {
-                if (isForcedIdent) {
+                if (isPureIdent) {
                     btn.classList.add('hidden'); 
                 } else {
                     if (choice === userAnswer) {
@@ -484,18 +489,16 @@ function renderQuestion() {
 
         btnNext.disabled = false;
         btnReveal.disabled = true;
-
     } else {
         expBox.classList.add('hidden');
         btnNext.disabled = true;
         btnReveal.disabled = false;
 
-        if (validChoicesCount <= 1 || isForcedIdent) {
+        if (isPureIdent) {
             if (activeRecallMask) activeRecallMask.classList.add('hidden');
             qChoicesContainer.classList.add('hidden');
         } else {
             const activeRecallEnabled = Boolean(state.prefs.activeRecall);
-
             if (activeRecallEnabled) {
                 if (activeRecallMask) activeRecallMask.classList.remove('hidden');
                 qChoicesContainer.classList.add('hidden');
@@ -506,7 +509,6 @@ function renderQuestion() {
         }
     }
 
-    const isPureIdent = validChoicesCount <= 1 || isForcedIdent;
     const activeRecallToggle = document.getElementById('toggle-active-recall');
     const shuffleChoicesToggle = document.getElementById('toggle-shuffle-choices');
 
@@ -725,7 +727,7 @@ function renderCategoryProgress() {
         let resetBtnHTML = '';
 
         if (!isReview) {
-            statsHTML = `<p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>`;
+            // statsHTML = `<p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>`;
             countBadgeHTML = `
                 <div class="flex items-center gap-2 flex-shrink-0 pt-1">
                     ${archiveBtnHTML}
@@ -828,26 +830,29 @@ function renderCategoryProgress() {
             
             if (isRoot) {
                 const isArchived = (state.prefs?.archivedDecks || []).includes(key);
-                const archiveIconColor = isArchived ? 'text-amber-300 hover:text-amber-200' : 'text-white/60 hover:text-white';
+                // Changed colors since it is now placed on a white/gray background
+                const archiveIconColor = isArchived ? 'text-amber-500 hover:text-amber-600' : 'text-gray-400 hover:text-brand-500';
                 archiveBtnHtml = `
                     <button onclick="event.stopPropagation(); toggleArchiveDeck('${escapeHTML(key)}')"
-                            class="absolute top-2 right-2 transition-all transform hover:scale-110 active:scale-90 ${archiveIconColor} p-1 z-10"
+                            class="transition-all transform hover:scale-110 active:scale-90 ${archiveIconColor} p-1 z-10"
                             title="${isArchived ? 'Unarchive Folder' : 'Archive Folder'}">
-                        <i class="fa-solid fa-box-archive text-lg drop-shadow-md"></i>
+                        <i class="fa-solid fa-box-archive text-lg"></i>
                     </button>
                 `;
             }
 
             html += `
                 <div onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
-                    ${archiveBtnHtml}
                     <div class="h-12 ${folderColorClass} transition-colors relative">                        
                         <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
                     </div>
                     <div class="p-4 flex-1 flex flex-col justify-between">
-                        <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg flex items-center">
-                            ${escapeHTML(key)} ${lockIcon}
-                        </h3>
+                        <div class="flex justify-between items-start w-full gap-2">
+                            <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg flex items-center min-w-0">
+                                <span class="truncate">${escapeHTML(key)}</span> ${lockIcon}
+                            </h3>
+                            ${archiveBtnHtml}
+                        </div>
                         <div class="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400 mt-2">
                             <span>${totalCards} cards</span>
                             <span class="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full text-xs font-semibold">Deck</span>
@@ -868,46 +873,18 @@ function renderCategoryProgress() {
 
 async function fetchAndStartCategory(subject, mode, pass = null) {
     const loader = document.getElementById(`loading-${subject}`);
-    if (loader) loader.classList.remove('hidden');
 
-    let validQuestions = [];
+    // Define strict MCQ filter condition conditionally based on user preference
+    const isForcedMCQ = state.prefs.qTypeOverride === 'mcq';
+    const customFilter = isForcedMCQ ? (q => q.ChoiceA && q.ChoiceA.trim() !== "" && q.ChoiceB && q.ChoiceB.trim() !== "") : null;
 
-    try {
-        let fetchUrl = `${DB_URL}?subject=${encodeURIComponent(subject)}`;
-        if (pass) fetchUrl += `&password=${encodeURIComponent(pass)}`;
+    // Always attempt to fetch fresh data for gameplay sessions
+    let validQuestions = await fetchDeckQuestions(subject, pass, loader, customFilter);
 
-        const response = await fetch(fetchUrl);
-        const newQuestions = await response.json();
-        if (newQuestions.error) {
-            alert(newQuestions.error);
-            if (loader) loader.classList.add('hidden');
-            return; 
-        }
-
-        validQuestions = newQuestions.filter(q =>
-            q.Question && q.Question.trim() !== "" &&
-            q.ChoiceA && q.ChoiceA.trim() !== "" &&
-            q.ChoiceB && q.ChoiceB.trim() !== ""
-        ).map(q => {
-            let cleanId = q.ID ? q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, '') : Math.random().toString(36).substr(2, 6);
-            q.ID = `${q.Subject}::${cleanId}`;
-            return q;
-        });
-
-        const otherQuestions = state.db.filter(q => q.Subject !== subject);
-        state.db = [...otherQuestions, ...validQuestions];
-
-        await idbKeyval.set('mrh_db', state.db);
-
-    } catch (err) {
-        console.warn("Network request failed. Falling back to local cache.", err);
-        validQuestions = state.db.filter(q => q.Subject === subject);
-
-        if (validQuestions.length === 0) {
-            alert(`Cannot start session. You are offline and "${subject}" has not been downloaded to your device yet.`);
-            if (loader) loader.classList.add('hidden');
-            return;
-        }
+    // Fallback check if offline and fetch returned empty
+    if (validQuestions.length === 0) {
+        alert(`Cannot start session. You are offline and "${subject}" has not been downloaded to your device yet.`);
+        return;
     }
 
     if (!state.stats.completedQs) state.stats.completedQs = [];
@@ -917,19 +894,16 @@ async function fetchAndStartCategory(subject, mode, pass = null) {
         pool = validQuestions.filter(q => !state.stats.completedQs.includes(q.ID));
         if (pool.length === 0) {
             alert(`You have answered all available questions for ${subject}! Reset the category to start over.`);
-            if (loader) loader.classList.add('hidden');
             return;
         }
     } else if (mode === 'mistakes') {
         pool = validQuestions.filter(q => state.stats.mistakes.includes(q.ID));
         if (pool.length === 0) {
             alert(`No mistakes to review for ${subject}! Great job.`);
-            if (loader) loader.classList.add('hidden');
             return;
         }
     }
 
-    if (loader) loader.classList.add('hidden');
     startCustomSession(pool);
 }
 
@@ -1026,51 +1000,73 @@ async function deleteSubjectData(subject) {
     }
 }
 
-async function reviewDeck(subject, pass = null) {
-    const loader = document.getElementById(`loading-${subject}`);
-    if (loader) loader.classList.remove('hidden');
-
-    let validQuestions = [];
+async function fetchDeckQuestions(subject, pass = null, loaderElement = null, customFilter = null) {
+    if (loaderElement) loaderElement.classList.remove('hidden');
 
     try {
-        let needsFetch = false;
-        if (pass) {
-            needsFetch = true;
-        } else {
-            validQuestions = state.db.filter(q => q.Subject === subject);
-            if (validQuestions.length === 0) needsFetch = true;
+        let fetchUrl = `${DB_URL}?subject=${encodeURIComponent(subject)}`;
+        if (pass) fetchUrl += `&password=${encodeURIComponent(pass)}`;
+
+        const response = await fetch(fetchUrl);
+        const newQuestions = await response.json();
+        
+        if (newQuestions.error) {
+            throw new Error(newQuestions.error);
         }
 
-        if (needsFetch) {
-            let fetchUrl = `${DB_URL}?subject=${encodeURIComponent(subject)}`;
-            if (pass) fetchUrl += `&password=${encodeURIComponent(pass)}`;
-            
-            const response = await fetch(fetchUrl);
-            const newQuestions = await response.json();
-            if (newQuestions.error) {
-                alert(newQuestions.error);
-                if (loader) loader.classList.add('hidden');
-                return;
-            }
+        // Apply base filter (must have a valid Question text)
+        let validQuestions = newQuestions.filter(q => q.Question && q.Question.trim() !== "");
 
-            validQuestions = newQuestions.filter(q =>
-                q.Question && q.Question.trim() !== ""
-            ).map(q => {
-                let cleanId = q.ID ? q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, '') : Math.random().toString(36).substr(2, 6);
-                q.ID = `${q.Subject}::${cleanId}`;
-                return q;
-            });
-            const otherQuestions = state.db.filter(q => q.Subject !== subject);
-            state.db = [...otherQuestions, ...validQuestions];
-            await idbKeyval.set('mrh_db', state.db);
+        // Apply additional custom filter if provided (e.g., requiring choices for MCQs)
+        if (typeof customFilter === 'function') {
+            validQuestions = validQuestions.filter(customFilter);
         }
+
+        // Format IDs
+        validQuestions = validQuestions.map(q => {
+            let cleanId = q.ID ? q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, '') : Math.random().toString(36).substr(2, 6);
+            q.ID = `${q.Subject}::${cleanId}`;
+            return q;
+        });
+        
+        // Update local cache
+        const otherQuestions = state.db.filter(q => q.Subject !== subject);
+        state.db = [...otherQuestions, ...validQuestions];
+        await idbKeyval.set('mrh_db', state.db);
+
+        return validQuestions;
     } catch (err) {
-        console.warn("Network request failed.", err);
-        if (validQuestions.length === 0) {
-            alert(`Cannot review deck. You are offline and "${subject}" has not been downloaded yet.`);
-            if (loader) loader.classList.add('hidden');
-            return;
+        console.warn("Network request failed or returned an error.", err);
+        
+        // Fallback to local cache
+        let cachedQuestions = state.db.filter(q => q.Subject === subject);
+        if (typeof customFilter === 'function') {
+            cachedQuestions = cachedQuestions.filter(customFilter);
         }
+        return cachedQuestions;
+    } finally {
+        if (loaderElement) loaderElement.classList.add('hidden');
+    }
+}
+
+async function reviewDeck(subject, pass = null) {
+    const loader = document.getElementById(`loading-${subject}`);
+    
+    // Check local cache first if no password is provided
+    let validQuestions = [];
+    if (!pass) {
+        validQuestions = state.db.filter(q => q.Subject === subject);
+    }
+
+    // Fetch if cache is empty or password is required
+    if (validQuestions.length === 0 || pass) {
+        validQuestions = await fetchDeckQuestions(subject, pass, loader);
+    }
+
+    if (validQuestions.length === 0) {
+        alert(`Cannot review deck. You are offline and "${subject}" has not been downloaded yet.`);
+        if (loader) loader.classList.add('hidden');
+        return;
     }
 
     if (loader) loader.classList.add('hidden');
@@ -1336,6 +1332,9 @@ function toggleArchiveDeck(subjectId) {
         state.prefs.archivedDecks.splice(index, 1);
         showToast("Deck unarchived");
     } else {
+        if (!confirm(`Are you sure you want to archive "${subjectId}"?`)) {
+            return;
+        }
         state.prefs.archivedDecks.push(subjectId);
         showToast("Deck archived");
     }
@@ -1701,18 +1700,11 @@ function revealAnswer() {
 
     const q = state.session.questions[state.session.currentIndex];
     state.session.userAnswers[state.session.currentIndex] = "REVEALED";
-    let validChoicesCount = 0;
-    ['A', 'B', 'C', 'D'].forEach(ch => {
-        const choiceText = q[`Choice${ch}`];
-        if (choiceText && choiceText.trim() !== "" && choiceText.toLowerCase() !== "undefined") {
-            validChoicesCount++;
-        }
-    });
-    if (validChoicesCount > 1) {
-        trackStats(q, false);
-    }
+    
+    // Use the helper function here too!
+    const { isIdent: isPureIdent } = getQuestionTypeMode(q);
 
-    trackStats(q, false);
+    trackStats(q, isPureIdent);
 
     document.getElementById('q-choices').classList.remove('hidden');
     const activeRecallMask = document.getElementById('active-recall-mask');
@@ -1906,8 +1898,17 @@ async function loadReports() {
             const statusBadge = isResolved
                 ? `<span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold uppercase tracking-wide"><i class="fa-solid fa-check mr-1"></i> Resolved</span>`
                 : `<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold uppercase tracking-wide"><i class="fa-solid fa-clock mr-1"></i> Pending</span>`;
+            const phtDate = new Date(r.timestamp).toLocaleString('en-US', {
+                timeZone: 'Asia/Manila',
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+            });
 
-            html += `
+html += `
                 <div class="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm animate-card-in">
                     <div class="flex justify-between items-start mb-2">
                         <span class="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">${escapeHTML(r.questionId)}</span>
@@ -1916,10 +1917,9 @@ async function loadReports() {
                     <h4 class="font-bold text-gray-800 dark:text-gray-100 mb-1">${escapeHTML(r.errorType)}</h4>
                     <p class="text-sm text-gray-600 dark:text-gray-300 line-clamp-2 italic border-l-2 border-brand-500 pl-3 my-2">"${escapeHTML(r.questionText)}"</p>
                     ${r.comments ? `<p class="text-sm text-gray-500 dark:text-gray-400 mt-2 bg-gray-50 dark:bg-gray-900/50 p-2 rounded"><i class="fa-solid fa-comment-dots mr-1"></i> ${escapeHTML(r.comments)}</p>` : ''}
-                    <div class="text-xs text-gray-400 mt-3 text-right">Reported: ${new Date(r.timestamp).toLocaleDateString()}</div>
+                    <div class="text-xs text-gray-400 mt-3 text-right">Reported: ${phtDate}</div>
                 </div>
-            `;
-        });
+            `;        });
         container.innerHTML = html;
     } catch (err) {
         container.innerHTML = `<div class="text-red-500 text-center p-4">Failed to load reports. Check your connection.</div>`;
@@ -2386,9 +2386,44 @@ function toggleStudyFullscreen() {
 
 if (!state.prefs.qTypeOverride) state.prefs.qTypeOverride = 'auto';
 
+function getQuestionTypeMode(q) {
+    let validChoicesCount = 0;
+    ['A', 'B', 'C', 'D'].forEach(ch => {
+        const choiceText = q[`Choice${ch}`];
+        if (choiceText && String(choiceText).trim() !== "" && String(choiceText).toLowerCase() !== "undefined") {
+            validChoicesCount++;
+        }
+    });
+
+    const isForcedIdent = state.prefs.qTypeOverride === 'ident';
+    const isForcedMCQ = state.prefs.qTypeOverride === 'mcq';
+
+    let isPureIdent;
+    if (isForcedIdent) {
+        isPureIdent = true;
+    } else if (isForcedMCQ) {
+        isPureIdent = false;
+    } else {
+        isPureIdent = validChoicesCount <= 1;
+    }
+
+    return { isIdent: isPureIdent, validChoicesCount };
+}
+
 function changeQuestionTypeMode(mode) {
+    // Prevent redundant triggers if the mode is already active
+    if (state.prefs.qTypeOverride === mode) return;
+
+    // Show a confirmation dialog
+    const userConfirmed = confirm(`Are you sure you want to switch to ${mode.toUpperCase()} mode?`);
+    
+    // If the user clicks "Cancel", stop the function execution
+    if (!userConfirmed) {
+        return; 
+    }
+
     if (mode === 'ident') {
-        alert("Warning: You are hiding choices for Multiple Choice questions.");
+        alert("Warning: Strict Identification mode enabled. You are hiding choices for MCQs. (This is an experimental feature)");
     } else if (mode === 'mcq') {
         alert("Warning: Strict MCQ mode enabled. Choices WILL return undefined if there are no other choices present in the database. (This is an experimental feature)");
     }

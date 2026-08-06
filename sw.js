@@ -1,4 +1,4 @@
-const CACHE_NAME = '2'; // Bumped version to force update
+const CACHE_NAME = '1';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
