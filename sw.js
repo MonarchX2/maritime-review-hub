@@ -1,71 +1,71 @@
-const CACHE_NAME = 'v3'; // Bump version when making changes
+const CACHE_NAME = "v3";
 const ASSETS_TO_CACHE = [
-    './',
-    './index.html',
-    './manifest.json',
-    './app.js',
-    './admin.js',
-    './styles.css',
-    'https://cdn.tailwindcss.com',
-    'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
-    'https://cdn.jsdelivr.net/npm/chart.js',
-    'https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js'
+  "./",
+  "./index.html",
+  "./manifest.json",
+  "./app.js",
+  "./admin.js",
+  "./styles.css",
+  "https://cdn.tailwindcss.com",
+  "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css",
+  "https://cdn.jsdelivr.net/npm/chart.js",
+  "https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js",
 ];
 
-// Install Event: Cache core assets and force activation
-self.addEventListener('install', (event) => {
-    self.skipWaiting();
-    event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => {
-            return cache.addAll(ASSETS_TO_CACHE);
-        })
-    );
+self.addEventListener("install", (event) => {
+  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(ASSETS_TO_CACHE);
+    }),
+  );
 });
 
-// Activate Event: Clear out old caches immediately
-self.addEventListener('activate', (event) => {
-    event.waitUntil(
-        clients.claim().then(() => {
-            return caches.keys().then((cacheNames) => {
-                return Promise.all(
-                    cacheNames.map((cacheName) => {
-                        if (cacheName !== CACHE_NAME) {
-                            return caches.delete(cacheName);
-                        }
-                    })
-                );
-            });
-        })
-    );
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    clients.claim().then(() => {
+      return caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => {
+            if (cacheName !== CACHE_NAME) {
+              return caches.delete(cacheName);
+            }
+          }),
+        );
+      });
+    }),
+  );
 });
 
-// Fetch Event: Stale-while-revalidate for assets, Network-only for API calls
-self.addEventListener('fetch', (event) => {
-    const url = new URL(event.request.url);
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
 
-    // Ignore non-GET requests or Google Script API calls
-    if (event.request.method !== 'GET' || url.origin.includes('script.google.com')) {
-        return;
-    }
+  // Ignore non-GET requests or Google Script API calls
+  if (
+    event.request.method !== "GET" ||
+    url.origin.includes("script.google.com")
+  ) {
+    return;
+  }
 
-    event.respondWith(
-        caches.open(CACHE_NAME).then((cache) => {
-            return cache.match(event.request).then((cachedResponse) => {
-                // Fetch a fresh version from the network in the background
-                const fetchPromise = fetch(event.request)
-                    .then((networkResponse) => {
-                        if (networkResponse && networkResponse.status === 200) {
-                            cache.put(event.request, networkResponse.clone());
-                        }
-                        return networkResponse;
-                    })
-                    .catch(() => {
-                        // Network failed, safe to ignore if we have a cache fallback
-                    });
+  event.respondWith(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.match(event.request).then((cachedResponse) => {
+        // Fetch a fresh version from the network in the background
+        const fetchPromise = fetch(event.request)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              cache.put(event.request, networkResponse.clone());
+            }
+            return networkResponse;
+          })
+          .catch(() => {
+            // Network failed, safe to ignore if we have a cache fallback
+          });
 
-                // Return cached response immediately if available, otherwise wait for network
-                return cachedResponse || fetchPromise;
-            });
-        })
-    );
+        // Return cached response immediately if available, otherwise wait for network
+        return cachedResponse || fetchPromise;
+      });
+    }),
+  );
 });

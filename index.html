@@ -1,667 +1,1359 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">    
-<title>Maritime Review Hub</title>
-    
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#1e3a8a">
-    
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Maritime Review Hub</title>
+
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#1e3a8a" />
+
     <!-- Dark Mode Memory Fix to avoid white flash -->
     <script>
-        try {
-            const prefs = JSON.parse(localStorage.getItem('mrh_prefs') || '{"darkMode":true}');
-            if (prefs.darkMode) document.documentElement.classList.add('dark');
-        } catch (e) {}
+      try {
+        const prefs = JSON.parse(
+          localStorage.getItem("mrh_prefs") || '{"darkMode":true}',
+        );
+        if (prefs.darkMode) document.documentElement.classList.add("dark");
+      } catch (e) {}
     </script>
 
     <!-- Tailwind CSS (Development only). For production, use the Tailwind CLI to build a static CSS file. -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+
     <!-- Deferred Chart.js for faster initial paint -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
-    
+
     <!-- idb-keyval for IndexedDB (Bypasses 5MB localStorage limit) -->
     <script src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js"></script>
 
     <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: { extend: { colors: { brand: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 900: '#1e3a8a' } } } }
-        }
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                50: "#eff6ff",
+                100: "#dbeafe",
+                500: "#3b82f6",
+                600: "#2563eb",
+                700: "#1d4ed8",
+                900: "#1e3a8a",
+              },
+            },
+          },
+        },
+      };
     </script>
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col transition-colors duration-500">
-<header class="bg-brand-900 text-white p-4 flex justify-between items-center shadow-lg sticky top-0 z-50 w-full transition-all duration-300">
-        <button onclick="navigate('dashboard')" class="font-bold text-lg hover:text-brand-200 transition-colors text-left flex items-center transform hover:scale-105 active:scale-95 origin-left">
-            <i class="fa-solid fa-anchor mr-2"></i> MRH
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body
+    class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col transition-colors duration-500"
+  >
+    <header
+      class="bg-brand-900 text-white p-4 flex justify-between items-center shadow-lg sticky top-0 z-50 w-full transition-all duration-300"
+    >
+      <button
+        onclick="navigate('dashboard')"
+        class="font-bold text-lg hover:text-brand-200 transition-colors text-left flex items-center transform hover:scale-105 active:scale-95 origin-left"
+      >
+        <i class="fa-solid fa-anchor mr-2"></i> MRH
+      </button>
+      <div class="flex items-center gap-5">
+        <button
+          id="btn-admin-nav"
+          onclick="navigate('admin')"
+          class="hidden hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg"
+          aria-label="Admin Portal"
+        >
+          <i class="fa-solid fa-lock"></i>
         </button>
-        <div class="flex items-center gap-5">
-            <button id="btn-admin-nav" onclick="navigate('admin')" class="hidden hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="Admin Portal">
-                <i class="fa-solid fa-lock"></i>
-            </button>
-            <button onclick="openGeneralFeedbackModal()" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="Submit Feedback" title="Submit App Feedback/Bug">
-    <i class="fa-solid fa-bug"></i>
-</button>
-            <!-- View Reports Button -->
-            <button onclick="navigate('reports'); loadReports();" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="View Reports" title="Community Reports">
-                <i class="fa-solid fa-flag"></i>
-            </button>
-            <!-- Theme Toggle Button (Sun/Moon) -->
-            <button onclick="toggleTheme()" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg" aria-label="Toggle Theme" title="Toggle Dark/Light Mode">
-                <i class="fa-solid fa-sun dark:hidden"></i>
-                <i class="fa-solid fa-moon hidden dark:inline"></i>
-            </button>
-            <!-- Settings Button -->
-            <button onclick="navigate('settings')" class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg hover:rotate-90" aria-label="Settings">
-                <i class="fa-solid fa-gear"></i>
-            </button>
-
-        </div>
+        <button
+          onclick="openGeneralFeedbackModal()"
+          class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg"
+          aria-label="Submit Feedback"
+          title="Submit App Feedback/Bug"
+        >
+          <i class="fa-solid fa-bug"></i>
+        </button>
+        <!-- View Reports Button -->
+        <button
+          onclick="
+            navigate('reports');
+            loadReports();
+          "
+          class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg"
+          aria-label="View Reports"
+          title="Community Reports"
+        >
+          <i class="fa-solid fa-flag"></i>
+        </button>
+        <!-- Theme Toggle Button (Sun/Moon) -->
+        <button
+          onclick="toggleTheme()"
+          class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg"
+          aria-label="Toggle Theme"
+          title="Toggle Dark/Light Mode"
+        >
+          <i class="fa-solid fa-sun dark:hidden"></i>
+          <i class="fa-solid fa-moon hidden dark:inline"></i>
+        </button>
+        <!-- Settings Button -->
+        <button
+          onclick="navigate('settings')"
+          class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg hover:rotate-90"
+          aria-label="Settings"
+        >
+          <i class="fa-solid fa-gear"></i>
+        </button>
+      </div>
     </header>
 
-    <main class="flex-1 p-4 md:p-8 overflow-y-auto w-full max-w-5xl mx-auto">        
+    <main class="flex-1 p-4 md:p-8 overflow-y-auto w-full max-w-5xl mx-auto">
+      <!-- DASHBOARD SECTION -->
+      <section id="view-dashboard" class="view-section active">
+        <div id="resume-container" class="hidden mb-8 animate-card-in">
+          <h3
+            class="text-lg font-bold mb-4 text-yellow-600 dark:text-yellow-400"
+          >
+            Continue Learning
+          </h3>
+          <button
+            onclick="resumeSession()"
+            class="w-full bg-yellow-500 hover:bg-yellow-600 text-white p-6 rounded-2xl shadow-md text-left transition-all duration-300 transform hover:-translate-y-2 hover:shadow-xl hover:shadow-yellow-500/20 active:scale-95"
+          >
+            <h4 class="text-xl font-bold">
+              <i
+                class="fa-solid fa-clock-rotate-left mr-2 animate-spin-slow"
+              ></i>
+              Resume Previous Session
+            </h4>
+            <p class="text-yellow-100 text-sm mt-1">
+              Pick up exactly where you left off.
+            </p>
+          </button>
+        </div>
 
-        <!-- DASHBOARD SECTION -->
-        <section id="view-dashboard" class="view-section active">
-            <div id="resume-container" class="hidden mb-8 animate-card-in">
-                <h3 class="text-lg font-bold mb-4 text-yellow-600 dark:text-yellow-400">Continue Learning</h3>
-                <button onclick="resumeSession()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white p-6 rounded-2xl shadow-md text-left transition-all duration-300 transform hover:-translate-y-2 hover:shadow-xl hover:shadow-yellow-500/20 active:scale-95">
-                    <h4 class="text-xl font-bold"><i class="fa-solid fa-clock-rotate-left mr-2 animate-spin-slow"></i> Resume Previous Session</h4>
-                    <p class="text-yellow-100 text-sm mt-1">Pick up exactly where you left off.</p>
-                </button>
+        <!-- Subject Progress Header Row -->
+        <div class="flex flex-row justify-between items-center mb-4 gap-2">
+          <h2
+            class="text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100 truncate"
+          >
+            Subject Progress
+          </h2>
+
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <!-- Deck Source Filter (Feature 4) -->
+            <select
+              id="deck-source-filter"
+              onchange="renderCategoryProgress()"
+              class="bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-colors text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 outline-none cursor-pointer"
+            >
+              <option value="all">All Decks</option>
+              <option value="downloaded">Downloaded</option>
+              <option value="cloud">Cloud Only</option>
+              <option value="archived">Archived</option>
+            </select>
+
+            <!-- Mode Toggle -->
+            <label
+              class="flex items-center cursor-pointer bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-colors"
+            >
+              <span
+                id="modeLabel"
+                class="mr-2 text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide"
+                >Quiz</span
+              >
+              <div class="relative flex items-center">
+                <input
+                  type="checkbox"
+                  id="globalModeToggle"
+                  class="peer sr-only"
+                  onchange="toggleAppMode()"
+                />
+
+                <!-- Track -->
+                <div
+                  class="block bg-blue-500 peer-checked:bg-purple-600 w-7 sm:w-8 h-4 rounded-full transition-colors"
+                ></div>
+
+                <!-- Dot -->
+                <div
+                  class="dot absolute left-0.5 bg-white w-3 h-3 rounded-full transition-transform peer-checked:translate-x-3.5 shadow-sm"
+                ></div>
+              </div>
+            </label>
+
+            <!-- List/Grid View Button -->
+            <button
+              onclick="toggleLayout()"
+              class="bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-colors"
+            >
+              <i
+                id="layout-icon"
+                class="fa-solid fa-list text-brand-500 mr-1.5 sm:mr-2"
+              ></i>
+              <span id="layout-text" class="hidden sm:inline">List View</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="category-list" class="transition-all duration-500">
+          <div
+            id="dashboard-loading"
+            class="flex flex-col items-center justify-center py-12 animate-pulse"
+          >
+            <i
+              class="fa-solid fa-spinner fa-spin text-4xl text-brand-500 mb-4"
+            ></i>
+            <h3 class="text-lg font-bold text-gray-700 dark:text-gray-200">
+              Loading Database...
+            </h3>
+            <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">
+              Fetching the latest subjects
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- PRACTICE SECTION -->
+      <section id="view-practice" class="view-section">
+        <div id="session-setup" class="transition-all duration-500">
+          <h2 class="text-2xl font-bold mb-6" id="setup-title">
+            Setup Practice Session
+          </h2>
+          <div
+            class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 border border-gray-100 dark:border-gray-700"
+          >
+            <label
+              class="block text-sm font-semibold mb-2 transform transition-transform"
+              >Subject / Tag Filter</label
+            >
+            <select
+              id="filter-subject"
+              class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white mb-6 focus:ring-2 focus:ring-brand-500 transition-shadow outline-none cursor-pointer"
+            >
+              <option value="ALL">All Subjects</option>
+            </select>
+
+            <button
+              onclick="initSession()"
+              class="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 hover:-translate-y-1 hover:shadow-lg shadow-md transition-all duration-300 active:scale-95 group"
+            >
+              Start Review
+              <i
+                class="fa-solid fa-play ml-2 group-hover:translate-x-1 transition-transform"
+              ></i>
+            </button>
+          </div>
+        </div>
+
+        <div id="session-active" class="hidden transition-all duration-500">
+          <div
+            class="sticky top-[68px] z-40 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-sm -mx-4 px-4 py-4 sm:mx-0 sm:px-0 sm:py-0 sm:bg-transparent sm:backdrop-blur-none sm:static mb-6 border-b sm:border-0 border-gray-200 dark:border-gray-700"
+          >
+            <div class="flex justify-between items-center w-full mb-4">
+              <button
+                onclick="navigate('dashboard')"
+                class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95 flex items-center group"
+              >
+                <i
+                  class="fa-solid fa-arrow-left mr-2 group-hover:-translate-x-1 transition-transform"
+                ></i>
+                Pause & Return
+              </button>
+              <button
+                onclick="openSessionSettingsModal()"
+                id="btn-session-settings"
+                class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-10 h-10 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95 flex items-center justify-center group"
+                title="Session Settings"
+              >
+                <i
+                  class="fa-solid fa-gear group-hover:rotate-90 transition-transform"
+                ></i>
+              </button>
+            </div>
+            <div class="flex justify-between items-center mb-2">
+              <span
+                class="text-sm font-semibold text-gray-500 dark:text-gray-400 transition-colors"
+                >Card Progress</span
+              >
+              <span
+                class="text-sm font-bold text-brand-600 dark:text-brand-400"
+                id="session-progress-text"
+                >0 / 0</span
+              >
+            </div>
+            <div
+              class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden shadow-inner"
+            >
+              <div
+                class="bg-brand-500 h-full rounded-full transition-all duration-500 ease-out"
+                id="session-progress"
+                style="width: 0%"
+              ></div>
+            </div>
+          </div>
+
+          <div
+            class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 transition-colors duration-300"
+          >
+            <div class="flex gap-2 mb-3 items-center w-full">
+              <span
+                class="truncate min-w-0 bg-brand-100 text-brand-800 text-xs px-2 py-1 rounded font-semibold dark:bg-brand-900 dark:text-brand-200 transition-colors"
+                id="q-subject"
+                >Subject</span
+              >
+              <span
+                class="flex-shrink-0 bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded font-semibold dark:bg-gray-700 dark:text-gray-300 transition-colors"
+                id="q-id"
+                >ID</span
+              >
+
+              <button
+                onclick="openReportModal()"
+                id="btn-open-report"
+                class="flex-shrink-0 ml-auto text-gray-400 hover:text-red-500 text-xs font-bold flex items-center justify-center w-7 h-7 transition-all bg-white hover:bg-red-50 dark:bg-gray-800 dark:hover:bg-red-900/30 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95"
+                title="Report Issue"
+              >
+                <i class="fa-solid fa-triangle-exclamation"></i>
+              </button>
             </div>
 
-            <!-- Subject Progress Header Row -->
-            <div class="flex flex-row justify-between items-center mb-4 gap-2">
-            <h2 class="text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100 truncate">Subject Progress</h2>
+            <h3 class="text-xl font-medium mb-4 transition-colors" id="q-text">
+              Loading question...
+            </h3>
 
-            <div class="flex items-center gap-2 flex-shrink-0">
-                <!-- Deck Source Filter (Feature 4) -->
-                <select id="deck-source-filter" onchange="renderCategoryProgress()" class="bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-colors text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 outline-none cursor-pointer">                    <option value="all">All Decks</option>
-                    <option value="downloaded">Downloaded</option>
-                    <option value="cloud">Cloud Only</option>
-                    <option value="archived">Archived</option>
-                </select>
+            <img
+              id="q-image"
+              src=""
+              alt="Reference"
+              class="hidden w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500 hover:scale-105"
+            />
 
-                <!-- Mode Toggle -->
-                <label class="flex items-center cursor-pointer bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-colors">
-                    <span id="modeLabel" class="mr-2 text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Quiz</span>
-                    <div class="relative flex items-center">
-                        <input type="checkbox" id="globalModeToggle" class="peer sr-only" onchange="toggleAppMode()">
-                        
-                        <!-- Track -->
-                        <div class="block bg-blue-500 peer-checked:bg-purple-600 w-7 sm:w-8 h-4 rounded-full transition-colors"></div>
-                        
-                        <!-- Dot -->
-                        <div class="dot absolute left-0.5 bg-white w-3 h-3 rounded-full transition-transform peer-checked:translate-x-3.5 shadow-sm"></div>
-                    </div>
-                </label>
-
-                <!-- List/Grid View Button -->
-                <button onclick="toggleLayout()" class="bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-colors">
-                    <i id="layout-icon" class="fa-solid fa-list text-brand-500 mr-1.5 sm:mr-2"></i> 
-                    <span id="layout-text" class="hidden sm:inline">List View</span>
-                </button>
-            </div>
-            </div>
-            
-            <div id="category-list" class="transition-all duration-500">
-                <div id="dashboard-loading" class="flex flex-col items-center justify-center py-12 animate-pulse">
-                    <i class="fa-solid fa-spinner fa-spin text-4xl text-brand-500 mb-4"></i>
-                    <h3 class="text-lg font-bold text-gray-700 dark:text-gray-200">Loading Database...</h3>
-                    <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Fetching the latest subjects</p>
+            <div
+              id="active-recall-mask"
+              class="hidden border border-gray-200 dark:border-gray-700 rounded-xl mt-6 bg-white dark:bg-gray-800 flex flex-col overflow-hidden animate-card-in shadow-sm"
+            >
+              <div
+                class="p-8 flex flex-col items-center justify-center text-center"
+              >
+                <div
+                  class="bg-gray-50 dark:bg-gray-700 rounded-full w-12 h-12 flex items-center justify-center mb-4 border border-gray-100 dark:border-gray-600"
+                >
+                  <i
+                    class="fa-regular fa-lightbulb text-gray-600 dark:text-gray-300 text-xl"
+                  ></i>
                 </div>
-            </div>
-        </section>
-
-        <!-- PRACTICE SECTION -->
-        <section id="view-practice" class="view-section">
-            <div id="session-setup" class="transition-all duration-500">
-                <h2 class="text-2xl font-bold mb-6" id="setup-title">Setup Practice Session</h2>
-                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 border border-gray-100 dark:border-gray-700">
-                    <label class="block text-sm font-semibold mb-2 transform transition-transform">Subject / Tag Filter</label>
-                    <select id="filter-subject" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white mb-6 focus:ring-2 focus:ring-brand-500 transition-shadow outline-none cursor-pointer">
-                        <option value="ALL">All Subjects</option>
-                    </select>
-                    
-                    <button onclick="initSession()" class="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 hover:-translate-y-1 hover:shadow-lg shadow-md transition-all duration-300 active:scale-95 group">
-                        Start Review <i class="fa-solid fa-play ml-2 group-hover:translate-x-1 transition-transform"></i>
-                    </button>
-                </div>
+                <p class="text-gray-700 dark:text-gray-300 font-medium">
+                  Think of the answer first to do active recall
+                </p>
+              </div>
+              <button
+                id="btn-show-options"
+                onclick="showMCQOptions()"
+                class="w-full py-4 border-t border-gray-200 dark:border-gray-700 font-bold text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                Show options
+              </button>
             </div>
 
-            <div id="session-active" class="hidden transition-all duration-500">
-                <div class="sticky top-[68px] z-40 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-sm -mx-4 px-4 py-4 sm:mx-0 sm:px-0 sm:py-0 sm:bg-transparent sm:backdrop-blur-none sm:static mb-6 border-b sm:border-0 border-gray-200 dark:border-gray-700">
-                    <div class="flex justify-between items-center w-full mb-4">
-                        <button onclick="navigate('dashboard')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95 flex items-center group">
-                            <i class="fa-solid fa-arrow-left mr-2 group-hover:-translate-x-1 transition-transform"></i> Pause & Return
-                        </button>
-                        <button onclick="openSessionSettingsModal()" id="btn-session-settings" class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-10 h-10 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95 flex items-center justify-center group" title="Session Settings">
-                            <i class="fa-solid fa-gear group-hover:rotate-90 transition-transform"></i>
-                        </button>
-                    </div>
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="text-sm font-semibold text-gray-500 dark:text-gray-400 transition-colors">Card Progress</span>
-                        <span class="text-sm font-bold text-brand-600 dark:text-brand-400" id="session-progress-text">0 / 0</span>
-                    </div>
-                    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden shadow-inner">
-                        <div class="bg-brand-500 h-full rounded-full transition-all duration-500 ease-out" id="session-progress" style="width: 0%"></div>
-                    </div>
-                </div>
+            <div class="grid gap-3 mt-6" id="q-choices">
+              <button
+                class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start"
+                data-choice="A"
+              >
+                <span class="choice-prefix font-bold mr-2 min-w-[20px]"
+                  >A)</span
+                >
+                <span id="choice-a-text" class="flex-1"></span>
+              </button>
+              <button
+                class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start"
+                data-choice="B"
+              >
+                <span class="choice-prefix font-bold mr-2 min-w-[20px]"
+                  >B)</span
+                >
+                <span id="choice-b-text" class="flex-1"></span>
+              </button>
+              <button
+                class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start"
+                data-choice="C"
+              >
+                <span class="choice-prefix font-bold mr-2 min-w-[20px]"
+                  >C)</span
+                >
+                <span id="choice-c-text" class="flex-1"></span>
+              </button>
+              <button
+                class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start"
+                data-choice="D"
+              >
+                <span class="choice-prefix font-bold mr-2 min-w-[20px]"
+                  >D)</span
+                >
+                <span id="choice-d-text" class="flex-1"></span>
+              </button>
+            </div>
+          </div>
 
-                <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 transition-colors duration-300">
-                    <div class="flex gap-2 mb-3 items-center w-full">
-                        <span class="truncate min-w-0 bg-brand-100 text-brand-800 text-xs px-2 py-1 rounded font-semibold dark:bg-brand-900 dark:text-brand-200 transition-colors" id="q-subject">Subject</span>
-                        <span class="flex-shrink-0 bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded font-semibold dark:bg-gray-700 dark:text-gray-300 transition-colors" id="q-id">ID</span>
-                        
-                        <button onclick="openReportModal()" id="btn-open-report" class="flex-shrink-0 ml-auto text-gray-400 hover:text-red-500 text-xs font-bold flex items-center justify-center w-7 h-7 transition-all bg-white hover:bg-red-50 dark:bg-gray-800 dark:hover:bg-red-900/30 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95" title="Report Issue">
-                            <i class="fa-solid fa-triangle-exclamation"></i>
-                        </button>
-                    </div>
+          <div
+            id="q-explanation-box"
+            class="hidden bg-blue-50 dark:bg-gray-800 border-l-4 border-blue-500 p-4 rounded-r-xl mb-6 shadow-sm animate-card-in"
+          >
+            <h4
+              class="font-bold text-blue-800 dark:text-blue-300 mb-1 flex items-center"
+            >
+              <i
+                class="fa-solid fa-lightbulb mr-2 text-yellow-500 animate-pulse"
+              ></i>
+              Explanation
+            </h4>
+            <p
+              class="text-gray-700 dark:text-gray-300 text-sm mb-2"
+              id="q-explanation-text"
+            ></p>
+          </div>
 
-                    <h3 class="text-xl font-medium mb-4 transition-colors" id="q-text">Loading question...</h3>
-                    
-                    <img id="q-image" src="" alt="Reference" class="hidden w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500 hover:scale-105">
+          <div class="flex gap-2 md:gap-4 mt-6">
+            <button
+              id="btn-prev"
+              onclick="prevQuestion()"
+              class="flex-1 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white py-4 rounded-xl font-bold shadow-md hover:bg-gray-300 hover:-translate-y-1 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 group"
+            >
+              <i
+                class="fa-solid fa-arrow-left md:mr-2 group-hover:-translate-x-1 transition-transform"
+              ></i>
+              <span class="hidden md:inline">Previous</span>
+            </button>
 
-                    <div id="active-recall-mask" class="hidden border border-gray-200 dark:border-gray-700 rounded-xl mt-6 bg-white dark:bg-gray-800 flex flex-col overflow-hidden animate-card-in shadow-sm">
-                        <div class="p-8 flex flex-col items-center justify-center text-center">
-                            <div class="bg-gray-50 dark:bg-gray-700 rounded-full w-12 h-12 flex items-center justify-center mb-4 border border-gray-100 dark:border-gray-600">
-                                <i class="fa-regular fa-lightbulb text-gray-600 dark:text-gray-300 text-xl"></i>
-                            </div>
-                            <p class="text-gray-700 dark:text-gray-300 font-medium">Think of the answer first to do active recall</p>
-                        </div>
-                        <button id="btn-show-options" onclick="showMCQOptions()" class="w-full py-4 border-t border-gray-200 dark:border-gray-700 font-bold text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                            Show options
-                        </button>
-                    </div>
+            <button
+              id="btn-reveal"
+              onclick="revealAnswer()"
+              class="flex-1 bg-yellow-500 text-white py-4 rounded-xl font-bold shadow-md hover:bg-yellow-600 hover:-translate-y-1 hover:shadow-yellow-500/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+            >
+              <i class="fa-solid fa-eye md:mr-2"></i>
+              <span class="hidden md:inline">Reveal</span>
+            </button>
 
-                <div class="grid gap-3 mt-6" id="q-choices">
-                    <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start" data-choice="A">
-                        <span class="choice-prefix font-bold mr-2 min-w-[20px]">A)</span> <span id="choice-a-text" class="flex-1"></span>
-                    </button>
-                    <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start" data-choice="B">
-                        <span class="choice-prefix font-bold mr-2 min-w-[20px]">B)</span> <span id="choice-b-text" class="flex-1"></span>
-                    </button>
-                    <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start" data-choice="C">
-                        <span class="choice-prefix font-bold mr-2 min-w-[20px]">C)</span> <span id="choice-c-text" class="flex-1"></span>
-                    </button>
-                    <button class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start" data-choice="D">
-                        <span class="choice-prefix font-bold mr-2 min-w-[20px]">D)</span> <span id="choice-d-text" class="flex-1"></span>
-                    </button>
-                </div>
+            <button
+              id="btn-next"
+              onclick="nextQuestion()"
+              class="flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 hover:-translate-y-1 hover:shadow-brand-500/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 group"
+            >
+              <span class="hidden md:inline">Next</span>
+              <i
+                class="fa-solid fa-arrow-right md:ml-2 group-hover:translate-x-1 transition-transform"
+              ></i>
+            </button>
+          </div>
+
+          <div
+            id="auto-next-timer-container"
+            class="hidden mt-6 h-1.5 w-full max-w-sm mx-auto rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden shadow-inner transition-opacity duration-300"
+          >
+            <div
+              id="auto-next-timer-bar"
+              class="bg-brand-500 h-full w-full origin-left scale-x-0 rounded-full"
+            ></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PUBLIC REPORTS SECTION -->
+      <section id="view-reports" class="view-section">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-2xl font-bold">Community Reports</h2>
+          <button
+            onclick="loadReports()"
+            class="text-brand-500 hover:text-brand-600 text-sm font-bold flex items-center gap-1"
+          >
+            <i class="fa-solid fa-rotate-right"></i> Refresh
+          </button>
+        </div>
+        <p class="text-sm text-gray-500 mb-6">
+          Track the status of reported questions here. Resolved issues disappear
+          after 24 hours.
+        </p>
+
+        <div id="public-reports-list" class="space-y-4">
+          <!-- Populated via JS -->
+        </div>
+      </section>
+
+      <!-- DECK MODE SELECT SECTION -->
+      <section id="view-mode-select" class="view-section hidden">
+        <div class="flex items-center justify-between mb-6 gap-4">
+          <div class="flex items-center gap-4">
+            <button
+              onclick="navigate('dashboard')"
+              class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center"
+            >
+              <i class="fa-solid fa-arrow-left mr-2"></i> Back
+            </button>
+            <h2
+              class="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-100"
+              id="mode-select-deck-title"
+            >
+              Select Mode
+            </h2>
+          </div>
+        </div>
+
+        <div
+          class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto mt-12"
+        >
+          <button
+            onclick="proceedToReview()"
+            class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border-2 border-transparent hover:border-brand-500 dark:hover:border-brand-400 transition-all duration-300 text-left group flex flex-col justify-between"
+          >
+            <div>
+              <div
+                class="w-14 h-14 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform"
+              >
+                <i class="fa-solid fa-eye"></i>
+              </div>
+              <h3
+                class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2"
+              >
+                Review Deck
+              </h3>
+              <p class="text-gray-500 dark:text-gray-400 text-sm">
+                Read through all questions, correct answers, choices, and
+                explanations at your own pace without scoring.
+              </p>
+            </div>
+            <div
+              class="mt-8 flex items-center text-brand-600 dark:text-brand-400 font-bold text-sm"
+            >
+              <span>Open Review</span>
+              <i
+                class="fa-solid fa-arrow-right ml-2 group-hover:translate-x-1 transition-transform"
+              ></i>
+            </div>
+          </button>
+
+          <button
+            onclick="proceedToQuiz()"
+            class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border-2 border-transparent hover:border-brand-500 dark:hover:border-brand-400 transition-all duration-300 text-left group flex flex-col justify-between"
+          >
+            <div>
+              <div
+                class="w-14 h-14 rounded-xl bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform"
+              >
+                <i class="fa-solid fa-brain"></i>
+              </div>
+              <h3
+                class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2"
+              >
+                Take Quiz
+              </h3>
+              <p class="text-gray-500 dark:text-gray-400 text-sm">
+                Test your knowledge with interactive quiz sessions, track your
+                scores, and practice challenging items.
+              </p>
+            </div>
+            <div
+              class="mt-8 flex items-center text-brand-600 dark:text-brand-400 font-bold text-sm"
+            >
+              <span>Start Quiz</span>
+              <i
+                class="fa-solid fa-arrow-right ml-2 group-hover:translate-x-1 transition-transform"
+              ></i>
+            </div>
+          </button>
+        </div>
+      </section>
+
+      <!-- DECK REVIEW SECTION -->
+      <section id="view-deck-review" class="view-section hidden">
+        <div class="flex items-center justify-between mb-6 gap-4 flex-wrap">
+          <div class="flex items-center gap-4">
+            <button
+              onclick="navigate('dashboard')"
+              class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center"
+            >
+              <i class="fa-solid fa-arrow-left mr-2"></i> Back
+            </button>
+            <h2
+              class="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-100"
+              id="deck-review-title"
+            >
+              Review Deck
+            </h2>
+          </div>
+
+          <div
+            class="flex items-center gap-4 flex-wrap bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm w-full md:w-auto"
+          >
+            <label class="inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                id="toggle-hide-abcd"
+                class="sr-only peer"
+                onchange="toggleHideABCD()"
+                checked
+              />
+              <div
+                class="relative w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
+              ></div>
+              <span
+                class="ms-2 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide"
+                >Hide ABCD</span
+              >
+            </label>
+
+            <div
+              class="hidden md:block w-px h-5 bg-gray-300 dark:bg-gray-600"
+            ></div>
+            <!-- Vertical Divider -->
+
+            <label class="inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                id="toggle-wrong-choices"
+                class="sr-only peer"
+                onchange="toggleShowWrongChoices()"
+                checked
+              />
+              <div
+                class="relative w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
+              ></div>
+              <span
+                class="ms-2 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide"
+                >Show Wrong Choices</span
+              >
+            </label>
+          </div>
+        </div>
+
+        <div id="deck-review-list" class="space-y-4">
+          <!-- Populated dynamically via JS -->
+        </div>
+      </section>
+
+      <!-- SETTINGS SECTION -->
+      <section id="view-settings" class="view-section">
+        <h2 class="text-2xl font-bold mb-6">Settings</h2>
+
+        <div
+          class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 mb-6 border border-gray-100 dark:border-gray-700 animate-card-in"
+          style="animation-delay: 0.1s"
+        >
+          <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4">
+            <i class="fa-solid fa-database text-brand-500 mr-2"></i> Database
+            Sync
+          </h3>
+          <p
+            id="sync-status"
+            class="text-sm mt-3 font-medium bg-gray-50 dark:bg-gray-700 p-3 rounded-lg hidden transition-all duration-300"
+          ></p>
+          <p class="text-xs text-gray-400 mt-4 transition-colors">
+            Current Database Size:
+            <span id="db-size-display" class="font-bold">0</span> questions.
+          </p>
+        </div>
+
+        <div class="mt-6 border-t dark:border-gray-700 pt-4">
+          <label class="flex items-center justify-between cursor-pointer mb-2">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
+              >Shuffle Choices</span
+            >
+            <input
+              type="checkbox"
+              id="toggle-shuffle-choices"
+              class="sr-only peer"
+              onchange="toggleShuffleChoices()"
+              checked
+            />
+            <div
+              class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
+            ></div>
+          </label>
+          <label class="flex items-center justify-between cursor-pointer mb-2">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
+              >Shuffle Questions</span
+            >
+            <input
+              type="checkbox"
+              id="toggle-shuffle-questions"
+              class="sr-only peer"
+              onchange="toggleShuffleQuestions()"
+              checked
+            />
+            <div
+              class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
+            ></div>
+          </label>
+          <p
+            class="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded border border-yellow-200 dark:border-yellow-800"
+          >
+            <i class="fa-solid fa-triangle-exclamation mr-1"></i> Warning:
+            Disabling shuffling may lead to memorization of question order,
+            which can affect the effectiveness of your practice sessions.
+          </p>
+        </div>
+
+        <div
+          class="flex flex-col gap-4 border-t dark:border-gray-700 pt-4 mt-4 animate-card-in"
+          style="animation-delay: 0.3s"
+        >
+          <span class="font-medium text-red-500 animate-pulse"
+            >Danger Zone</span
+          >
+          <div class="flex justify-between items-center">
+            <span class="text-sm dark:text-gray-300 transition-colors"
+              >Clear Statistics</span
+            >
+            <button
+              onclick="resetProgress()"
+              class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300"
+            >
+              Reset Progress
+            </button>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-sm dark:text-gray-300 transition-colors"
+              >Clear Local Database</span
+            >
+            <button
+              onclick="clearDatabase()"
+              class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300"
+            >
+              Clear Database
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ADMIN SECTION -->
+      <section id="view-admin" class="view-section">
+        <h2 class="text-2xl font-bold mb-6">Admin Portal</h2>
+
+        <div
+          id="admin-login-section"
+          class="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-sm hover:shadow-lg transition-shadow max-w-md mx-auto border border-gray-100 dark:border-gray-700 animate-card-in"
+        >
+          <h2 class="text-xl font-bold mb-4 text-center transition-colors">
+            Authentication Required
+          </h2>
+
+          <!-- Password Input with Toggle -->
+          <div class="relative w-full mb-4">
+            <input
+              type="password"
+              id="admin-password"
+              class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-brand-500 transition-all outline-none pr-12"
+              placeholder="Enter Admin Password"
+            />
+
+            <!-- Eye Toggle Button -->
+            <button
+              type="button"
+              onclick="togglePasswordVisibility('admin-password', this)"
+              class="absolute right-3 top-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            >
+              <i class="fa-solid fa-eye text-lg"></i>
+            </button>
+          </div>
+
+          <button
+            id="btn-admin-login"
+            onclick="adminLogin()"
+            class="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 hover:-translate-y-1 hover:shadow-lg active:scale-95 transition-all duration-300"
+          >
+            Log In
+          </button>
+          <p
+            id="admin-login-error"
+            class="text-red-500 text-sm mt-3 hidden text-center animate-bounce"
+          >
+            Incorrect password.
+          </p>
+        </div>
+
+        <div
+          id="admin-dashboard-section"
+          class="hidden animate-card-in space-y-8"
+        >
+          <!-- SECTION 1: Subject Hierarchy Editor -->
+          <div
+            class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700"
+          >
+            <div
+              class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4"
+            >
+              <h3 class="text-xl font-bold transition-colors">
+                Subject Hierarchy Editor
+              </h3>
+              <button
+                onclick="saveAdminChanges()"
+                id="btn-admin-save"
+                class="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700 hover:-translate-y-1 hover:shadow-lg hover:shadow-green-600/30 active:scale-95 transition-all shadow-md w-full md:w-auto"
+              >
+                <i class="fa-solid fa-floppy-disk mr-2"></i> Save Layout
+              </button>
             </div>
 
-                <div id="q-explanation-box" class="hidden bg-blue-50 dark:bg-gray-800 border-l-4 border-blue-500 p-4 rounded-r-xl mb-6 shadow-sm animate-card-in">
-                    <h4 class="font-bold text-blue-800 dark:text-blue-300 mb-1 flex items-center"><i class="fa-solid fa-lightbulb mr-2 text-yellow-500 animate-pulse"></i> Explanation</h4>
-                    <p class="text-gray-700 dark:text-gray-300 text-sm mb-2" id="q-explanation-text"></p>
-                </div>
-
-                <div class="flex gap-2 md:gap-4 mt-6">
-                    <button id="btn-prev" onclick="prevQuestion()" class="flex-1 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white py-4 rounded-xl font-bold shadow-md hover:bg-gray-300 hover:-translate-y-1 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 group">
-                        <i class="fa-solid fa-arrow-left md:mr-2 group-hover:-translate-x-1 transition-transform"></i> <span class="hidden md:inline">Previous</span>
-                    </button>
-                    
-                    <button id="btn-reveal" onclick="revealAnswer()" class="flex-1 bg-yellow-500 text-white py-4 rounded-xl font-bold shadow-md hover:bg-yellow-600 hover:-translate-y-1 hover:shadow-yellow-500/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0">
-                        <i class="fa-solid fa-eye md:mr-2"></i> <span class="hidden md:inline">Reveal</span>
-                    </button>
-                    
-                    <button id="btn-next" onclick="nextQuestion()" class="flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 hover:-translate-y-1 hover:shadow-brand-500/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 group">
-                        <span class="hidden md:inline">Next</span> <i class="fa-solid fa-arrow-right md:ml-2 group-hover:translate-x-1 transition-transform"></i>
-                    </button>
-                </div>
-
-                <div id="auto-next-timer-container" class="hidden mt-6 h-1.5 w-full max-w-sm mx-auto rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden shadow-inner transition-opacity duration-300">
-                <div id="auto-next-timer-bar" class="bg-brand-500 h-full w-full origin-left scale-x-0 rounded-full"></div>                </div>
+            <div
+              class="bg-blue-50 dark:bg-gray-800 border-l-4 border-blue-500 p-4 mb-6 rounded-r-lg text-sm text-blue-800 dark:text-blue-300 shadow-sm transition-colors hover:shadow-md"
+            >
+              <strong>Tip:</strong> Use double colons (<code>::</code>) to
+              create nesting. For example:
+              <code>BSMT::3.1::Prelims::Naval Architecture</code>.
             </div>
-        </section>
 
-        <!-- PUBLIC REPORTS SECTION -->
-        <section id="view-reports" class="view-section">
+            <div id="admin-subject-list" class="space-y-3">
+              <!-- Dynamically populated via JS -->
+            </div>
+          </div>
+
+          <!-- SECTION 2: Report Management -->
+          <div
+            class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700"
+          >
             <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold">Community Reports</h2>
-                <button onclick="loadReports()" class="text-brand-500 hover:text-brand-600 text-sm font-bold flex items-center gap-1"><i class="fa-solid fa-rotate-right"></i> Refresh</button>
+              <h3 class="text-xl font-bold transition-colors">
+                <i class="fa-solid fa-clipboard-list text-brand-500 mr-2"></i>
+                Report Management
+              </h3>
+              <button
+                onclick="adminLoadReports()"
+                class="bg-gray-200 dark:bg-gray-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-300 transition-all active:scale-95"
+              >
+                <i class="fa-solid fa-rotate-right"></i> Refresh
+              </button>
             </div>
-            <p class="text-sm text-gray-500 mb-6">Track the status of reported questions here. Resolved issues disappear after 24 hours.</p>
-            
-            <div id="public-reports-list" class="space-y-4">
-                <!-- Populated via JS -->
+            <div id="admin-reports-list" class="space-y-4">
+              <!-- Admin reports populated via JS -->
             </div>
-        </section>
-
-        <!-- DECK MODE SELECT SECTION -->
-        <section id="view-mode-select" class="view-section hidden">
-            <div class="flex items-center justify-between mb-6 gap-4">
-                <div class="flex items-center gap-4">
-                    <button onclick="navigate('dashboard')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center">
-                        <i class="fa-solid fa-arrow-left mr-2"></i> Back
-                    </button>
-                    <h2 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-100" id="mode-select-deck-title">Select Mode</h2>
-                </div>
-            </div>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto mt-12">
-                <button onclick="proceedToReview()" class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border-2 border-transparent hover:border-brand-500 dark:hover:border-brand-400 transition-all duration-300 text-left group flex flex-col justify-between">
-                    <div>
-                        <div class="w-14 h-14 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform">
-                            <i class="fa-solid fa-eye"></i>
-                        </div>
-                        <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">Review Deck</h3>
-                        <p class="text-gray-500 dark:text-gray-400 text-sm">Read through all questions, correct answers, choices, and explanations at your own pace without scoring.</p>
-                    </div>
-                    <div class="mt-8 flex items-center text-brand-600 dark:text-brand-400 font-bold text-sm">
-                        <span>Open Review</span>
-                        <i class="fa-solid fa-arrow-right ml-2 group-hover:translate-x-1 transition-transform"></i>
-                    </div>
-                </button>
-
-                <button onclick="proceedToQuiz()" class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border-2 border-transparent hover:border-brand-500 dark:hover:border-brand-400 transition-all duration-300 text-left group flex flex-col justify-between">
-                    <div>
-                        <div class="w-14 h-14 rounded-xl bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform">
-                            <i class="fa-solid fa-brain"></i>
-                        </div>
-                        <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">Take Quiz</h3>
-                        <p class="text-gray-500 dark:text-gray-400 text-sm">Test your knowledge with interactive quiz sessions, track your scores, and practice challenging items.</p>
-                    </div>
-                    <div class="mt-8 flex items-center text-brand-600 dark:text-brand-400 font-bold text-sm">
-                        <span>Start Quiz</span>
-                        <i class="fa-solid fa-arrow-right ml-2 group-hover:translate-x-1 transition-transform"></i>
-                    </div>
-                </button>
-            </div>
-        </section>
-
-        <!-- DECK REVIEW SECTION -->
-        <section id="view-deck-review" class="view-section hidden">
-            <div class="flex items-center justify-between mb-6 gap-4 flex-wrap">
-                <div class="flex items-center gap-4">
-                    <button onclick="navigate('dashboard')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center">
-                        <i class="fa-solid fa-arrow-left mr-2"></i> Back
-                    </button>
-                    <h2 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-100" id="deck-review-title">Review Deck</h2>
-                </div>
-                
-                <div class="flex items-center gap-4 flex-wrap bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm w-full md:w-auto">
-                    <label class="inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="toggle-hide-abcd" class="sr-only peer" onchange="toggleHideABCD()" checked>
-                        <div class="relative w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"></div>
-                        <span class="ms-2 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Hide ABCD</span>
-                    </label>
-
-                    <div class="hidden md:block w-px h-5 bg-gray-300 dark:bg-gray-600"></div> <!-- Vertical Divider -->
-
-                    <label class="inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="toggle-wrong-choices" class="sr-only peer" onchange="toggleShowWrongChoices()" checked>
-                        <div class="relative w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"></div>
-                        <span class="ms-2 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Show Wrong Choices</span>
-                    </label>
-                </div>
-            </div>
-            
-            <div id="deck-review-list" class="space-y-4">
-                <!-- Populated dynamically via JS -->
-            </div>
-        </section>
-
-        <!-- SETTINGS SECTION -->
-        <section id="view-settings" class="view-section">
-            <h2 class="text-2xl font-bold mb-6">Settings</h2>
-
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 mb-6 border border-gray-100 dark:border-gray-700 animate-card-in" style="animation-delay: 0.1s;">
-                <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4"><i class="fa-solid fa-database text-brand-500 mr-2"></i> Database Sync</h3>
-                <p id="sync-status" class="text-sm mt-3 font-medium bg-gray-50 dark:bg-gray-700 p-3 rounded-lg hidden transition-all duration-300"></p>
-                <p class="text-xs text-gray-400 mt-4 transition-colors">Current Database Size: <span id="db-size-display" class="font-bold">0</span> questions.</p>
-            </div>
-            
-            <div class="mt-6 border-t dark:border-gray-700 pt-4">
-                <label class="flex items-center justify-between cursor-pointer mb-2">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Shuffle Choices</span>
-                    <input type="checkbox" id="toggle-shuffle-choices" class="sr-only peer" onchange="toggleShuffleChoices()" checked>
-                    <div class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"></div>
-                </label>
-                <label class="flex items-center justify-between cursor-pointer mb-2">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Shuffle Questions</span>
-                    <input type="checkbox" id="toggle-shuffle-questions" class="sr-only peer" onchange="toggleShuffleQuestions()" checked>
-                    <div class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"></div>
-                </label>
-                <p class="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded border border-yellow-200 dark:border-yellow-800">
-                    <i class="fa-solid fa-triangle-exclamation mr-1"></i> Warning: Disabling shuffling may lead to memorization of question order, which can affect the effectiveness of your practice sessions.
-                </p>
-            </div>
-
-            <div class="flex flex-col gap-4 border-t dark:border-gray-700 pt-4 mt-4 animate-card-in" style="animation-delay: 0.3s;">
-                <span class="font-medium text-red-500 animate-pulse">Danger Zone</span>
-                <div class="flex justify-between items-center">
-                    <span class="text-sm dark:text-gray-300 transition-colors">Clear Statistics</span>
-                    <button onclick="resetProgress()" class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300">Reset Progress</button>
-                </div>
-                <div class="flex justify-between items-center">
-                    <span class="text-sm dark:text-gray-300 transition-colors">Clear Local Database</span>
-                    <button onclick="clearDatabase()" class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300">Clear Database</button>
-                </div>
-            </div>
-        </section>
-
-        <!-- ADMIN SECTION -->
-        <section id="view-admin" class="view-section">
-            <h2 class="text-2xl font-bold mb-6">Admin Portal</h2>
-            
-            <div id="admin-login-section" class="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-sm hover:shadow-lg transition-shadow max-w-md mx-auto border border-gray-100 dark:border-gray-700 animate-card-in">
-                <h2 class="text-xl font-bold mb-4 text-center transition-colors">Authentication Required</h2>
-                
-                <!-- Password Input with Toggle -->
-                <div class="relative w-full mb-4">
-                    <input type="password" id="admin-password" class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-brand-500 transition-all outline-none pr-12" placeholder="Enter Admin Password">
-                    
-                    <!-- Eye Toggle Button -->
-                    <button type="button" onclick="togglePasswordVisibility('admin-password', this)" class="absolute right-3 top-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
-                        <i class="fa-solid fa-eye text-lg"></i>
-                    </button>
-                </div>
-
-                <button id="btn-admin-login" onclick="adminLogin()" class="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 hover:-translate-y-1 hover:shadow-lg active:scale-95 transition-all duration-300">Log In</button>                
-                <p id="admin-login-error" class="text-red-500 text-sm mt-3 hidden text-center animate-bounce">Incorrect password.</p>
-            </div>
-
-            <div id="admin-dashboard-section" class="hidden animate-card-in space-y-8">
-                <!-- SECTION 1: Subject Hierarchy Editor -->
-                <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                        <h3 class="text-xl font-bold transition-colors">Subject Hierarchy Editor</h3>
-                        <button onclick="saveAdminChanges()" id="btn-admin-save" class="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700 hover:-translate-y-1 hover:shadow-lg hover:shadow-green-600/30 active:scale-95 transition-all shadow-md w-full md:w-auto">
-                            <i class="fa-solid fa-floppy-disk mr-2"></i> Save Layout
-                        </button>
-                    </div>
-                    
-                    <div class="bg-blue-50 dark:bg-gray-800 border-l-4 border-blue-500 p-4 mb-6 rounded-r-lg text-sm text-blue-800 dark:text-blue-300 shadow-sm transition-colors hover:shadow-md">
-                        <strong>Tip:</strong> Use double colons (<code>::</code>) to create nesting. For example: <code>BSMT::3.1::Prelims::Naval Architecture</code>.
-                    </div>
-
-                    <div id="admin-subject-list" class="space-y-3">
-                        <!-- Dynamically populated via JS -->
-                    </div>
-                </div>
-
-                <!-- SECTION 2: Report Management -->
-                <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-                    <div class="flex justify-between items-center mb-6">
-                        <h3 class="text-xl font-bold transition-colors"><i class="fa-solid fa-clipboard-list text-brand-500 mr-2"></i> Report Management</h3>
-                        <button onclick="adminLoadReports()" class="bg-gray-200 dark:bg-gray-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-300 transition-all active:scale-95">
-                            <i class="fa-solid fa-rotate-right"></i> Refresh
-                        </button>
-                    </div>
-                    <div id="admin-reports-list" class="space-y-4">
-                        <!-- Admin reports populated via JS -->
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Feature 1: Edit Report Modal (Instructions instead of email) -->
-        <div id="report-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden opacity-0 transition-opacity duration-300 flex items-center justify-center p-4">
-            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 flex flex-col max-h-[90vh]">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100"><i class="fa-solid fa-flag text-red-500 mr-2"></i> Report Question</h3>
-                    <button onclick="closeReportModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                        <i class="fa-solid fa-xmark text-xl"></i>
-                    </button>
-                </div>
-                <p class="text-sm text-gray-600 dark:text-gray-300 mb-4 bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-100 dark:border-gray-600">
-                    <i class="fa-solid fa-circle-info text-blue-500 mr-1"></i> <strong>Instructions:</strong> Describe the issue clearly. This report will be publicly visible.
-                </p>
-                <div class="space-y-4 overflow-y-auto pr-2">
-                    <div>
-                        <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Error Type *</label>
-                        <select id="report-type" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-200 outline-none">
-                            <option value="" disabled selected>Select an issue...</option>
-                            <option value="Incorrect Answer Key">Incorrect Answer Key</option>
-                            <option value="Incomplete/Missing Choices">Incomplete/Missing Choices</option>
-                            <option value="Typo / Grammatical Error">Typo / Grammatical Error</option>
-                            <option value="Ambiguous / Unclear Question">Ambiguous / Unclear Question</option>
-                            <option value="Missing or Broken Image">Missing or Broken Image</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Comments</label>
-                        <textarea id="report-comments" rows="3" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-200 outline-none resize-none" placeholder="Provide details..."></textarea>
-                    </div>
-                </div>
-                <div class="mt-6 flex justify-end gap-3 border-t border-gray-100 dark:border-gray-700 pt-4">
-                    <button onclick="closeReportModal()" class="px-5 py-2.5 rounded-xl font-bold bg-gray-100 hover:bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300 transition-colors">Cancel</button>
-                    <button id="btn-submit-report" onclick="submitReport()" class="px-5 py-2.5 rounded-xl font-bold text-white bg-red-500 hover:bg-red-600 transition-colors shadow-md">Submit</button>
-                </div>
-            </div>
+          </div>
         </div>
+      </section>
 
-        <!-- Feature 10: General App Bug Report Modal -->
-        <div id="feedback-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden opacity-0 transition-opacity duration-300 flex items-center justify-center p-4">
-            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100"><i class="fa-solid fa-bug text-brand-500 mr-2"></i> Report App Bug / Feedback</h3>
-                    <button onclick="closeGeneralFeedbackModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                        <i class="fa-solid fa-xmark text-xl"></i>
-                    </button>
-                </div>
-                <textarea id="feedback-comments" rows="4" class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-200 outline-none resize-none mb-4" placeholder="Describe the issue or feature request..."></textarea>
-                <div class="flex justify-end gap-3">
-                    <button onclick="closeGeneralFeedbackModal()" class="px-5 py-2.5 rounded-xl font-bold bg-gray-100 hover:bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300 transition-colors">Cancel</button>
-                    <button id="btn-submit-feedback" onclick="submitGeneralFeedback()" class="px-5 py-2.5 rounded-xl font-bold text-white bg-brand-500 hover:bg-brand-600 transition-colors">Submit</button>
-                </div>
+      <!-- Edit Report Modal) -->
+      <div
+        id="report-modal"
+        class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden opacity-0 transition-opacity duration-300 flex items-center justify-center p-4"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 flex flex-col max-h-[90vh]"
+        >
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+              <i class="fa-solid fa-flag text-red-500 mr-2"></i> Report Question
+            </h3>
+            <button
+              onclick="closeReportModal()"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            >
+              <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+          </div>
+          <p
+            class="text-sm text-gray-600 dark:text-gray-300 mb-4 bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-100 dark:border-gray-600"
+          >
+            <i class="fa-solid fa-circle-info text-blue-500 mr-1"></i>
+            <strong>Instructions:</strong> Describe the issue clearly. This
+            report will be publicly visible.
+          </p>
+          <div class="space-y-4 overflow-y-auto pr-2">
+            <div>
+              <label
+                class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1"
+                >Error Type *</label
+              >
+              <select
+                id="report-type"
+                class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-200 outline-none"
+              >
+                <option value="" disabled selected>Select an issue...</option>
+                <option value="Incorrect Answer Key">
+                  Incorrect Answer Key
+                </option>
+                <option value="Incomplete/Missing Choices">
+                  Incomplete/Missing Choices
+                </option>
+                <option value="Typo / Grammatical Error">
+                  Typo / Grammatical Error
+                </option>
+                <option value="Ambiguous / Unclear Question">
+                  Ambiguous / Unclear Question
+                </option>
+                <option value="Missing or Broken Image">
+                  Missing or Broken Image
+                </option>
+                <option value="Other">Other</option>
+              </select>
             </div>
-        </div>
-
-        <!-- Combined Session Settings Modal -->
-        <div id="session-settings-modal" class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
-            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 border border-gray-200 dark:border-gray-700">
-                
-                <!-- Header -->
-                <div class="flex justify-between items-center mb-6 border-b border-gray-100 dark:border-gray-700 pb-3">
-                    <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
-                        <i class="fa-solid fa-sliders text-brand-500 mr-2"></i> Session Settings
-                    </h3>
-                    <button onclick="closeSessionSettingsModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                        <i class="fa-solid fa-xmark text-xl"></i>
-                    </button>
-                </div>
-                
-                <!-- Settings Options -->
-                <div class="space-y-6 mb-6">
-                    <!-- Active Recall Toggle -->
-                    <div class="flex justify-between items-center">
-                        <div class="pr-4">
-                            <span class="block text-sm font-bold text-gray-800 dark:text-gray-200">Active Recall Mode</span>
-                            <span class="text-xs text-gray-500">Hide choices initially to test your memory.</span>
-                        </div>
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" id="toggle-active-recall" class="sr-only peer" onchange="toggleActiveRecall()" checked>
-                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"></div>
-                        </label>
-                    </div>
-
-                    <!-- Shuffle Choices Toggle -->
-                    <div class="flex justify-between items-center">
-                        <div class="pr-4">
-                            <span class="block text-sm font-bold text-gray-800 dark:text-gray-200">Shuffle Choices</span>
-                            <span class="text-xs text-gray-500">Randomize the order of multiple-choice answers.</span>
-                        </div>
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" id="toggle-modal-shuffle-choices" class="sr-only peer" onchange="toggleShuffleChoices()" checked>                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"></div>
-                        </label>
-                    </div>
-
-                    <!-- Hide ABCD Labels Toggle -->
-                    <div class="flex justify-between items-center">
-                        <div class="pr-4">
-                            <span class="block text-sm font-bold text-gray-800 dark:text-gray-200">Hide ABCD Labels</span>
-                            <span class="text-xs text-gray-500">Remove letter prefixes from choices for pure recall.</span>
-                        </div>
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" id="toggle-quiz-hide-abcd" class="sr-only peer" onchange="toggleQuizHideABCD()">
-                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"></div>
-                        </label>
-                    </div>
-
-                    <!-- Question Type Override Dropdown -->
-                    <div class="flex flex-col gap-2 pt-4 border-t border-gray-100 dark:border-gray-700">
-                        <label class="text-sm font-bold text-gray-800 dark:text-gray-200">Question Type Override</label>
-                        <select id="toggle-question-type" onchange="changeQuestionTypeMode(this.value)" class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2.5 text-sm text-gray-700 dark:text-gray-200 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors">
-                            <option value="auto">Auto (Mixed)</option>
-                            <option value="mcq">Multiple Choices</option>
-                            <option value="ident">Identification</option>
-                        </select>
-                    </div>
-                    
-                </div>
+            <div>
+              <label
+                class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1"
+                >Comments</label
+              >
+              <textarea
+                id="report-comments"
+                rows="3"
+                class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-200 outline-none resize-none"
+                placeholder="Provide details..."
+              ></textarea>
             </div>
+          </div>
+          <div
+            class="mt-6 flex justify-end gap-3 border-t border-gray-100 dark:border-gray-700 pt-4"
+          >
+            <button
+              onclick="closeReportModal()"
+              class="px-5 py-2.5 rounded-xl font-bold bg-gray-100 hover:bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              id="btn-submit-report"
+              onclick="submitReport()"
+              class="px-5 py-2.5 rounded-xl font-bold text-white bg-red-500 hover:bg-red-600 transition-colors shadow-md"
+            >
+              Submit
+            </button>
+          </div>
         </div>
+      </div>
 
-        <!-- NEW: DECK PASSWORD MODAL OVERLAY (ADDED FIX) -->
-        <div id="deck-password-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
-            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700">
-                
-                <div class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3">
-                    <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
-                        <i class="fa-solid fa-lock text-brand-500 mr-2"></i> Deck Locked
-                    </h3>
-                    
-                    <div class="flex items-center gap-4">
-                        <!-- Request Access Link -->
-                        <a href="mailto:admin@example.com?subject=Requesting%20Access%20to%20MRH" class="text-sm text-brand-600 hover:text-brand-500 font-bold flex items-center">
-                            <i class="fa-solid fa-envelope mr-1"></i> Request Access
-                        </a>
-                        
-                        <!-- Close Button -->
-                        <button onclick="closeDeckPasswordModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                            <i class="fa-solid fa-xmark text-xl"></i>
-                        </button>
-                    </div>
-                </div>
-                
-                <p id="deck-password-message" class="text-sm text-gray-600 dark:text-gray-300 mb-4">This deck requires a password to access.</p>
-                
-                <div class="relative w-full mb-6">
-                    <!-- Input is type="password" initially -->
-                    <input type="password" id="deck-password-input" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 pr-12" placeholder="Enter Password">
-                    
-                    <!-- Eye Toggle Button -->
-                    <button onclick="togglePasswordVisibility('deck-password-input', this)" class="absolute right-3 top-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
-                        <i class="fa-solid fa-eye text-lg"></i>
-                    </button>
-                </div>
-                
-                <div class="flex gap-3">
-                    <button onclick="closeDeckPasswordModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all">Cancel</button>
-                    <!-- In app.js, your download logic should hook into this button -->
-                    <button id="btn-submit-deck-password" class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center">Unlock</button>
-                </div>
+      <!-- Feature 10: General App Bug Report Modal -->
+      <div
+        id="feedback-modal"
+        class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden opacity-0 transition-opacity duration-300 flex items-center justify-center p-4"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300"
+        >
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+              <i class="fa-solid fa-bug text-brand-500 mr-2"></i> Report App Bug
+              / Feedback
+            </h3>
+            <button
+              onclick="closeGeneralFeedbackModal()"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            >
+              <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+          </div>
+          <textarea
+            id="feedback-comments"
+            rows="4"
+            class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-200 outline-none resize-none mb-4"
+            placeholder="Describe the issue or feature request..."
+          ></textarea>
+          <div class="flex justify-end gap-3">
+            <button
+              onclick="closeGeneralFeedbackModal()"
+              class="px-5 py-2.5 rounded-xl font-bold bg-gray-100 hover:bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              id="btn-submit-feedback"
+              onclick="submitGeneralFeedback()"
+              class="px-5 py-2.5 rounded-xl font-bold text-white bg-brand-500 hover:bg-brand-600 transition-colors"
+            >
+              Submit
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Combined Session Settings Modal -->
+      <div
+        id="session-settings-modal"
+        class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 border border-gray-200 dark:border-gray-700"
+        >
+          <!-- Header -->
+          <div
+            class="flex justify-between items-center mb-6 border-b border-gray-100 dark:border-gray-700 pb-3"
+          >
+            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+              <i class="fa-solid fa-sliders text-brand-500 mr-2"></i> Session
+              Settings
+            </h3>
+            <button
+              onclick="closeSessionSettingsModal()"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            >
+              <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+          </div>
+
+          <!-- Settings Options -->
+          <div class="space-y-6 mb-6">
+            <!-- Active Recall Toggle -->
+            <div class="flex justify-between items-center">
+              <div class="pr-4">
+                <span
+                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
+                  >Active Recall Mode</span
+                >
+                <span class="text-xs text-gray-500"
+                  >Hide choices initially to test your memory.</span
+                >
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="toggle-active-recall"
+                  class="sr-only peer"
+                  onchange="toggleActiveRecall()"
+                  checked
+                />
+                <div
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
+                ></div>
+              </label>
             </div>
-        </div>
 
-        <!-- NEW: FOLDER PASSWORD MODAL OVERLAY -->
-        <div id="folder-password-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
-            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700">
-                
-                <div class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3">
-                    <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
-                        <i class="fa-solid fa-folder-closed text-brand-500 mr-2"></i> Folder Locked
-                    </h3>
-
-                        <div class="flex items-center gap-4">
-                            <!-- Request Access Link -->
-                            <a href="mailto:admin@example.com?subject=Requesting%20Access%20to%20MRH" class="text-sm text-brand-600 hover:text-brand-500 font-bold flex items-center">
-                                <i class="fa-solid fa-envelope mr-1"></i> Request Access
-                            </a>
-
-                            <button onclick="closeFolderPasswordModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                                <i class="fa-solid fa-xmark text-xl"></i>
-                            </button>
-                        </div>
-                </div>
-                
-                <p class="text-sm text-gray-600 dark:text-gray-300 mb-4" id="folder-password-message">This folder requires a password to view its contents.</p>
-                
-                <div class="relative w-full mb-6">
-                    <!-- Input is type="password" initially -->
-                    <input type="password" id="folder-password-input" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 pr-12" placeholder="Enter Folder Password">
-                    
-                    <!-- Eye Toggle Button -->
-                    <button onclick="togglePasswordVisibility('folder-password-input', this)" class="absolute right-3 top-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
-                        <i class="fa-solid fa-eye text-lg"></i>
-                    </button>
-                </div>
-                
-                <div class="flex gap-3">
-                    <button onclick="closeFolderPasswordModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all">Cancel</button>
-                    <!-- Hook this up in app.js to process the folder password -->
-                    <button id="btn-submit-folder-password" class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center">Unlock Folder</button>
-                </div>
+            <!-- Shuffle Choices Toggle -->
+            <div class="flex justify-between items-center">
+              <div class="pr-4">
+                <span
+                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
+                  >Shuffle Choices</span
+                >
+                <span class="text-xs text-gray-500"
+                  >Randomize the order of multiple-choice answers.</span
+                >
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="toggle-modal-shuffle-choices"
+                  class="sr-only peer"
+                  onchange="toggleShuffleChoices()"
+                  checked
+                />
+                <div
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
+                ></div>
+              </label>
             </div>
-        </div>
 
-        <!-- ADMIN EDIT QUESTION MODAL -->
-        <div id="admin-edit-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
-            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-2xl w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700 max-h-[90vh] overflow-y-auto">
-                
-                <div class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3">
-                    <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
-                        <i class="fa-solid fa-pen-to-square text-brand-500 mr-2"></i> Edit Question Data
-                    </h3>
-                    <button onclick="closeEditModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                        <i class="fa-solid fa-xmark text-xl"></i>
-                    </button>
-                </div>
-                
-                <input type="hidden" id="edit-report-id">
-                <input type="hidden" id="edit-question-id">
-                
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-semibold mb-2">Question Text</label>
-                        <textarea id="edit-q-text" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 resize-none" rows="3"></textarea>
-                    </div>
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-semibold mb-2">Option A</label>
-                            <input type="text" id="edit-q-optA" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-semibold mb-2">Option B</label>
-                            <input type="text" id="edit-q-optB" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-semibold mb-2">Option C</label>
-                            <input type="text" id="edit-q-optC" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-semibold mb-2">Option D</label>
-                            <input type="text" id="edit-q-optD" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
-                        </div>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-semibold mb-2">Correct Answer (e.g., A)</label>
-                        <input type="text" id="edit-q-answer" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
-                    </div>
-                </div>
-
-                <div class="flex gap-3 mt-6">
-                    <button onclick="closeEditModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all">Cancel</button>
-                    <button id="btn-save-edit" onclick="saveEditedQuestion()" class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center">Save Changes</button>
-                </div>
+            <!-- Hide ABCD Labels Toggle -->
+            <div class="flex justify-between items-center">
+              <div class="pr-4">
+                <span
+                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
+                  >Hide ABCD Labels</span
+                >
+                <span class="text-xs text-gray-500"
+                  >Remove letter prefixes from choices for pure recall.</span
+                >
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="toggle-quiz-hide-abcd"
+                  class="sr-only peer"
+                  onchange="toggleQuizHideABCD()"
+                />
+                <div
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
+                ></div>
+              </label>
             </div>
+
+            <!-- Question Type Override Dropdown -->
+            <div
+              class="flex flex-col gap-2 pt-4 border-t border-gray-100 dark:border-gray-700"
+            >
+              <label class="text-sm font-bold text-gray-800 dark:text-gray-200"
+                >Question Type Override</label
+              >
+              <select
+                id="toggle-question-type"
+                onchange="changeQuestionTypeMode(this.value)"
+                class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2.5 text-sm text-gray-700 dark:text-gray-200 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors"
+              >
+                <option value="auto">Auto (Mixed)</option>
+                <option value="mcq">Multiple Choices</option>
+                <option value="ident">Identification</option>
+              </select>
+            </div>
+          </div>
         </div>
+      </div>
+
+      <!-- NEW: DECK PASSWORD MODAL OVERLAY (ADDED FIX) -->
+      <div
+        id="deck-password-modal"
+        class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700"
+        >
+          <div
+            class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3"
+          >
+            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+              <i class="fa-solid fa-lock text-brand-500 mr-2"></i> Deck Locked
+            </h3>
+
+            <div class="flex items-center gap-4">
+              <!-- Request Access Link -->
+              <a
+                href="mailto:admin@example.com?subject=Requesting%20Access%20to%20MRH"
+                class="text-sm text-brand-600 hover:text-brand-500 font-bold flex items-center"
+              >
+                <i class="fa-solid fa-envelope mr-1"></i> Request Access
+              </a>
+
+              <!-- Close Button -->
+              <button
+                onclick="closeDeckPasswordModal()"
+                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                <i class="fa-solid fa-xmark text-xl"></i>
+              </button>
+            </div>
+          </div>
+
+          <p
+            id="deck-password-message"
+            class="text-sm text-gray-600 dark:text-gray-300 mb-4"
+          >
+            This deck requires a password to access.
+          </p>
+
+          <div class="relative w-full mb-6">
+            <!-- Input is type="password" initially -->
+            <input
+              type="password"
+              id="deck-password-input"
+              class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 pr-12"
+              placeholder="Enter Password"
+            />
+
+            <!-- Eye Toggle Button -->
+            <button
+              onclick="togglePasswordVisibility('deck-password-input', this)"
+              class="absolute right-3 top-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            >
+              <i class="fa-solid fa-eye text-lg"></i>
+            </button>
+          </div>
+
+          <div class="flex gap-3">
+            <button
+              onclick="closeDeckPasswordModal()"
+              class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all"
+            >
+              Cancel
+            </button>
+            <!-- In app.js, your download logic should hook into this button -->
+            <button
+              id="btn-submit-deck-password"
+              class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center"
+            >
+              Unlock
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- NEW: FOLDER PASSWORD MODAL OVERLAY -->
+      <div
+        id="folder-password-modal"
+        class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700"
+        >
+          <div
+            class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3"
+          >
+            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+              <i class="fa-solid fa-folder-closed text-brand-500 mr-2"></i>
+              Folder Locked
+            </h3>
+
+            <div class="flex items-center gap-4">
+              <!-- Request Access Link -->
+              <a
+                href="mailto:admin@example.com?subject=Requesting%20Access%20to%20MRH"
+                class="text-sm text-brand-600 hover:text-brand-500 font-bold flex items-center"
+              >
+                <i class="fa-solid fa-envelope mr-1"></i> Request Access
+              </a>
+
+              <button
+                onclick="closeFolderPasswordModal()"
+                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                <i class="fa-solid fa-xmark text-xl"></i>
+              </button>
+            </div>
+          </div>
+
+          <p
+            class="text-sm text-gray-600 dark:text-gray-300 mb-4"
+            id="folder-password-message"
+          >
+            This folder requires a password to view its contents.
+          </p>
+
+          <div class="relative w-full mb-6">
+            <!-- Input is type="password" initially -->
+            <input
+              type="password"
+              id="folder-password-input"
+              class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 pr-12"
+              placeholder="Enter Folder Password"
+            />
+
+            <!-- Eye Toggle Button -->
+            <button
+              onclick="togglePasswordVisibility('folder-password-input', this)"
+              class="absolute right-3 top-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            >
+              <i class="fa-solid fa-eye text-lg"></i>
+            </button>
+          </div>
+
+          <div class="flex gap-3">
+            <button
+              onclick="closeFolderPasswordModal()"
+              class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all"
+            >
+              Cancel
+            </button>
+            <!-- Hook this up in app.js to process the folder password -->
+            <button
+              id="btn-submit-folder-password"
+              class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center"
+            >
+              Unlock Folder
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADMIN EDIT QUESTION MODAL -->
+      <div
+        id="admin-edit-modal"
+        class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-2xl w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700 max-h-[90vh] overflow-y-auto"
+        >
+          <div
+            class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3"
+          >
+            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+              <i class="fa-solid fa-pen-to-square text-brand-500 mr-2"></i> Edit
+              Question Data
+            </h3>
+            <button
+              onclick="closeEditModal()"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            >
+              <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+          </div>
+
+          <input type="hidden" id="edit-report-id" />
+          <input type="hidden" id="edit-question-id" />
+
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-semibold mb-2"
+                >Question Text</label
+              >
+              <textarea
+                id="edit-q-text"
+                class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+                rows="3"
+              ></textarea>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-semibold mb-2">Option A</label>
+                <input
+                  type="text"
+                  id="edit-q-optA"
+                  class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-semibold mb-2">Option B</label>
+                <input
+                  type="text"
+                  id="edit-q-optB"
+                  class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-semibold mb-2">Option C</label>
+                <input
+                  type="text"
+                  id="edit-q-optC"
+                  class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-semibold mb-2">Option D</label>
+                <input
+                  type="text"
+                  id="edit-q-optD"
+                  class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold mb-2"
+                >Correct Answer (e.g., A)</label
+              >
+              <input
+                type="text"
+                id="edit-q-answer"
+                class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+          </div>
+
+          <div class="flex gap-3 mt-6">
+            <button
+              onclick="closeEditModal()"
+              class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              id="btn-save-edit"
+              onclick="saveEditedQuestion()"
+              class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center"
+            >
+              Save Changes
+            </button>
+          </div>
+        </div>
+      </div>
     </main>
 
     <script src="app.js"></script>
     <script src="admin.js"></script>
-    
-    <!-- TOAST CONTAINER -->
-    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
-    
-</body>
+
+    <div
+      id="toast-container"
+      class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"
+    ></div>
+  </body>
 </html>

@@ -1,132 +1,153 @@
 let adminState = {
-    token: "",
-    subjects: [],
-    reports: []
+  token: "",
+  subjects: [],
+  reports: [],
 };
 
 async function adminLogin() {
-    const pass = document.getElementById('admin-password').value;
-    if(!pass) return;
+  const pass = document.getElementById("admin-password").value;
+  if (!pass) return;
 
-    const btn = document.getElementById('btn-admin-login');
-    const originalText = btn.innerHTML;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Verifying...';
-    btn.disabled = true;
+  const btn = document.getElementById("btn-admin-login");
+  const originalText = btn.innerHTML;
+  btn.innerHTML =
+    '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Verifying...';
+  btn.disabled = true;
 
-    try {
-        const response = await fetch(DB_URL, {
-            method: 'POST',
-            redirect: 'follow',
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({
-                type: "verify_admin",
-                token: pass
-            })
-        });
+  try {
+    const response = await fetch(DB_URL, {
+      method: "POST",
+      redirect: "follow",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        type: "verify_admin",
+        token: pass,
+      }),
+    });
 
-        const result = await response.json();
+    const result = await response.json();
 
-        if (result.status === "success") {
-            adminState.token = pass;
-            document.getElementById('admin-login-error').classList.add('hidden');
-            document.getElementById('admin-login-section').classList.add('hidden');
-            document.getElementById('admin-dashboard-section').classList.remove('hidden');
-            loadAdminSubjects();
-            adminLoadReports(); // Fetch reports upon successful login
-        } else {
-            const errEl = document.getElementById('admin-login-error');
-            errEl.innerText = "Incorrect password.";
-            errEl.classList.remove('hidden');
-        }
-    } catch(e) {
-        alert("Network error while verifying password.");
-        console.error(e);
-    } finally {
-        btn.innerHTML = originalText;
-        btn.disabled = false;
+    if (result.status === "success") {
+      adminState.token = pass;
+      document.getElementById("admin-login-error").classList.add("hidden");
+      document.getElementById("admin-login-section").classList.add("hidden");
+      document
+        .getElementById("admin-dashboard-section")
+        .classList.remove("hidden");
+      loadAdminSubjects();
+      adminLoadReports(); // Fetch reports upon successful login
+    } else {
+      const errEl = document.getElementById("admin-login-error");
+      errEl.innerText = "Incorrect password.";
+      errEl.classList.remove("hidden");
     }
+  } catch (e) {
+    alert("Network error while verifying password.");
+    console.error(e);
+  } finally {
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+  }
 }
 
 async function loadAdminSubjects() {
-    const container = document.getElementById('admin-subject-list');
-    container.innerHTML = `<p class="text-center text-brand-500 py-6"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Fetching secure database...</p>`;
+  const container = document.getElementById("admin-subject-list");
+  container.innerHTML = `<p class="text-center text-brand-500 py-6"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Fetching secure database...</p>`;
 
-    try {
-        const response = await fetch(DB_URL, {
-            method: 'POST',
-            redirect: 'follow',
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({ 
-                type: "admin_get_subjects", 
-                token: adminState.token 
-            })
-        });
+  try {
+    const response = await fetch(DB_URL, {
+      method: "POST",
+      redirect: "follow",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        type: "admin_get_subjects",
+        token: adminState.token,
+      }),
+    });
 
-        const secureSubjects = await response.json();
-        if (secureSubjects.status === "error" || !Array.isArray(secureSubjects)) {
-            container.innerHTML = `<p class="text-center text-red-500 py-6">Failed to load secure subjects. Check backend configuration.</p>`;
-            return;
-        }
-
-        adminState.subjects = secureSubjects; 
-        renderAdminSubjectList();
-        
-    } catch (e) {
-        console.error(e);
-        if (state.categorySummary && state.categorySummary.length > 0) {
-            adminState.subjects = state.categorySummary;
-            renderAdminSubjectList();
-        } else {
-            container.innerHTML = `<p class="text-center text-red-500 py-6">Network error. Could not load database.</p>`;
-        }
+    const secureSubjects = await response.json();
+    if (secureSubjects.status === "error" || !Array.isArray(secureSubjects)) {
+      container.innerHTML = `<p class="text-center text-red-500 py-6">Failed to load secure subjects. Check backend configuration.</p>`;
+      return;
     }
+
+    adminState.subjects = secureSubjects;
+    renderAdminSubjectList();
+  } catch (e) {
+    console.error(e);
+    if (state.categorySummary && state.categorySummary.length > 0) {
+      adminState.subjects = state.categorySummary;
+      renderAdminSubjectList();
+    } else {
+      container.innerHTML = `<p class="text-center text-red-500 py-6">Network error. Could not load database.</p>`;
+    }
+  }
 }
 
 function renderAdminSubjectList() {
-    const container = document.getElementById('admin-subject-list');
-    const tree = { subfolders: {}, decks: [], folderPass: '' }; // Added folderPass state
-    
-    adminState.subjects.forEach((cat, index) => {
-        const subjString = cat.Subject;
-        const passString = cat.Password || cat.password || ""; 
-        const parts = subjString.split('::').map(s => s.trim());
-        if (cat.IsFolder) {
-            let currentNode = tree;
-            parts.forEach(part => {
-                if (!currentNode.subfolders[part]) currentNode.subfolders[part] = { subfolders: {}, decks: [], folderPass: '' };
-                currentNode = currentNode.subfolders[part];
-            });
-            currentNode.folderPass = passString; // Assign password to the folder
-            return; // Stop here, it's not a deck
-        }
+  const container = document.getElementById("admin-subject-list");
+  const tree = { subfolders: {}, decks: [], folderPass: "" }; // Added folderPass state
 
-        const deckName = parts.pop(); 
-        
-        let currentNode = tree;
-        parts.forEach(part => {
-            if (!currentNode.subfolders[part]) currentNode.subfolders[part] = { subfolders: {}, decks: [], folderPass: '' };
-            currentNode = currentNode.subfolders[part];
-        });
-        
-        currentNode.decks.push({ 
-            originalFull: subjString, 
-            deckName: deckName, 
-            index: index,
-            password: passString 
-        });
-    });
-
-    function countTotalDecks(node) {
-        let count = node.decks.length;
-        for (const key in node.subfolders) count += countTotalDecks(node.subfolders[key]);
-        return count;
+  adminState.subjects.forEach((cat, index) => {
+    const subjString = cat.Subject;
+    const passString = cat.Password || cat.password || "";
+    const parts = subjString.split("::").map((s) => s.trim());
+    if (cat.IsFolder) {
+      let currentNode = tree;
+      parts.forEach((part) => {
+        if (!currentNode.subfolders[part])
+          currentNode.subfolders[part] = {
+            subfolders: {},
+            decks: [],
+            folderPass: "",
+          };
+        currentNode = currentNode.subfolders[part];
+      });
+      currentNode.folderPass = passString; // Assign password to the folder
+      return; // Stop here, it's not a deck
     }
 
-    function renderNode(node, folderName, depth = 0, currentPath = '') {
-        let innerHtml = '';
-        const fullPath = depth === 0 ? '' : (currentPath ? `${currentPath}::${folderName}` : folderName);
-        if (depth > 0 && (Object.keys(node.subfolders).length > 0 || node.decks.length > 0)) {
-            innerHtml += `
+    const deckName = parts.pop();
+
+    let currentNode = tree;
+    parts.forEach((part) => {
+      if (!currentNode.subfolders[part])
+        currentNode.subfolders[part] = {
+          subfolders: {},
+          decks: [],
+          folderPass: "",
+        };
+      currentNode = currentNode.subfolders[part];
+    });
+
+    currentNode.decks.push({
+      originalFull: subjString,
+      deckName: deckName,
+      index: index,
+      password: passString,
+    });
+  });
+
+  function countTotalDecks(node) {
+    let count = node.decks.length;
+    for (const key in node.subfolders)
+      count += countTotalDecks(node.subfolders[key]);
+    return count;
+  }
+
+  function renderNode(node, folderName, depth = 0, currentPath = "") {
+    let innerHtml = "";
+    const fullPath =
+      depth === 0
+        ? ""
+        : currentPath
+          ? `${currentPath}::${folderName}`
+          : folderName;
+    if (
+      depth > 0 &&
+      (Object.keys(node.subfolders).length > 0 || node.decks.length > 0)
+    ) {
+      innerHtml += `
                 <div class="mb-4 p-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg shadow-sm">
                     <label class="text-sm font-bold text-red-700 dark:text-red-400 block mb-2">
                         <i class="fa-solid fa-lock mr-1"></i> Lock Entire '${escapeHTML(folderName)}' Folder
@@ -137,8 +158,8 @@ function renderAdminSubjectList() {
                         class="folder-pass-input w-full p-2 border border-red-300 dark:border-red-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-red-500 focus:ring-2 outline-none transition-all" 
                         placeholder="Leave blank for public folder..."
                         data-path="${escapeHTML(fullPath)}"
-                        data-orig="${escapeHTML(node.folderPass || '')}"
-                        value="${escapeHTML(node.folderPass || '')}">
+                        data-orig="${escapeHTML(node.folderPass || "")}"
+                        value="${escapeHTML(node.folderPass || "")}">
                     
                     <!-- ADDED THE MISSING BUTTON -->
                     <button onclick="cascadePassword(this)" class="mt-3 w-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 py-2 rounded font-bold hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors shadow-sm active:scale-95 text-sm flex items-center justify-center">
@@ -146,14 +167,14 @@ function renderAdminSubjectList() {
                     </button>
                 </div>
             `;
-        }
-        
-        for (const [subName, subNode] of Object.entries(node.subfolders)) {
-            innerHtml += renderNode(subNode, subName, depth + 1, fullPath);
-        }
-        
-        node.decks.forEach(subj => {
-            innerHtml += `
+    }
+
+    for (const [subName, subNode] of Object.entries(node.subfolders)) {
+      innerHtml += renderNode(subNode, subName, depth + 1, fullPath);
+    }
+
+    node.decks.forEach((subj) => {
+      innerHtml += `
                 <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row items-center gap-4 mt-3">
                     <div class="w-full md:w-1/3">
                         <span class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Deck Name</span>
@@ -186,19 +207,19 @@ function renderAdminSubjectList() {
                     </div>
                 </div>
             `;
-        });
+    });
 
-        if (depth === 0) return innerHtml;
+    if (depth === 0) return innerHtml;
 
-        const totalDecks = countTotalDecks(node);
-        const indentClass = depth > 1 ? 'ml-4 md:ml-8' : '';
+    const totalDecks = countTotalDecks(node);
+    const indentClass = depth > 1 ? "ml-4 md:ml-8" : "";
 
-        return `
+    return `
             <details class="${indentClass} mb-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 group shadow-sm">
                 <summary class="font-bold text-gray-700 dark:text-gray-300 p-4 cursor-pointer flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors rounded-xl outline-none list-none">
                     <span class="flex items-center gap-2">
                         <i class="fa-solid fa-folder text-brand-500"></i> ${escapeHTML(folderName)}
-                        <span class="bg-gray-200 dark:bg-gray-700 text-xs px-2 py-1 rounded-full text-gray-600 dark:text-gray-400 font-semibold ml-2">${totalDecks} deck${totalDecks !== 1 ? 's' : ''}</span>
+                        <span class="bg-gray-200 dark:bg-gray-700 text-xs px-2 py-1 rounded-full text-gray-600 dark:text-gray-400 font-semibold ml-2">${totalDecks} deck${totalDecks !== 1 ? "s" : ""}</span>
                     </span>
                     <i class="fa-solid fa-chevron-down text-gray-400 transition-transform duration-300 group-open:rotate-180"></i>
                 </summary>
@@ -207,104 +228,114 @@ function renderAdminSubjectList() {
                 </div>
             </details>
         `;
-    }
-    
-    container.innerHTML = renderNode(tree, 'Root', 0) || '<p class="text-center text-gray-500 py-6">No subjects found.</p>';
+  }
+
+  container.innerHTML =
+    renderNode(tree, "Root", 0) ||
+    '<p class="text-center text-gray-500 py-6">No subjects found.</p>';
 }
 
 async function saveAdminChanges() {
-    const btn = document.getElementById('btn-admin-save');
-    const originalHTML = btn.innerHTML;
-    
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving...';
-    btn.disabled = true;
+  const btn = document.getElementById("btn-admin-save");
+  const originalHTML = btn.innerHTML;
 
-    const updates = [];
-    document.querySelectorAll('.folder-pass-input').forEach(input => {
-        const path = input.getAttribute('data-path');
-        const pass = input.value.trim();
-        const orig = input.getAttribute('data-orig');
-        
-        if (pass !== orig) {
-            updates.push({ oldName: path, newName: path, password: pass });
-        }
-    });
-    adminState.subjects.forEach((cat, index) => {
-        if (cat.IsFolder) return; // Handled above
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving...';
+  btn.disabled = true;
 
-        const originalName = cat.Subject;
-        const originalPass = cat.Password || cat.password || "";
-        
-        const newNameInput = document.getElementById(`new-subj-${index}`);
-        const deckPassInput = document.getElementById(`deck-pass-${index}`);
+  const updates = [];
+  document.querySelectorAll(".folder-pass-input").forEach((input) => {
+    const path = input.getAttribute("data-path");
+    const pass = input.value.trim();
+    const orig = input.getAttribute("data-orig");
 
-        if (!newNameInput || !deckPassInput) return;
-
-        const newName = newNameInput.value.trim() || originalName; 
-        const deckPass = deckPassInput.value.trim();
-
-        if (newName !== originalName || deckPass !== originalPass) {
-            updates.push({ 
-                oldName: originalName, 
-                newName: newName, 
-                password: deckPass 
-            });
-        }
-    });
-
-    if (updates.length === 0) {
-        alert("No changes detected.");
-        btn.innerHTML = originalHTML;
-        btn.disabled = false;
-        return;
+    if (pass !== orig) {
+      updates.push({ oldName: path, newName: path, password: pass });
     }
+  });
+  adminState.subjects.forEach((cat, index) => {
+    if (cat.IsFolder) return; // Handled above
 
-    try {
-        const response = await fetch(DB_URL, {
-            method: 'POST',
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({ type: "admin_update", token: adminState.token, updates: updates })
-        });
-        const result = await response.json();
-        
-        if (result.status === "success") {
-            alert("Changes saved! Refreshing secure layout...");
-            await loadAdminSubjects(); 
-        } else {
-            alert("Failed: " + result.message);
-        }
-    } catch(e) {
-        alert("Network error.");
-        console.error(e);
-    } finally {
-        btn.innerHTML = originalHTML;
-        btn.disabled = false;
+    const originalName = cat.Subject;
+    const originalPass = cat.Password || cat.password || "";
+
+    const newNameInput = document.getElementById(`new-subj-${index}`);
+    const deckPassInput = document.getElementById(`deck-pass-${index}`);
+
+    if (!newNameInput || !deckPassInput) return;
+
+    const newName = newNameInput.value.trim() || originalName;
+    const deckPass = deckPassInput.value.trim();
+
+    if (newName !== originalName || deckPass !== originalPass) {
+      updates.push({
+        oldName: originalName,
+        newName: newName,
+        password: deckPass,
+      });
     }
+  });
+
+  if (updates.length === 0) {
+    alert("No changes detected.");
+    btn.innerHTML = originalHTML;
+    btn.disabled = false;
+    return;
+  }
+
+  try {
+    const response = await fetch(DB_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        type: "admin_update",
+        token: adminState.token,
+        updates: updates,
+      }),
+    });
+    const result = await response.json();
+
+    if (result.status === "success") {
+      alert("Changes saved! Refreshing secure layout...");
+      await loadAdminSubjects();
+    } else {
+      alert("Failed: " + result.message);
+    }
+  } catch (e) {
+    alert("Network error.");
+    console.error(e);
+  } finally {
+    btn.innerHTML = originalHTML;
+    btn.disabled = false;
+  }
 }
 
 async function adminLoadReports() {
-    const container = document.getElementById('admin-reports-list');
-    container.innerHTML = `<p class="text-center text-gray-500 py-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading reports...</p>`;
-    
-    try {
-        const response = await fetch(DB_URL, {
-            method: 'POST',
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({ type: "get_reports", role: "admin", token: adminState.token })
-        });
-        const reports = await response.json();
+  const container = document.getElementById("admin-reports-list");
+  container.innerHTML = `<p class="text-center text-gray-500 py-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading reports...</p>`;
 
-        if (reports.length === 0) {
-            container.innerHTML = `<div class="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-xl text-center text-gray-500">No reports found in the database.</div>`;
-            return;
-        }
-        adminState.reports = reports; 
+  try {
+    const response = await fetch(DB_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        type: "get_reports",
+        role: "admin",
+        token: adminState.token,
+      }),
+    });
+    const reports = await response.json();
 
-        let html = '';
-        reports.forEach(r => {
-            if(r.status === 'Resolved') return;
+    if (reports.length === 0) {
+      container.innerHTML = `<div class="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-xl text-center text-gray-500">No reports found in the database.</div>`;
+      return;
+    }
+    adminState.reports = reports;
 
-            html += `
+    let html = "";
+    reports.forEach((r) => {
+      if (r.status === "Resolved") return;
+
+      html += `
                 <div class="bg-white dark:bg-gray-800 p-5 rounded-xl border-l-4 border-yellow-500 shadow-sm relative group mb-4">
                     <div class="flex justify-between items-start mb-2">
                         <span class="text-xs font-mono text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">ID: ${escapeHTML(r.questionId)}</span>
@@ -316,22 +347,22 @@ async function adminLoadReports() {
                     <!-- UPDATED: Question Context with Choices and Answer -->
                     <div class="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg text-sm text-gray-700 dark:text-gray-300 mb-3 border border-gray-200 dark:border-gray-700">
                         <div class="mb-3">
-                            <strong class="text-gray-900 dark:text-white">Q:</strong> ${escapeHTML(r.questionText || 'N/A')}
+                            <strong class="text-gray-900 dark:text-white">Q:</strong> ${escapeHTML(r.questionText || "N/A")}
                         </div>
                         
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 py-3 border-t border-gray-200 dark:border-gray-700 text-xs">
-                            <div class="truncate" title="${escapeHTML(r.optionA || '')}"><strong class="text-gray-500 mr-1">A:</strong> ${escapeHTML(r.optionA || 'N/A')}</div>
-                            <div class="truncate" title="${escapeHTML(r.optionB || '')}"><strong class="text-gray-500 mr-1">B:</strong> ${escapeHTML(r.optionB || 'N/A')}</div>
-                            <div class="truncate" title="${escapeHTML(r.optionC || '')}"><strong class="text-gray-500 mr-1">C:</strong> ${escapeHTML(r.optionC || 'N/A')}</div>
-                            <div class="truncate" title="${escapeHTML(r.optionD || '')}"><strong class="text-gray-500 mr-1">D:</strong> ${escapeHTML(r.optionD || 'N/A')}</div>
+                            <div class="truncate" title="${escapeHTML(r.optionA || "")}"><strong class="text-gray-500 mr-1">A:</strong> ${escapeHTML(r.optionA || "N/A")}</div>
+                            <div class="truncate" title="${escapeHTML(r.optionB || "")}"><strong class="text-gray-500 mr-1">B:</strong> ${escapeHTML(r.optionB || "N/A")}</div>
+                            <div class="truncate" title="${escapeHTML(r.optionC || "")}"><strong class="text-gray-500 mr-1">C:</strong> ${escapeHTML(r.optionC || "N/A")}</div>
+                            <div class="truncate" title="${escapeHTML(r.optionD || "")}"><strong class="text-gray-500 mr-1">D:</strong> ${escapeHTML(r.optionD || "N/A")}</div>
                         </div>
 
                         <div class="pt-3 border-t border-gray-200 dark:border-gray-700">
-                            <strong class="text-green-600 dark:text-green-400 mr-1">Answer:</strong> ${escapeHTML(r.correctAnswer || 'N/A')}
+                            <strong class="text-green-600 dark:text-green-400 mr-1">Answer:</strong> ${escapeHTML(r.correctAnswer || "N/A")}
                         </div>
                     </div>
 
-                    ${r.comments ? `<p class="text-sm text-gray-600 dark:text-gray-400 mb-4 bg-yellow-50 dark:bg-yellow-900/10 p-2 rounded border border-yellow-100 dark:border-yellow-900/30"><i class="fa-solid fa-comment text-yellow-600 mr-2"></i>${escapeHTML(r.comments)}</p>` : ''}
+                    ${r.comments ? `<p class="text-sm text-gray-600 dark:text-gray-400 mb-4 bg-yellow-50 dark:bg-yellow-900/10 p-2 rounded border border-yellow-100 dark:border-yellow-900/30"><i class="fa-solid fa-comment text-yellow-600 mr-2"></i>${escapeHTML(r.comments)}</p>` : ""}
                     
                     <div class="flex gap-2 flex-wrap">
                         <button onclick="openEditModal('${r.id}')" class="flex-1 bg-blue-500 text-white px-4 py-2 rounded font-bold hover:bg-blue-600 shadow-sm active:scale-95 transition-all"><i class="fa-solid fa-pen mr-2"></i> Edit Data</button>
@@ -340,147 +371,167 @@ async function adminLoadReports() {
                     </div>
                 </div>
             `;
-        });
-        
-        container.innerHTML = html || `<div class="text-center text-green-500 py-4 font-bold"><i class="fa-solid fa-check-circle mr-2"></i>All caught up! No pending reports.</div>`;
-    } catch (e) {
-        container.innerHTML = `<div class="text-red-500 text-center">Failed to fetch admin reports.</div>`;
-    }
+    });
+
+    container.innerHTML =
+      html ||
+      `<div class="text-center text-green-500 py-4 font-bold"><i class="fa-solid fa-check-circle mr-2"></i>All caught up! No pending reports.</div>`;
+  } catch (e) {
+    container.innerHTML = `<div class="text-red-500 text-center">Failed to fetch admin reports.</div>`;
+  }
 }
 
 async function adminActionReport(reportId, action) {
-    if (action === 'delete' && !confirm("Are you sure you want to permanently delete this report from Google Sheets? (Users will not see it as 'Resolved')")) return;
-    
-    try {
-        const response = await fetch(DB_URL, {
-            method: 'POST',
-            headers: { "Content-Type": "text/plain;charset=utf-8" }, // ADD THIS LINE
-            body: JSON.stringify({
-                type: "admin_resolve_report",
-                token: adminState.token,
-                reportId: reportId,
-                action: action
-            })
-        });
-        
-        const result = await response.json();
-        if (result.status === "success") {
-            alert(action === 'resolve' ? "Report marked as resolved! Users will see this status for 24 hours." : "Report permanently deleted.");
-            adminLoadReports(); // Refresh the list
-        } else {
-            alert("Failed: " + result.message);
-        }
-    } catch (e) {
-        alert("Network error.");
+  if (
+    action === "delete" &&
+    !confirm(
+      "Are you sure you want to permanently delete this report from Google Sheets? (Users will not see it as 'Resolved')",
+    )
+  )
+    return;
+
+  try {
+    const response = await fetch(DB_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" }, // ADD THIS LINE
+      body: JSON.stringify({
+        type: "admin_resolve_report",
+        token: adminState.token,
+        reportId: reportId,
+        action: action,
+      }),
+    });
+
+    const result = await response.json();
+    if (result.status === "success") {
+      alert(
+        action === "resolve"
+          ? "Report marked as resolved! Users will see this status for 24 hours."
+          : "Report permanently deleted.",
+      );
+      adminLoadReports(); // Refresh the list
+    } else {
+      alert("Failed: " + result.message);
     }
+  } catch (e) {
+    alert("Network error.");
+  }
 }
 
-window.cascadePassword = function(btn) {
-    const input = btn.previousElementSibling;
-    const folderPath = input.getAttribute('data-path');
-    const pass = input.value;
+window.cascadePassword = function (btn) {
+  const input = btn.previousElementSibling;
+  const folderPath = input.getAttribute("data-path");
+  const pass = input.value;
 
-    let count = 0;
-    adminState.subjects.forEach((subj, index) => {
-        if (subj.Subject.startsWith(folderPath + '::') || subj.Subject === folderPath) {
-            const deckInput = document.getElementById(`deck-pass-${index}`);
-            if (deckInput) {
-                deckInput.value = pass;
-                deckInput.classList.add('bg-red-100', 'dark:bg-red-900/30');
-                setTimeout(() => deckInput.classList.remove('bg-red-100', 'dark:bg-red-900/30'), 1000);
-                count++;
-            }
-        }
-    });
-    
-    alert(`Applied to ${count} deck(s)! You can now customize individual decks below if needed before clicking Save.`);
+  let count = 0;
+  adminState.subjects.forEach((subj, index) => {
+    if (
+      subj.Subject.startsWith(folderPath + "::") ||
+      subj.Subject === folderPath
+    ) {
+      const deckInput = document.getElementById(`deck-pass-${index}`);
+      if (deckInput) {
+        deckInput.value = pass;
+        deckInput.classList.add("bg-red-100", "dark:bg-red-900/30");
+        setTimeout(
+          () => deckInput.classList.remove("bg-red-100", "dark:bg-red-900/30"),
+          1000,
+        );
+        count++;
+      }
+    }
+  });
+
+  alert(
+    `Applied to ${count} deck(s)! You can now customize individual decks below if needed before clicking Save.`,
+  );
 };
 
 function openEditModal(reportId) {
-    const report = adminState.reports.find(r => r.id === reportId);
-    if (!report) return;
+  const report = adminState.reports.find((r) => r.id === reportId);
+  if (!report) return;
 
-    document.getElementById('edit-report-id').value = report.id;
-    document.getElementById('edit-question-id').value = report.questionId;
-    
-    document.getElementById('edit-q-text').value = report.questionText || "";
-    document.getElementById('edit-q-optA').value = report.optionA || "";
-    document.getElementById('edit-q-optB').value = report.optionB || "";
-    document.getElementById('edit-q-optC').value = report.optionC || "";
-    document.getElementById('edit-q-optD').value = report.optionD || "";
-    document.getElementById('edit-q-answer').value = report.correctAnswer || "";
-    const modal = document.getElementById('admin-edit-modal');
-    const inner = modal.querySelector('div');
-    
-    modal.classList.remove('hidden');
-    setTimeout(() => {
-        modal.classList.remove('opacity-0');
-        inner.classList.remove('scale-95');
-    }, 10);
+  document.getElementById("edit-report-id").value = report.id;
+  document.getElementById("edit-question-id").value = report.questionId;
+
+  document.getElementById("edit-q-text").value = report.questionText || "";
+  document.getElementById("edit-q-optA").value = report.optionA || "";
+  document.getElementById("edit-q-optB").value = report.optionB || "";
+  document.getElementById("edit-q-optC").value = report.optionC || "";
+  document.getElementById("edit-q-optD").value = report.optionD || "";
+  document.getElementById("edit-q-answer").value = report.correctAnswer || "";
+  const modal = document.getElementById("admin-edit-modal");
+  const inner = modal.querySelector("div");
+
+  modal.classList.remove("hidden");
+  setTimeout(() => {
+    modal.classList.remove("opacity-0");
+    inner.classList.remove("scale-95");
+  }, 10);
 }
 
 function closeEditModal() {
-    const modal = document.getElementById('admin-edit-modal');
-    const inner = modal.querySelector('div');
-    
-    modal.classList.add('opacity-0');
-    inner.classList.add('scale-95');
-    setTimeout(() => {
-        modal.classList.add('hidden');
-    }, 300);
+  const modal = document.getElementById("admin-edit-modal");
+  const inner = modal.querySelector("div");
+
+  modal.classList.add("opacity-0");
+  inner.classList.add("scale-95");
+  setTimeout(() => {
+    modal.classList.add("hidden");
+  }, 300);
 }
 
 async function saveEditedQuestion() {
-    const reportId = document.getElementById('edit-report-id').value;
-    const questionId = document.getElementById('edit-question-id').value;
-    
-    const report = adminState.reports.find(r => r.id === reportId);
-    if (!report) {
-        alert("Report reference not found.");
-        return;
+  const reportId = document.getElementById("edit-report-id").value;
+  const questionId = document.getElementById("edit-question-id").value;
+
+  const report = adminState.reports.find((r) => r.id === reportId);
+  if (!report) {
+    alert("Report reference not found.");
+    return;
+  }
+
+  const saveBtn = document.getElementById("btn-save-edit");
+  const originalText = saveBtn.innerHTML;
+  saveBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving...`;
+  saveBtn.disabled = true;
+
+  const payload = {
+    type: "admin_edit_question",
+    token: adminState.token,
+    subject: report.subject,
+    questionId: questionId,
+    questionText: document.getElementById("edit-q-text").value,
+    optionA: document.getElementById("edit-q-optA").value,
+    optionB: document.getElementById("edit-q-optB").value,
+    optionC: document.getElementById("edit-q-optC").value,
+    optionD: document.getElementById("edit-q-optD").value,
+    correctAnswer: document.getElementById("edit-q-answer").value,
+  };
+
+  try {
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
+    });
+
+    const result = await response.json();
+
+    if (result.status === "success") {
+      alert("Question updated and cache rebuilt successfully!");
+      closeEditModal();
+      if (typeof resolveReport === "function") {
+        resolveReport(reportId, "resolve");
+      }
+    } else {
+      alert("Error: " + (result.message || "Failed to update question."));
     }
-
-    const saveBtn = document.getElementById('btn-save-edit');
-    const originalText = saveBtn.innerHTML;
-    saveBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving...`;
-    saveBtn.disabled = true;
-
-    const payload = {
-        type: "admin_edit_question",
-        token: adminState.token,
-        subject: report.subject,
-        questionId: questionId,
-        questionText: document.getElementById('edit-q-text').value,
-        optionA: document.getElementById('edit-q-optA').value,
-        optionB: document.getElementById('edit-q-optB').value,
-        optionC: document.getElementById('edit-q-optC').value,
-        optionD: document.getElementById('edit-q-optD').value,
-        correctAnswer: document.getElementById('edit-q-answer').value
-    };
-
-    try {
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
-        });
-        
-        const result = await response.json();
-        
-        if (result.status === "success") {
-            alert("Question updated and cache rebuilt successfully!");
-            closeEditModal();
-            if (typeof resolveReport === "function") {
-                resolveReport(reportId, 'resolve');
-            }
-        } else {
-            alert("Error: " + (result.message || "Failed to update question."));
-        }
-    } catch (err) {
-        console.error("Save error:", err);
-        alert("Network error while trying to save question changes.");
-    } finally {
-        saveBtn.innerHTML = originalText;
-        saveBtn.disabled = false;
-    }
+  } catch (err) {
+    console.error("Save error:", err);
+    alert("Network error while trying to save question changes.");
+  } finally {
+    saveBtn.innerHTML = originalText;
+    saveBtn.disabled = false;
+  }
 }
