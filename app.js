@@ -1,6 +1,8 @@
 const DB_URL =
   "https://script.google.com/macros/s/AKfycbx4HFy5LmX_CFZMTOdl809OrnsgxzQvpzHDOhrMK3yk7fNZb7Gp2pImwBCS_I1Gx-D20g/exec";
 
+const CHOICES_ARRAY = ["A", "B", "C", "D"];
+
 let state = {
   db: [],
   categorySummary: [],
@@ -169,6 +171,18 @@ async function saveState() {
   }
 
   updateDashboard();
+}
+
+async function safeIdbSet(key, value) {
+  if (typeof idbKeyval !== "undefined") {
+    await idbKeyval.set(key, value);
+  }
+}
+
+async function safeIdbDel(key) {
+  if (typeof idbKeyval !== "undefined") {
+    await idbKeyval.del(key);
+  }
 }
 
 function updateDashboard() {
@@ -530,11 +544,12 @@ function renderQuestion() {
       btn.classList.remove("hidden");
       const prefixRegex = new RegExp(`^${ch}[\\.\\)\\-]\\s*`, "i");
       const displayText = cleanChoice.replace(prefixRegex, "");
+      const safeDisplayText = escapeHTML(displayText);
 
       if (hideABCD) {
-        btn.innerHTML = displayText;
+        btn.innerHTML = safeDisplayText;
       } else {
-        btn.innerHTML = `<span class="font-bold mr-2">${ch})</span> ${displayText}`;
+        btn.innerHTML = `<span class="font-bold mr-2">${ch})</span> ${safeDisplayText}`;
       }
 
       if (!userAnswer) {
@@ -631,20 +646,20 @@ function renderQuestion() {
       isPureIdent,
     );
   }
+
+  const nextIndex = state.session.currentIndex + 1;
+  const upcomingQuestions = state.session.questions.slice(
+    nextIndex,
+    nextIndex + 2,
+  );
+
+  upcomingQuestions.forEach((nextQ) => {
+    if (nextQ && nextQ.ImageURL) {
+      const imgPreload = new Image();
+      imgPreload.src = nextQ.ImageURL;
+    }
+  });
 }
-
-const nextIndex = state.session.currentIndex + 1;
-const upcomingQuestions = state.session.questions.slice(
-  nextIndex,
-  nextIndex + 2,
-);
-
-upcomingQuestions.forEach((nextQ) => {
-  if (nextQ && nextQ.ImageURL) {
-    const imgPreload = new Image();
-    imgPreload.src = nextQ.ImageURL;
-  }
-});
 
 function enterFolder(folderName, isLockedFolder) {
   const fullPath =
@@ -1157,7 +1172,7 @@ async function deleteSubjectData(subject) {
     )
   ) {
     state.db = state.db.filter((q) => q.Subject !== subject);
-    await idbKeyval.set("mrh_db", state.db);
+    await safeIdbSet("mrh_db", state.db);
 
     const saved = localStorage.getItem("mrh_saved_session");
     if (saved) {
@@ -1277,7 +1292,7 @@ async function fetchDeckQuestionsFromNetwork(
 
     const otherQuestions = state.db.filter((q) => q.Subject !== subject);
     state.db = [...otherQuestions, ...validQuestions];
-    await idbKeyval.set("mrh_db", state.db);
+    await safeIdbSet("mrh_db", state.db);
 
     return validQuestions;
   } catch (err) {
@@ -1821,6 +1836,9 @@ function resetProgress() {
       userAnswers: {},
     };
 
+    state.prefs.studyProgress = {};
+    state.prefs.qToggles = {};
+
     clearSessionProgress();
     saveState();
     alert("Progress Reset.");
@@ -1836,7 +1854,7 @@ async function clearDatabase() {
       "WARNING: Are you sure you want to clear the locally saved database? You will need an active internet connection to sync the questions again. The app will reload to apply changes.",
     )
   ) {
-    await idbKeyval.del("mrh_db");
+    await safeIdbDel("mrh_db");
     state.db = [];
     clearSessionProgress();
     window.location.reload();
@@ -1845,10 +1863,14 @@ async function clearDatabase() {
 
 document.addEventListener("keydown", (e) => {
   const reportModal = document.getElementById("report-modal");
+  const settingsModal = document.getElementById("session-settings-modal");
+
   const isReportModalOpen =
     reportModal && !reportModal.classList.contains("hidden");
+  const isSettingsModalOpen =
+    settingsModal && !settingsModal.classList.contains("hidden");
 
-  if (!state.session.active || isReportModalOpen) return;
+  if (!state.session.active || isReportModalOpen || isSettingsModalOpen) return;
 
   const key = e.key.toUpperCase();
   const isAnswered = state.session.userAnswers[state.session.currentIndex];
@@ -2075,6 +2097,26 @@ function toggleLayout() {
   renderCategoryProgress();
 }
 
+function toggleModal(modalId, isVisible) {
+  const modal = document.getElementById(modalId);
+  if (!modal) return;
+  const inner = modal.querySelector("div");
+
+  if (isVisible) {
+    modal.classList.remove("hidden");
+    setTimeout(() => {
+      modal.classList.remove("opacity-0");
+      if (inner) inner.classList.remove("scale-95", "opacity-0");
+    }, 10);
+  } else {
+    modal.classList.add("opacity-0");
+    if (inner) inner.classList.add("scale-95");
+    setTimeout(() => {
+      modal.classList.add("hidden");
+    }, 300);
+  }
+}
+
 function openReportModal() {
   const q = state.session?.questions?.[state.session?.currentIndex];
   if (!q) return;
@@ -2101,29 +2143,114 @@ function openReportModal() {
   if (reportType) reportType.value = "";
   if (reportComments) reportComments.value = "";
 
-  const modal = document.getElementById("report-modal");
-  if (!modal) return;
-
-  const inner = modal.querySelector("div");
-  modal.classList.remove("hidden");
-
-  setTimeout(() => {
-    modal.classList.remove("opacity-0");
-    if (inner) inner.classList.remove("scale-95", "opacity-0");
-  }, 10);
+  toggleModal("report-modal", true);
 }
 
 function closeReportModal() {
   state.reportQuestion = null;
+  toggleModal("report-modal", false);
+}
+function openSessionSettingsModal() {
+  const recallToggle = document.getElementById("toggle-active-recall");
+  if (recallToggle) recallToggle.checked = state.prefs.activeRecall !== false;
 
-  const modal = document.getElementById("report-modal");
-  const inner = modal.querySelector("div");
-  modal.classList.add("opacity-0");
-  inner.classList.add("scale-95");
+  const choicesToggle = document.getElementById("toggle-shuffle-choices");
+  if (choicesToggle)
+    choicesToggle.checked = state.prefs.shuffleChoices !== false;
 
-  setTimeout(() => {
-    modal.classList.add("hidden");
-  }, 300);
+  const questionsToggle = document.getElementById("toggle-shuffle-questions");
+  if (questionsToggle)
+    questionsToggle.checked = state.prefs.shuffleQuestions !== false;
+
+  const quizHideToggle = document.getElementById("toggle-quiz-hide-abcd");
+  if (quizHideToggle)
+    quizHideToggle.checked = state.prefs.quizHideABCD === true;
+
+  const qTypeSelect = document.getElementById("toggle-question-type");
+  if (qTypeSelect) qTypeSelect.value = state.prefs.qTypeOverride || "auto";
+
+  toggleModal("session-settings-modal", true);
+}
+
+function closeSessionSettingsModal() {
+  toggleModal("session-settings-modal", false);
+}
+
+let pendingLockedFolderPath = null;
+let pendingLockedFolderName = null;
+
+function openFolderPasswordModal(fullPath, folderName) {
+  pendingLockedFolderPath = fullPath;
+  pendingLockedFolderName = folderName;
+
+  document.getElementById("folder-password-message").innerText =
+    `The folder "${folderName}" requires a password to view its contents.`;
+
+  toggleModal("folder-password-modal", true);
+}
+
+function closeFolderPasswordModal() {
+  toggleModal("folder-password-modal", false);
+  const inputEl = document.getElementById("folder-password-input");
+  if (inputEl) inputEl.value = "";
+}
+
+function openDeckPasswordModal(subject, action) {
+  pendingDeckSubject = subject;
+  pendingDeckAction = action;
+
+  const messageEl = document.getElementById("deck-password-message");
+  if (messageEl) {
+    const shortName = subject.split("::").pop();
+    messageEl.innerText = `The deck "${escapeHTML(shortName)}" requires a password.`;
+  }
+
+  toggleModal("deck-password-modal", true);
+}
+
+function closeDeckPasswordModal() {
+  toggleModal("deck-password-modal", false);
+  const inputEl = document.getElementById("deck-password-input");
+  if (inputEl) inputEl.value = "";
+}
+
+function openReportModalFromStudy(questionId) {
+  const q = (state.db || []).find((item) => item.ID === questionId);
+  if (!q) return;
+
+  let reportedQs = [];
+  try {
+    reportedQs = JSON.parse(localStorage.getItem("mrh_reported_qs") || "[]");
+  } catch (e) {
+    console.warn("Reported QS array corrupted. Resetting.", e);
+    localStorage.setItem("mrh_reported_qs", "[]");
+  }
+
+  if (reportedQs.includes(q.ID)) {
+    alert(
+      "You have already reported this question. Thank you for your feedback!",
+    );
+    return;
+  }
+
+  state.reportQuestion = q;
+
+  const reportType = document.getElementById("report-type");
+  const reportComments = document.getElementById("report-comments");
+  if (reportType) reportType.value = "";
+  if (reportComments) reportComments.value = "";
+
+  toggleModal("report-modal", true);
+}
+
+function openGeneralFeedbackModal() {
+  const feedbackComments = document.getElementById("feedback-comments");
+  if (feedbackComments) feedbackComments.value = "";
+  toggleModal("feedback-modal", true);
+}
+
+function closeGeneralFeedbackModal() {
+  toggleModal("feedback-modal", false);
 }
 
 async function submitReport() {
@@ -2178,16 +2305,16 @@ async function submitReport() {
 
       btn.innerHTML =
         '<i class="fa-solid fa-check mr-2"></i> Report Submitted!';
-      btn.classList.replace("bg-red-500", "bg-green-500");
-      btn.classList.replace("hover:bg-red-600", "hover:bg-green-600");
+      btn.classList.remove("bg-red-500", "hover:bg-red-600");
+      btn.classList.add("bg-green-500", "hover:bg-green-600");
 
       setTimeout(() => {
         closeReportModal();
         setTimeout(() => {
           btn.innerHTML = originalText;
           btn.disabled = false;
-          btn.classList.replace("bg-green-500", "bg-red-500");
-          btn.classList.replace("hover:bg-green-600", "hover:bg-red-600");
+          btn.classList.remove("bg-green-500", "hover:bg-green-600");
+          btn.classList.add("bg-red-500", "hover:bg-red-600");
         }, 500);
 
         if (!state.reportQuestion) {
@@ -2281,46 +2408,6 @@ function showToast(message, type = "success") {
     toast.style.transition = "all 0.3s ease";
     setTimeout(() => toast.remove(), 300);
   }, 3000);
-}
-
-function openSessionSettingsModal() {
-  const recallToggle = document.getElementById("toggle-active-recall");
-  if (recallToggle) recallToggle.checked = state.prefs.activeRecall !== false;
-
-  const choicesToggle = document.getElementById("toggle-shuffle-choices");
-  if (choicesToggle)
-    choicesToggle.checked = state.prefs.shuffleChoices !== false;
-
-  const questionsToggle = document.getElementById("toggle-shuffle-questions");
-  if (questionsToggle)
-    questionsToggle.checked = state.prefs.shuffleQuestions !== false;
-
-  const quizHideToggle = document.getElementById("toggle-quiz-hide-abcd");
-  if (quizHideToggle)
-    quizHideToggle.checked = state.prefs.quizHideABCD === true;
-
-  const qTypeSelect = document.getElementById("toggle-question-type");
-  if (qTypeSelect) qTypeSelect.value = state.prefs.qTypeOverride || "auto";
-
-  const modal = document.getElementById("session-settings-modal");
-  const inner = modal.querySelector("div");
-  modal.classList.remove("hidden");
-
-  setTimeout(() => {
-    modal.classList.remove("opacity-0");
-    inner.classList.remove("scale-95");
-  }, 10);
-}
-
-function closeSessionSettingsModal() {
-  const modal = document.getElementById("session-settings-modal");
-  const inner = modal.querySelector("div");
-  modal.classList.add("opacity-0");
-  inner.classList.add("scale-95");
-
-  setTimeout(() => {
-    modal.classList.add("hidden");
-  }, 300);
 }
 
 function toggleActiveRecall() {
@@ -2484,59 +2571,6 @@ async function userLogin(username, password) {
   }
 }
 
-let pendingLockedFolderPath = null;
-let pendingLockedFolderName = null;
-
-function openFolderPasswordModal(fullPath, folderName) {
-  pendingLockedFolderPath = fullPath;
-  pendingLockedFolderName = folderName;
-
-  document.getElementById("folder-password-message").innerText =
-    `The folder "${folderName}" requires a password to view its contents.`;
-
-  const modal = document.getElementById("folder-password-modal");
-  modal.classList.remove("hidden");
-  setTimeout(() => modal.classList.remove("opacity-0"), 10);
-}
-
-function closeFolderPasswordModal() {
-  const modal = document.getElementById("folder-password-modal");
-  modal.classList.add("opacity-0");
-  setTimeout(() => {
-    modal.classList.add("hidden");
-    document.getElementById("folder-password-input").value = "";
-  }, 300);
-}
-
-function openDeckPasswordModal(subject, action) {
-  pendingDeckSubject = subject;
-  pendingDeckAction = action;
-
-  const messageEl = document.getElementById("deck-password-message");
-  if (messageEl) {
-    const shortName = subject.split("::").pop();
-    messageEl.innerText = `The deck "${escapeHTML(shortName)}" requires a password.`;
-  }
-
-  const modal = document.getElementById("deck-password-modal");
-  if (modal) {
-    modal.classList.remove("hidden");
-    setTimeout(() => modal.classList.remove("opacity-0"), 10);
-  }
-}
-
-function closeDeckPasswordModal() {
-  const modal = document.getElementById("deck-password-modal");
-  if (modal) {
-    modal.classList.add("opacity-0");
-    setTimeout(() => {
-      modal.classList.add("hidden");
-      const inputEl = document.getElementById("deck-password-input");
-      if (inputEl) inputEl.value = "";
-    }, 300);
-  }
-}
-
 document
   .getElementById("btn-submit-folder-password")
   .addEventListener("click", async () => {
@@ -2592,44 +2626,6 @@ if (btnSubmitDeckPassword) {
       fetchAndStartCategory(pendingDeckSubject, pendingDeckAction, pass);
     }
   });
-}
-
-function openReportModalFromStudy(questionId) {
-  const q = (state.db || []).find((item) => item.ID === questionId);
-  if (!q) return;
-
-  let reportedQs = [];
-  try {
-    reportedQs = JSON.parse(localStorage.getItem("mrh_reported_qs") || "[]");
-  } catch (e) {
-    console.warn("Reported QS array corrupted. Resetting.", e);
-    localStorage.setItem("mrh_reported_qs", "[]");
-  }
-
-  if (reportedQs.includes(q.ID)) {
-    alert(
-      "You have already reported this question. Thank you for your feedback!",
-    );
-    return;
-  }
-
-  state.reportQuestion = q;
-
-  const reportType = document.getElementById("report-type");
-  const reportComments = document.getElementById("report-comments");
-  if (reportType) reportType.value = "";
-  if (reportComments) reportComments.value = "";
-
-  const modal = document.getElementById("report-modal");
-  if (!modal) return;
-
-  const inner = modal.querySelector("div");
-  modal.classList.remove("hidden");
-
-  setTimeout(() => {
-    modal.classList.remove("opacity-0");
-    if (inner) inner.classList.remove("scale-95", "opacity-0");
-  }, 10);
 }
 
 function togglePasswordVisibility(inputId, btnElement) {
@@ -2775,23 +2771,6 @@ function changeQuestionTypeMode(mode) {
   if (state.session.active) renderQuestion();
 }
 
-function openGeneralFeedbackModal() {
-  const modal = document.getElementById("feedback-modal");
-  document.getElementById("feedback-comments").value = "";
-  modal.classList.remove("hidden");
-  setTimeout(() => {
-    modal.classList.remove("opacity-0");
-    modal.querySelector("div").classList.remove("scale-95");
-  }, 10);
-}
-
-function closeGeneralFeedbackModal() {
-  const modal = document.getElementById("feedback-modal");
-  modal.classList.add("opacity-0");
-  modal.querySelector("div").classList.add("scale-95");
-  setTimeout(() => modal.classList.add("hidden"), 300);
-}
-
 async function submitGeneralFeedback() {
   const comments = document.getElementById("feedback-comments").value.trim();
   if (!comments) return alert("Please enter your feedback.");
@@ -2812,13 +2791,15 @@ async function submitGeneralFeedback() {
       }),
     });
     btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Sent!';
-    btn.classList.replace("bg-brand-500", "bg-green-500");
+    btn.classList.remove("bg-brand-500", "hover:bg-brand-600");
+    btn.classList.add("bg-green-500", "hover:bg-green-600");
     setTimeout(() => {
       closeGeneralFeedbackModal();
       setTimeout(() => {
         btn.innerHTML = originalText;
         btn.disabled = false;
-        btn.classList.replace("bg-green-500", "bg-brand-500");
+        btn.classList.remove("bg-green-500", "hover:bg-green-600");
+        btn.classList.add("bg-brand-500", "hover:bg-brand-600");
       }, 500);
     }, 1500);
   } catch (err) {
