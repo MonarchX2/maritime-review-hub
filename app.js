@@ -91,6 +91,7 @@ function escapeHTML(value) {
 async function loadState() {
   const savedStats = localStorage.getItem("mrh_stats");
   const savedPrefs = localStorage.getItem("mrh_prefs");
+  const savedSummary = localStorage.getItem("mrh_summary");
 
   try {
     if (typeof idbKeyval !== "undefined") {
@@ -109,6 +110,15 @@ async function loadState() {
     }
   } catch (err) {
     console.error("Error loading DB from IndexedDB", err);
+  }
+
+  if (savedSummary) {
+    try {
+      state.categorySummary = JSON.parse(savedSummary);
+    } catch (e) {
+      console.error("Summary corrupted, resetting.", e);
+      state.categorySummary = [];
+    }
   }
 
   if (savedStats) {
@@ -153,8 +163,8 @@ async function loadState() {
 async function saveState() {
   try {
     localStorage.setItem("mrh_stats", JSON.stringify(state.stats));
-
     localStorage.setItem("mrh_prefs", JSON.stringify(state.prefs));
+    localStorage.setItem("mrh_summary", JSON.stringify(state.categorySummary));
   } catch (e) {
     console.error(e);
   }
@@ -238,8 +248,11 @@ async function syncDatabase() {
   }
 
   syncAbortController = new AbortController();
+  const timeoutId = setTimeout(() => syncAbortController.abort(), 10000);
+
   const url = DB_URL;
   const statusEl = document.getElementById("sync-status");
+
   if (statusEl) {
     statusEl.classList.remove("hidden");
     statusEl.innerHTML =
@@ -253,6 +266,9 @@ async function syncDatabase() {
       signal: syncAbortController.signal,
       redirect: "follow",
     });
+
+    clearTimeout(timeoutId);
+
     if (!response.ok) throw new Error("Network response failed");
     const summaryData = await response.json();
 
@@ -279,10 +295,16 @@ async function syncDatabase() {
   } catch (err) {
     console.error(err);
     if (statusEl) {
-      statusEl.innerText =
-        "Connection Error. Ensure you deployed the Apps Script correctly.";
-      statusEl.className =
-        "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+      if (err.name === "AbortError") {
+        statusEl.innerText = "Sync timed out. Using cached offline data.";
+        statusEl.className =
+          "text-sm mt-3 font-medium bg-yellow-50 text-yellow-700 p-3 rounded-lg";
+      } else {
+        statusEl.innerText =
+          "Connection Error. Ensure you deployed the Apps Script correctly.";
+        statusEl.className =
+          "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+      }
     }
 
     const catList = document.getElementById("category-list");
