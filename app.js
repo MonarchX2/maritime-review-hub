@@ -29,6 +29,7 @@ let state = {
 
 let chartInstance = null;
 let syncAbortController = null;
+
 function generateUserId() {
   if (window.crypto && window.crypto.randomUUID) {
     return "user_" + crypto.randomUUID();
@@ -43,6 +44,7 @@ function generateUserId() {
   }
   return "user_" + Math.random().toString(36).substring(2, 15);
 }
+
 if (!state.prefs.userId) {
   state.prefs.userId = generateUserId();
 }
@@ -2666,43 +2668,6 @@ function toggleSpecificChoices(qId) {
   reRenderDeckReview();
 }
 
-let lastScrollTop = 0;
-window.addEventListener("DOMContentLoaded", () => {
-  const mainEl = document.querySelector("main");
-  const headerEl = document.querySelector("header");
-  if (headerEl) headerEl.classList.add("transition-transform", "duration-300");
-
-  if (mainEl && headerEl) {
-    mainEl.addEventListener("scroll", (e) => {
-      const currentScroll = e.target.scrollTop;
-      if (currentScroll > lastScrollTop && currentScroll > 50) {
-        headerEl.classList.add("-translate-y-full");
-      } else {
-        headerEl.classList.remove("-translate-y-full");
-      }
-      lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
-
-      if (
-        document
-          .getElementById("view-deck-review")
-          .classList.contains("active") &&
-        currentReviewSubject
-      ) {
-        if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
-        if (!state.prefs.studyProgress[currentReviewSubject]) {
-          state.prefs.studyProgress[currentReviewSubject] = {
-            page: 1,
-            index: 0,
-            scrollY: 0,
-          };
-        }
-        state.prefs.studyProgress[currentReviewSubject].scrollY = currentScroll;
-        clearTimeout(window.scrollSaveTimeout);
-        window.scrollSaveTimeout = setTimeout(() => saveState(), 1000);
-      }
-    });
-  }
-});
 function toggleStudyFullscreen() {
   if (!document.fullscreenElement) {
     document.documentElement.requestFullscreen().catch((err) => {
@@ -2821,3 +2786,42 @@ async function submitGeneralFeedback() {
     btn.disabled = false;
   }
 }
+
+let lastScrollTop = 0;
+
+window.addEventListener("DOMContentLoaded", () => {
+  const mainEl = document.querySelector("main");
+  const headerEl = document.querySelector("header");
+  if (headerEl) headerEl.classList.add("transition-transform", "duration-300");
+
+  if (mainEl && headerEl) {
+    mainEl.addEventListener("scroll", (e) => {
+      const currentScroll = e.target.scrollTop;
+      if (currentScroll > lastScrollTop && currentScroll > 50) {
+        headerEl.classList.add("-translate-y-full");
+      } else {
+        headerEl.classList.remove("-translate-y-full");
+      }
+      lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
+
+      if (
+        document
+          .getElementById("view-deck-review")
+          .classList.contains("active") &&
+        currentReviewSubject
+      ) {
+        if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
+        if (!state.prefs.studyProgress[currentReviewSubject]) {
+          state.prefs.studyProgress[currentReviewSubject] = {
+            page: 1,
+            index: 0,
+            scrollY: 0,
+          };
+        }
+        state.prefs.studyProgress[currentReviewSubject].scrollY = currentScroll;
+        clearTimeout(window.scrollSaveTimeout);
+        window.scrollSaveTimeout = setTimeout(() => saveState(), 1000);
+      }
+    });
+  }
+});
