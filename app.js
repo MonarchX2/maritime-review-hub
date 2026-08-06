@@ -261,7 +261,7 @@ async function syncDatabase() {
   }
 
   syncAbortController = new AbortController();
-  const timeoutId = setTimeout(() => syncAbortController.abort(), 10000);
+  const timeoutId = setTimeout(() => syncAbortController.abort(), 20000);
 
   const url = DB_URL;
   const statusEl = document.getElementById("sync-status");
