@@ -263,7 +263,7 @@ async function syncDatabase() {
   syncAbortController = new AbortController();
   const timeoutId = setTimeout(() => syncAbortController.abort(), 20000);
 
-  const url = DB_URL;
+  const url = `${DB_URL}?_t=${Date.now()}`;
   const statusEl = document.getElementById("sync-status");
 
   if (statusEl) {
@@ -1269,7 +1269,7 @@ async function fetchDeckQuestionsFromNetwork(
 ) {
   if (loaderElement) loaderElement.classList.remove("hidden");
   try {
-    let fetchUrl = `${DB_URL}?subject=${encodeURIComponent(subject)}`;
+    let fetchUrl = `${DB_URL}?subject=${encodeURIComponent(subject)}&_t=${Date.now()}`;
     if (pass) fetchUrl += `&password=${encodeURIComponent(pass)}`;
 
     const response = await fetch(fetchUrl);
@@ -2587,7 +2587,7 @@ document
 
     try {
       const response = await fetch(
-        `${DB_URL}?subject=${encodeURIComponent(pendingLockedFolderPath)}&password=${encodeURIComponent(pass)}`,
+        `${DB_URL}?subject=${encodeURIComponent(pendingLockedFolderPath)}&password=${encodeURIComponent(pass)}&_t=${Date.now()}`,
       );
       const result = await response.json();
       if (result.error) {
