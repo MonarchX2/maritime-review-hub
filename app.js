@@ -1360,36 +1360,7 @@ function renderDeckReview(subject, questions) {
   const hideABCDToggle = document.getElementById("toggle-hide-abcd");
   if (hideABCDToggle) hideABCDToggle.checked = hideABCD;
 
-  let html = `
-    <details class="group bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 transition-all duration-300">
-        <summary class="p-4 cursor-pointer font-bold text-gray-700 dark:text-gray-200 flex justify-between items-center select-none">
-            <span><i class="fa-solid fa-sliders mr-2"></i> Study Settings</span>
-            <i class="fa-solid fa-chevron-down transition-transform group-open:rotate-180"></i>
-        </summary>
-        <div class="p-4 border-t border-gray-100 dark:border-gray-700 flex flex-wrap gap-4 bg-gray-50 dark:bg-gray-800/50">
-            
-            <div class="flex flex-col gap-1 w-full sm:w-auto">
-                <label class="text-xs font-bold text-gray-500 uppercase">Layout</label>
-                <select class="..." onchange="changeStudyLayout(this.value)">
-                    <option value="scroll" ${layout === "scroll" ? "selected" : ""}>Scroll List</option>
-                    <option value="single" ${layout === "single" ? "selected" : ""}>Single Flashcard</option>
-                </select>
-            </div>
-
-            ${
-              layout === "scroll"
-                ? `
-            <div class="flex flex-col gap-1 w-full sm:w-auto">
-                <label class="text-xs font-bold text-gray-500 uppercase">Per Page</label>
-                <select class="..." onchange="changeStudyPageSize(this.value)">
-                    ${[5, 10, 15, 25, 50, 100, "All"].map((size) => `<option value="${size}" ${pageSize == size ? "selected" : ""}>${size}</option>`).join("")}
-                </select>
-            </div>`
-                : ""
-            }
-        </div>
-    </details>
-`;
+  let html = "";
 
   if (questions.length === 0) {
     container.innerHTML =
@@ -2174,6 +2145,43 @@ function openSessionSettingsModal() {
 
 function closeSessionSettingsModal() {
   toggleModal("session-settings-modal", false);
+}
+
+// Open Review Settings Modal
+function openReviewSettingsModal() {
+  const modal = document.getElementById("review-settings-modal");
+  modal.classList.remove("hidden");
+  // Small delay allows the browser to render 'block' before applying opacity for the transition
+  setTimeout(() => {
+    modal.classList.remove("opacity-0");
+    modal.querySelector("div").classList.remove("scale-95");
+  }, 10);
+}
+
+// Close Review Settings Modal
+function closeReviewSettingsModal() {
+  const modal = document.getElementById("review-settings-modal");
+  modal.classList.add("opacity-0");
+  modal.querySelector("div").classList.add("scale-95");
+  // Wait for transition to finish before hiding element
+  setTimeout(() => {
+    modal.classList.add("hidden");
+  }, 300);
+}
+
+// Handle layout changes directly from the modal
+function handleReviewLayoutChange(layoutType) {
+  const perPageContainer = document.getElementById("review-per-page-container");
+
+  // Hide "Per Page" if it's single flashcard, show if it's scroll list
+  if (layoutType === "single") {
+    perPageContainer.classList.add("hidden");
+  } else {
+    perPageContainer.classList.remove("hidden");
+  }
+
+  // Call your original layout function
+  changeStudyLayout(layoutType);
 }
 
 let pendingLockedFolderPath = null;

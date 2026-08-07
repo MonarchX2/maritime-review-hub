@@ -587,47 +587,14 @@
             </h2>
           </div>
 
-          <div
-            class="flex items-center gap-4 flex-wrap bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm w-full md:w-auto"
-          >
-            <label class="inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                id="toggle-hide-abcd"
-                class="sr-only peer"
-                onchange="toggleHideABCD()"
-                checked
-              />
-              <div
-                class="relative w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
-              ></div>
-              <span
-                class="ms-2 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide"
-                >Hide ABCD</span
-              >
-            </label>
-
-            <div
-              class="hidden md:block w-px h-5 bg-gray-300 dark:bg-gray-600"
-            ></div>
-            <!-- Vertical Divider -->
-
-            <label class="inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                id="toggle-wrong-choices"
-                class="sr-only peer"
-                onchange="toggleShowWrongChoices()"
-                checked
-              />
-              <div
-                class="relative w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
-              ></div>
-              <span
-                class="ms-2 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide"
-                >Show Wrong Choices</span
-              >
-            </label>
+          <!-- NEW SETTINGS BUTTON -->
+          <div>
+            <button
+              onclick="openReviewSettingsModal()"
+              class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm px-4 py-2 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all font-bold flex items-center gap-2 active:scale-95"
+            >
+              <i class="fa-solid fa-sliders"></i>
+            </button>
           </div>
         </div>
 
@@ -967,7 +934,7 @@
         </div>
       </div>
 
-      <!-- Combined Session Settings Modal -->
+      <!-- Quiz Settings Modal -->
       <div
         id="session-settings-modal"
         class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
@@ -1082,6 +1049,122 @@
                 <option value="auto">Auto (Mixed)</option>
                 <option value="mcq">Multiple Choices</option>
                 <option value="ident">Identification</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Review Settings Modal -->
+      <div
+        id="review-settings-modal"
+        class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 border border-gray-200 dark:border-gray-700"
+        >
+          <!-- Header -->
+          <div
+            class="flex justify-between items-center mb-6 border-b border-gray-100 dark:border-gray-700 pb-3"
+          >
+            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+              <i class="fa-solid fa-sliders text-brand-500 mr-2"></i> Study
+              Settings
+            </h3>
+            <button
+              onclick="closeReviewSettingsModal()"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            >
+              <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+          </div>
+
+          <!-- Settings Options -->
+          <div class="space-y-6 mb-6">
+            <!-- Hide ABCD Labels Toggle -->
+            <div class="flex justify-between items-center">
+              <div class="pr-4">
+                <span
+                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
+                  >Hide ABCD Labels</span
+                >
+                <span class="text-xs text-gray-500"
+                  >Remove letter prefixes from choices.</span
+                >
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="toggle-hide-abcd"
+                  class="sr-only peer"
+                  onchange="toggleHideABCD()"
+                  checked
+                />
+                <div
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
+                ></div>
+              </label>
+            </div>
+
+            <!-- Show Wrong Choices Toggle -->
+            <div class="flex justify-between items-center">
+              <div class="pr-4">
+                <span
+                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
+                  >Show Wrong Choices</span
+                >
+                <span class="text-xs text-gray-500"
+                  >Display incorrect options alongside the correct one.</span
+                >
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="toggle-wrong-choices"
+                  class="sr-only peer"
+                  onchange="toggleShowWrongChoices()"
+                  checked
+                />
+                <div
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
+                ></div>
+              </label>
+            </div>
+
+            <!-- Layout Dropdown -->
+            <div
+              class="flex flex-col gap-2 pt-4 border-t border-gray-100 dark:border-gray-700"
+            >
+              <label class="text-sm font-bold text-gray-800 dark:text-gray-200"
+                >Study Layout</label
+              >
+              <select
+                id="review-layout-select"
+                onchange="handleReviewLayoutChange(this.value)"
+                class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2.5 text-sm text-gray-700 dark:text-gray-200 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors"
+              >
+                <option value="scroll">Scroll List</option>
+                <option value="single">Single Flashcard</option>
+              </select>
+            </div>
+
+            <!-- Per Page Dropdown -->
+            <div id="review-per-page-container" class="flex flex-col gap-2">
+              <label class="text-sm font-bold text-gray-800 dark:text-gray-200"
+                >Items Per Page</label
+              >
+              <select
+                id="review-page-size-select"
+                onchange="changeStudyPageSize(this.value)"
+                class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2.5 text-sm text-gray-700 dark:text-gray-200 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors"
+              >
+                <option value="5">5</option>
+                <option value="10">10</option>
+                <option value="15">15</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="All">All</option>
               </select>
             </div>
           </div>
