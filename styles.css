@@ -136,18 +136,6 @@ button:active:not(:disabled) {
   display: none !important;
 }
 
-.login-suggestion-hidden {
-  display: none !important;
-}
-
-.login-suggestion-timer {
-  width: 100%;
-  height: 4px;
-  transform: scaleX(1);
-  transform-origin: left center;
-  background: #3b82f6;
-}
-
 .choice-btn {
   transition: all var(--time-fast) var(--ease-bounce);
   /* Prevents layout jumping when border-width changes later */

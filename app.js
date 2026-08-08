@@ -133,6 +133,17 @@ function getStoredItem(key, fallback = null) {
   return fallback;
 }
 
+function getAnyNamespaceStoredItem(key, fallback = null) {
+  for (let i = 0; i < localStorage.length; i++) {
+    const storedKey = localStorage.key(i) || "";
+    if (storedKey.endsWith(`:${key}`)) {
+      const value = localStorage.getItem(storedKey);
+      if (value !== null) return value;
+    }
+  }
+  return fallback;
+}
+
 function setStoredItem(key, value) {
   localStorage.setItem(getStorageKey(key), value);
 }
@@ -467,7 +478,8 @@ async function loadState() {
   migrateLegacyStorageKeys();
   const savedStats = getStoredItem("stats");
   const savedPrefs = getStoredItem("prefs");
-  const savedSummary = getStoredItem("summary");
+  const savedSummary =
+    getStoredItem("summary") || getAnyNamespaceStoredItem("summary");
 
   try {
     if (typeof idbKeyval !== "undefined") {
@@ -2650,9 +2662,8 @@ async function fetchGlobalReports() {
 
 window.onload = async () => {
   setupTelemetry();
-  await restoreUserSession();
   await loadState();
-  showLoginSuggestion();
+  await restoreUserSession();
 
   const toggleElement = document.getElementById("globalModeToggle");
   if (toggleElement) {
@@ -3837,13 +3848,13 @@ function updateProfileUI() {
   if (noticeLabel) {
     noticeLabel.textContent = loggedIn
       ? `Logged in as ${userState.username || "your account"}`
-      : "Login to sync your progress.";
+      : "Login to access your profile.";
   }
 
   const syncStatusEl = document.getElementById("user-sync-status");
   if (syncStatusEl) {
     if (!loggedIn) {
-      syncStatusEl.textContent = "Login to sync progress between devices.";
+      syncStatusEl.textContent = "Login to access online features.";
     } else if (userState.sessionMode === "guest") {
       syncStatusEl.textContent = "Guest mode · your changes stay local.";
     } else {
@@ -4360,47 +4371,6 @@ function showSignupForm() {
     signupPanel.classList.remove("auth-panel-hidden");
   }
   document.getElementById("user-signup-error")?.classList.add("hidden");
-}
-
-function hideLoginSuggestion() {
-  const suggestion = document.getElementById("sync-login-suggestion");
-  if (suggestion) suggestion.classList.add("login-suggestion-hidden");
-  if (window.loginSuggestionTimer) {
-    clearTimeout(window.loginSuggestionTimer);
-    window.loginSuggestionTimer = null;
-  }
-}
-
-function dismissLoginSuggestion() {
-  setStoredItem("login_suggestion_dismissed", "1");
-  hideLoginSuggestion();
-}
-
-function openLoginFromSuggestion() {
-  dismissLoginSuggestion();
-  navigate("profile");
-}
-
-function showLoginSuggestion() {
-  if (
-    userState.isLoggedIn ||
-    getStoredItem("login_suggestion_dismissed") === "1"
-  )
-    return;
-
-  const suggestion = document.getElementById("sync-login-suggestion");
-  const timer = document.getElementById("login-suggestion-timer");
-  if (!suggestion || !timer) return;
-
-  clearTimeout(window.loginSuggestionTimer);
-  suggestion.classList.remove("login-suggestion-hidden");
-  timer.style.transition = "none";
-  timer.style.transform = "scaleX(1)";
-  timer.style.width = "100%";
-  void timer.offsetWidth;
-  timer.style.transition = "transform 8s linear";
-  timer.style.transform = "scaleX(0)";
-  window.loginSuggestionTimer = setTimeout(hideLoginSuggestion, 8000);
 }
 
 async function submitUserLogin() {
