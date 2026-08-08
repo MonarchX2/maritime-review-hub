@@ -53,6 +53,10 @@ let progressSyncTimer = null;
 let progressSyncInFlight = false;
 let suppressProgressSync = false;
 let progressServerUpdatedAt = "";
+let authChannel = null;
+let authStateVersion = 0;
+let pendingProgressRequestKey = null;
+let pendingOfflineSyncTimer = null;
 
 function generateUserId() {
   if (window.crypto && window.crypto.randomUUID) {
@@ -71,6 +75,117 @@ function generateUserId() {
 
 if (!state.prefs.userId) {
   state.prefs.userId = generateUserId();
+}
+
+function getSafeStorageIdentity() {
+  const username =
+    typeof userState !== "undefined" && userState.username
+      ? userState.username
+      : "";
+  const rawIdentity = username || state?.prefs?.userId || "guest";
+  return String(rawIdentity).replace(/[^a-zA-Z0-9_-]/g, "_") || "guest";
+}
+
+function getStorageNamespace() {
+  return `mrh_${getSafeStorageIdentity()}`;
+}
+
+function getStorageKey(key) {
+  return `${getStorageNamespace()}:${key}`;
+}
+
+function getLegacyStorageKey(key) {
+  return `mrh_${key}`;
+}
+
+function getStoredItem(key, fallback = null) {
+  const namespacedValue = localStorage.getItem(getStorageKey(key));
+  if (namespacedValue !== null) return namespacedValue;
+  const legacyValue = localStorage.getItem(getLegacyStorageKey(key));
+  if (legacyValue !== null) return legacyValue;
+  return fallback;
+}
+
+function setStoredItem(key, value) {
+  localStorage.setItem(getStorageKey(key), value);
+}
+
+function removeStoredItem(key) {
+  localStorage.removeItem(getStorageKey(key));
+  localStorage.removeItem(getLegacyStorageKey(key));
+}
+
+function getStoredJSON(key, fallback = null) {
+  try {
+    const stored = getStoredItem(key);
+    if (stored === null || stored === undefined) return fallback;
+    return JSON.parse(stored);
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function setStoredJSON(key, value) {
+  setStoredItem(key, JSON.stringify(value));
+}
+
+function migrateLegacyStorageKeys() {
+  const pairs = [
+    ["stats", "mrh_stats"],
+    ["prefs", "mrh_prefs"],
+    ["summary", "mrh_summary"],
+    ["saved_session", "mrh_saved_session"],
+    ["progress_meta", "mrh_progress_meta"],
+    ["user_session", "mrh_user_session"],
+    ["reported_qs", "mrh_reported_qs"],
+    ["login_suggestion_dismissed", "mrh_login_suggestion_dismissed"],
+    ["pending_sync_queue", "mrh_pending_sync_queue"],
+    ["recovery_snapshot", "mrh_recovery_snapshot"],
+  ];
+
+  pairs.forEach(([currentKey, legacyKey]) => {
+    const namespacedKey = getStorageKey(currentKey);
+    if (
+      localStorage.getItem(namespacedKey) === null &&
+      localStorage.getItem(legacyKey) !== null
+    ) {
+      localStorage.setItem(namespacedKey, localStorage.getItem(legacyKey));
+    }
+  });
+}
+
+function purgeOrphanedStorage(identityToKeep = null) {
+  const activeIdentity = identityToKeep || getSafeStorageIdentity();
+  const namespaces = new Set();
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i) || "";
+    const match = key.match(/^mrh_([^:]+):/);
+    if (match) namespaces.add(match[1]);
+  }
+
+  namespaces.forEach((namespace) => {
+    if (namespace === activeIdentity) return;
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i) || "";
+      if (key.startsWith(`mrh_${namespace}:`)) {
+        localStorage.removeItem(key);
+      }
+    }
+  });
+
+  const legacyKeys = [
+    "mrh_stats",
+    "mrh_prefs",
+    "mrh_summary",
+    "mrh_saved_session",
+    "mrh_progress_meta",
+    "mrh_user_session",
+    "mrh_reported_qs",
+    "mrh_login_suggestion_dismissed",
+    "mrh_pending_sync_queue",
+    "mrh_recovery_snapshot",
+  ];
+  legacyKeys.forEach((legacyKey) => localStorage.removeItem(legacyKey));
 }
 
 function getActiveIdentity() {
@@ -199,9 +314,10 @@ function decodeHandlerValue(value) {
 }
 
 async function loadState() {
-  const savedStats = localStorage.getItem("mrh_stats");
-  const savedPrefs = localStorage.getItem("mrh_prefs");
-  const savedSummary = localStorage.getItem("mrh_summary");
+  migrateLegacyStorageKeys();
+  const savedStats = getStoredItem("stats");
+  const savedPrefs = getStoredItem("prefs");
+  const savedSummary = getStoredItem("summary");
 
   try {
     if (typeof idbKeyval !== "undefined") {
@@ -289,9 +405,9 @@ async function loadState() {
 
 async function saveState() {
   try {
-    localStorage.setItem("mrh_stats", JSON.stringify(state.stats));
-    localStorage.setItem("mrh_prefs", JSON.stringify(state.prefs));
-    localStorage.setItem("mrh_summary", JSON.stringify(state.categorySummary));
+    setStoredJSON("stats", state.stats);
+    setStoredJSON("prefs", state.prefs);
+    setStoredJSON("summary", state.categorySummary);
     if (
       !suppressProgressSync &&
       typeof userState !== "undefined" &&
@@ -299,7 +415,7 @@ async function saveState() {
     ) {
       const meta = getProgressMeta();
       meta.localUpdatedAt = new Date().toISOString();
-      localStorage.setItem("mrh_progress_meta", JSON.stringify(meta));
+      setStoredJSON("progress_meta", meta);
       queueProgressSync();
     }
   } catch (e) {
@@ -380,13 +496,18 @@ function syncPreferenceControls() {
 
 async function safeIdbSet(key, value) {
   if (typeof idbKeyval !== "undefined") {
-    await idbKeyval.set(key, value);
+    await idbKeyval.set(
+      key.includes(":") || key.startsWith("mrh_") ? key : getStorageKey(key),
+      value,
+    );
   }
 }
 
 async function safeIdbDel(key) {
   if (typeof idbKeyval !== "undefined") {
-    await idbKeyval.del(key);
+    await idbKeyval.del(
+      key.includes(":") || key.startsWith("mrh_") ? key : getStorageKey(key),
+    );
   }
 }
 
@@ -463,6 +584,11 @@ async function navigate(viewId) {
 }
 
 function updateSyncStatus(message, tone = "info", showOverlay = true) {
+  const shouldSuppressOverlay =
+    state.session.active &&
+    showOverlay &&
+    /database|reconnect|waiting until your session ends/i.test(message);
+  const effectiveShowOverlay = shouldSuppressOverlay ? false : showOverlay;
   const statusElements = [document.getElementById("sync-status")].filter(
     Boolean,
   );
@@ -497,7 +623,7 @@ function updateSyncStatus(message, tone = "info", showOverlay = true) {
   }
 
   const connectionStatus = document.getElementById("connection-status");
-  if (connectionStatus && showOverlay) {
+  if (connectionStatus && effectiveShowOverlay) {
     clearTimeout(syncStatusHideTimer);
     connectionStatus.classList.remove("hidden", "opacity-0", "scale-95");
     connectionStatus.innerHTML = message;
@@ -1529,7 +1655,7 @@ async function deleteSubjectData(subject) {
     state.db = state.db.filter((q) => q.Subject !== subject);
     await safeIdbSet("mrh_db", state.db);
 
-    const saved = localStorage.getItem("mrh_saved_session");
+    const saved = getStoredItem("saved_session");
     if (saved) {
       try {
         const sessionObj = JSON.parse(saved);
@@ -2358,14 +2484,14 @@ function saveSessionProgress() {
   if (!state.session.active) return;
 
   try {
-    localStorage.setItem("mrh_saved_session", JSON.stringify(state.session));
+    setStoredJSON("saved_session", state.session);
     state.prefs.lastActivity = {
       mode: "quiz",
       subject:
         state.session.questions[state.session.currentIndex]?.Subject || null,
       updatedAt: new Date().toISOString(),
     };
-    localStorage.setItem("mrh_prefs", JSON.stringify(state.prefs));
+    setStoredJSON("prefs", state.prefs);
   } catch (e) {
     console.warn("Storage quota exceeded. Could not save session progress.", e);
     showToast("Storage full. Progress won't be saved.", "error");
@@ -2373,7 +2499,7 @@ function saveSessionProgress() {
 }
 
 function checkSavedSession() {
-  const saved = localStorage.getItem("mrh_saved_session");
+  const saved = getStoredItem("saved_session");
   const resumeContainer = document.getElementById("resume-container");
   const activity = state.prefs.lastActivity;
   const contextEl = document.getElementById("resume-context");
@@ -2401,7 +2527,7 @@ function checkSavedSession() {
         session.userAnswers && session.userAnswers[session.currentIndex];
 
       if (isLastQuestion && isAnswered) {
-        localStorage.removeItem("mrh_saved_session");
+        removeStoredItem("saved_session");
         resumeContainer.classList.add("hidden");
         return;
       }
@@ -2443,7 +2569,7 @@ async function resumeSession(password = null) {
     return;
   }
 
-  const saved = localStorage.getItem("mrh_saved_session");
+  const saved = getStoredItem("saved_session");
   if (!saved) return;
 
   const savedSession = pendingResumeSession || JSON.parse(saved);
@@ -2524,9 +2650,9 @@ async function resumeSession(password = null) {
 }
 
 function clearSessionProgress() {
-  localStorage.removeItem("mrh_saved_session");
+  removeStoredItem("saved_session");
   state.prefs.lastActivity = null;
-  localStorage.setItem("mrh_prefs", JSON.stringify(state.prefs));
+  setStoredJSON("prefs", state.prefs);
   const resumeContainer = document.getElementById("resume-container");
   if (resumeContainer) {
     resumeContainer.classList.add("hidden");
@@ -3272,13 +3398,115 @@ let userState = {
   username: "",
   isLoggedIn: false,
   sessionToken: "",
+  sessionMode: "active",
+  sessionExpiresAt: null,
+  authVersion: 0,
 };
+
+function getAuthStateSnapshot() {
+  return {
+    username: userState.username || "",
+    isLoggedIn: userState.isLoggedIn === true,
+    sessionToken: userState.sessionToken || "",
+    sessionMode: userState.sessionMode || "active",
+    sessionExpiresAt: userState.sessionExpiresAt || null,
+    authVersion: (userState.authVersion || 0) + 1,
+    identity: getSafeStorageIdentity(),
+  };
+}
+
+function applyAuthStateSnapshot(snapshot, source = "broadcast") {
+  if (!snapshot || !snapshot.isLoggedIn) return;
+  const isConflict =
+    userState.isLoggedIn &&
+    snapshot.username &&
+    snapshot.username !== userState.username;
+  if (isConflict) {
+    userState = {
+      ...userState,
+      isLoggedIn: false,
+      sessionToken: "",
+      sessionMode: "guest",
+      authVersion: (userState.authVersion || 0) + 1,
+    };
+    updateProfileUI();
+    showToast(
+      "Another account is active in another tab. This tab was switched to guest mode.",
+      "error",
+    );
+    return true;
+  }
+  if (snapshot.identity && snapshot.identity !== getSafeStorageIdentity()) {
+    userState = {
+      ...userState,
+      isLoggedIn: false,
+      sessionToken: "",
+      sessionMode: "guest",
+      authVersion: (userState.authVersion || 0) + 1,
+    };
+    updateProfileUI();
+    showToast(
+      "An account switch was detected. This tab is now in guest mode.",
+      "error",
+    );
+    return true;
+  }
+  return false;
+}
+
+function broadcastAuthState(reason = "state") {
+  const snapshot = getAuthStateSnapshot();
+  if (typeof BroadcastChannel !== "undefined") {
+    if (!authChannel) {
+      authChannel = new BroadcastChannel("mrh_auth");
+      authChannel.onmessage = (event) => {
+        const payload = event.data || {};
+        if (payload.identity && payload.identity === getSafeStorageIdentity())
+          return;
+        applyAuthStateSnapshot(payload, "broadcast");
+      };
+    }
+    authChannel.postMessage({ ...snapshot, reason });
+  }
+  try {
+    localStorage.setItem(
+      "mrh_auth_state",
+      JSON.stringify({ ...snapshot, reason }),
+    );
+  } catch (e) {}
+}
+
+function setupAuthBroadcast() {
+  if (typeof BroadcastChannel === "undefined") return;
+  if (authChannel) return;
+  authChannel = new BroadcastChannel("mrh_auth");
+  authChannel.onmessage = (event) => {
+    const payload = event.data || {};
+    if (payload.identity && payload.identity === getSafeStorageIdentity())
+      return;
+    applyAuthStateSnapshot(payload, "broadcast");
+  };
+  window.addEventListener("storage", (event) => {
+    if (event.key !== "mrh_auth_state" || !event.newValue) return;
+    try {
+      const payload = JSON.parse(event.newValue);
+      if (payload.identity && payload.identity === getSafeStorageIdentity())
+        return;
+      applyAuthStateSnapshot(payload, "storage");
+    } catch (e) {}
+  });
+}
+
+function scheduleOfflineSync() {
+  clearTimeout(pendingOfflineSyncTimer);
+  pendingOfflineSyncTimer = setTimeout(() => {
+    flushPendingOfflineProgress().catch(() => {});
+  }, 2000);
+}
 
 async function restoreUserSession() {
   try {
-    const saved = JSON.parse(
-      localStorage.getItem("mrh_user_session") || "null",
-    );
+    const saved = JSON.parse(getStoredItem("user_session", "null"));
     if (saved?.username && saved?.sessionToken) {
       const response = await fetch(DB_URL, {
         method: "POST",
@@ -3290,12 +3518,21 @@ async function restoreUserSession() {
         }),
       });
       const result = await response.json();
-      if (result.status === "success") userState = saved;
-      else localStorage.removeItem("mrh_user_session");
+      if (result.status === "success") {
+        userState = {
+          ...saved,
+          sessionMode: result.sessionMode || "active",
+          sessionExpiresAt: result.sessionExpiresAt || null,
+          authVersion: (saved.authVersion || 0) + 1,
+        };
+      } else {
+        removeStoredItem("user_session");
+      }
     }
   } catch (e) {
-    localStorage.removeItem("mrh_user_session");
+    removeStoredItem("user_session");
   }
+  setupAuthBroadcast();
   updateProfileUI();
 }
 
@@ -3318,14 +3555,23 @@ function updateProfileUI() {
   }
   const username = document.getElementById("profile-username");
   if (username) username.textContent = userState.username || "";
+
+  const modeLabel = document.getElementById("profile-session-mode");
+  if (modeLabel) {
+    if (!loggedIn) {
+      modeLabel.textContent = "Not signed in";
+    } else if (userState.sessionMode === "guest") {
+      modeLabel.textContent = "Guest mode · read-only";
+    } else {
+      modeLabel.textContent = "Active session";
+    }
+  }
 }
 
 function getProgressPayload() {
   let savedSession = null;
   try {
-    savedSession = JSON.parse(
-      localStorage.getItem("mrh_saved_session") || "null",
-    );
+    savedSession = JSON.parse(getStoredItem("saved_session", "null"));
   } catch (e) {}
   const syncedPrefs = { ...state.prefs };
   delete syncedPrefs.userId;
@@ -3337,23 +3583,17 @@ function getProgressPayload() {
 }
 
 function getProgressMeta() {
-  try {
-    return JSON.parse(localStorage.getItem("mrh_progress_meta") || "{}");
-  } catch (e) {
-    return {};
-  }
+  return getStoredJSON("progress_meta", {});
 }
 
-function setProgressMeta(updatedAt) {
-  progressServerUpdatedAt = updatedAt || "";
-  localStorage.setItem(
-    "mrh_progress_meta",
-    JSON.stringify({
-      username: userState.username,
-      updatedAt: progressServerUpdatedAt,
-      localUpdatedAt: progressServerUpdatedAt,
-    }),
-  );
+function setProgressMeta(updatedAt, serverUpdatedAt = updatedAt || "") {
+  progressServerUpdatedAt = serverUpdatedAt || updatedAt || "";
+  setStoredJSON("progress_meta", {
+    username: userState.username,
+    updatedAt: progressServerUpdatedAt,
+    localUpdatedAt: progressServerUpdatedAt,
+    serverUpdatedAt: progressServerUpdatedAt,
+  });
 }
 
 function clearLocalUserProgress() {
@@ -3370,16 +3610,16 @@ function clearLocalUserProgress() {
     userAnswers: {},
     autoNextTimeout: null,
   };
-  localStorage.removeItem("mrh_stats");
-  localStorage.removeItem("mrh_saved_session");
-  localStorage.removeItem("mrh_progress_meta");
+  removeStoredItem("stats");
+  removeStoredItem("saved_session");
+  removeStoredItem("progress_meta");
 }
 
 function hasLocalProgress() {
   return Boolean(
-    localStorage.getItem("mrh_stats") ||
-    localStorage.getItem("mrh_saved_session") ||
-    localStorage.getItem("mrh_prefs"),
+    getStoredItem("stats") ||
+    getStoredItem("saved_session") ||
+    getStoredItem("prefs"),
   );
 }
 
@@ -3389,7 +3629,7 @@ function applyRemoteProgress(payload, updatedAt) {
   try {
     if (payload.stats && typeof payload.stats === "object") {
       state.stats = payload.stats;
-      localStorage.setItem("mrh_stats", JSON.stringify(state.stats));
+      setStoredJSON("stats", state.stats);
     }
     if (payload.prefs && typeof payload.prefs === "object") {
       state.prefs = {
@@ -3397,15 +3637,12 @@ function applyRemoteProgress(payload, updatedAt) {
         ...payload.prefs,
         userId: state.prefs.userId,
       };
-      localStorage.setItem("mrh_prefs", JSON.stringify(state.prefs));
+      setStoredJSON("prefs", state.prefs);
     }
     if (payload.savedSession) {
-      localStorage.setItem(
-        "mrh_saved_session",
-        JSON.stringify(payload.savedSession),
-      );
+      setStoredJSON("saved_session", payload.savedSession);
     } else {
-      localStorage.removeItem("mrh_saved_session");
+      removeStoredItem("saved_session");
     }
     setProgressMeta(updatedAt);
     updateDashboard();
@@ -3415,30 +3652,105 @@ function applyRemoteProgress(payload, updatedAt) {
   }
 }
 
+function createIdempotencyKey(payload) {
+  const keySeed = `${userState.username || "guest"}:${JSON.stringify(payload)}:${Date.now()}`;
+  return btoa(unescape(encodeURIComponent(keySeed))).replace(/=+$/g, "");
+}
+
+function getPendingOfflineQueue() {
+  try {
+    return JSON.parse(getStoredItem("pending_sync_queue", "[]"));
+  } catch (e) {
+    return [];
+  }
+}
+
+function savePendingOfflineQueue(queue) {
+  setStoredJSON("pending_sync_queue", queue);
+}
+
+function queueOfflineProgress(payload, idempotencyKey) {
+  const queue = getPendingOfflineQueue();
+  queue.push({
+    idempotencyKey,
+    payload,
+    createdAt: new Date().toISOString(),
+    username: userState.username || "guest",
+  });
+  savePendingOfflineQueue(queue);
+}
+
+async function flushPendingOfflineProgress() {
+  if (!userState.isLoggedIn || userState.sessionMode === "guest") return;
+  const queue = getPendingOfflineQueue();
+  if (!queue.length) return;
+  const remaining = [];
+  for (const entry of queue) {
+    const ok = await saveUserProgress(entry.payload, false, {
+      idempotencyKey: entry.idempotencyKey,
+    });
+    if (!ok) remaining.push(entry);
+  }
+  savePendingOfflineQueue(remaining);
+}
+
 async function chooseProgressConflict(
   localPayload,
   remotePayload,
   remoteUpdatedAt,
 ) {
-  const useLocal = await requestConfirmation(
-    "Both this device and the database have changed progress. Choose OK to replace the database with this device's progress. Choose Cancel to use the database progress instead.",
-    "Progress Conflict",
+  if (state.session.active) {
+    const snapshot = {
+      timestamp: new Date().toISOString(),
+      payload: localPayload,
+      source: "recovery",
+    };
+    setStoredJSON("recovery_snapshot", snapshot);
+    showToast(
+      "A progress conflict was detected during the active session. The server copy is being preserved and a recovery snapshot was saved.",
+      "success",
+    );
+    applyRemoteProgress(remotePayload, remoteUpdatedAt);
+    return true;
+  }
+
+  const useLocal = window.confirm(
+    "A newer progress version exists in the database. OK = keep your current device progress and create a backup snapshot before overwriting the remote copy. Cancel = merge with the server progress using server timestamps.",
   );
   if (useLocal) {
+    const snapshot = {
+      timestamp: new Date().toISOString(),
+      payload: localPayload,
+      source: "recovery",
+    };
+    setStoredJSON("recovery_snapshot", snapshot);
+    showToast(
+      "A recovery snapshot was saved before the overwrite. You can restore it later.",
+      "success",
+    );
     return saveUserProgress(localPayload, true);
   }
   applyRemoteProgress(remotePayload, remoteUpdatedAt);
   return true;
 }
 
-async function saveUserProgress(payload = getProgressPayload(), force = false) {
+async function saveUserProgress(
+  payload = getProgressPayload(),
+  force = false,
+  options = {},
+) {
   if (!userState.isLoggedIn || !userState.sessionToken || progressSyncInFlight)
     return false;
+  if (userState.sessionMode === "guest") {
+    return false;
+  }
   progressSyncInFlight = true;
   const syncStatus = document.getElementById("user-sync-status");
   if (syncStatus) syncStatus.textContent = "Saving progress securely...";
   try {
     const meta = getProgressMeta();
+    const idempotencyKey =
+      options.idempotencyKey || createIdempotencyKey(payload);
     const response = await fetch(DB_URL, {
       method: "POST",
       redirect: "follow",
@@ -3447,17 +3759,28 @@ async function saveUserProgress(payload = getProgressPayload(), force = false) {
         type: "save_progress",
         sessionToken: userState.sessionToken,
         progress: payload,
-        baseUpdatedAt: meta.updatedAt || "",
-        deviceUpdatedAt: new Date().toISOString(),
+        baseUpdatedAt: meta.updatedAt || meta.serverUpdatedAt || "",
+        deviceUpdatedAt: meta.serverUpdatedAt || new Date().toISOString(),
         force,
+        idempotencyKey,
       }),
     });
     const result = await response.json();
     if (result.status === "success") {
-      setProgressMeta(result.updatedAt);
+      setProgressMeta(result.updatedAt || result.serverUpdatedAt || "");
+      scheduleOfflineSync();
       if (syncStatus)
         syncStatus.textContent = "Progress synced across devices.";
       return true;
+    }
+    if (result.status === "guest") {
+      userState.sessionMode = "guest";
+      updateProfileUI();
+      showToast(
+        "This account is already active on another device. This device is now read-only.",
+        "error",
+      );
+      return false;
     }
     if (result.status === "conflict") {
       progressSyncInFlight = false;
@@ -3468,6 +3791,11 @@ async function saveUserProgress(payload = getProgressPayload(), force = false) {
     if (syncStatus)
       syncStatus.textContent =
         "Progress sync is unavailable; local progress is saved.";
+    queueOfflineProgress(
+      payload,
+      options.idempotencyKey || createIdempotencyKey(payload),
+    );
+    scheduleOfflineSync();
     sendTelemetry("progress_sync_failure", {
       message: e.message || "Network error",
     });
@@ -3519,26 +3847,39 @@ async function syncUserProgress() {
       return;
     }
 
-    const remoteDeviceTime = Date.parse(
-      result.deviceUpdatedAt || result.updatedAt,
+    const remoteTime = Date.parse(
+      result.updatedAt || result.deviceUpdatedAt || "",
     );
     const localTime = Date.parse(
-      localMeta.localUpdatedAt || localMeta.updatedAt,
+      localMeta.serverUpdatedAt ||
+        localMeta.updatedAt ||
+        localMeta.localUpdatedAt ||
+        "",
     );
-    if (Number.isFinite(localTime) && Number.isFinite(remoteDeviceTime)) {
-      if (localTime > remoteDeviceTime) {
+    if (Number.isFinite(localTime) && Number.isFinite(remoteTime)) {
+      if (localTime > remoteTime) {
         await chooseProgressConflict(
           getProgressPayload(),
           result.payload,
           result.updatedAt,
         );
-      } else if (remoteDeviceTime > localTime) {
-        const useRemote = await requestConfirmation(
-          "A newer progress version is available in the database. Choose OK to use it on this device. Choose Cancel to keep this device's progress and upload it.",
-          "Newer Progress Available",
-        );
-        if (useRemote) applyRemoteProgress(result.payload, result.updatedAt);
-        else await saveUserProgress(getProgressPayload(), true);
+      } else if (remoteTime > localTime) {
+        const useRemote = state.session.active
+          ? true
+          : window.confirm(
+              "A newer progress version is available in the database. OK = use the database copy and keep a recovery snapshot if you want to restore local changes later. Cancel = keep your current device progress and upload it.",
+            );
+        if (useRemote) {
+          const snapshot = {
+            timestamp: new Date().toISOString(),
+            payload: getProgressPayload(),
+            source: "recovery",
+          };
+          setStoredJSON("recovery_snapshot", snapshot);
+          applyRemoteProgress(result.payload, result.updatedAt);
+        } else {
+          await saveUserProgress(getProgressPayload(), true);
+        }
       }
     } else {
       await chooseProgressConflict(
@@ -3591,7 +3932,7 @@ function hideLoginSuggestion() {
 }
 
 function dismissLoginSuggestion() {
-  localStorage.setItem("mrh_login_suggestion_dismissed", "1");
+  setStoredItem("login_suggestion_dismissed", "1");
   hideLoginSuggestion();
 }
 
@@ -3603,7 +3944,7 @@ function openLoginFromSuggestion() {
 function showLoginSuggestion() {
   if (
     userState.isLoggedIn ||
-    localStorage.getItem("mrh_login_suggestion_dismissed") === "1"
+    getStoredItem("login_suggestion_dismissed") === "1"
   )
     return;
 
@@ -3688,7 +4029,8 @@ async function userLogin(username, password) {
         isLoggedIn: true,
         sessionToken: result.sessionToken || "",
       };
-      localStorage.setItem("mrh_user_session", JSON.stringify(userState));
+      setStoredJSON("user_session", userState);
+      broadcastAuthState("login");
       document.getElementById("user-password").value = "";
       document.getElementById("user-login-error")?.classList.add("hidden");
       updateProfileUI();
@@ -3742,7 +4084,8 @@ async function userSignup(username, password) {
         isLoggedIn: true,
         sessionToken: result.sessionToken || "",
       };
-      localStorage.setItem("mrh_user_session", JSON.stringify(userState));
+      setStoredJSON("user_session", userState);
+      broadcastAuthState("signup");
       document.getElementById("signup-password").value = "";
       document.getElementById("signup-password-confirm").value = "";
       updateProfileUI();
@@ -3782,8 +4125,16 @@ async function userLogout() {
     return;
   clearTimeout(progressSyncTimer);
   if (userState.isLoggedIn) await saveUserProgress();
-  userState = { username: "", isLoggedIn: false, sessionToken: "" };
-  localStorage.removeItem("mrh_user_session");
+  userState = {
+    username: "",
+    isLoggedIn: false,
+    sessionToken: "",
+    sessionMode: "active",
+    sessionExpiresAt: null,
+    authVersion: 0,
+  };
+  removeStoredItem("user_session");
+  broadcastAuthState("logout");
   updateProfileUI();
 }
 
