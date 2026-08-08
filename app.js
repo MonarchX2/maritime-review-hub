@@ -196,6 +196,27 @@ function getActiveIdentity() {
   return authenticatedUsername || state.prefs.userId;
 }
 
+async function callBackend(payload, options = {}) {
+  const response = await fetch(DB_URL, {
+    method: "POST",
+    redirect: "follow",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload),
+    ...options,
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(text || `Backend request failed (${response.status})`);
+  }
+
+  try {
+    return await response.json();
+  } catch (error) {
+    return {};
+  }
+}
+
 function sendTelemetry(action, details) {
   const authenticatedUsername =
     typeof userState !== "undefined" && userState.isLoggedIn
@@ -3508,16 +3529,10 @@ async function restoreUserSession() {
   try {
     const saved = JSON.parse(getStoredItem("user_session", "null"));
     if (saved?.username && saved?.sessionToken) {
-      const response = await fetch(DB_URL, {
-        method: "POST",
-        redirect: "follow",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({
-          type: "verify_session",
-          sessionToken: saved.sessionToken,
-        }),
+      const result = await callBackend({
+        type: "verify_session",
+        sessionToken: saved.sessionToken,
       });
-      const result = await response.json();
       if (result.status === "success") {
         userState = {
           ...saved,
@@ -3534,6 +3549,28 @@ async function restoreUserSession() {
   }
   setupAuthBroadcast();
   updateProfileUI();
+}
+
+function getProfileSyncSummary() {
+  const stats = state.stats || {};
+  const answered = Number(stats.totalAnswered || 0);
+  const correct = Number(stats.correct || 0);
+  const mistakes = Array.isArray(stats.mistakes) ? stats.mistakes.length : 0;
+  const pendingQueue = getPendingOfflineQueue().length;
+  const syncedItems = [
+    getStoredItem("stats") !== null ? "progress" : null,
+    getStoredItem("prefs") !== null ? "preferences" : null,
+    getStoredItem("saved_session") !== null ? "saved session" : null,
+  ].filter(Boolean);
+
+  return {
+    answered,
+    correct,
+    mistakes,
+    pendingQueue,
+    syncedItems,
+    storageIdentity: getSafeStorageIdentity(),
+  };
 }
 
 function updateProfileUI() {
@@ -3566,6 +3603,57 @@ function updateProfileUI() {
       modeLabel.textContent = "Active session";
     }
   }
+
+  const noticeLabel = document.getElementById("profile-login-notice");
+  if (noticeLabel) {
+    noticeLabel.textContent = loggedIn
+      ? `Logged in as ${userState.username || "your account"}`
+      : "Login to sync your progress.";
+  }
+
+  const syncStatusEl = document.getElementById("user-sync-status");
+  if (syncStatusEl) {
+    if (!loggedIn) {
+      syncStatusEl.textContent = "Login to sync progress between devices.";
+    } else if (userState.sessionMode === "guest") {
+      syncStatusEl.textContent = "Guest mode · your changes stay local.";
+    } else {
+      const summary = getProfileSyncSummary();
+      syncStatusEl.textContent = `Connected. Checked ${summary.answered} answered questions and ${summary.pendingQueue} pending offline change${summary.pendingQueue === 1 ? "" : "s"}.`;
+    }
+  }
+
+  const detailsPanel = document.getElementById("profile-sync-details");
+  const badgeEl = document.getElementById("profile-sync-badge");
+  if (detailsPanel) {
+    detailsPanel.hidden = !loggedIn;
+  }
+  if (badgeEl) {
+    badgeEl.textContent = loggedIn
+      ? userState.sessionMode === "guest"
+        ? "Guest"
+        : "Ready"
+      : "Offline";
+  }
+
+  if (loggedIn) {
+    const summary = getProfileSyncSummary();
+    const answeredEl = document.getElementById("profile-stat-answered");
+    const correctEl = document.getElementById("profile-stat-correct");
+    const mistakesEl = document.getElementById("profile-stat-mistakes");
+    const queueEl = document.getElementById("profile-stat-queue");
+    const dataEl = document.getElementById("profile-stat-data");
+
+    if (answeredEl) answeredEl.textContent = summary.answered;
+    if (correctEl) correctEl.textContent = summary.correct;
+    if (mistakesEl) mistakesEl.textContent = summary.mistakes;
+    if (queueEl) queueEl.textContent = summary.pendingQueue;
+    if (dataEl) {
+      dataEl.textContent = summary.syncedItems.length
+        ? summary.syncedItems.join(", ")
+        : "none yet";
+    }
+  }
 }
 
 function getProgressPayload() {
@@ -3576,9 +3664,38 @@ function getProgressPayload() {
   const syncedPrefs = { ...state.prefs };
   delete syncedPrefs.userId;
   return {
-    stats: state.stats,
+    version: 2,
+    stats: {
+      ...state.stats,
+      completedQs: Array.isArray(state.stats.completedQs)
+        ? [...state.stats.completedQs]
+        : [],
+      mistakes: Array.isArray(state.stats.mistakes)
+        ? [...state.stats.mistakes]
+        : [],
+      subjectAccuracy: state.stats.subjectAccuracy || {},
+    },
     prefs: syncedPrefs,
     savedSession,
+    deckState: {
+      downloadedDecks: Array.isArray(state.db)
+        ? [...new Set((state.db || []).map((q) => q.Subject).filter(Boolean))]
+        : [],
+      archivedDecks: Array.isArray(state.prefs.archivedDecks)
+        ? [...state.prefs.archivedDecks]
+        : [],
+      studyProgress: state.prefs.studyProgress || {},
+      qToggles: state.prefs.qToggles || {},
+      lastActivity: state.prefs.lastActivity || null,
+    },
+    localState: {
+      categorySummary: Array.isArray(state.categorySummary)
+        ? state.categorySummary
+        : [],
+      currentPath: Array.isArray(state.currentPath) ? state.currentPath : [],
+      appMode: typeof currentAppMode === "string" ? currentAppMode : null,
+      dbSize: Array.isArray(state.db) ? state.db.length : 0,
+    },
   };
 }
 
@@ -3628,7 +3745,17 @@ function applyRemoteProgress(payload, updatedAt) {
   suppressProgressSync = true;
   try {
     if (payload.stats && typeof payload.stats === "object") {
-      state.stats = payload.stats;
+      state.stats = {
+        totalAnswered: Number(payload.stats.totalAnswered || 0),
+        correct: Number(payload.stats.correct || 0),
+        mistakes: Array.isArray(payload.stats.mistakes)
+          ? payload.stats.mistakes
+          : [],
+        completedQs: Array.isArray(payload.stats.completedQs)
+          ? payload.stats.completedQs
+          : [],
+        subjectAccuracy: payload.stats.subjectAccuracy || {},
+      };
       setStoredJSON("stats", state.stats);
     }
     if (payload.prefs && typeof payload.prefs === "object") {
@@ -3638,6 +3765,33 @@ function applyRemoteProgress(payload, updatedAt) {
         userId: state.prefs.userId,
       };
       setStoredJSON("prefs", state.prefs);
+    }
+    if (payload.deckState && typeof payload.deckState === "object") {
+      if (Array.isArray(payload.deckState.archivedDecks)) {
+        state.prefs.archivedDecks = payload.deckState.archivedDecks;
+      }
+      if (payload.deckState.studyProgress) {
+        state.prefs.studyProgress = payload.deckState.studyProgress;
+      }
+      if (payload.deckState.qToggles) {
+        state.prefs.qToggles = payload.deckState.qToggles;
+      }
+      if (payload.deckState.lastActivity) {
+        state.prefs.lastActivity = payload.deckState.lastActivity;
+      }
+      setStoredJSON("prefs", state.prefs);
+    }
+    if (payload.localState && typeof payload.localState === "object") {
+      if (Array.isArray(payload.localState.categorySummary)) {
+        state.categorySummary = payload.localState.categorySummary;
+        setStoredJSON("summary", state.categorySummary);
+      }
+      if (Array.isArray(payload.localState.currentPath)) {
+        state.currentPath = payload.localState.currentPath;
+      }
+      if (payload.localState.appMode) {
+        currentAppMode = payload.localState.appMode;
+      }
     }
     if (payload.savedSession) {
       setStoredJSON("saved_session", payload.savedSession);
@@ -3714,8 +3868,9 @@ async function chooseProgressConflict(
     return true;
   }
 
-  const useLocal = window.confirm(
-    "A newer progress version exists in the database. OK = keep your current device progress and create a backup snapshot before overwriting the remote copy. Cancel = merge with the server progress using server timestamps.",
+  const useLocal = await requestConfirmation(
+    "A newer progress version exists in the database. Choose OK to keep your current device progress and create a backup snapshot before overwriting the remote copy. Choose Cancel to merge with the server progress using server timestamps.",
+    "Sync Conflict",
   );
   if (useLocal) {
     const snapshot = {
@@ -3751,26 +3906,21 @@ async function saveUserProgress(
     const meta = getProgressMeta();
     const idempotencyKey =
       options.idempotencyKey || createIdempotencyKey(payload);
-    const response = await fetch(DB_URL, {
-      method: "POST",
-      redirect: "follow",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({
-        type: "save_progress",
-        sessionToken: userState.sessionToken,
-        progress: payload,
-        baseUpdatedAt: meta.updatedAt || meta.serverUpdatedAt || "",
-        deviceUpdatedAt: meta.serverUpdatedAt || new Date().toISOString(),
-        force,
-        idempotencyKey,
-      }),
+    const result = await callBackend({
+      type: "save_progress",
+      sessionToken: userState.sessionToken,
+      progress: payload,
+      baseUpdatedAt: meta.updatedAt || meta.serverUpdatedAt || "",
+      deviceUpdatedAt: meta.serverUpdatedAt || new Date().toISOString(),
+      force,
+      idempotencyKey,
     });
-    const result = await response.json();
     if (result.status === "success") {
       setProgressMeta(result.updatedAt || result.serverUpdatedAt || "");
       scheduleOfflineSync();
       if (syncStatus)
         syncStatus.textContent = "Progress synced across devices.";
+      updateProfileUI();
       return true;
     }
     if (result.status === "guest") {
@@ -3791,6 +3941,7 @@ async function saveUserProgress(
     if (syncStatus)
       syncStatus.textContent =
         "Progress sync is unavailable; local progress is saved.";
+    updateProfileUI();
     queueOfflineProgress(
       payload,
       options.idempotencyKey || createIdempotencyKey(payload),
@@ -3820,22 +3971,17 @@ async function syncUserProgress() {
   const syncStatus = document.getElementById("user-sync-status");
   if (syncStatus) syncStatus.textContent = "Checking for newer progress...";
   try {
-    const response = await fetch(DB_URL, {
-      method: "POST",
-      redirect: "follow",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({
-        type: "get_progress",
-        sessionToken: userState.sessionToken,
-      }),
+    const result = await callBackend({
+      type: "get_progress",
+      sessionToken: userState.sessionToken,
     });
-    const result = await response.json();
     if (result.status !== "success") return;
 
     if (!result.exists) {
       if (hasLocalProgress()) await saveUserProgress();
       else if (syncStatus)
         syncStatus.textContent = "Progress syncing is ready.";
+      updateProfileUI();
       return;
     }
 
@@ -3844,6 +3990,7 @@ async function syncUserProgress() {
       applyRemoteProgress(result.payload, result.updatedAt);
       if (syncStatus)
         syncStatus.textContent = "Database progress loaded on this device.";
+      updateProfileUI();
       return;
     }
 
@@ -3866,8 +4013,9 @@ async function syncUserProgress() {
       } else if (remoteTime > localTime) {
         const useRemote = state.session.active
           ? true
-          : window.confirm(
-              "A newer progress version is available in the database. OK = use the database copy and keep a recovery snapshot if you want to restore local changes later. Cancel = keep your current device progress and upload it.",
+          : await requestConfirmation(
+              "A newer progress version is available in the database. Choose OK to use the database copy and keep a recovery snapshot if you want to restore local changes later. Choose Cancel to keep your current device progress and upload it.",
+              "Sync Conflict",
             );
         if (useRemote) {
           const snapshot = {
@@ -3877,6 +4025,7 @@ async function syncUserProgress() {
           };
           setStoredJSON("recovery_snapshot", snapshot);
           applyRemoteProgress(result.payload, result.updatedAt);
+          updateProfileUI();
         } else {
           await saveUserProgress(getProgressPayload(), true);
         }
@@ -3952,12 +4101,14 @@ function showLoginSuggestion() {
   const timer = document.getElementById("login-suggestion-timer");
   if (!suggestion || !timer) return;
 
+  clearTimeout(window.loginSuggestionTimer);
   suggestion.classList.remove("login-suggestion-hidden");
-  timer.style.transition = "transform 8s linear";
+  timer.style.transition = "none";
   timer.style.transform = "scaleX(1)";
-  window.requestAnimationFrame(() => {
-    timer.style.transform = "scaleX(0)";
-  });
+  timer.style.width = "100%";
+  void timer.offsetWidth;
+  timer.style.transition = "transform 8s linear";
+  timer.style.transform = "scaleX(0)";
   window.loginSuggestionTimer = setTimeout(hideLoginSuggestion, 8000);
 }
 
@@ -4010,18 +4161,11 @@ async function userLogin(username, password) {
   }
 
   try {
-    const response = await fetch(DB_URL, {
-      method: "POST",
-      redirect: "follow",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({
-        type: "verify_user",
-        username: username,
-        password: password,
-      }),
+    const result = await callBackend({
+      type: "verify_user",
+      username: username,
+      password: password,
     });
-
-    const result = await response.json();
 
     if (result.status === "success") {
       userState = {
@@ -4067,17 +4211,11 @@ async function userSignup(username, password) {
   }
 
   try {
-    const response = await fetch(DB_URL, {
-      method: "POST",
-      redirect: "follow",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({
-        type: "signup_user",
-        username,
-        password,
-      }),
+    const result = await callBackend({
+      type: "signup_user",
+      username,
+      password,
     });
-    const result = await response.json();
     if (result.status === "success") {
       userState = {
         username,
