@@ -73,8 +73,24 @@ function generateUserId() {
   return "user_" + Math.random().toString(36).substring(2, 15);
 }
 
+function getPersistentStorageIdentity() {
+  try {
+    const stored = localStorage.getItem("mrh_storage_identity");
+    if (stored) return stored;
+  } catch (e) {}
+
+  const generated = `device_${generateUserId()}`;
+  try {
+    localStorage.setItem("mrh_storage_identity", generated);
+  } catch (e) {}
+  return generated;
+}
+
 if (!state.prefs.userId) {
   state.prefs.userId = generateUserId();
+  try {
+    localStorage.setItem("mrh_user_id", state.prefs.userId);
+  } catch (e) {}
 }
 
 function getSafeStorageIdentity() {
@@ -82,7 +98,18 @@ function getSafeStorageIdentity() {
     typeof userState !== "undefined" && userState.username
       ? userState.username
       : "";
-  const rawIdentity = username || state?.prefs?.userId || "guest";
+  if (username) {
+    return String(username).replace(/[^a-zA-Z0-9_-]/g, "_") || "guest";
+  }
+
+  if (!state?.prefs?.storageIdentity) {
+    state.prefs.storageIdentity = getPersistentStorageIdentity();
+  }
+  const rawIdentity =
+    state?.prefs?.storageIdentity ||
+    localStorage.getItem("mrh_storage_identity") ||
+    state?.prefs?.userId ||
+    "guest";
   return String(rawIdentity).replace(/[^a-zA-Z0-9_-]/g, "_") || "guest";
 }
 
@@ -127,6 +154,37 @@ function getStoredJSON(key, fallback = null) {
 
 function setStoredJSON(key, value) {
   setStoredItem(key, JSON.stringify(value));
+}
+
+function getSessionStoredItem(key, fallback = null) {
+  const namespacedValue = sessionStorage.getItem(getStorageKey(key));
+  if (namespacedValue !== null) return namespacedValue;
+  const legacyValue = sessionStorage.getItem(getLegacyStorageKey(key));
+  if (legacyValue !== null) return legacyValue;
+  return fallback;
+}
+
+function setSessionStoredItem(key, value) {
+  sessionStorage.setItem(getStorageKey(key), value);
+}
+
+function removeSessionStoredItem(key) {
+  sessionStorage.removeItem(getStorageKey(key));
+  sessionStorage.removeItem(getLegacyStorageKey(key));
+}
+
+function getSessionStoredJSON(key, fallback = null) {
+  try {
+    const stored = getSessionStoredItem(key);
+    if (stored === null || stored === undefined) return fallback;
+    return JSON.parse(stored);
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function setSessionStoredJSON(key, value) {
+  setSessionStoredItem(key, JSON.stringify(value));
 }
 
 function migrateLegacyStorageKeys() {
@@ -197,23 +255,37 @@ function getActiveIdentity() {
 }
 
 async function callBackend(payload, options = {}) {
-  const response = await fetch(DB_URL, {
-    method: "POST",
-    redirect: "follow",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(payload),
-    ...options,
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(text || `Backend request failed (${response.status})`);
-  }
+  const timeoutMs = options.timeoutMs || 20000;
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    return await response.json();
+    const response = await fetch(DB_URL, {
+      method: "POST",
+      redirect: "follow",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+      ...options,
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(text || `Backend request failed (${response.status})`);
+    }
+
+    try {
+      return await response.json();
+    } catch (error) {
+      return {};
+    }
   } catch (error) {
-    return {};
+    if (error?.name === "AbortError") {
+      throw new Error("The request timed out. Please try again.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -332,6 +404,47 @@ function decodeHandlerValue(value) {
   } catch (error) {
     return value;
   }
+}
+
+const actionLocks = {};
+
+function runWithActionLock(lockKey, action) {
+  if (actionLocks[lockKey]) {
+    return Promise.resolve(false);
+  }
+  actionLocks[lockKey] = true;
+  return Promise.resolve()
+    .then(action)
+    .finally(() => {
+      delete actionLocks[lockKey];
+    });
+}
+
+async function runWithBusyButton(button, loadingText, action) {
+  if (!button) {
+    return action();
+  }
+
+  const previousHtml = button.innerHTML;
+  const previousDisabled = button.disabled;
+  button.dataset.originalHtml = previousHtml;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> ${loadingText}`;
+
+  try {
+    return await action();
+  } finally {
+    button.disabled = previousDisabled;
+    button.removeAttribute("aria-busy");
+    button.innerHTML = previousHtml;
+  }
+}
+
+function setInlineError(element, message) {
+  if (!element) return;
+  element.textContent = message || "";
+  element.classList.toggle("hidden", !message);
 }
 
 async function loadState() {
@@ -1158,6 +1271,36 @@ function goToPath(index) {
   renderCategoryProgress();
 }
 
+function getSubjectProgressStats(
+  subject,
+  subjectIdsBySubject,
+  completedSet,
+  mistakesSet,
+) {
+  const subjectIds = subjectIdsBySubject?.get(subject) || [];
+  const totalQuestionsInDb = subjectIds.length;
+  const completedCount = subjectIds.reduce((count, id) => {
+    return count + (completedSet?.has(id) ? 1 : 0);
+  }, 0);
+  const mistakesCount = subjectIds.reduce((count, id) => {
+    return count + (mistakesSet?.has(id) ? 1 : 0);
+  }, 0);
+  const progressPercent =
+    totalQuestionsInDb > 0
+      ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100))
+      : 0;
+  const isCompleted =
+    totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
+
+  return {
+    completedCount,
+    mistakesCount,
+    totalQuestionsInDb,
+    progressPercent,
+    isCompleted,
+  };
+}
+
 function renderCategoryProgress() {
   const container = document.getElementById("category-list");
   const isGrid = state.prefs.layoutMode === "grid";
@@ -1167,6 +1310,16 @@ function renderCategoryProgress() {
       ? "fa-solid fa-list text-brand-500"
       : "fa-solid fa-table-cells text-brand-500";
   }
+  const completedSet = new Set(state.stats?.completedQs || []);
+  const mistakesSet = new Set(state.stats?.mistakes || []);
+  const subjectIdsBySubject = new Map();
+  (state.db || []).forEach((question) => {
+    if (!question?.Subject) return;
+    const subjectIds = subjectIdsBySubject.get(question.Subject) || [];
+    subjectIds.push(question.ID);
+    subjectIdsBySubject.set(question.Subject, subjectIds);
+  });
+
   let tree = {};
   if (state.categorySummary && state.categorySummary.length > 0) {
     state.categorySummary.forEach((cat) => {
@@ -1355,21 +1508,16 @@ function renderCategoryProgress() {
     }
 
     const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 };
-    const dbQsForSubj = state.db
-      .filter((q) => q.Subject === subj)
-      .map((q) => q.ID);
-    const completedCount = state.stats.completedQs
-      ? state.stats.completedQs.filter((id) => dbQsForSubj.includes(id)).length
-      : 0;
-    const mistakesCount = state.stats.mistakes
-      ? state.stats.mistakes.filter((id) => dbQsForSubj.includes(id)).length
-      : 0;
-    const progressPercent =
-      totalQuestionsInDb > 0
-        ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100))
-        : 0;
-    const isCompleted =
-      totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
+    const progressStats = getSubjectProgressStats(
+      subj,
+      subjectIdsBySubject,
+      completedSet,
+      mistakesSet,
+    );
+    const completedCount = progressStats.completedCount;
+    const mistakesCount = progressStats.mistakesCount;
+    const progressPercent = progressStats.progressPercent;
+    const isCompleted = progressStats.isCompleted;
     const cardClasses = isCompleted
       ? "bg-green-50 dark:bg-green-900/30 border-green-300"
       : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700";
@@ -1937,8 +2085,12 @@ function renderDeckReview(subject, questions) {
 
   if (state.prefs.reviewNavigationPosition === "top") html += navigationHTML;
 
-  displayQuestions.forEach((q) => {
-    let originalIndex = questions.indexOf(q);
+  const questionIndexById = new Map(
+    questions.map((question, index) => [question.ID, index]),
+  );
+
+  displayQuestions.forEach((q, displayIndex) => {
+    const originalIndex = questionIndexById.get(q.ID) ?? displayIndex;
 
     let rawQuestionText = q.Question ? String(q.Question) : "";
     let cleanQuestionText = rawQuestionText.replace(/^\s*\d+\.\s*/, "");
@@ -2882,10 +3034,10 @@ function openReportModal() {
 
   let reportedQs = [];
   try {
-    reportedQs = JSON.parse(localStorage.getItem("mrh_reported_qs") || "[]");
+    reportedQs = JSON.parse(getStoredItem("reported_qs", "[]"));
   } catch (e) {
     console.warn("Reported QS array corrupted. Resetting.", e);
-    localStorage.setItem("mrh_reported_qs", "[]");
+    setStoredItem("reported_qs", "[]");
   }
 
   if (reportedQs.includes(q.ID)) {
@@ -3040,10 +3192,10 @@ function openReportModalFromStudy(questionId) {
 
   let reportedQs = [];
   try {
-    reportedQs = JSON.parse(localStorage.getItem("mrh_reported_qs") || "[]");
+    reportedQs = JSON.parse(getStoredItem("reported_qs", "[]"));
   } catch (e) {
     console.warn("Reported QS array corrupted. Resetting.", e);
-    localStorage.setItem("mrh_reported_qs", "[]");
+    setStoredItem("reported_qs", "[]");
   }
 
   if (reportedQs.includes(q.ID)) {
@@ -3119,11 +3271,9 @@ async function submitReport() {
     const result = await response.json();
 
     if (result.status === "success") {
-      const reportedQs = JSON.parse(
-        localStorage.getItem("mrh_reported_qs") || "[]",
-      );
+      const reportedQs = JSON.parse(getStoredItem("reported_qs", "[]"));
       reportedQs.push(q.ID);
-      localStorage.setItem("mrh_reported_qs", JSON.stringify(reportedQs));
+      setStoredItem("reported_qs", JSON.stringify(reportedQs));
 
       btn.innerHTML =
         '<i class="fa-solid fa-check mr-2"></i> Report Submitted!';
@@ -3428,7 +3578,6 @@ function getAuthStateSnapshot() {
   return {
     username: userState.username || "",
     isLoggedIn: userState.isLoggedIn === true,
-    sessionToken: userState.sessionToken || "",
     sessionMode: userState.sessionMode || "active",
     sessionExpiresAt: userState.sessionExpiresAt || null,
     authVersion: (userState.authVersion || 0) + 1,
@@ -3436,38 +3585,49 @@ function getAuthStateSnapshot() {
   };
 }
 
+function resetClientSession(reason = "auth") {
+  userState = {
+    username: "",
+    isLoggedIn: false,
+    sessionToken: "",
+    sessionMode: "active",
+    sessionExpiresAt: null,
+    authVersion: (userState.authVersion || 0) + 1,
+  };
+  removeSessionStoredItem("user_session");
+  updateProfileUI();
+  if (reason !== "bootstrap") {
+    showToast("Your session was cleared on this device.", "error");
+  }
+}
+
 function applyAuthStateSnapshot(snapshot, source = "broadcast") {
-  if (!snapshot || !snapshot.isLoggedIn) return;
+  if (!snapshot) return false;
+  const snapshotIdentity = snapshot.identity || "";
+  if (snapshotIdentity && snapshotIdentity !== getSafeStorageIdentity()) {
+    if (userState.isLoggedIn || snapshot.isLoggedIn) {
+      resetClientSession("identity");
+      showToast(
+        "An account switch was detected. This tab is now in guest mode.",
+        "error",
+      );
+    }
+    return true;
+  }
+  if (!snapshot.isLoggedIn) {
+    if (userState.isLoggedIn) {
+      resetClientSession("logout");
+    }
+    return true;
+  }
   const isConflict =
     userState.isLoggedIn &&
     snapshot.username &&
     snapshot.username !== userState.username;
   if (isConflict) {
-    userState = {
-      ...userState,
-      isLoggedIn: false,
-      sessionToken: "",
-      sessionMode: "guest",
-      authVersion: (userState.authVersion || 0) + 1,
-    };
-    updateProfileUI();
+    resetClientSession("conflict");
     showToast(
       "Another account is active in another tab. This tab was switched to guest mode.",
-      "error",
-    );
-    return true;
-  }
-  if (snapshot.identity && snapshot.identity !== getSafeStorageIdentity()) {
-    userState = {
-      ...userState,
-      isLoggedIn: false,
-      sessionToken: "",
-      sessionMode: "guest",
-      authVersion: (userState.authVersion || 0) + 1,
-    };
-    updateProfileUI();
-    showToast(
-      "An account switch was detected. This tab is now in guest mode.",
       "error",
     );
     return true;
@@ -3475,11 +3635,21 @@ function applyAuthStateSnapshot(snapshot, source = "broadcast") {
   return false;
 }
 
+function getAuthBroadcastChannelName() {
+  return `mrh_auth_${getSafeStorageIdentity()}`;
+}
+
 function broadcastAuthState(reason = "state") {
   const snapshot = getAuthStateSnapshot();
+  const authStateKey = getStorageKey("auth_state");
   if (typeof BroadcastChannel !== "undefined") {
-    if (!authChannel) {
-      authChannel = new BroadcastChannel("mrh_auth");
+    if (!authChannel || authChannel.name !== getAuthBroadcastChannelName()) {
+      if (authChannel) {
+        try {
+          authChannel.close();
+        } catch (e) {}
+      }
+      authChannel = new BroadcastChannel(getAuthBroadcastChannelName());
       authChannel.onmessage = (event) => {
         const payload = event.data || {};
         if (payload.identity && payload.identity === getSafeStorageIdentity())
@@ -3490,32 +3660,38 @@ function broadcastAuthState(reason = "state") {
     authChannel.postMessage({ ...snapshot, reason });
   }
   try {
-    localStorage.setItem(
-      "mrh_auth_state",
-      JSON.stringify({ ...snapshot, reason }),
-    );
+    localStorage.setItem(authStateKey, JSON.stringify({ ...snapshot, reason }));
   } catch (e) {}
 }
 
 function setupAuthBroadcast() {
   if (typeof BroadcastChannel === "undefined") return;
-  if (authChannel) return;
-  authChannel = new BroadcastChannel("mrh_auth");
+  if (authChannel && authChannel.name === getAuthBroadcastChannelName()) return;
+  if (authChannel) {
+    try {
+      authChannel.close();
+    } catch (e) {}
+    authChannel = null;
+  }
+  authChannel = new BroadcastChannel(getAuthBroadcastChannelName());
   authChannel.onmessage = (event) => {
     const payload = event.data || {};
     if (payload.identity && payload.identity === getSafeStorageIdentity())
       return;
     applyAuthStateSnapshot(payload, "broadcast");
   };
-  window.addEventListener("storage", (event) => {
-    if (event.key !== "mrh_auth_state" || !event.newValue) return;
-    try {
-      const payload = JSON.parse(event.newValue);
-      if (payload.identity && payload.identity === getSafeStorageIdentity())
-        return;
-      applyAuthStateSnapshot(payload, "storage");
-    } catch (e) {}
-  });
+  if (!window.__mrhAuthStorageHandler) {
+    window.__mrhAuthStorageHandler = (event) => {
+      if (event.key !== getStorageKey("auth_state") || !event.newValue) return;
+      try {
+        const payload = JSON.parse(event.newValue);
+        if (payload.identity && payload.identity === getSafeStorageIdentity())
+          return;
+        applyAuthStateSnapshot(payload, "storage");
+      } catch (e) {}
+    };
+    window.addEventListener("storage", window.__mrhAuthStorageHandler);
+  }
 }
 
 function scheduleOfflineSync() {
@@ -3527,25 +3703,62 @@ function scheduleOfflineSync() {
 
 async function restoreUserSession() {
   try {
-    const saved = JSON.parse(getStoredItem("user_session", "null"));
+    const saved = JSON.parse(getSessionStoredItem("user_session", "null"));
     if (saved?.username && saved?.sessionToken) {
       const result = await callBackend({
         type: "verify_session",
         sessionToken: saved.sessionToken,
       });
+      const isExpiredSession =
+        result?.status === "error" &&
+        /session expired|log in again|unauthorized/i.test(
+          result?.message || "",
+        );
       if (result.status === "success") {
         userState = {
-          ...saved,
-          sessionMode: result.sessionMode || "active",
-          sessionExpiresAt: result.sessionExpiresAt || null,
+          username: result.username || saved.username || "",
+          isLoggedIn: true,
+          sessionToken: saved.sessionToken || "",
+          sessionMode: result.sessionMode || saved.sessionMode || "active",
+          sessionExpiresAt:
+            result.sessionExpiresAt || saved.sessionExpiresAt || null,
           authVersion: (saved.authVersion || 0) + 1,
         };
+      } else if (isExpiredSession) {
+        userState = {
+          username: "",
+          isLoggedIn: false,
+          sessionToken: "",
+          sessionMode: "active",
+          sessionExpiresAt: null,
+          authVersion: 0,
+        };
+        removeSessionStoredItem("user_session");
       } else {
-        removeStoredItem("user_session");
+        userState = {
+          username: result.username || saved.username || "",
+          isLoggedIn: true,
+          sessionToken: saved.sessionToken || "",
+          sessionMode: saved.sessionMode || "active",
+          sessionExpiresAt: saved.sessionExpiresAt || null,
+          authVersion: (saved.authVersion || 0) + 1,
+        };
       }
     }
   } catch (e) {
-    removeStoredItem("user_session");
+    const savedFallback = JSON.parse(
+      getSessionStoredItem("user_session", "null"),
+    );
+    if (savedFallback?.username && savedFallback?.sessionToken) {
+      userState = {
+        ...savedFallback,
+        isLoggedIn: true,
+        sessionToken: savedFallback.sessionToken || "",
+        sessionMode: savedFallback.sessionMode || "active",
+        sessionExpiresAt: savedFallback.sessionExpiresAt || null,
+        authVersion: (savedFallback.authVersion || 0) + 1,
+      };
+    }
   }
   setupAuthBroadcast();
   updateProfileUI();
@@ -3656,6 +3869,31 @@ function updateProfileUI() {
   }
 }
 
+function normalizeProgressPayloadForComparison(value) {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeProgressPayloadForComparison(item));
+  }
+  if (typeof value === "object") {
+    const normalized = {};
+    Object.keys(value)
+      .sort()
+      .forEach((key) => {
+        normalized[key] = normalizeProgressPayloadForComparison(value[key]);
+      });
+    return normalized;
+  }
+  return value;
+}
+
+function areProgressPayloadsEquivalent(localPayload, remotePayload) {
+  if (!localPayload || !remotePayload) return false;
+  return (
+    JSON.stringify(normalizeProgressPayloadForComparison(localPayload)) ===
+    JSON.stringify(normalizeProgressPayloadForComparison(remotePayload))
+  );
+}
+
 function getProgressPayload() {
   let savedSession = null;
   try {
@@ -3727,9 +3965,14 @@ function clearLocalUserProgress() {
     userAnswers: {},
     autoNextTimeout: null,
   };
+  state.prefs.studyProgress = {};
+  state.prefs.qToggles = {};
+  state.prefs.lastActivity = null;
   removeStoredItem("stats");
   removeStoredItem("saved_session");
   removeStoredItem("progress_meta");
+  removeStoredItem("pending_sync_queue");
+  removeStoredItem("recovery_snapshot");
 }
 
 function hasLocalProgress() {
@@ -3853,6 +4096,11 @@ async function chooseProgressConflict(
   remotePayload,
   remoteUpdatedAt,
 ) {
+  if (areProgressPayloadsEquivalent(localPayload, remotePayload)) {
+    applyRemoteProgress(remotePayload, remoteUpdatedAt);
+    return true;
+  }
+
   if (state.session.active) {
     const snapshot = {
       timestamp: new Date().toISOString(),
@@ -3966,6 +4214,25 @@ async function syncUserProgress() {
   if (!userState.isLoggedIn || !userState.sessionToken) return;
   const existingMeta = getProgressMeta();
   if (existingMeta.username && existingMeta.username !== userState.username) {
+    const snapshot = {
+      timestamp: new Date().toISOString(),
+      payload: getProgressPayload(),
+      source: "account-switch",
+    };
+    setStoredJSON("recovery_snapshot", snapshot);
+    const useRemote = await requestConfirmation(
+      "This device already has local progress for a different account. Choose OK to keep the server copy for the current account and preserve the old local progress as a recovery snapshot. Choose Cancel to keep the current local progress and avoid replacing it.",
+      "Account Switch",
+    );
+    if (!useRemote) {
+      const syncStatus = document.getElementById("user-sync-status");
+      if (syncStatus) {
+        syncStatus.textContent =
+          "Local progress for the previous account was preserved.";
+      }
+      updateProfileUI();
+      return;
+    }
     clearLocalUserProgress();
   }
   const syncStatus = document.getElementById("user-sync-status");
@@ -3990,6 +4257,14 @@ async function syncUserProgress() {
       applyRemoteProgress(result.payload, result.updatedAt);
       if (syncStatus)
         syncStatus.textContent = "Database progress loaded on this device.";
+      updateProfileUI();
+      return;
+    }
+
+    if (areProgressPayloadsEquivalent(getProgressPayload(), result.payload)) {
+      applyRemoteProgress(result.payload, result.updatedAt);
+      if (syncStatus)
+        syncStatus.textContent = "Progress is already up to date.";
       updateProfileUI();
       return;
     }
@@ -4154,103 +4429,94 @@ async function submitUserSignup() {
 
 async function userLogin(username, password) {
   const btn = document.getElementById("btn-user-login");
-  if (btn) {
-    btn.innerHTML =
-      '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Verifying...';
-    btn.disabled = true;
-  }
+  const errorEl = document.getElementById("user-login-error");
 
-  try {
-    const result = await callBackend({
-      type: "verify_user",
-      username: username,
-      password: password,
-    });
+  return runWithActionLock("user-login", async () => {
+    await runWithBusyButton(btn, "Verifying...", async () => {
+      try {
+        const result = await callBackend({
+          type: "verify_user",
+          username,
+          password,
+        });
 
-    if (result.status === "success") {
-      userState = {
-        username,
-        isLoggedIn: true,
-        sessionToken: result.sessionToken || "",
-      };
-      setStoredJSON("user_session", userState);
-      broadcastAuthState("login");
-      document.getElementById("user-password").value = "";
-      document.getElementById("user-login-error")?.classList.add("hidden");
-      updateProfileUI();
-      hideLoginSuggestion();
-      sendTelemetry("user_login", { username });
-      syncUserProgress().catch((error) =>
-        console.error("Background progress sync failed.", error),
-      );
-    } else {
-      const errorEl = document.getElementById("user-login-error");
-      if (errorEl) {
-        errorEl.textContent =
-          result.message || "Incorrect username or password.";
-        errorEl.classList.remove("hidden");
+        if (result.status === "success") {
+          userState = {
+            username,
+            isLoggedIn: true,
+            sessionToken: result.sessionToken || "",
+            sessionMode: result.sessionMode || "active",
+            sessionExpiresAt: result.sessionExpiresAt || null,
+            authVersion: (userState.authVersion || 0) + 1,
+          };
+          setSessionStoredJSON("user_session", userState);
+          broadcastAuthState("login");
+          document.getElementById("user-password").value = "";
+          setInlineError(errorEl, "");
+          updateProfileUI();
+          hideLoginSuggestion();
+          sendTelemetry("user_login", { username });
+          syncUserProgress().catch((error) =>
+            console.error("Background progress sync failed.", error),
+          );
+        } else {
+          setInlineError(
+            errorEl,
+            result.message || "Incorrect username or password.",
+          );
+        }
+      } catch (e) {
+        console.error(e);
+        setInlineError(errorEl, "Network error while verifying user.");
       }
-    }
-  } catch (e) {
-    alert("Network error while verifying user.");
-    console.error(e);
-  } finally {
-    if (btn) {
-      btn.innerHTML = "Login";
-      btn.disabled = false;
-    }
-  }
+    });
+  });
 }
 
 async function userSignup(username, password) {
   const btn = document.getElementById("btn-user-signup");
-  if (btn) {
-    btn.innerHTML =
-      '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Creating...';
-    btn.disabled = true;
-  }
+  const errorEl = document.getElementById("user-signup-error");
 
-  try {
-    const result = await callBackend({
-      type: "signup_user",
-      username,
-      password,
-    });
-    if (result.status === "success") {
-      userState = {
-        username,
-        isLoggedIn: true,
-        sessionToken: result.sessionToken || "",
-      };
-      setStoredJSON("user_session", userState);
-      broadcastAuthState("signup");
-      document.getElementById("signup-password").value = "";
-      document.getElementById("signup-password-confirm").value = "";
-      updateProfileUI();
-      hideLoginSuggestion();
-      sendTelemetry("user_signup", { username });
-      syncUserProgress().catch((error) =>
-        console.error("Background progress sync failed.", error),
-      );
-    } else {
-      const errorEl = document.getElementById("user-signup-error");
-      if (errorEl) {
-        errorEl.textContent = result.message || "Unable to create account.";
-        errorEl.classList.remove("hidden");
+  return runWithActionLock("user-signup", async () => {
+    await runWithBusyButton(btn, "Creating...", async () => {
+      try {
+        const result = await callBackend({
+          type: "signup_user",
+          username,
+          password,
+        });
+        if (result.status === "success") {
+          userState = {
+            username,
+            isLoggedIn: true,
+            sessionToken: result.sessionToken || "",
+            sessionMode: result.sessionMode || "active",
+            sessionExpiresAt: result.sessionExpiresAt || null,
+            authVersion: (userState.authVersion || 0) + 1,
+          };
+          setSessionStoredJSON("user_session", userState);
+          broadcastAuthState("signup");
+          document.getElementById("signup-password").value = "";
+          document.getElementById("signup-password-confirm").value = "";
+          setInlineError(errorEl, "");
+          updateProfileUI();
+          hideLoginSuggestion();
+          sendTelemetry("user_signup", { username });
+          syncUserProgress().catch((error) =>
+            console.error("Background progress sync failed.", error),
+          );
+        } else {
+          setInlineError(
+            errorEl,
+            result.message || "Unable to create account.",
+          );
+        }
+      } catch (e) {
+        console.error(e);
+        setInlineError(errorEl, "Network error while creating account.");
       }
-    }
-  } catch (e) {
-    const errorEl = document.getElementById("user-signup-error");
-    if (errorEl) {
-      errorEl.textContent = "Network error while creating account.";
-      errorEl.classList.remove("hidden");
-    }
-  } finally {
-    if (btn) {
-      btn.innerHTML = "Create Account";
-      btn.disabled = false;
-    }
-  }
+    });
+  });
 }
 
 async function userLogout() {
@@ -4262,6 +4528,16 @@ async function userLogout() {
   )
     return;
   clearTimeout(progressSyncTimer);
+  try {
+    if (userState.isLoggedIn && userState.sessionToken) {
+      await callBackend({
+        type: "logout_user",
+        sessionToken: userState.sessionToken,
+      });
+    }
+  } catch (e) {
+    console.warn("Logout request failed silently.", e);
+  }
   if (userState.isLoggedIn) await saveUserProgress();
   userState = {
     username: "",
@@ -4271,46 +4547,45 @@ async function userLogout() {
     sessionExpiresAt: null,
     authVersion: 0,
   };
-  removeStoredItem("user_session");
+  removeSessionStoredItem("user_session");
   broadcastAuthState("logout");
   updateProfileUI();
 }
 
-document
-  .getElementById("btn-submit-folder-password")
-  .addEventListener("click", async () => {
-    const pass = document.getElementById("folder-password-input").value;
-    const btn = document.getElementById("btn-submit-folder-password");
+const folderPasswordButton = document.getElementById(
+  "btn-submit-folder-password",
+);
+if (folderPasswordButton) {
+  folderPasswordButton.addEventListener("click", async () => {
+    const pass = document.getElementById("folder-password-input")?.value || "";
+    const btn = folderPasswordButton;
 
     if (!pass) {
       alert("Please enter a password.");
       return;
     }
 
-    btn.innerText = "Verifying...";
-    btn.disabled = true;
-
-    try {
-      const response = await fetch(
-        `${DB_URL}?subject=${encodeURIComponent(pendingLockedFolderPath)}&password=${encodeURIComponent(pass)}&_t=${Date.now()}`,
-      );
-      const result = await response.json();
-      if (result.error) {
-        alert(result.error);
-      } else {
-        closeFolderPasswordModal();
-        if (!state.currentPath) state.currentPath = [];
-        state.currentPath.push(pendingLockedFolderName);
-        renderCategoryProgress();
+    await runWithBusyButton(btn, "Verifying...", async () => {
+      try {
+        const response = await fetch(
+          `${DB_URL}?subject=${encodeURIComponent(pendingLockedFolderPath || "")}&password=${encodeURIComponent(pass)}&_t=${Date.now()}`,
+        );
+        const result = await response.json();
+        if (result.error) {
+          alert(result.error);
+        } else {
+          closeFolderPasswordModal();
+          if (!state.currentPath) state.currentPath = [];
+          state.currentPath.push(pendingLockedFolderName);
+          renderCategoryProgress();
+        }
+      } catch (error) {
+        console.error("Verification failed", error);
+        alert("Network error while verifying the folder password.");
       }
-    } catch (error) {
-      console.error("Verification failed", error);
-      alert("Network error while verifying the folder password.");
-    } finally {
-      btn.innerText = "Unlock Folder";
-      btn.disabled = false;
-    }
+    });
   });
+}
 
 const btnSubmitDeckPassword = document.getElementById(
   "btn-submit-deck-password",
@@ -4318,22 +4593,25 @@ const btnSubmitDeckPassword = document.getElementById(
 
 if (btnSubmitDeckPassword) {
   btnSubmitDeckPassword.addEventListener("click", async () => {
-    const pass = document.getElementById("deck-password-input").value;
+    const pass = document.getElementById("deck-password-input")?.value || "";
 
     if (!pass) {
       alert("Please enter a password.");
       return;
     }
-    closeDeckPasswordModal();
-    if (pendingDeckAction === "resume") {
-      await resumeSession(pass);
-    } else if (pendingDeckAction === "resume-review") {
-      await resumeSession(pass);
-    } else if (currentAppMode === "review") {
-      reviewDeck(pendingDeckSubject, pass);
-    } else {
-      fetchAndStartCategory(pendingDeckSubject, pendingDeckAction, pass);
-    }
+
+    await runWithBusyButton(btnSubmitDeckPassword, "Verifying...", async () => {
+      closeDeckPasswordModal();
+      if (pendingDeckAction === "resume") {
+        await resumeSession(pass);
+      } else if (pendingDeckAction === "resume-review") {
+        await resumeReviewSession(pass);
+      } else if (currentAppMode === "review") {
+        reviewDeck(pendingDeckSubject, pass);
+      } else {
+        fetchAndStartCategory(pendingDeckSubject, pendingDeckAction, pass);
+      }
+    });
   });
 }
 

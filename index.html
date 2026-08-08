@@ -8,8 +8,21 @@
     <!-- Dark Mode Memory Fix to avoid white flash -->
     <script>
       try {
+        const storageIdentity = (() => {
+          try {
+            const stored = localStorage.getItem("mrh_storage_identity");
+            if (stored) return stored;
+          } catch (e) {}
+          const generated = `device_${Math.random().toString(36).slice(2, 10)}`;
+          try {
+            localStorage.setItem("mrh_storage_identity", generated);
+          } catch (e) {}
+          return generated;
+        })();
         const prefs = JSON.parse(
-          localStorage.getItem("mrh_prefs") || '{"darkMode":true}',
+          localStorage.getItem(`mrh_${storageIdentity}:prefs`) ||
+            localStorage.getItem("mrh_prefs") ||
+            '{"darkMode":true}',
         );
         if (prefs.darkMode) document.documentElement.classList.add("dark");
       } catch (e) {}
@@ -1315,6 +1328,15 @@
       <!-- PROFILE SECTION -->
       <section id="view-profile" class="view-section">
         <h2 class="text-2xl font-bold mb-6">Profile</h2>
+        <div
+          class="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200"
+        >
+          <p class="font-semibold">⚠️ Sync is still experimental</p>
+          <p class="mt-1">
+            Cross-device progress syncing is heavily being implemented and may
+            not work reliably yet. Please treat this as a preview feature.
+          </p>
+        </div>
         <div
           class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 max-w-md mx-auto"
         >
