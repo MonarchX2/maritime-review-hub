@@ -92,7 +92,10 @@ function renderAdminSubjectList() {
     const subjString = cat.Subject;
     const passString = cat.Password || cat.password || "";
     const parts = subjString.split("::").map((s) => s.trim());
-    if (cat.IsFolder) {
+    if (
+      cat.IsFolder === true ||
+      String(cat.IsFolder).toLowerCase() === "true"
+    ) {
       let currentNode = tree;
       parts.forEach((part) => {
         if (!currentNode.subfolders[part])
@@ -333,7 +336,10 @@ async function adminLoadReports() {
 
     let html = "";
     reports.forEach((r) => {
-      if (r.status === "Resolved") return;
+      const choices = [r.optionA, r.optionB, r.optionC, r.optionD].filter(
+        (choice) => choice && String(choice).trim(),
+      );
+      const questionType = choices.length <= 1 ? "Identification" : "MCQ";
 
       html += `
                 <div class="bg-white dark:bg-gray-800 p-5 rounded-xl border-l-4 border-yellow-500 shadow-sm relative group mb-4">
@@ -342,6 +348,8 @@ async function adminLoadReports() {
                         <span class="text-xs text-gray-400">${new Date(r.timestamp).toLocaleString()}</span>
                     </div>
                     <div class="text-xs text-brand-500 font-bold uppercase tracking-wider mb-1">${escapeHTML(r.subject)}</div>
+                    ${r.lesson ? `<div class="text-sm text-gray-600 dark:text-gray-300 mb-2"><strong>Lesson / Topic:</strong> ${escapeHTML(r.lesson)}</div>` : ""}
+                    <div class="text-xs text-brand-600 dark:text-brand-400 font-bold uppercase mb-2">Question Type: ${questionType}</div>
                     <h4 class="font-bold text-gray-800 dark:text-gray-100 mb-2">${escapeHTML(r.errorType)}</h4>
                     
                     <!-- UPDATED: Question Context with Choices and Answer -->
@@ -366,7 +374,7 @@ async function adminLoadReports() {
                     
                     <div class="flex gap-2 flex-wrap">
                         <button onclick="openEditModal('${r.id}')" class="flex-1 bg-blue-500 text-white px-4 py-2 rounded font-bold hover:bg-blue-600 shadow-sm active:scale-95 transition-all"><i class="fa-solid fa-pen mr-2"></i> Edit Data</button>
-                        <button onclick="adminActionReport('${r.id}', 'resolve')" class="flex-1 bg-green-500 text-white px-4 py-2 rounded font-bold hover:bg-green-600 shadow-sm active:scale-95 transition-all"><i class="fa-solid fa-check mr-2"></i> Mark Resolved</button>
+                        ${r.status === "Resolved" ? "" : `<button onclick="adminActionReport('${r.id}', 'resolve')" class="flex-1 bg-green-500 text-white px-4 py-2 rounded font-bold hover:bg-green-600 shadow-sm active:scale-95 transition-all"><i class="fa-solid fa-check mr-2"></i> Mark Resolved</button>`}
                         <button onclick="adminActionReport('${r.id}', 'delete')" class="bg-red-100 text-red-600 px-4 py-2 rounded font-bold hover:bg-red-200 shadow-sm active:scale-95 transition-all" title="Hard Delete from Sheet"><i class="fa-solid fa-trash-can"></i></button>
                     </div>
                 </div>
@@ -375,7 +383,7 @@ async function adminLoadReports() {
 
     container.innerHTML =
       html ||
-      `<div class="text-center text-green-500 py-4 font-bold"><i class="fa-solid fa-check-circle mr-2"></i>All caught up! No pending reports.</div>`;
+      `<div class="text-center text-green-500 py-4 font-bold"><i class="fa-solid fa-check-circle mr-2"></i>No reports found.</div>`;
   } catch (e) {
     container.innerHTML = `<div class="text-red-500 text-center">Failed to fetch admin reports.</div>`;
   }
@@ -384,9 +392,10 @@ async function adminLoadReports() {
 async function adminActionReport(reportId, action) {
   if (
     action === "delete" &&
-    !confirm(
+    !(await requestConfirmation(
       "Are you sure you want to permanently delete this report from Google Sheets? (Users will not see it as 'Resolved')",
-    )
+      "Delete Report",
+    ))
   )
     return;
 

@@ -17,6 +17,11 @@ let state = {
     quizHideABCD: false,
     showWrongChoices: false,
     archivedDecks: [],
+      quizNavigationPosition: "bottom",
+      reviewNavigationPosition: "top",
+      deckSortBy: "letters",
+      deckSortDirection: "asc",
+    lastActivity: null,
   },
   session: {
     active: false,
@@ -52,11 +57,27 @@ if (!state.prefs.userId) {
 }
 
 function sendTelemetry(action, details) {
-  const payload = JSON.stringify({
+  const event = {
     type: "telemetry",
     userId: state.prefs.userId,
     action,
-    details,
+    details: {
+      ...details,
+      timestamp: new Date().toISOString(),
+      currentView: document.querySelector(".view-section.active")?.id || null,
+      appMode: typeof currentAppMode === "string" ? currentAppMode : null,
+      viewport: {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        orientation: window.matchMedia("(orientation: portrait)").matches
+          ? "portrait"
+          : "landscape",
+      },
+      online: navigator.onLine,
+    },
+  };
+  const payload = JSON.stringify({
+    ...event,
   });
 
   if (navigator.sendBeacon) {
@@ -71,6 +92,47 @@ function sendTelemetry(action, details) {
       keepalive: true,
     }).catch(() => {});
   }
+}
+
+function setupTelemetry() {
+  document.addEventListener("click", (event) => {
+    const target = event.target.closest(
+      "button, a, select, input, [role='button']",
+    );
+    if (!target || target.dataset.telemetryIgnore === "true") return;
+    sendTelemetry("ui_click", {
+      element: target.id || target.getAttribute("aria-label") || target.tagName,
+      text: (target.innerText || target.value || "").trim().slice(0, 120),
+    });
+  });
+
+  document.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!target.matches("input, select, textarea")) return;
+    sendTelemetry("ui_change", {
+      element: target.id || target.name || target.tagName,
+      value: target.type === "checkbox" ? target.checked : target.value,
+    });
+  });
+
+  window.addEventListener("online", () =>
+    sendTelemetry("network_status", { online: true }),
+  );
+  window.addEventListener("offline", () =>
+    sendTelemetry("network_status", { online: false }),
+  );
+  document.addEventListener("visibilitychange", () =>
+    sendTelemetry("visibility_change", {
+      visibility: document.visibilityState,
+    }),
+  );
+  window.addEventListener("error", (event) =>
+    sendTelemetry("client_error", {
+      message: event.message,
+      source: event.filename,
+      line: event.lineno,
+    }),
+  );
 }
 
 function escapeHTML(value) {
@@ -148,6 +210,14 @@ async function loadState() {
     }
   }
 
+  if (!["top", "bottom"].includes(state.prefs.quizNavigationPosition))
+    state.prefs.quizNavigationPosition = "bottom";
+  if (!["top", "bottom"].includes(state.prefs.reviewNavigationPosition))
+    state.prefs.reviewNavigationPosition = "top";
+  if (state.prefs.lastActivity?.mode) {
+    currentAppMode = state.prefs.lastActivity.mode;
+  }
+
   if (!state.stats.subjectAccuracy) state.stats.subjectAccuracy = {};
   if (state.prefs?.darkMode) document.documentElement.classList.add("dark");
 
@@ -159,6 +229,7 @@ async function loadState() {
   populateFilters();
   updateDashboard();
   updateThemeButton();
+  syncPreferenceControls();
 }
 
 async function saveState() {
@@ -170,7 +241,59 @@ async function saveState() {
     console.error(e);
   }
 
+  syncPreferenceControls();
   updateDashboard();
+}
+
+function syncPreferenceControls() {
+  const values = {
+    "toggle-active-recall": state.prefs.activeRecall !== false,
+    "toggle-shuffle-choices": state.prefs.shuffleChoices !== false,
+    "toggle-modal-shuffle-choices": state.prefs.shuffleChoices !== false,
+    "toggle-shuffle-questions": state.prefs.shuffleQuestions !== false,
+    "toggle-hide-abcd": state.prefs.hideABCD === true,
+    "toggle-quiz-hide-abcd": state.prefs.quizHideABCD === true,
+    "toggle-wrong-choices": state.prefs.showWrongChoices !== false,
+    globalModeToggle: state.prefs.lastActivity?.mode === "review",
+  };
+
+  Object.entries(values).forEach(([id, checked]) => {
+    const control = document.getElementById(id);
+    if (control) control.checked = checked;
+  });
+
+  const modeLabel = document.getElementById("modeLabel");
+  if (modeLabel)
+    modeLabel.innerText = values.globalModeToggle ? "Study" : "Quiz";
+  const navigationSelect = document.getElementById(
+    "navigation-position-select",
+  );
+  const activeNavigationPosition =
+    document.getElementById("view-deck-review")?.classList.contains("active")
+      ? state.prefs.reviewNavigationPosition
+      : state.prefs.quizNavigationPosition;
+  if (navigationSelect) navigationSelect.value = activeNavigationPosition;
+  [
+    "toggle-session-navigation-bottom",
+    "toggle-review-navigation-bottom",
+  ].forEach((id) => {
+    const control = document.getElementById(id);
+    if (control) control.checked = activeNavigationPosition === "bottom";
+  });
+  const sortBy = state.prefs.deckSortBy || "letters";
+  const sortDirection = state.prefs.deckSortDirection === "desc" ? "desc" : "asc";
+  const deckSortIcon = document.getElementById("deck-sort-icon");
+  if (deckSortIcon) {
+    deckSortIcon.className = `fa-solid fa-arrow-${sortDirection === "desc" ? "down" : "up"}`;
+  }
+  document.querySelectorAll(".deck-sort-option[data-sort-value]").forEach((option) => {
+    const check = option.querySelector(".sort-check");
+    if (check) check.style.display = option.dataset.sortValue === sortBy ? "inline-block" : "none";
+  });
+  document.querySelectorAll(".deck-sort-option[data-sort-direction]").forEach((option) => {
+    const check = option.querySelector(".sort-direction-check");
+    if (check) check.style.display = option.dataset.sortDirection === sortDirection ? "inline-block" : "none";
+  });
 }
 
 async function safeIdbSet(key, value) {
@@ -202,7 +325,7 @@ function updateDashboard() {
 let settingsClickCount = 0;
 let settingsClickTimeout = null;
 
-function navigate(viewId) {
+async function navigate(viewId) {
   if (viewId === "settings") {
     settingsClickCount++;
     clearTimeout(settingsClickTimeout);
@@ -221,15 +344,17 @@ function navigate(viewId) {
   if (
     state.session.active &&
     viewId !== "practice" &&
-    !confirm(
+    !(await requestConfirmation(
       "You have an active session. Do you want to pause and return? Your progress will be saved.",
-    )
+      "Pause Session",
+    ))
   )
     return;
 
   if (state.session.active && viewId !== "practice") {
     saveSessionProgress();
     state.session.active = false;
+    saveState();
   }
 
   updateDashboard();
@@ -278,6 +403,7 @@ async function syncDatabase() {
     const response = await fetch(url, {
       signal: syncAbortController.signal,
       redirect: "follow",
+      cache: "no-store",
     });
 
     clearTimeout(timeoutId);
@@ -285,7 +411,7 @@ async function syncDatabase() {
     if (!response.ok) throw new Error("Network response failed");
     const summaryData = await response.json();
 
-    if (summaryData && summaryData.length > 0) {
+    if (Array.isArray(summaryData) && summaryData.length > 0) {
       state.categorySummary = summaryData;
       saveState();
 
@@ -300,10 +426,16 @@ async function syncDatabase() {
         renderCategoryProgress();
     } else {
       if (statusEl) {
-        statusEl.innerText = "Error: Connected, but no subjects found.";
+        statusEl.innerText =
+          state.categorySummary.length || state.db.length
+            ? "Database returned no subjects. Using cached data."
+            : "Error: Connected, but no subjects found.";
         statusEl.className =
-          "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+          state.categorySummary.length || state.db.length
+            ? "text-sm mt-3 font-medium bg-yellow-50 text-yellow-700 p-3 rounded-lg"
+            : "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
       }
+      if (state.categorySummary.length) renderCategoryProgress();
     }
   } catch (err) {
     console.error(err);
@@ -313,10 +445,14 @@ async function syncDatabase() {
         statusEl.className =
           "text-sm mt-3 font-medium bg-yellow-50 text-yellow-700 p-3 rounded-lg";
       } else {
-        statusEl.innerText =
-          "Connection Error. Ensure you deployed the Apps Script correctly.";
-        statusEl.className =
-          "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
+        const hasCache =
+          state.categorySummary.length > 0 || state.db.length > 0;
+        statusEl.innerText = hasCache
+          ? "Unable to reach the database. Using cached data."
+          : "Connection Error. Ensure you deployed the Apps Script correctly.";
+        statusEl.className = hasCache
+          ? "text-sm mt-3 font-medium bg-yellow-50 text-yellow-700 p-3 rounded-lg"
+          : "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
       }
     }
 
@@ -467,6 +603,7 @@ function initSession() {
     questions: pool,
     currentIndex: 0,
     userAnswers: {},
+    mode: "quiz",
   };
 
   document.getElementById("session-setup").classList.add("hidden");
@@ -479,6 +616,7 @@ function initSession() {
 
 function renderQuestion() {
   stopVisualTimer();
+  applyNavigationPosition();
   const q = state.session.questions[state.session.currentIndex];
   const userAnswer = state.session.userAnswers[state.session.currentIndex];
 
@@ -596,7 +734,7 @@ function renderQuestion() {
     btnReveal.disabled = true;
   } else {
     expBox.classList.add("hidden");
-    btnNext.disabled = true;
+    btnNext.disabled = false;
     btnReveal.disabled = false;
 
     if (isPureIdent) {
@@ -744,13 +882,13 @@ function renderCategoryProgress() {
   let html = `
         <div class="flex items-center gap-2 mb-6 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto pb-2 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
             <button onclick="goToPath(-1)" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2">
-                <i class="fa-solid fa-folder-open text-brand-500"></i> Home
+                <i class="fa-solid fa-folder-open text-brand-500"></i> HOME
             </button>
             ${state.currentPath
               .map(
                 (dir, i) => `
                 <i class="fa-solid fa-chevron-right text-xs text-gray-400"></i>
-                <button onclick="goToPath(${i})" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors whitespace-nowrap">${escapeHTML(dir)}</button>
+                <button onclick="goToPath(${i})" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors whitespace-nowrap">${escapeHTML(dir.toUpperCase())}</button>
             `,
               )
               .join("")}
@@ -761,7 +899,26 @@ function renderCategoryProgress() {
     : "flex flex-col space-y-4";
 
   html += `<div class="${layoutClass}">`;
-  const keys = Object.keys(currentNode).sort();
+  const sortBy = state.prefs.deckSortBy || "letters";
+  const sortDirection = state.prefs.deckSortDirection === "desc" ? -1 : 1;
+  const keys = Object.keys(currentNode).sort((left, right) => {
+    const leftNode = currentNode[left];
+    const rightNode = currentNode[right];
+    const leftIsFolder =
+      Object.keys(leftNode._children || {}).length > 0 || leftNode._data?.IsFolder;
+    const rightIsFolder =
+      Object.keys(rightNode._children || {}).length > 0 || rightNode._data?.IsFolder;
+    if (leftIsFolder !== rightIsFolder) return leftIsFolder ? -1 : 1;
+    if (sortBy === "questions") {
+      const leftCount = getFolderStats(leftNode);
+      const rightCount = getFolderStats(rightNode);
+      return (leftCount - rightCount) * sortDirection || left.localeCompare(right);
+    }
+    const result = left.localeCompare(right, undefined, {
+      sensitivity: "base",
+    });
+    return result * sortDirection;
+  });
   const sourceFilter =
     document.getElementById("deck-source-filter")?.value || "all";
 
@@ -1127,16 +1284,18 @@ function startCustomSession(pool) {
     questions: pool,
     currentIndex: 0,
     userAnswers: {},
+    mode: "quiz",
   };
 
   renderQuestion();
   saveSessionProgress();
 }
 
-function resetCategory(subject) {
+async function resetCategory(subject) {
   if (
-    confirm(
+    await requestConfirmation(
       `Are you sure you want to reset your accuracy and progress statistics for "${subject}"? This cannot be undone.`,
+      "Reset Progress",
     )
   ) {
     if (state.stats.subjectAccuracy[subject]) {
@@ -1167,8 +1326,9 @@ function resetCategory(subject) {
 
 async function deleteSubjectData(subject) {
   if (
-    confirm(
+    await requestConfirmation(
       `Are you sure you want to delete the downloaded questions for "${subject}"? Your accuracy and progress stats will remain, but the app will remove the local data to save space.`,
+      "Delete Downloaded Data",
     )
   ) {
     state.db = state.db.filter((q) => q.Subject !== subject);
@@ -1249,7 +1409,6 @@ async function fetchDeckQuestions(
   }
 
   if (cachedQuestions.length > 0 && !pass) {
-    fetchDeckQuestionsFromNetwork(subject, pass, customFilter).catch(() => {});
     return cachedQuestions;
   }
 
@@ -1272,7 +1431,7 @@ async function fetchDeckQuestionsFromNetwork(
     let fetchUrl = `${DB_URL}?subject=${encodeURIComponent(subject)}&_t=${Date.now()}`;
     if (pass) fetchUrl += `&password=${encodeURIComponent(pass)}`;
 
-    const response = await fetch(fetchUrl);
+    const response = await fetch(fetchUrl, { cache: "no-store" });
     const newQuestions = await response.json();
     if (newQuestions.error) throw new Error(newQuestions.error);
 
@@ -1326,6 +1485,12 @@ async function reviewDeck(subject, pass = null) {
   }
 
   if (loader) loader.classList.add("hidden");
+  state.prefs.lastActivity = {
+    mode: "review",
+    subject,
+    updatedAt: new Date().toISOString(),
+  };
+  saveState();
   renderDeckReview(subject, validQuestions);
 }
 
@@ -1393,8 +1558,9 @@ function renderDeckReview(subject, questions) {
     }
   }
 
+  let navigationHTML = "";
   if (layout === "single") {
-    html += `
+    navigationHTML = `
         <div class="flex justify-between items-center mb-6 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 sticky top-4 z-20 gap-2">
             <button onclick="changeStudyIndex(-1)" ${currentIndex === 0 ? "disabled" : ""} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
                 <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Prev</span>
@@ -1408,7 +1574,7 @@ function renderDeckReview(subject, questions) {
         </div>
     `;
   } else if (pageSize !== "All" && totalPages > 1) {
-    html += `
+    navigationHTML = `
             <div class="flex justify-between items-center mt-6 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 sticky bottom-4 z-10 gap-2">
                 <button onclick="changeStudyPage(-1)" ${currentPage === 1 ? "disabled" : ""} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
                     <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Prev</span>
@@ -1421,6 +1587,8 @@ function renderDeckReview(subject, questions) {
         `;
   }
 
+  if (state.prefs.reviewNavigationPosition === "top") html += navigationHTML;
+
   displayQuestions.forEach((q) => {
     let originalIndex = questions.indexOf(q);
 
@@ -1428,7 +1596,8 @@ function renderDeckReview(subject, questions) {
     let cleanQuestionText = rawQuestionText.replace(/^\s*\d+\.\s*/, "");
 
     let ansStr = q.Answer ? String(q.Answer).trim() : "";
-    let isMultipleChoice = ["A", "B", "C", "D"].includes(ansStr.toUpperCase());
+    const { isIdent: isPureIdent } = getQuestionTypeMode(q);
+    let isMultipleChoice = !isPureIdent;
 
     let correctText = ansStr;
     if (isMultipleChoice) {
@@ -1494,9 +1663,13 @@ function renderDeckReview(subject, questions) {
                     
                     <div class="flex gap-2">
                         <!-- Feature 16: Individual Toggle Button -->
-                        <button onclick="toggleSpecificChoices('${q.ID}')" class="text-xs font-bold px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded transition-colors">
-                            ${showWrongForThisQ ? '<i class="fa-solid fa-eye-slash mr-1"></i> Hide Choices' : '<i class="fa-solid fa-eye mr-1"></i> Show Choices'}
-                        </button>
+                        ${
+                          isMultipleChoice
+                            ? `<button onclick="toggleSpecificChoices('${q.ID}')" class="text-xs font-bold px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded transition-colors">
+                          ${showWrongForThisQ ? '<i class="fa-solid fa-eye-slash mr-1"></i> Hide Choices' : '<i class="fa-solid fa-eye mr-1"></i> Show Choices'}
+                        </button>`
+                            : ""
+                        }
 
                         <button onclick="openReportModalFromStudy('${q.ID}')" class="${reportClass} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95 transition-all" title="${globallyReportedQs.has(q.ID) ? "Active Community Report" : "Report Issue"}">
                             <i class="fa-solid fa-triangle-exclamation"></i>
@@ -1521,6 +1694,8 @@ function renderDeckReview(subject, questions) {
             </div>
         `;
   });
+
+  if (state.prefs.reviewNavigationPosition !== "top") html += navigationHTML;
 
   container.innerHTML = html;
   navigate("deck-review");
@@ -1565,7 +1740,7 @@ function toggleShowWrongChoices() {
   reRenderDeckReview();
 }
 
-function toggleArchiveDeck(subjectId) {
+async function toggleArchiveDeck(subjectId) {
   if (!state.prefs.archivedDecks) {
     state.prefs.archivedDecks = [];
   }
@@ -1576,7 +1751,7 @@ function toggleArchiveDeck(subjectId) {
     state.prefs.archivedDecks.splice(index, 1);
     showToast("Deck unarchived");
   } else {
-    if (!confirm(`Are you sure you want to archive "${subjectId}"?`)) {
+    if (!(await requestConfirmation(`Are you sure you want to archive "${subjectId}"?`, "Archive Deck"))) {
       return;
     }
     state.prefs.archivedDecks.push(subjectId);
@@ -1638,9 +1813,15 @@ function nextQuestion() {
   stopVisualTimer();
 
   if (state.session.currentIndex < state.session.questions.length - 1) {
+    const skipped = !state.session.userAnswers[state.session.currentIndex];
     state.session.currentIndex++;
     renderQuestion();
     saveSessionProgress();
+    sendTelemetry(skipped ? "skip_question" : "next_question", {
+      questionIndex: state.session.currentIndex - 1,
+      nextQuestionIndex: state.session.currentIndex,
+      questionId: state.session.questions[state.session.currentIndex - 1]?.ID,
+    });
   } else {
     alert("Practice Session Complete! Great job.");
     clearSessionProgress();
@@ -1787,10 +1968,11 @@ function updateThemeButton() {
   }
 }
 
-function resetProgress() {
+async function resetProgress() {
   if (
-    confirm(
+    await requestConfirmation(
       "Are you sure? This deletes mistakes, all statistics, and your current saved session.",
+      "Reset All Progress",
     )
   ) {
     state.stats = {
@@ -1809,6 +1991,7 @@ function resetProgress() {
 
     state.prefs.studyProgress = {};
     state.prefs.qToggles = {};
+    state.prefs.lastActivity = null;
 
     clearSessionProgress();
     saveState();
@@ -1821,14 +2004,54 @@ function resetProgress() {
 
 async function clearDatabase() {
   if (
-    confirm(
+    await requestConfirmation(
       "WARNING: Are you sure you want to clear the locally saved database? You will need an active internet connection to sync the questions again. The app will reload to apply changes.",
+      "Clear Local Database",
     )
   ) {
     await safeIdbDel("mrh_db");
     state.db = [];
     clearSessionProgress();
+    state.prefs.lastActivity = null;
+    await saveState();
     window.location.reload();
+  }
+}
+
+async function clearAppData() {
+  if (
+    !(await requestConfirmation(
+      "This permanently deletes all locally saved app data, including downloaded questions, progress, preferences, and saved sessions. Continue?",
+      "Clear App Data",
+    ))
+  ) {
+    return;
+  }
+
+  try {
+    if (typeof idbKeyval !== "undefined") {
+      await idbKeyval.clear();
+    }
+    localStorage.clear();
+    sessionStorage.clear();
+
+    if ("caches" in window) {
+      await Promise.all(
+        [...(await caches.keys())].map((cacheName) => caches.delete(cacheName)),
+      );
+    }
+    if ("serviceWorker" in navigator) {
+      await Promise.all(
+        (await navigator.serviceWorker.getRegistrations()).map((registration) =>
+          registration.unregister(),
+        ),
+      );
+    }
+
+    window.location.reload();
+  } catch (error) {
+    console.error("Unable to clear app data.", error);
+    alert("Some app data could not be cleared. Please try again.");
   }
 }
 
@@ -1888,6 +2111,7 @@ async function fetchGlobalReports() {
 }
 
 window.onload = async () => {
+  setupTelemetry();
   await loadState();
 
   const toggleElement = document.getElementById("globalModeToggle");
@@ -1907,6 +2131,13 @@ function saveSessionProgress() {
 
   try {
     localStorage.setItem("mrh_saved_session", JSON.stringify(state.session));
+    state.prefs.lastActivity = {
+      mode: "quiz",
+      subject:
+        state.session.questions[state.session.currentIndex]?.Subject || null,
+      updatedAt: new Date().toISOString(),
+    };
+    localStorage.setItem("mrh_prefs", JSON.stringify(state.prefs));
   } catch (e) {
     console.warn("Storage quota exceeded. Could not save session progress.", e);
     showToast("Storage full. Progress won't be saved.", "error");
@@ -1916,10 +2147,26 @@ function saveSessionProgress() {
 function checkSavedSession() {
   const saved = localStorage.getItem("mrh_saved_session");
   const resumeContainer = document.getElementById("resume-container");
+  const activity = state.prefs.lastActivity;
+  const contextEl = document.getElementById("resume-context");
 
-  if (saved && resumeContainer) {
+  if (contextEl && activity) {
+    const modeLabel = activity.mode === "review" ? "Study" : "Quiz";
+    contextEl.innerText = activity.subject
+      ? `${modeLabel} mode: ${activity.subject}`
+      : `${modeLabel} mode`;
+  }
+
+  if (
+    (saved || (activity?.mode === "review" && activity.subject)) &&
+    resumeContainer
+  ) {
     try {
-      const session = JSON.parse(saved);
+      const session = saved ? JSON.parse(saved) : null;
+      if (!session) {
+        resumeContainer.classList.remove("hidden");
+        return;
+      }
       const isLastQuestion =
         session.currentIndex >= session.questions.length - 1;
       const isAnswered =
@@ -1940,11 +2187,58 @@ function checkSavedSession() {
   }
 }
 
-function resumeSession() {
+let pendingResumeSession = null;
+
+async function resumeSession(password = null) {
+  const activity = state.prefs.lastActivity;
+  if (
+    activity?.mode === "review" &&
+    activity.subject &&
+    !pendingResumeSession
+  ) {
+    currentAppMode = "review";
+    syncPreferenceControls();
+    const deckInfo = state.categorySummary.find(
+      (category) => category.Subject === activity.subject,
+    );
+    if (deckInfo?.Locked && !password) {
+      pendingDeckSubject = activity.subject;
+      pendingDeckAction = "resume-review";
+      openDeckPasswordModal(activity.subject, "resume-review");
+      return;
+    }
+    await reviewDeck(activity.subject, password);
+    sendTelemetry("resume_session", {
+      mode: "review",
+      subject: activity.subject,
+    });
+    return;
+  }
+
   const saved = localStorage.getItem("mrh_saved_session");
   if (!saved) return;
 
-  state.session = JSON.parse(saved);
+  const savedSession = pendingResumeSession || JSON.parse(saved);
+  const currentQuestion = savedSession.questions?.[savedSession.currentIndex];
+  const currentSubject = currentQuestion?.Subject;
+  const deckInfo = state.categorySummary.find(
+    (category) => category.Subject === currentSubject,
+  );
+
+  if (deckInfo?.Locked && !password) {
+    pendingResumeSession = savedSession;
+    pendingDeckSubject = currentSubject;
+    pendingDeckAction = "resume";
+    openDeckPasswordModal(currentSubject, "resume");
+    return;
+  }
+
+  if (currentSubject && (password || deckInfo?.Locked)) {
+    await fetchDeckQuestions(currentSubject, password);
+  }
+
+  pendingResumeSession = null;
+  state.session = savedSession;
 
   state.session.questions = state.session.questions.map((savedQ, index) => {
     let searchId = savedQ.ID;
@@ -1994,10 +2288,17 @@ function resumeSession() {
   document.getElementById("session-active").classList.remove("hidden");
 
   renderQuestion();
+  sendTelemetry("resume_session", {
+    mode: "quiz",
+    subject: currentSubject,
+    questionIndex: state.session.currentIndex,
+  });
 }
 
 function clearSessionProgress() {
   localStorage.removeItem("mrh_saved_session");
+  state.prefs.lastActivity = null;
+  localStorage.setItem("mrh_prefs", JSON.stringify(state.prefs));
   const resumeContainer = document.getElementById("resume-container");
   if (resumeContainer) {
     resumeContainer.classList.add("hidden");
@@ -2068,6 +2369,72 @@ function toggleLayout() {
   renderCategoryProgress();
 }
 
+function changeDeckSort(sortOrder) {
+  state.prefs.deckSortBy = ["letters", "questions"].includes(sortOrder)
+    ? sortOrder
+    : "letters";
+  saveState();
+  renderCategoryProgress();
+  sendTelemetry("change_deck_sort", {
+    sortBy: state.prefs.deckSortBy,
+    direction: state.prefs.deckSortDirection,
+  });
+}
+
+function toggleDeckSortDirection() {
+  setDeckSortDirection(state.prefs.deckSortDirection === "desc" ? "asc" : "desc");
+}
+
+function setDeckSortDirection(direction) {
+  state.prefs.deckSortDirection = direction === "desc" ? "desc" : "asc";
+  saveState();
+  renderCategoryProgress();
+  sendTelemetry("change_deck_sort", {
+    sortBy: state.prefs.deckSortBy,
+    direction: state.prefs.deckSortDirection,
+  });
+}
+
+function applyNavigationPosition() {
+  const navigation = document.getElementById("quiz-navigation");
+  const topAnchor = document.getElementById("quiz-navigation-top");
+  const bottomAnchor = document.getElementById("quiz-navigation-bottom");
+  if (!navigation || !topAnchor || !bottomAnchor) return;
+
+  const savedPosition = state.session.active
+    ? state.prefs.quizNavigationPosition
+    : state.prefs.reviewNavigationPosition;
+  const position = savedPosition === "top" ? "top" : "bottom";
+  (position === "top" ? topAnchor : bottomAnchor).appendChild(navigation);
+  topAnchor.classList.toggle("hidden", position !== "top");
+  bottomAnchor.classList.toggle("hidden", position !== "bottom");
+}
+
+function changeNavigationPosition(position) {
+  const normalized = position === "top" ? "top" : "bottom";
+  if (document.getElementById("view-deck-review")?.classList.contains("active")) {
+    state.prefs.reviewNavigationPosition = normalized;
+  } else {
+    state.prefs.quizNavigationPosition = normalized;
+  }
+  saveState();
+  applyNavigationPosition();
+  const select = document.getElementById("navigation-position-select");
+  if (select) select.value = normalized;
+  sendTelemetry("change_navigation_position", {
+    position: normalized,
+  });
+}
+
+function toggleNavigationPosition(source) {
+  changeNavigationPosition(source.checked ? "bottom" : "top");
+  if (
+    document.getElementById("view-deck-review")?.classList.contains("active")
+  ) {
+    reRenderDeckReview();
+  }
+}
+
 function toggleModal(modalId, isVisible) {
   const modal = document.getElementById(modalId);
   if (!modal) return;
@@ -2085,6 +2452,33 @@ function toggleModal(modalId, isVisible) {
     setTimeout(() => {
       modal.classList.add("hidden");
     }, 300);
+  }
+}
+
+let confirmResolver = null;
+
+function requestConfirmation(message, title = "Confirm Action") {
+  return new Promise((resolve) => {
+    confirmResolver = resolve;
+    const modal = document.getElementById("confirm-modal");
+    if (!modal) {
+      resolve(window.confirm(message));
+      return;
+    }
+    if (modal.parentElement !== document.body) document.body.appendChild(modal);
+    document.getElementById("confirm-title").innerHTML =
+      `<i class="fa-solid fa-circle-question text-brand-500 mr-2"></i>${escapeHTML(title)}`;
+    document.getElementById("confirm-message").innerText = message;
+    toggleModal("confirm-modal", true);
+  });
+}
+
+function closeConfirmModal(confirmed) {
+  toggleModal("confirm-modal", false);
+  if (confirmResolver) {
+    const resolve = confirmResolver;
+    confirmResolver = null;
+    resolve(confirmed);
   }
 }
 
@@ -2110,8 +2504,10 @@ function openReportModal() {
   state.reportQuestion = q;
 
   const reportType = document.getElementById("report-type");
+  const reportLesson = document.getElementById("report-lesson");
   const reportComments = document.getElementById("report-comments");
   if (reportType) reportType.value = "";
+  if (reportLesson) reportLesson.value = "";
   if (reportComments) reportComments.value = "";
 
   toggleModal("report-modal", true);
@@ -2128,6 +2524,11 @@ function openSessionSettingsModal() {
   const choicesToggle = document.getElementById("toggle-shuffle-choices");
   if (choicesToggle)
     choicesToggle.checked = state.prefs.shuffleChoices !== false;
+  const modalChoicesToggle = document.getElementById(
+    "toggle-modal-shuffle-choices",
+  );
+  if (modalChoicesToggle)
+    modalChoicesToggle.checked = state.prefs.shuffleChoices !== false;
 
   const questionsToggle = document.getElementById("toggle-shuffle-questions");
   if (questionsToggle)
@@ -2140,6 +2541,17 @@ function openSessionSettingsModal() {
   const qTypeSelect = document.getElementById("toggle-question-type");
   if (qTypeSelect) qTypeSelect.value = state.prefs.qTypeOverride || "auto";
 
+  const navigationSelect = document.getElementById(
+    "navigation-position-select",
+  );
+  if (navigationSelect)
+    navigationSelect.value = state.prefs.quizNavigationPosition;
+  const navigationToggle = document.getElementById(
+    "toggle-session-navigation-bottom",
+  );
+  if (navigationToggle)
+    navigationToggle.checked = state.prefs.quizNavigationPosition === "bottom";
+
   toggleModal("session-settings-modal", true);
 }
 
@@ -2150,6 +2562,11 @@ function closeSessionSettingsModal() {
 // Open Review Settings Modal
 function openReviewSettingsModal() {
   const modal = document.getElementById("review-settings-modal");
+  const navigationToggle = document.getElementById(
+    "toggle-review-navigation-bottom",
+  );
+  if (navigationToggle)
+    navigationToggle.checked = state.prefs.reviewNavigationPosition === "bottom";
   modal.classList.remove("hidden");
   // Small delay allows the browser to render 'block' before applying opacity for the transition
   setTimeout(() => {
@@ -2263,6 +2680,7 @@ function closeGeneralFeedbackModal() {
 
 async function submitReport() {
   const typeEl = document.getElementById("report-type");
+  const lesson = document.getElementById("report-lesson").value.trim();
   const comments = document.getElementById("report-comments").value.trim();
 
   if (!typeEl.value) {
@@ -2296,6 +2714,7 @@ async function submitReport() {
         subject: q.Subject,
         questionText: q.Question,
         errorType: typeEl.value,
+        lesson: lesson,
         comments: comments,
         choices: { A: q.ChoiceA, B: q.ChoiceB, C: q.ChoiceC, D: q.ChoiceD },
         correctAnswer: q.Answer,
@@ -2345,8 +2764,10 @@ async function submitReport() {
 }
 
 async function loadReports() {
-  const container = document.getElementById("public-reports-list");
-  container.innerHTML = `<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500"></i><p class="mt-2 text-gray-500">Fetching community reports...</p></div>`;
+  const pendingContainer = document.getElementById("public-pending-reports");
+  const resolvedContainer = document.getElementById("public-resolved-reports");
+  if (pendingContainer)
+    pendingContainer.innerHTML = `<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500"></i><p class="mt-2 text-gray-500">Fetching community reports...</p></div>`;
 
   try {
     const response = await fetch(DB_URL, {
@@ -2358,11 +2779,13 @@ async function loadReports() {
     const reports = await response.json();
 
     if (reports.length === 0) {
-      container.innerHTML = `<div class="bg-white dark:bg-gray-800 p-8 rounded-xl border border-gray-100 dark:border-gray-700 text-center text-gray-500"><i class="fa-solid fa-check-circle text-4xl text-green-500 mb-3"></i><p>No active issues. The database is clean!</p></div>`;
+      if (pendingContainer) pendingContainer.innerHTML = `<p class="text-center text-gray-500 py-4">No pending reports.</p>`;
+      if (resolvedContainer) resolvedContainer.innerHTML = `<p class="text-center text-gray-500 py-4">No resolved reports.</p>`;
       return;
     }
 
-    let html = "";
+    let pendingHTML = "";
+    let resolvedHTML = "";
     reports.forEach((r) => {
       const isResolved = r.status === "Resolved";
       const statusBadge = isResolved
@@ -2378,22 +2801,40 @@ async function loadReports() {
         hour12: true,
       });
 
-      html += `
+      const choices = ["A", "B", "C", "D"]
+        .map((letter) => r[`option${letter}`] || r.choices?.[letter])
+        .filter((choice) => choice && String(choice).trim());
+      const questionType = choices.length <= 1 ? "Identification" : "MCQ";
+      const choicesHTML = choices.length
+        ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-xs">${choices
+            .map((choice, index) => `<div class="bg-gray-50 dark:bg-gray-900/50 p-2 rounded"><strong>${String.fromCharCode(65 + index)}:</strong> ${escapeHTML(choice)}</div>`)
+            .join("")}</div>`
+        : `<p class="text-xs text-gray-500 mt-3">No choices recorded.</p>`;
+      const reportHTML = `
                 <div class="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm animate-card-in">
                     <div class="flex justify-between items-start mb-2">
                         <span class="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">${escapeHTML(r.questionId)}</span>
                         ${statusBadge}
                     </div>
                     <h4 class="font-bold text-gray-800 dark:text-gray-100 mb-1">${escapeHTML(r.errorType)}</h4>
+                    <div class="text-xs text-brand-600 dark:text-brand-400 font-bold uppercase">Question Type: ${questionType}</div>
                     <p class="text-sm text-gray-600 dark:text-gray-300 line-clamp-2 italic border-l-2 border-brand-500 pl-3 my-2">"${escapeHTML(r.questionText)}"</p>
+                    ${choicesHTML}
+                    ${r.lesson ? `<p class="text-sm text-gray-500 dark:text-gray-400 mt-2"><strong>Lesson / Topic:</strong> ${escapeHTML(r.lesson)}</p>` : ""}
                     ${r.comments ? `<p class="text-sm text-gray-500 dark:text-gray-400 mt-2 bg-gray-50 dark:bg-gray-900/50 p-2 rounded"><i class="fa-solid fa-comment-dots mr-1"></i> ${escapeHTML(r.comments)}</p>` : ""}
                     <div class="text-xs text-gray-400 mt-3 text-right">Reported: ${phtDate}</div>
                 </div>
             `;
+      if (isResolved) resolvedHTML += reportHTML;
+      else pendingHTML += reportHTML;
     });
-    container.innerHTML = html;
+    document.getElementById("public-pending-reports").innerHTML =
+      pendingHTML || `<p class="text-center text-gray-500 py-4">No pending reports.</p>`;
+    document.getElementById("public-resolved-reports").innerHTML =
+      resolvedHTML || `<p class="text-center text-gray-500 py-4">No resolved reports.</p>`;
   } catch (err) {
-    container.innerHTML = `<div class="text-red-500 text-center p-4">Failed to load reports. Check your connection.</div>`;
+    if (pendingContainer)
+      pendingContainer.innerHTML = `<div class="text-red-500 text-center p-4">Failed to load reports. Check your connection.</div>`;
   }
 }
 
@@ -2422,6 +2863,7 @@ function toggleActiveRecall() {
   const isChecked = document.getElementById("toggle-active-recall").checked;
   state.prefs.activeRecall = isChecked;
   saveState();
+  syncPreferenceControls();
 
   if (state.session.active) {
     renderQuestion();
@@ -2455,9 +2897,15 @@ function toggleAppMode() {
   if (!toggleElement) return;
 
   currentAppMode = toggleElement.checked ? "review" : "quiz";
+  state.prefs.lastActivity = {
+    ...(state.prefs.lastActivity || {}),
+    mode: currentAppMode,
+    updatedAt: new Date().toISOString(),
+  };
 
   if (modeLabel) {
     modeLabel.innerText = currentAppMode === "review" ? "Study" : "Quiz";
+    saveState();
   }
 
   renderCategoryProgress();
@@ -2480,10 +2928,15 @@ function handleDeckClick(subj, action = "continue") {
   }
 }
 
-function toggleShuffleChoices() {
-  const isChecked = document.getElementById("toggle-shuffle-choices").checked;
+function toggleShuffleChoices(source) {
+  source =
+    source ||
+    document.getElementById("toggle-shuffle-choices") ||
+    document.getElementById("toggle-modal-shuffle-choices");
+  const isChecked = source.checked;
   state.prefs.shuffleChoices = isChecked;
   saveState();
+  syncPreferenceControls();
 
   if (state.session.active) {
     const remainingQuestions = state.session.questions.slice(
@@ -2503,6 +2956,7 @@ function toggleShuffleQuestions() {
   const isChecked = document.getElementById("toggle-shuffle-questions").checked;
   state.prefs.shuffleQuestions = isChecked;
   saveState();
+  syncPreferenceControls();
 }
 
 async function autoSaveDeckPassword(deckPath, newPassword) {
@@ -2620,7 +3074,7 @@ const btnSubmitDeckPassword = document.getElementById(
 );
 
 if (btnSubmitDeckPassword) {
-  btnSubmitDeckPassword.addEventListener("click", () => {
+  btnSubmitDeckPassword.addEventListener("click", async () => {
     const pass = document.getElementById("deck-password-input").value;
 
     if (!pass) {
@@ -2628,7 +3082,11 @@ if (btnSubmitDeckPassword) {
       return;
     }
     closeDeckPasswordModal();
-    if (currentAppMode === "review") {
+    if (pendingDeckAction === "resume") {
+      await resumeSession(pass);
+    } else if (pendingDeckAction === "resume-review") {
+      await resumeSession(pass);
+    } else if (currentAppMode === "review") {
       reviewDeck(pendingDeckSubject, pass);
     } else {
       fetchAndStartCategory(pendingDeckSubject, pendingDeckAction, pass);
@@ -2655,7 +3113,7 @@ function formatQuestionText(text) {
 
   const listRegex = /(?:\s|^)((?:\d+|[A-Za-z]|[IVXLCDMivxlcdm]{1,4})\.)\s/g;
 
-  formatted = formatted.replace(listRegex, "<br><br>");
+  formatted = formatted.replace(listRegex, "<br><br>$1 ");
 
   if (formatted.startsWith("<br><br>")) {
     formatted = formatted.substring(8);
@@ -2672,6 +3130,10 @@ if (!state.prefs.qToggles) state.prefs.qToggles = {};
 function changeStudyLayout(layout) {
   state.prefs.studyLayout = layout;
   saveState();
+  sendTelemetry("change_study_layout", {
+    layout,
+    subject: currentReviewSubject,
+  });
   reRenderDeckReview();
 }
 
@@ -2753,11 +3215,12 @@ function getQuestionTypeMode(q) {
   return { isIdent: isPureIdent, validChoicesCount };
 }
 
-function changeQuestionTypeMode(mode) {
+async function changeQuestionTypeMode(mode) {
   if (state.prefs.qTypeOverride === mode) return;
 
-  const userConfirmed = confirm(
+  const userConfirmed = await requestConfirmation(
     `Are you sure you want to switch to ${mode.toUpperCase()} mode?`,
+    "Change Question Type",
   );
 
   if (!userConfirmed) {

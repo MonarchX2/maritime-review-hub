@@ -29,6 +29,44 @@ input {
   transition: all var(--time-fast) var(--ease-base);
 }
 
+.dashboard-control {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 2.5rem;
+  white-space: nowrap;
+}
+
+#deck-sort-menu {
+  flex: 0 0 auto;
+}
+
+.deck-sort-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 0.375rem;
+  padding: 0.45rem 0.5rem;
+  color: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.deck-sort-option:hover {
+  background-color: rgb(243 244 246);
+}
+
+.dark .deck-sort-option:hover {
+  background-color: rgb(55 65 81);
+}
+
+.sort-check,
+.sort-direction-check {
+  display: none;
+  color: rgb(37 99 235);
+}
+
 button:active:not(:disabled) {
   transform: scale(0.94);
 }
@@ -212,7 +250,7 @@ details[open] summary ~ div {
 }
 
 @media (max-width: 768px) and (orientation: portrait) {
-  #layout-toggle-container {
+  #layout-toggle {
     display: none !important;
   }
 }
