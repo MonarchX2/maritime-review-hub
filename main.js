@@ -199,12 +199,12 @@ function doPost(e) {
       if (lock.tryLock(3000)) {
         var currentCache = cache.get("TELEMETRY_QUEUE");
         var queue = currentCache ? JSON.parse(currentCache) : [];
-        queue.push([
-          new Date().toISOString(),
-          data.userId,
-          data.action,
-          data.details,
-        ]);
+        queue.push({
+          receivedAt: new Date().toISOString(),
+          userId: data.userId || "",
+          action: data.action || "unknown",
+          details: data.details || {},
+        });
         cache.put("TELEMETRY_QUEUE", JSON.stringify(queue), 21600);
         lock.releaseLock();
       }
@@ -1132,8 +1132,113 @@ function getOrCreateTelemetrySheet() {
   file.moveTo(rootFolder);
 
   var sheet = ss.getSheets()[0];
-  sheet.appendRow(["Timestamp", "User ID", "Action", "Details"]);
+  ensureTelemetryHeaders(sheet);
   return sheet;
+}
+
+var TELEMETRY_HEADERS = [
+  "Received At",
+  "Event Time",
+  "User ID",
+  "Category",
+  "Action",
+  "View",
+  "App Mode",
+  "Subject",
+  "Element",
+  "Element Text",
+  "Value",
+  "Online",
+  "Viewport Width",
+  "Viewport Height",
+  "Orientation",
+  "Details JSON",
+];
+
+function telemetryCategory(action) {
+  var name = String(action || "unknown");
+  if (name.indexOf("sync") === 0) return "database_sync";
+  if (name.indexOf("network") === 0) return "network";
+  if (name.indexOf("ui_") === 0) return "ui";
+  if (name.indexOf("session") >= 0 || name.indexOf("question") >= 0)
+    return "learning";
+  if (name.indexOf("report") >= 0 || name.indexOf("feedback") >= 0)
+    return "feedback";
+  if (name.indexOf("error") >= 0) return "error";
+  if (name.indexOf("visibility") === 0) return "lifecycle";
+  if (name.indexOf("navigate") === 0) return "navigation";
+  return "other";
+}
+
+function telemetryRow(entry) {
+  var legacy = Array.isArray(entry);
+  var receivedAt = legacy ? entry[0] : entry.receivedAt;
+  var userId = legacy ? entry[1] : entry.userId;
+  var action = legacy ? entry[2] : entry.action;
+  var details = legacy ? entry[3] : entry.details;
+  if (!details || typeof details !== "object")
+    details = { value: details || "" };
+
+  var viewport = details.viewport || {};
+  var eventTime = details.timestamp || receivedAt || "";
+  var value = details.value;
+  if (value !== undefined && typeof value !== "string")
+    value = JSON.stringify(value);
+
+  return [
+    receivedAt || "",
+    eventTime,
+    userId || "",
+    telemetryCategory(action),
+    action || "unknown",
+    details.currentView || details.view || "",
+    details.appMode || details.mode || "",
+    details.subject || "",
+    details.element || "",
+    details.text || "",
+    value || "",
+    details.online === undefined ? "" : details.online,
+    viewport.width || "",
+    viewport.height || "",
+    viewport.orientation || "",
+    JSON.stringify(details),
+  ];
+}
+
+function ensureTelemetryHeaders(sheet) {
+  var lastColumn = sheet.getLastColumn();
+  var firstRow = lastColumn
+    ? sheet.getRange(1, 1, 1, lastColumn).getValues()[0]
+    : [];
+  if (
+    firstRow.length === TELEMETRY_HEADERS.length &&
+    firstRow[0] === TELEMETRY_HEADERS[0]
+  )
+    return;
+
+  if (firstRow.length === 4 && firstRow[0] === "Timestamp") {
+    var oldRows =
+      sheet.getLastRow() > 1
+        ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues()
+        : [];
+    sheet.clearContents();
+    sheet
+      .getRange(1, 1, 1, TELEMETRY_HEADERS.length)
+      .setValues([TELEMETRY_HEADERS]);
+    if (oldRows.length) {
+      var migratedRows = oldRows.map(function (row) {
+        return telemetryRow(row);
+      });
+      sheet
+        .getRange(2, 1, migratedRows.length, TELEMETRY_HEADERS.length)
+        .setValues(migratedRows);
+    }
+    return;
+  }
+
+  sheet
+    .getRange(1, 1, 1, TELEMETRY_HEADERS.length)
+    .setValues([TELEMETRY_HEADERS]);
 }
 
 function flushTelemetry() {
@@ -1146,9 +1251,16 @@ function flushTelemetry() {
       var queue = JSON.parse(currentCache);
       if (queue.length > 0) {
         var sheet = getOrCreateTelemetrySheet();
+        ensureTelemetryHeaders(sheet);
+        var rows = queue.map(telemetryRow);
         sheet
-          .getRange(sheet.getLastRow() + 1, 1, queue.length, 4)
-          .setValues(queue);
+          .getRange(
+            sheet.getLastRow() + 1,
+            1,
+            rows.length,
+            TELEMETRY_HEADERS.length,
+          )
+          .setValues(rows);
         cache.remove("TELEMETRY_QUEUE");
       }
     }

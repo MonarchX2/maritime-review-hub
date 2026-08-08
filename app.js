@@ -36,6 +36,8 @@ let state = {
 
 let chartInstance = null;
 let syncAbortController = null;
+let syncRetryTimer = null;
+let syncAttempt = 0;
 
 function generateUserId() {
   if (window.crypto && window.crypto.randomUUID) {
@@ -380,24 +382,55 @@ async function navigate(viewId) {
   sendTelemetry("navigate", { view: viewId });
 }
 
-async function syncDatabase() {
+function updateSyncStatus(message, tone = "info") {
+  const statusElements = [
+    document.getElementById("sync-status"),
+    document.getElementById("connection-status"),
+  ].filter(Boolean);
+  const classes = {
+    info: "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300",
+    success:
+      "bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-300",
+    warning:
+      "bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300",
+    error: "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-300",
+  };
+
+  statusElements.forEach((element) => {
+    element.classList.remove("hidden");
+    element.innerHTML = message;
+    element.className = `text-xs font-medium px-3 py-1.5 rounded-lg ${classes[tone] || classes.info}`;
+  });
+}
+
+function scheduleSyncRetry() {
+  clearTimeout(syncRetryTimer);
+  const delay = Math.min(60000, 3000 * 2 ** Math.min(syncAttempt - 1, 4));
+  const seconds = Math.ceil(delay / 1000);
+  updateSyncStatus(
+    `<i class="fa-solid fa-rotate fa-spin mr-1"></i> Database unavailable. Trying to reconnect (attempt ${syncAttempt}) in ${seconds}s...`,
+    "warning",
+  );
+  syncRetryTimer = setTimeout(() => syncDatabase(true), delay);
+}
+
+async function syncDatabase(isRetry = false) {
+  clearTimeout(syncRetryTimer);
   if (syncAbortController) {
     syncAbortController.abort();
   }
 
+  if (!isRetry) syncAttempt = 0;
+  syncAttempt++;
   syncAbortController = new AbortController();
   const timeoutId = setTimeout(() => syncAbortController.abort(), 20000);
 
   const url = `${DB_URL}?_t=${Date.now()}`;
-  const statusEl = document.getElementById("sync-status");
-
-  if (statusEl) {
-    statusEl.classList.remove("hidden");
-    statusEl.innerHTML =
-      '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Fetching subjects...';
-    statusEl.className =
-      "text-sm mt-3 font-medium bg-blue-50 text-blue-600 p-3 rounded-lg animate-pulse";
-  }
+  updateSyncStatus(
+    `<i class="fa-solid fa-spinner fa-spin mr-1"></i> ${isRetry ? "Retrying database connection" : "Connecting to database"}...`,
+    "info",
+  );
+  sendTelemetry("sync_attempt", { attempt: syncAttempt, retry: isRetry });
 
   try {
     const response = await fetch(url, {
@@ -406,55 +439,43 @@ async function syncDatabase() {
       cache: "no-store",
     });
 
-    clearTimeout(timeoutId);
-
     if (!response.ok) throw new Error("Network response failed");
     const summaryData = await response.json();
 
     if (Array.isArray(summaryData) && summaryData.length > 0) {
+      clearTimeout(timeoutId);
+      const completedAttempt = syncAttempt;
+      syncAttempt = 0;
       state.categorySummary = summaryData;
       saveState();
+      sendTelemetry("sync_success", {
+        attempt: completedAttempt,
+        subjectCount: summaryData.length,
+      });
 
-      if (statusEl) {
-        statusEl.innerHTML = `<i class="fa-solid fa-check-circle mr-1"></i> Success! Loaded ${summaryData.length} subjects.`;
-        statusEl.className =
-          "text-sm mt-3 font-medium bg-green-50 text-green-600 p-3 rounded-lg animate-card-in";
-      }
+      updateSyncStatus(
+        `<i class="fa-solid fa-check-circle mr-1"></i> Connected. Loaded ${summaryData.length} subjects.`,
+        "success",
+      );
 
       if (typeof populateFilters === "function") populateFilters();
       if (typeof renderCategoryProgress === "function")
         renderCategoryProgress();
     } else {
-      if (statusEl) {
-        statusEl.innerText =
-          state.categorySummary.length || state.db.length
-            ? "Database returned no subjects. Using cached data."
-            : "Error: Connected, but no subjects found.";
-        statusEl.className =
-          state.categorySummary.length || state.db.length
-            ? "text-sm mt-3 font-medium bg-yellow-50 text-yellow-700 p-3 rounded-lg"
-            : "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
-      }
+      clearTimeout(timeoutId);
+      sendTelemetry("sync_empty", { attempt: syncAttempt });
+      scheduleSyncRetry();
       if (state.categorySummary.length) renderCategoryProgress();
     }
   } catch (err) {
+    clearTimeout(timeoutId);
     console.error(err);
-    if (statusEl) {
-      if (err.name === "AbortError") {
-        statusEl.innerText = "Sync timed out. Using cached offline data.";
-        statusEl.className =
-          "text-sm mt-3 font-medium bg-yellow-50 text-yellow-700 p-3 rounded-lg";
-      } else {
-        const hasCache =
-          state.categorySummary.length > 0 || state.db.length > 0;
-        statusEl.innerText = hasCache
-          ? "Unable to reach the database. Using cached data."
-          : "Connection Error. Ensure you deployed the Apps Script correctly.";
-        statusEl.className = hasCache
-          ? "text-sm mt-3 font-medium bg-yellow-50 text-yellow-700 p-3 rounded-lg"
-          : "text-sm mt-3 font-medium bg-red-50 text-red-600 p-3 rounded-lg";
-      }
-    }
+    sendTelemetry("sync_failure", {
+      attempt: syncAttempt,
+      error: err.name || "NetworkError",
+      message: err.message || "Unknown sync error",
+    });
+    scheduleSyncRetry();
 
     const catList = document.getElementById("category-list");
     if (catList && state.categorySummary.length === 0) {
@@ -462,7 +483,7 @@ async function syncDatabase() {
                     <div class="text-center py-10 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 animate-card-in">
                         <i class="fa-solid fa-triangle-exclamation text-3xl text-red-500 mb-3 hover:scale-110 transition-transform"></i>
                         <h3 class="font-bold text-red-700 dark:text-red-400">Database Connection Failed</h3>
-                        <p class="text-sm text-red-600 dark:text-red-300 mt-1">Please check your internet connection or go to Settings to try syncing again.</p>
+                        <p class="text-sm text-red-600 dark:text-red-300 mt-1">The app is retrying the database connection automatically. You can keep this page open.</p>
                     </div>`;
     }
   }
