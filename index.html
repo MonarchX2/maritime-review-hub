@@ -65,12 +65,6 @@
         <i class="fa-solid fa-anchor mr-2"></i> MRH
       </button>
       <div class="flex items-center gap-5">
-        <div
-          id="connection-status"
-          class="hidden whitespace-nowrap"
-          role="status"
-          aria-live="polite"
-        ></div>
         <button
           id="btn-admin-nav"
           onclick="navigate('admin')"
@@ -119,6 +113,13 @@
         </button>
       </div>
     </header>
+
+    <div
+      id="connection-status"
+      class="hidden w-full text-center px-4 py-2 text-xs font-medium"
+      role="status"
+      aria-live="polite"
+    ></div>
 
     <main class="flex-1 p-4 md:p-8 overflow-y-auto w-full max-w-5xl mx-auto">
       <!-- DASHBOARD SECTION -->
@@ -715,6 +716,25 @@
             id="sync-status"
             class="text-sm mt-3 font-medium bg-gray-50 dark:bg-gray-700 p-3 rounded-lg hidden transition-all duration-300"
           ></p>
+          <div class="mt-4 flex justify-between items-center gap-4">
+            <div>
+              <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                >Database Updates</span
+              >
+              <p class="text-xs text-gray-500">
+                Apply new database summaries immediately or wait until no quiz
+                session is active.
+              </p>
+            </div>
+            <select
+              id="database-update-mode"
+              onchange="changeDatabaseUpdateMode(this.value)"
+              class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2 text-sm"
+            >
+              <option value="idle">When idle</option>
+              <option value="immediate">Immediately</option>
+            </select>
+          </div>
           <p class="text-xs text-gray-400 mt-4 transition-colors">
             Current Database Size:
             <span id="db-size-display" class="font-bold">0</span> questions.

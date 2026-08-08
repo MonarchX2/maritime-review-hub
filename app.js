@@ -17,6 +17,7 @@ let state = {
     quizHideABCD: false,
     showWrongChoices: false,
     archivedDecks: [],
+    databaseUpdateMode: "idle",
       quizNavigationPosition: "bottom",
       reviewNavigationPosition: "top",
       deckSortBy: "letters",
@@ -37,7 +38,10 @@ let state = {
 let chartInstance = null;
 let syncAbortController = null;
 let syncRetryTimer = null;
+let syncPollTimer = null;
 let syncAttempt = 0;
+let pendingSummaryData = null;
+let syncConnected = false;
 
 function generateUserId() {
   if (window.crypto && window.crypto.randomUUID) {
@@ -221,6 +225,8 @@ async function loadState() {
   }
 
   if (!state.stats.subjectAccuracy) state.stats.subjectAccuracy = {};
+  if (!["idle", "immediate"].includes(state.prefs.databaseUpdateMode))
+    state.prefs.databaseUpdateMode = "idle";
   if (state.prefs?.darkMode) document.documentElement.classList.add("dark");
 
   const dbSizeEl = document.getElementById("db-size-display");
@@ -263,6 +269,10 @@ function syncPreferenceControls() {
     const control = document.getElementById(id);
     if (control) control.checked = checked;
   });
+
+  const databaseUpdateMode = document.getElementById("database-update-mode");
+  if (databaseUpdateMode)
+    databaseUpdateMode.value = state.prefs.databaseUpdateMode || "idle";
 
   const modeLabel = document.getElementById("modeLabel");
   if (modeLabel)
@@ -403,12 +413,32 @@ function updateSyncStatus(message, tone = "info") {
   });
 }
 
+function scheduleSyncPoll() {
+  clearTimeout(syncPollTimer);
+  syncPollTimer = setTimeout(() => syncDatabase(true), 60000);
+}
+
+function applySummaryData(summaryData) {
+  const previousSummary = JSON.stringify(state.categorySummary || []);
+  const nextSummary = JSON.stringify(summaryData);
+  const changed = previousSummary !== nextSummary;
+
+  state.categorySummary = summaryData;
+  syncConnected = true;
+  saveState();
+  populateFilters();
+  renderCategoryProgress();
+  return changed;
+}
+
 function scheduleSyncRetry() {
   clearTimeout(syncRetryTimer);
   const delay = Math.min(60000, 3000 * 2 ** Math.min(syncAttempt - 1, 4));
   const seconds = Math.ceil(delay / 1000);
+  syncConnected = false;
+  renderCategoryProgress();
   updateSyncStatus(
-    `<i class="fa-solid fa-rotate fa-spin mr-1"></i> Database unavailable. Trying to reconnect (attempt ${syncAttempt}) in ${seconds}s...`,
+    `<i class="fa-solid fa-xmark mr-1"></i> Database unavailable. Trying to reconnect (attempt ${syncAttempt}) in ${seconds}s...`,
     "warning",
   );
   syncRetryTimer = setTimeout(() => syncDatabase(true), delay);
@@ -416,6 +446,7 @@ function scheduleSyncRetry() {
 
 async function syncDatabase(isRetry = false) {
   clearTimeout(syncRetryTimer);
+  clearTimeout(syncPollTimer);
   if (syncAbortController) {
     syncAbortController.abort();
   }
@@ -423,18 +454,19 @@ async function syncDatabase(isRetry = false) {
   if (!isRetry) syncAttempt = 0;
   syncAttempt++;
   syncAbortController = new AbortController();
+  const requestController = syncAbortController;
   const timeoutId = setTimeout(() => syncAbortController.abort(), 20000);
 
   const url = `${DB_URL}?_t=${Date.now()}`;
   updateSyncStatus(
-    `<i class="fa-solid fa-spinner fa-spin mr-1"></i> ${isRetry ? "Retrying database connection" : "Connecting to database"}...`,
+    `<i class="fa-solid fa-spinner fa-spin mr-1"></i> ${isRetry ? "Checking for database updates" : "Connecting to database"}...`,
     "info",
   );
   sendTelemetry("sync_attempt", { attempt: syncAttempt, retry: isRetry });
 
   try {
     const response = await fetch(url, {
-      signal: syncAbortController.signal,
+      signal: requestController.signal,
       redirect: "follow",
       cache: "no-store",
     });
@@ -446,21 +478,32 @@ async function syncDatabase(isRetry = false) {
       clearTimeout(timeoutId);
       const completedAttempt = syncAttempt;
       syncAttempt = 0;
-      state.categorySummary = summaryData;
-      saveState();
+      syncConnected = true;
+      const changed =
+        JSON.stringify(state.categorySummary || []) !== JSON.stringify(summaryData);
+      const canApplyNow =
+        state.prefs.databaseUpdateMode === "immediate" || !state.session.active;
+
+      if (canApplyNow) {
+        pendingSummaryData = null;
+        applySummaryData(summaryData);
+      } else {
+        if (changed) pendingSummaryData = summaryData;
+        renderCategoryProgress();
+      }
+
       sendTelemetry("sync_success", {
         attempt: completedAttempt,
         subjectCount: summaryData.length,
+        changed,
+        applied: canApplyNow,
       });
 
       updateSyncStatus(
-        `<i class="fa-solid fa-check-circle mr-1"></i> Connected. Loaded ${summaryData.length} subjects.`,
+        `<i class="fa-solid fa-check mr-1"></i> Connected. ${changed && !canApplyNow ? "Update waiting until your session ends." : `Checked ${summaryData.length} subjects.`}`,
         "success",
       );
-
-      if (typeof populateFilters === "function") populateFilters();
-      if (typeof renderCategoryProgress === "function")
-        renderCategoryProgress();
+      scheduleSyncPoll();
     } else {
       clearTimeout(timeoutId);
       sendTelemetry("sync_empty", { attempt: syncAttempt });
@@ -469,6 +512,7 @@ async function syncDatabase(isRetry = false) {
     }
   } catch (err) {
     clearTimeout(timeoutId);
+    if (requestController !== syncAbortController) return;
     console.error(err);
     sendTelemetry("sync_failure", {
       attempt: syncAttempt,
@@ -821,6 +865,14 @@ function renderQuestion() {
 }
 
 function enterFolder(folderName, isLockedFolder) {
+  if (!syncConnected) {
+    updateSyncStatus(
+      '<i class="fa-solid fa-xmark mr-1"></i> Decks are temporarily unavailable while the database reconnects.',
+      "warning",
+    );
+    return;
+  }
+
   const fullPath =
     state.currentPath && state.currentPath.length > 0
       ? state.currentPath.join("::") + "::" + folderName
@@ -1019,6 +1071,7 @@ function renderCategoryProgress() {
     const safeSubj = escapeHTML(subj);
     const safeName = escapeHTML(displayName);
     const totalQuestionsInDb = cat.QuestionCount;
+    const databaseUnavailable = !syncConnected;
 
     // CHANGED: Restrict Archive Icon to Root Path only
     const isRoot = !state.currentPath || state.currentPath.length === 0;
@@ -1057,6 +1110,9 @@ function renderCategoryProgress() {
     const cardClasses = isCompleted
       ? "bg-green-50 dark:bg-green-900/30 border-green-300"
       : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700";
+    const availabilityClasses = databaseUnavailable
+      ? "opacity-50 grayscale cursor-not-allowed"
+      : "";
     const isDownloaded = state.db.some((q) => q.Subject === subj);
     const statusBadge = isDownloaded
       ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i></span>`
@@ -1117,7 +1173,7 @@ function renderCategoryProgress() {
     }
 
     return `
-        <div onclick="handleDeckClick('${safeSubj}')" class="cursor-pointer animate-card-in ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;">
+        <div onclick="handleDeckClick('${safeSubj}')" class="cursor-pointer animate-card-in ${cardClasses} ${availabilityClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;" title="${databaseUnavailable ? "Waiting for database connection" : ""}">
                 <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
                     <i class="fa-solid fa-spinner fa-spin text-3xl ${loaderColor} mb-2"></i>
                     <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
@@ -1179,6 +1235,9 @@ function renderCategoryProgress() {
     if (hasChildren || isExplicitFolder) {
       const totalCards = getFolderStats(item);
       const folderClass = isGrid ? "h-full min-h-[140px]" : "h-auto";
+      const availabilityClasses = !syncConnected
+        ? "opacity-50 grayscale cursor-not-allowed"
+        : "";
 
       const isReview = currentAppMode === "review";
       const folderColorClass = isReview
@@ -1213,7 +1272,7 @@ function renderCategoryProgress() {
       }
 
       html += `
-                <div onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
+                <div onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in ${availabilityClasses} bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;" title="${!syncConnected ? "Waiting for database connection" : ""}">
                     <div class="h-12 ${folderColorClass} transition-colors relative">                        
                         <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
                     </div>
@@ -1900,6 +1959,14 @@ function endSession(silent = false) {
   }
 
   state.session.active = false;
+  if (pendingSummaryData) {
+    applySummaryData(pendingSummaryData);
+    pendingSummaryData = null;
+    updateSyncStatus(
+      '<i class="fa-solid fa-check mr-1"></i> Database update applied after your session.',
+      "success",
+    );
+  }
   if (!silent) navigate("dashboard");
 
   sendTelemetry("end_session", { totalAnswered: state.session.currentIndex });
@@ -2933,10 +3000,34 @@ function toggleAppMode() {
   sendTelemetry("toggle_mode", { mode: currentAppMode });
 }
 
+function changeDatabaseUpdateMode(mode) {
+  state.prefs.databaseUpdateMode = mode === "immediate" ? "immediate" : "idle";
+  saveState();
+  if (state.prefs.databaseUpdateMode === "immediate" && pendingSummaryData) {
+    applySummaryData(pendingSummaryData);
+    pendingSummaryData = null;
+    updateSyncStatus(
+      '<i class="fa-solid fa-check mr-1"></i> Database update applied immediately.',
+      "success",
+    );
+  }
+  sendTelemetry("change_database_update_mode", {
+    mode: state.prefs.databaseUpdateMode,
+  });
+}
+
 let pendingDeckSubject = null;
 let pendingDeckAction = null;
 
 function handleDeckClick(subj, action = "continue") {
+  if (!syncConnected) {
+    updateSyncStatus(
+      '<i class="fa-solid fa-xmark mr-1"></i> Decks are temporarily unavailable while the database reconnects.',
+      "warning",
+    );
+    return;
+  }
+
   const deckInfo = state.categorySummary.find((c) => c.Subject === subj);
   if (deckInfo && deckInfo.Locked) {
     openDeckPasswordModal(subj, action);
