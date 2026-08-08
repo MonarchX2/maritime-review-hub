@@ -161,6 +161,16 @@ function getSessionStoredItem(key, fallback = null) {
   if (namespacedValue !== null) return namespacedValue;
   const legacyValue = sessionStorage.getItem(getLegacyStorageKey(key));
   if (legacyValue !== null) return legacyValue;
+
+  // Fallback: session storage may have been written under a different namespace
+  // when the user identity was not yet known during restore.
+  for (let i = 0; i < sessionStorage.length; i++) {
+    const storedKey = sessionStorage.key(i) || "";
+    if (storedKey.endsWith(`:${key}`)) {
+      const fallbackValue = sessionStorage.getItem(storedKey);
+      if (fallbackValue !== null) return fallbackValue;
+    }
+  }
   return fallback;
 }
 
@@ -171,6 +181,12 @@ function setSessionStoredItem(key, value) {
 function removeSessionStoredItem(key) {
   sessionStorage.removeItem(getStorageKey(key));
   sessionStorage.removeItem(getLegacyStorageKey(key));
+  for (let i = sessionStorage.length - 1; i >= 0; i--) {
+    const storedKey = sessionStorage.key(i) || "";
+    if (storedKey.endsWith(`:${key}`)) {
+      sessionStorage.removeItem(storedKey);
+    }
+  }
 }
 
 function getSessionStoredJSON(key, fallback = null) {
