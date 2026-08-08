@@ -1,9 +1,8 @@
-const CACHE_NAME = "mrh-shell-v4";
+const CACHE_NAME = "3";
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",
   "./manifest.json",
-  "./icon.svg",
   "./app.js",
   "./admin.js",
   "./styles.css",
@@ -16,16 +15,8 @@ const ASSETS_TO_CACHE = [
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then(async (cache) => {
-      await Promise.allSettled(
-        ASSETS_TO_CACHE.map(async (asset) => {
-          try {
-            await cache.add(asset);
-          } catch (error) {
-            console.warn("MRH could not cache asset:", asset, error);
-          }
-        }),
-      );
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(ASSETS_TO_CACHE);
     }),
   );
 });
@@ -68,7 +59,9 @@ self.addEventListener("fetch", (event) => {
             }
             return networkResponse;
           })
-          .catch(() => cachedResponse);
+          .catch(() => {
+            // Network failed, safe to ignore if we have a cache fallback
+          });
 
         // Return cached response immediately if available, otherwise wait for network
         return cachedResponse || fetchPromise;

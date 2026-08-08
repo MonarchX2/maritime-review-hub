@@ -2,6 +2,8 @@ const DB_URL =
   "https://script.google.com/macros/s/AKfycbx4HFy5LmX_CFZMTOdl809OrnsgxzQvpzHDOhrMK3yk7fNZb7Gp2pImwBCS_I1Gx-D20g/exec";
 
 const CHOICES_ARRAY = ["A", "B", "C", "D"];
+const SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const QUIZ_NAVIGATION_BREAKPOINT = 768;
 
 let state = {
   db: [],
@@ -18,7 +20,8 @@ let state = {
     showWrongChoices: false,
     archivedDecks: [],
     databaseUpdateMode: "idle",
-    quizNavigationPosition: "bottom",
+    quizNavigationPosition: "auto",
+    quizNavigationMode: "auto",
     reviewNavigationPosition: "top",
     deckSortBy: "letters",
     deckSortDirection: "asc",
@@ -45,7 +48,6 @@ let syncAttempt = 0;
 let initialSyncSuccessShown = false;
 let pendingSummaryData = null;
 let syncConnected = false;
-let deferredInstallPrompt = null;
 let lastSyncAt = 0;
 
 function generateUserId() {
@@ -138,7 +140,7 @@ function setupTelemetry() {
     }),
   );
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && Date.now() - lastSyncAt > 60000) {
+    if (!document.hidden && Date.now() - lastSyncAt > SYNC_INTERVAL_MS) {
       syncDatabase(true, true);
     }
   });
@@ -165,6 +167,18 @@ function escapeHTML(value) {
         '"': "&quot;",
       })[c],
   );
+}
+
+function encodeHandlerValue(value) {
+  return encodeURIComponent(String(value));
+}
+
+function decodeHandlerValue(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch (error) {
+    return value;
+  }
 }
 
 async function loadState() {
@@ -221,13 +235,19 @@ async function loadState() {
         ...state.prefs,
         ...prefs,
       };
+      if (
+        !Object.prototype.hasOwnProperty.call(prefs, "quizNavigationMode") &&
+        prefs.quizNavigationPosition === "bottom"
+      ) {
+        state.prefs.quizNavigationPosition = "auto";
+      }
     } catch (e) {
       console.error("Invalid preferences.", e);
     }
   }
 
-  if (!["top", "bottom"].includes(state.prefs.quizNavigationPosition))
-    state.prefs.quizNavigationPosition = "bottom";
+  if (!["top", "bottom", "auto"].includes(state.prefs.quizNavigationPosition))
+    state.prefs.quizNavigationPosition = "auto";
   if (!["top", "bottom"].includes(state.prefs.reviewNavigationPosition))
     state.prefs.reviewNavigationPosition = "top";
   if (state.prefs.lastActivity?.mode) {
@@ -294,7 +314,7 @@ function syncPreferenceControls() {
     .getElementById("view-deck-review")
     ?.classList.contains("active")
     ? state.prefs.reviewNavigationPosition
-    : state.prefs.quizNavigationPosition;
+    : getQuizNavigationPosition();
   if (navigationSelect) navigationSelect.value = activeNavigationPosition;
   [
     "toggle-main-navigation-bottom",
@@ -470,7 +490,7 @@ function hideConnectionStatusAfterDelay(delay = 3000) {
 
 function scheduleSyncPoll() {
   clearTimeout(syncPollTimer);
-  syncPollTimer = setTimeout(() => syncDatabase(true, true), 60000);
+  syncPollTimer = setTimeout(() => syncDatabase(true, true), SYNC_INTERVAL_MS);
 }
 
 function applySummaryData(summaryData) {
@@ -488,7 +508,7 @@ function applySummaryData(summaryData) {
 function scheduleSyncRetry(showOverlay = true) {
   clearTimeout(syncRetryTimer);
   clearInterval(syncCountdownTimer);
-  const delay = Math.min(60000, 3000 * 2 ** Math.min(syncAttempt - 1, 4));
+  const delay = SYNC_INTERVAL_MS;
   const retryAt = Date.now() + delay;
   const wasConnected = syncConnected;
   syncConnected = false;
@@ -606,31 +626,6 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
     }
   }
 }
-
-async function installApp() {
-  if (!deferredInstallPrompt) return;
-
-  deferredInstallPrompt.prompt();
-  const choice = await deferredInstallPrompt.userChoice;
-  sendTelemetry("pwa_install_prompt", { outcome: choice.outcome });
-  deferredInstallPrompt = null;
-  const installButton = document.getElementById("btn-install-app");
-  if (installButton) installButton.classList.add("hidden");
-}
-
-window.addEventListener("beforeinstallprompt", (event) => {
-  event.preventDefault();
-  deferredInstallPrompt = event;
-  const installButton = document.getElementById("btn-install-app");
-  if (installButton) installButton.classList.remove("hidden");
-});
-
-window.addEventListener("appinstalled", () => {
-  deferredInstallPrompt = null;
-  const installButton = document.getElementById("btn-install-app");
-  if (installButton) installButton.classList.add("hidden");
-  sendTelemetry("pwa_installed", {});
-});
 
 function populateFilters() {
   const select = document.getElementById("filter-subject");
@@ -1162,6 +1157,7 @@ function renderCategoryProgress() {
   function generateCardHTML(cat, displayName, delay = 0) {
     const subj = cat.Subject;
     const safeSubj = escapeHTML(subj);
+    const encodedSubj = encodeHandlerValue(subj);
     const safeName = escapeHTML(displayName);
     const totalQuestionsInDb = cat.QuestionCount;
     const databaseUnavailable = !syncConnected;
@@ -1176,7 +1172,7 @@ function renderCategoryProgress() {
     let archiveBtnHTML = "";
     if (isRoot) {
       archiveBtnHTML = `
-                <button onclick="event.stopPropagation(); toggleArchiveDeck('${safeSubj}')" 
+                <button onclick="event.stopPropagation(); toggleArchiveDeck('${encodedSubj}')" 
                         class="transition-all transform hover:scale-110 active:scale-90 ${archiveIconColor} p-1" 
                         title="${isArchived ? "Unarchive Deck" : "Archive Deck"}">
                     <i class="fa-solid fa-box-archive"></i>
@@ -1243,7 +1239,7 @@ function renderCategoryProgress() {
       countBadgeHTML = `
                 <div class="flex items-center gap-2 flex-shrink-0 pt-1">
                     ${archiveBtnHTML}
-                    ${isDownloaded ? `<button onclick="event.stopPropagation(); deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>` : ``}
+                    ${isDownloaded ? `<button onclick="event.stopPropagation(); deleteSubjectData('${encodedSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>` : ``}
                     <span class="text-sm font-black ${themeColorText} transition-colors">${completedCount} / ${totalQuestionsInDb}</span>
                 </div>`;
       progressBarHTML = `
@@ -1253,7 +1249,7 @@ function renderCategoryProgress() {
 
       if (completedCount > 0 || mistakesCount > 0) {
         resetBtnHTML = `
-                    <button onclick="resetCategory('${safeSubj}')" class="w-10 sm:w-12 shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
+                    <button onclick="resetCategory('${encodedSubj}')" class="w-10 sm:w-12 shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
                         <i class="fa-solid fa-rotate-left"></i>
                     </button>`;
       }
@@ -1261,12 +1257,12 @@ function renderCategoryProgress() {
       countBadgeHTML = `
                 <div class="flex items-center gap-2 flex-shrink-0 pt-1">
                     ${archiveBtnHTML}
-                    ${isDownloaded ? `<button onclick="event.stopPropagation(); deleteSubjectData('${safeSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>` : ``}
+                    ${isDownloaded ? `<button onclick="event.stopPropagation(); deleteSubjectData('${encodedSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>` : ``}
                 </div>`;
     }
 
     return `
-        <div onclick="handleDeckClick('${safeSubj}')" class="cursor-pointer animate-card-in ${cardClasses} ${availabilityClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;" title="${databaseUnavailable ? "Waiting for database connection" : ""}">
+        <div onclick="handleDeckClick('${encodedSubj}')" class="cursor-pointer animate-card-in ${cardClasses} ${availabilityClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;" title="${databaseUnavailable ? "Waiting for database connection" : ""}">
                 <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
                     <i class="fa-solid fa-spinner fa-spin text-3xl ${loaderColor} mb-2"></i>
                     <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
@@ -1293,7 +1289,7 @@ function renderCategoryProgress() {
                 
                 <div class="flex gap-2 mt-auto w-full" onclick="event.stopPropagation()">
                     <!-- Primary Action Button -->
-                    <button onclick="handleDeckClick('${safeSubj}')" class="flex-1 ${primaryActionColor} text-white py-2 px-2 rounded-lg font-bold active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="${primaryActionText}">
+                    <button onclick="handleDeckClick('${encodedSubj}')" class="flex-1 ${primaryActionColor} text-white py-2 px-2 rounded-lg font-bold active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="${primaryActionText}">
                         <i class="fa-solid ${primaryActionIcon} mr-1 sm:mr-2 group-hover:scale-125 transition-transform flex-shrink-0"></i> 
                         <span class="truncate">${primaryActionText}</span>
                     </button>
@@ -1302,7 +1298,7 @@ function renderCategoryProgress() {
                     ${
                       !isReview && mistakesCount > 0
                         ? `
-                        <button onclick="handleDeckClick('${safeSubj}', 'mistakes')" class="flex-1 bg-yellow-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-yellow-600 active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="Review Mistakes">
+                        <button onclick="handleDeckClick('${encodedSubj}', 'mistakes')" class="flex-1 bg-yellow-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-yellow-600 active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="Review Mistakes">
                             <i class="fa-solid fa-triangle-exclamation mr-1 sm:mr-2 group-hover:scale-125 transition-transform flex-shrink-0"></i> 
                             <span class="truncate">Review (${mistakesCount})</span>
                         </button>
@@ -1353,7 +1349,7 @@ function renderCategoryProgress() {
           ? "text-amber-500 hover:text-amber-600"
           : "text-gray-400 hover:text-brand-500";
         archiveBtnHtml = `
-                    <button onclick="event.stopPropagation(); toggleArchiveDeck('${escapeHTML(key)}')"
+                    <button onclick="event.stopPropagation(); toggleArchiveDeck('${encodeHandlerValue(key)}')"
                             class="transition-all transform hover:scale-110 active:scale-90 ${archiveIconColor} p-1 z-10"
                             title="${isArchived ? "Unarchive Folder" : "Archive Folder"}">
                         <i class="fa-solid fa-box-archive text-lg"></i>
@@ -1387,6 +1383,16 @@ function renderCategoryProgress() {
   html += `</div>`;
   container.className = "transition-all duration-500";
   container.innerHTML = html;
+}
+
+function applyResponsiveLayout() {
+  const nextLayout =
+    window.innerWidth <= QUIZ_NAVIGATION_BREAKPOINT ? "grid" : "list";
+  if (state.prefs.layoutMode === nextLayout) return;
+  state.prefs.layoutMode = nextLayout;
+  saveState();
+  if (document.getElementById("view-dashboard")?.classList.contains("active"))
+    renderCategoryProgress();
 }
 
 async function fetchAndStartCategory(subject, mode, pass = null) {
@@ -1462,6 +1468,7 @@ function startCustomSession(pool) {
 }
 
 async function resetCategory(subject) {
+  subject = decodeHandlerValue(subject);
   if (
     await requestConfirmation(
       `Are you sure you want to reset your accuracy and progress statistics for "${subject}"? This cannot be undone.`,
@@ -1495,6 +1502,7 @@ async function resetCategory(subject) {
 }
 
 async function deleteSubjectData(subject) {
+  subject = decodeHandlerValue(subject);
   if (
     await requestConfirmation(
       `Are you sure you want to delete the downloaded questions for "${subject}"? Your accuracy and progress stats will remain, but the app will remove the local data to save space.`,
@@ -1728,6 +1736,12 @@ function renderDeckReview(subject, questions) {
     }
   }
 
+  const pageCount = document.getElementById("review-page-count");
+  const pageSizeInput = document.getElementById("review-page-size-input");
+  if (pageSizeInput) pageSizeInput.value = pageSize === "All" ? "" : pageSize;
+  if (pageCount)
+    pageCount.innerText = pageSize === "All" ? "1" : Math.max(1, totalPages);
+
   let navigationHTML = "";
   if (layout === "single") {
     navigationHTML = `
@@ -1835,13 +1849,13 @@ function renderDeckReview(subject, questions) {
                         <!-- Feature 16: Individual Toggle Button -->
                         ${
                           isMultipleChoice
-                            ? `<button onclick="toggleSpecificChoices('${q.ID}')" class="text-xs font-bold px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded transition-colors">
+                            ? `<button onclick="toggleSpecificChoices('${encodeHandlerValue(q.ID)}')" class="text-xs font-bold px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded transition-colors">
                           ${showWrongForThisQ ? '<i class="fa-solid fa-eye-slash mr-1"></i> Hide Choices' : '<i class="fa-solid fa-eye mr-1"></i> Show Choices'}
                         </button>`
                             : ""
                         }
 
-                        <button onclick="openReportModalFromStudy('${q.ID}')" class="${reportClass} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95 transition-all" title="${globallyReportedQs.has(q.ID) ? "Active Community Report" : "Report Issue"}">
+                        <button onclick="openReportModalFromStudy('${encodeHandlerValue(q.ID)}')" class="${reportClass} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95 transition-all" title="${globallyReportedQs.has(q.ID) ? "Active Community Report" : "Report Issue"}">
                             <i class="fa-solid fa-triangle-exclamation"></i>
                         </button>
                     </div>
@@ -1911,6 +1925,7 @@ function toggleShowWrongChoices() {
 }
 
 async function toggleArchiveDeck(subjectId) {
+  subjectId = decodeHandlerValue(subjectId);
   if (!state.prefs.archivedDecks) {
     state.prefs.archivedDecks = [];
   }
@@ -2219,7 +2234,7 @@ async function clearAppData() {
 
     if (
       !(await requestConfirmation(
-        "Final confirmation: this will permanently erase your downloaded decks, progress, preferences, saved sessions, caches, and service worker data. This cannot be undone.",
+        "Final confirmation: this will permanently erase your downloaded decks, progress, preferences, saved sessions, and cached data. This cannot be undone.",
         "Confirm Permanent Deletion",
       ))
     ) {
@@ -2237,14 +2252,6 @@ async function clearAppData() {
         [...(await caches.keys())].map((cacheName) => caches.delete(cacheName)),
       );
     }
-    if ("serviceWorker" in navigator) {
-      await Promise.all(
-        (await navigator.serviceWorker.getRegistrations()).map((registration) =>
-          registration.unregister(),
-        ),
-      );
-    }
-
     window.location.reload();
   } catch (error) {
     console.error("Unable to clear app data.", error);
@@ -2312,18 +2319,22 @@ async function fetchGlobalReports() {
 window.onload = async () => {
   setupTelemetry();
   await loadState();
+  applyResponsiveLayout();
 
   const toggleElement = document.getElementById("globalModeToggle");
   if (toggleElement) {
     currentAppMode = toggleElement.checked ? "review" : "quiz";
   }
 
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("sw.js").then((reg) => reg.update());
-  }
   syncDatabase();
   fetchGlobalReports();
 };
+
+window.addEventListener("resize", () => {
+  applyResponsiveLayout();
+  if (state.session.active && state.prefs.quizNavigationPosition === "auto")
+    applyNavigationPosition();
+});
 
 function saveSessionProgress() {
   if (!state.session.active) return;
@@ -2568,6 +2579,12 @@ function toggleLayout() {
   renderCategoryProgress();
 }
 
+function getQuizNavigationPosition() {
+  if (state.prefs.quizNavigationPosition !== "auto")
+    return state.prefs.quizNavigationPosition;
+  return window.innerWidth <= QUIZ_NAVIGATION_BREAKPOINT ? "top" : "bottom";
+}
+
 function changeDeckSort(sortOrder) {
   state.prefs.deckSortBy = ["letters", "questions"].includes(sortOrder)
     ? sortOrder
@@ -2603,7 +2620,7 @@ function applyNavigationPosition() {
   if (!navigation || !topAnchor || !bottomAnchor) return;
 
   const savedPosition = state.session.active
-    ? state.prefs.quizNavigationPosition
+    ? getQuizNavigationPosition()
     : state.prefs.reviewNavigationPosition;
   const position = savedPosition === "top" ? "top" : "bottom";
   (position === "top" ? topAnchor : bottomAnchor).appendChild(navigation);
@@ -2619,6 +2636,7 @@ function changeNavigationPosition(position) {
     state.prefs.reviewNavigationPosition = normalized;
   } else {
     state.prefs.quizNavigationPosition = normalized;
+    state.prefs.quizNavigationMode = "manual";
   }
   saveState();
   applyNavigationPosition();
@@ -2656,6 +2674,22 @@ function toggleModal(modalId, isVisible) {
       modal.classList.add("hidden");
     }, 300);
   }
+}
+
+function openAboutModal() {
+  toggleModal("about-modal", true);
+}
+
+function closeAboutModal() {
+  toggleModal("about-modal", false);
+}
+
+function openProfileModal() {
+  toggleModal("profile-modal", true);
+}
+
+function closeProfileModal() {
+  toggleModal("profile-modal", false);
 }
 
 let confirmResolver = null;
@@ -2747,13 +2781,12 @@ function openSessionSettingsModal() {
   const navigationSelect = document.getElementById(
     "navigation-position-select",
   );
-  if (navigationSelect)
-    navigationSelect.value = state.prefs.quizNavigationPosition;
+  if (navigationSelect) navigationSelect.value = getQuizNavigationPosition();
   const navigationToggle = document.getElementById(
     "toggle-session-navigation-bottom",
   );
   if (navigationToggle)
-    navigationToggle.checked = state.prefs.quizNavigationPosition === "bottom";
+    navigationToggle.checked = getQuizNavigationPosition() === "bottom";
 
   toggleModal("session-settings-modal", true);
 }
@@ -2844,6 +2877,7 @@ function closeDeckPasswordModal() {
 }
 
 function openReportModalFromStudy(questionId) {
+  questionId = decodeHandlerValue(questionId);
   const q = (state.db || []).find((item) => item.ID === questionId);
   if (!q) return;
 
@@ -3143,6 +3177,7 @@ let pendingDeckSubject = null;
 let pendingDeckAction = null;
 
 function handleDeckClick(subj, action = "continue") {
+  subj = decodeHandlerValue(subj);
   if (!syncConnected) {
     updateSyncStatus(
       '<i class="fa-solid fa-xmark mr-1"></i> Decks are temporarily unavailable while the database reconnects.',
@@ -3373,7 +3408,9 @@ function changeStudyLayout(layout) {
 }
 
 function changeStudyPageSize(size) {
-  state.prefs.studyPageSize = size === "All" ? "All" : parseInt(size);
+  const parsedSize = parseInt(size, 10);
+  if (!Number.isFinite(parsedSize) || parsedSize < 1) return;
+  state.prefs.studyPageSize = parsedSize;
   let subject = currentReviewSubject;
   if (!state.prefs.studyProgress[subject])
     state.prefs.studyProgress[subject] = { page: 1, index: 0, scrollY: 0 };
@@ -3399,6 +3436,7 @@ function changeStudyIndex(delta) {
 }
 
 function toggleSpecificChoices(qId) {
+  qId = decodeHandlerValue(qId);
   if (!state.prefs.qToggles) state.prefs.qToggles = {};
   let currentState = state.prefs.qToggles[qId];
   if (currentState === undefined) {

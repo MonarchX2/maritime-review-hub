@@ -5,17 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Maritime Review Hub</title>
 
-    <link rel="manifest" href="manifest.json" />
-    <meta name="theme-color" content="#1e3a8a" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta
-      name="apple-mobile-web-app-status-bar-style"
-      content="black-translucent"
-    />
-    <meta name="apple-mobile-web-app-title" content="MRH" />
-    <link rel="apple-touch-icon" href="icon.svg" />
-
     <!-- Dark Mode Memory Fix to avoid white flash -->
     <script>
       try {
@@ -122,10 +111,10 @@
         <!-- Profile feature placeholder -->
         <button
           type="button"
-          disabled
-          class="cursor-not-allowed text-white/45 text-lg opacity-60"
-          aria-label="User Profile - Coming Soon"
-          title="User Profile - Coming Soon"
+          onclick="openProfileModal()"
+          class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg"
+          aria-label="User Profile"
+          title="User Profile"
         >
           <i class="fa-solid fa-user"></i>
         </button>
@@ -175,10 +164,10 @@
 
         <!-- Subject Progress Header Row -->
         <div
-          class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-3"
+          class="dashboard-header-row flex flex-row justify-between items-center mb-4 gap-2 flex-nowrap"
         >
           <h2
-            class="text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100 truncate"
+            class="shrink-0 text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100 truncate"
           >
             Subjects
           </h2>
@@ -450,6 +439,9 @@
                 </div>
                 <p class="text-gray-700 dark:text-gray-300 font-medium">
                   Think of the answer first to do active recall
+                </p>
+                <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  You can disable this in Settings.
                 </p>
               </div>
               <button
@@ -766,14 +758,6 @@
             Current Database Size:
             <span id="db-size-display" class="font-bold">0</span> questions.
           </p>
-          <button
-            id="btn-install-app"
-            type="button"
-            onclick="installApp()"
-            class="hidden mt-4 w-full sm:w-auto bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors"
-          >
-            <i class="fa-solid fa-download mr-2"></i> Install MRH App
-          </button>
         </div>
 
         <div class="mt-6 border-t dark:border-gray-700 pt-4">
@@ -874,6 +858,18 @@
             </button>
           </div>
         </div>
+
+        <p class="mt-8 text-center text-xs text-gray-400 dark:text-gray-500">
+          A project of AB.
+          <br />
+          <button
+            type="button"
+            onclick="openAboutModal()"
+            class="mt-1 text-brand-500 hover:text-brand-600 hover:underline"
+          >
+            About MRH
+          </button>
+        </p>
       </section>
 
       <!-- ADMIN SECTION -->
@@ -1274,6 +1270,78 @@
         </div>
       </div>
 
+      <!-- About Modal -->
+      <div
+        id="about-modal"
+        class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 border border-gray-200 dark:border-gray-700"
+        >
+          <div
+            class="flex justify-between items-center mb-5 border-b border-gray-100 dark:border-gray-700 pb-3"
+          >
+            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+              <i class="fa-solid fa-circle-info text-brand-500 mr-2"></i>
+              About MRH
+            </h3>
+            <button
+              type="button"
+              onclick="closeAboutModal()"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              aria-label="Close About"
+            >
+              <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+          </div>
+          <p class="text-sm text-gray-600 dark:text-gray-300">
+            Maritime Review Hub
+          </p>
+          <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            Version 1.0.0
+          </p>
+          <a
+            href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 font-bold text-white hover:bg-brand-700 transition-colors"
+          >
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+            Learn More
+          </a>
+        </div>
+      </div>
+
+      <!-- Profile Modal -->
+      <div
+        id="profile-modal"
+        class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 border border-gray-200 dark:border-gray-700"
+        >
+          <div
+            class="flex justify-between items-center mb-5 border-b border-gray-100 dark:border-gray-700 pb-3"
+          >
+            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+              <i class="fa-solid fa-user text-brand-500 mr-2"></i>
+              Profile
+            </h3>
+            <button
+              type="button"
+              onclick="closeProfileModal()"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              aria-label="Close Profile"
+            >
+              <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+          </div>
+          <p class="text-center text-sm text-gray-600 dark:text-gray-300">
+            This feature will be coming soon.
+          </p>
+        </div>
+      </div>
+
       <!-- Review Settings Modal -->
       <div
         id="review-settings-modal"
@@ -1394,19 +1462,18 @@
               <label class="text-sm font-bold text-gray-800 dark:text-gray-200"
                 >Items Per Page</label
               >
-              <select
-                id="review-page-size-select"
+              <input
+                id="review-page-size-input"
+                type="number"
+                min="1"
+                step="1"
+                inputmode="numeric"
                 onchange="changeStudyPageSize(this.value)"
                 class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2.5 text-sm text-gray-700 dark:text-gray-200 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors"
-              >
-                <option value="5">5</option>
-                <option value="10">10</option>
-                <option value="15">15</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-                <option value="All">All</option>
-              </select>
+              />
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                Total pages: <span id="review-page-count">-</span>
+              </p>
             </div>
           </div>
         </div>

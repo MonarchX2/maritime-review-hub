@@ -23,6 +23,20 @@ body {
   scroll-behavior: smooth;
 }
 
+html,
+body,
+main {
+  scrollbar-width: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+main::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 button,
 select,
 input {
@@ -38,10 +52,24 @@ input {
 
 .dashboard-controls {
   display: grid;
-  grid-template-columns: repeat(2, max-content);
+  grid-template-columns: repeat(4, max-content);
   gap: 0.5rem;
   width: fit-content;
   max-width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  margin-left: auto;
+  overflow-x: auto;
+  justify-content: end;
+  scrollbar-width: none;
+}
+
+.dashboard-controls::-webkit-scrollbar {
+  display: none;
+}
+
+.dashboard-controls:has(#deck-sort-menu[open]) {
+  overflow: visible;
 }
 
 #deck-sort-menu {
@@ -57,12 +85,6 @@ input {
 #deck-source-filter {
   min-width: 0;
   width: auto;
-}
-
-@media (min-width: 640px) {
-  .dashboard-controls {
-    grid-template-columns: repeat(4, max-content);
-  }
 }
 
 .deck-sort-option {
