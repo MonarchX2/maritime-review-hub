@@ -1385,16 +1385,6 @@ function renderCategoryProgress() {
   container.innerHTML = html;
 }
 
-function applyResponsiveLayout() {
-  const nextLayout =
-    window.innerWidth <= QUIZ_NAVIGATION_BREAKPOINT ? "grid" : "list";
-  if (state.prefs.layoutMode === nextLayout) return;
-  state.prefs.layoutMode = nextLayout;
-  saveState();
-  if (document.getElementById("view-dashboard")?.classList.contains("active"))
-    renderCategoryProgress();
-}
-
 async function fetchAndStartCategory(subject, mode, pass = null) {
   const loader = document.getElementById(`loading-${subject}`);
 
@@ -2319,7 +2309,6 @@ async function fetchGlobalReports() {
 window.onload = async () => {
   setupTelemetry();
   await loadState();
-  applyResponsiveLayout();
 
   const toggleElement = document.getElementById("globalModeToggle");
   if (toggleElement) {
@@ -2331,7 +2320,6 @@ window.onload = async () => {
 };
 
 window.addEventListener("resize", () => {
-  applyResponsiveLayout();
   if (state.session.active && state.prefs.quizNavigationPosition === "auto")
     applyNavigationPosition();
 });
