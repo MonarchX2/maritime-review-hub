@@ -1,17 +1,5 @@
-@import "tailwindcss";
-
-@theme {
-  --color-brand-50: #eff6ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-200: #bfdbfe;
-  --color-brand-300: #93c5fd;
-  --color-brand-400: #60a5fa;
-  --color-brand-500: #3b82f6;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
-  --color-brand-800: #1e40af;
-  --color-brand-900: #1e3a8a;
-
+:root {
+  /* Colors */
   --color-btn-hover: #3b82f6;
   --color-correct-bg: #15803d;
   --color-correct-border: #14532d;
@@ -19,246 +7,207 @@
   --color-wrong-border: #7f1d1d;
   --color-text-white: #ffffff;
 
+  /* Easing & Timings */
   --ease-base: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-bounce: cubic-bezier(0.25, 0.8, 0.25, 1);
   --ease-shake: cubic-bezier(0.36, 0.07, 0.19, 0.97);
 
-  --duration-fast: 0.3s;
-  --duration-med: 0.5s;
-  --duration-slow: 0.6s;
-
-  --animate-smooth-slide-up: smoothSlideUp var(--duration-med)
-    var(--ease-smooth) forwards;
-  --animate-pop-correct: popCorrect var(--duration-slow) var(--ease-smooth)
-    forwards;
-  --animate-shake-wrong: shakeWrong var(--duration-med) var(--ease-shake)
-    forwards;
-  --animate-folder-slide-down: folderSlideDown var(--duration-med)
-    var(--ease-smooth) forwards;
-  --animate-fade-scale-in: fadeScaleIn var(--duration-med) var(--ease-smooth)
-    forwards;
-  --animate-expand-timer-center: expandTimerCenter 3s linear forwards;
-  --animate-slide-in-right: slideInRight var(--duration-fast) var(--ease-smooth)
-    forwards;
-
-  @keyframes smoothSlideUp {
-    0% {
-      opacity: 0;
-      transform: translateY(20px) scale(0.98);
-    }
-    100% {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
-
-  @keyframes popCorrect {
-    0% {
-      transform: scale(1);
-    }
-    40% {
-      transform: scale(1.04);
-    }
-    100% {
-      transform: scale(1);
-    }
-  }
-
-  @keyframes shakeWrong {
-    0%,
-    100% {
-      transform: translateX(0);
-    }
-    20%,
-    60% {
-      transform: translateX(-6px);
-    }
-    40%,
-    80% {
-      transform: translateX(6px);
-    }
-  }
-
-  @keyframes folderSlideDown {
-    0% {
-      opacity: 0;
-      transform: translateY(-10px) scaleY(0.95);
-    }
-    100% {
-      opacity: 1;
-      transform: translateY(0) scaleY(1);
-    }
-  }
-
-  @keyframes fadeScaleIn {
-    0% {
-      opacity: 0;
-      transform: translateY(20px) scale(0.96);
-    }
-    100% {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
-
-  @keyframes expandTimerCenter {
-    0% {
-      transform: scaleX(0) scaleY(2);
-      opacity: 0;
-    }
-    5% {
-      transform: scaleX(0.05) scaleY(1);
-      opacity: 1;
-    }
-    100% {
-      transform: scaleX(1) scaleY(1);
-      opacity: 1;
-    }
-  }
-
-  @keyframes slideInRight {
-    0% {
-      transform: translateX(100%);
-      opacity: 0;
-    }
-    100% {
-      transform: translateX(0);
-      opacity: 1;
-    }
-  }
+  --time-fast: 0.3s;
+  --time-med: 0.5s;
+  --time-slow: 0.6s;
 }
 
-/* Register custom utilities for Tailwind v4 compiler */
-@utility choice-btn {
-  transition: all var(--duration-fast) var(--ease-bounce);
+body {
+  -webkit-tap-highlight-color: transparent;
+  scroll-behavior: smooth;
+}
+
+button,
+select,
+input {
+  transition: all var(--time-fast) var(--ease-base);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.view-section {
+  display: none;
+  opacity: 0;
+}
+
+.view-section.active {
+  display: block;
+  animation: smoothSlideUp var(--time-med) var(--ease-smooth) forwards;
+}
+
+.choice-btn {
+  transition: all var(--time-fast) var(--ease-bounce);
+  /* Prevents layout jumping when border-width changes later */
   border: 2px solid transparent;
+}
 
-  &:hover:not(.dimmed):not(.selected-correct):not(.selected-wrong) {
-    transform: translateY(-3px);
-    box-shadow:
-      0 10px 15px -3px rgba(0, 0, 0, 0.1),
-      0 4px 6px -2px rgba(0, 0, 0, 0.05);
-    border-color: var(--color-btn-hover);
+.choice-btn:hover:not(.dimmed):not(.selected-correct):not(.selected-wrong) {
+  transform: translateY(-3px);
+  box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  border-color: var(--color-btn-hover);
+}
+
+button.choice-btn.selected-correct {
+  animation: popCorrect var(--time-slow) var(--ease-smooth) forwards;
+  background-color: var(--color-correct-bg);
+  color: var(--color-text-white);
+  border-color: var(--color-correct-border);
+  font-weight: 700;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+button.choice-btn.selected-wrong {
+  animation: shakeWrong var(--time-med) var(--ease-shake) forwards;
+  background-color: var(--color-wrong-bg);
+  color: var(--color-text-white);
+  border-color: var(--color-wrong-border);
+  font-weight: 700;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+button.choice-btn.dimmed {
+  opacity: 0.4;
+  pointer-events: none;
+  filter: grayscale(100%);
+  transform: scale(0.98);
+}
+
+details > summary {
+  list-style: none;
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+details summary i.fa-chevron-down {
+  transition: transform 0.4s var(--ease-base);
+}
+
+details[open] summary i.fa-chevron-down {
+  transform: rotate(180deg);
+}
+
+details[open] summary ~ div {
+  animation: folderSlideDown var(--time-med) var(--ease-smooth) forwards;
+  transform-origin: top;
+}
+
+.animate-card-in {
+  animation: fadeScaleIn var(--time-med) var(--ease-smooth) forwards;
+  opacity: 0;
+}
+
+.animate-timer-bar {
+  animation: expandTimerCenter 3s linear forwards;
+}
+
+.session-progress,
+#session-progress {
+  transition: width var(--time-slow) cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.toast-enter {
+  animation: slideInRight var(--time-fast) var(--ease-smooth) forwards;
+}
+
+@keyframes smoothSlideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
-@layer base {
-  body {
-    -webkit-tap-highlight-color: transparent;
-    scroll-behavior: smooth;
+@keyframes popCorrect {
+  0% {
+    transform: scale(1);
   }
-
-  button,
-  select,
-  input {
-    transition: all var(--duration-fast) var(--ease-base);
+  40% {
+    transform: scale(1.04);
   }
-
-  button:active:not(:disabled) {
-    transform: scale(0.94);
-  }
-
-  details > summary {
-    list-style: none;
-  }
-  details > summary::-webkit-details-marker {
-    display: none;
-  }
-  details summary i.fa-chevron-down {
-    transition: transform 0.4s var(--ease-base);
-  }
-  details[open] summary i.fa-chevron-down {
-    transform: rotate(180deg);
-  }
-  details[open] summary ~ div {
-    animation: var(--animate-folder-slide-down);
-    transform-origin: top;
+  100% {
+    transform: scale(1);
   }
 }
 
-@layer components {
-  .view-section {
-    display: none;
+@keyframes shakeWrong {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
+}
+
+@keyframes folderSlideDown {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px) scaleY(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+@keyframes fadeScaleIn {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes expandTimerCenter {
+  0% {
+    transform: scaleX(0) scaleY(2);
     opacity: 0;
   }
-
-  .view-section.active {
-    display: block;
-    animation: var(--animate-smooth-slide-up);
+  5% {
+    transform: scaleX(0.05) scaleY(1);
+    opacity: 1;
   }
-
-  button.choice-btn.selected-correct {
-    animation: var(--animate-pop-correct);
-    background-color: var(--color-correct-bg);
-    color: var(--color-text-white);
-    border-color: var(--color-correct-border);
-    font-weight: 700;
-    box-shadow:
-      0 4px 6px -1px rgba(0, 0, 0, 0.1),
-      0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  }
-
-  button.choice-btn.selected-wrong {
-    animation: var(--animate-shake-wrong);
-    background-color: var(--color-wrong-bg);
-    color: var(--color-text-white);
-    border-color: var(--color-wrong-border);
-    font-weight: 700;
-    box-shadow:
-      0 4px 6px -1px rgba(0, 0, 0, 0.1),
-      0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  }
-
-  button.choice-btn.dimmed {
-    opacity: 0.4;
-    pointer-events: none;
-    filter: grayscale(100%);
-    transform: scale(0.98);
-  }
-
-  .toggle-track {
-    @apply relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600;
-  }
-
-  .modal-backdrop {
-    @apply fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300;
-  }
-
-  .modal-card {
-    @apply bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 border border-gray-200 dark:border-gray-700;
-  }
-
-  .choice-btn-style {
-    @apply text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start choice-btn;
-  }
-
-  .input-standard {
-    @apply w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500;
-  }
-
-  .btn-secondary {
-    @apply flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all;
+  100% {
+    transform: scaleX(1) scaleY(1);
+    opacity: 1;
   }
 }
 
-@layer utilities {
-  .animate-card-in {
-    animation: var(--animate-fade-scale-in);
+@keyframes slideInRight {
+  0% {
+    transform: translateX(100%);
     opacity: 0;
   }
-
-  .animate-timer-bar {
-    animation: var(--animate-expand-timer-center);
-  }
-
-  .session-progress,
-  #session-progress {
-    transition: width var(--duration-slow) cubic-bezier(0.25, 1, 0.5, 1);
-  }
-
-  .toast-enter {
-    animation: var(--animate-slide-in-right);
+  100% {
+    transform: translateX(0);
+    opacity: 1;
   }
 }
 

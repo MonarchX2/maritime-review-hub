@@ -18,6 +18,8 @@
       } catch (e) {}
     </script>
 
+    <!-- Tailwind CSS (Development only). For production, use the Tailwind CLI to build a static CSS file. -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
@@ -29,7 +31,26 @@
     <!-- idb-keyval for IndexedDB (Bypasses 5MB localStorage limit) -->
     <script src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js"></script>
 
-    <link rel="stylesheet" href="output.css" />
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                50: "#eff6ff",
+                100: "#dbeafe",
+                500: "#3b82f6",
+                600: "#2563eb",
+                700: "#1d4ed8",
+                900: "#1e3a8a",
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body
     class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col transition-colors duration-500"
@@ -341,25 +362,37 @@
             </div>
 
             <div class="grid gap-3 mt-6" id="q-choices">
-              <button class="choice-btn-style" data-choice="A">
+              <button
+                class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start"
+                data-choice="A"
+              >
                 <span class="choice-prefix font-bold mr-2 min-w-[20px]"
                   >A)</span
                 >
                 <span id="choice-a-text" class="flex-1"></span>
               </button>
-              <button class="choice-btn-style" data-choice="B">
+              <button
+                class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start"
+                data-choice="B"
+              >
                 <span class="choice-prefix font-bold mr-2 min-w-[20px]"
                   >B)</span
                 >
                 <span id="choice-b-text" class="flex-1"></span>
               </button>
-              <button class="choice-btn-style" data-choice="C">
+              <button
+                class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start"
+                data-choice="C"
+              >
                 <span class="choice-prefix font-bold mr-2 min-w-[20px]"
                   >C)</span
                 >
                 <span id="choice-c-text" class="flex-1"></span>
               </button>
-              <button class="choice-btn-style" data-choice="D">
+              <button
+                class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start"
+                data-choice="D"
+              >
                 <span class="choice-prefix font-bold mr-2 min-w-[20px]"
                   >D)</span
                 >
@@ -604,7 +637,9 @@
               onchange="toggleShuffleChoices()"
               checked
             />
-            <div class="toggle-track"></div>
+            <div
+              class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
+            ></div>
           </label>
           <label class="flex items-center justify-between cursor-pointer mb-2">
             <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
@@ -617,7 +652,9 @@
               onchange="toggleShuffleQuestions()"
               checked
             />
-            <div class="toggle-track"></div>
+            <div
+              class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
+            ></div>
           </label>
           <p
             class="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded border border-yellow-200 dark:border-yellow-800"
@@ -677,7 +714,7 @@
             <input
               type="password"
               id="admin-password"
-              class="input-standard pr-12"
+              class="w-full p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-brand-500 transition-all outline-none pr-12"
               placeholder="Enter Admin Password"
             />
 
@@ -766,8 +803,13 @@
       </section>
 
       <!-- Edit Report Modal) -->
-      <div id="report-modal" class="modal-backdrop">
-        <div class="modal-card flex flex-col max-h-[90vh]">
+      <div
+        id="report-modal"
+        class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden opacity-0 transition-opacity duration-300 flex items-center justify-center p-4"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 flex flex-col max-h-[90vh]"
+        >
           <div class="flex justify-between items-center mb-4">
             <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
               <i class="fa-solid fa-flag text-red-500 mr-2"></i> Report Question
@@ -849,8 +891,13 @@
       </div>
 
       <!-- Feature 10: General App Bug Report Modal -->
-      <div id="feedback-modal" class="modal-backdrop">
-        <div class="modal-card">
+      <div
+        id="feedback-modal"
+        class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden opacity-0 transition-opacity duration-300 flex items-center justify-center p-4"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300"
+        >
           <div class="flex justify-between items-center mb-4">
             <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
               <i class="fa-solid fa-bug text-brand-500 mr-2"></i> Report App Bug
@@ -888,8 +935,13 @@
       </div>
 
       <!-- Quiz Settings Modal -->
-      <div id="session-settings-modal" class="modal-backdrop">
-        <div class="modal-card">
+      <div
+        id="session-settings-modal"
+        class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 border border-gray-200 dark:border-gray-700"
+        >
           <!-- Header -->
           <div
             class="flex justify-between items-center mb-6 border-b border-gray-100 dark:border-gray-700 pb-3"
@@ -927,7 +979,9 @@
                   onchange="toggleActiveRecall()"
                   checked
                 />
-                <div class="toggle-track"></div>
+                <div
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
+                ></div>
               </label>
             </div>
 
@@ -950,7 +1004,9 @@
                   onchange="toggleShuffleChoices()"
                   checked
                 />
-                <div class="toggle-track"></div>
+                <div
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
+                ></div>
               </label>
             </div>
 
@@ -972,7 +1028,9 @@
                   class="sr-only peer"
                   onchange="toggleQuizHideABCD()"
                 />
-                <div class="toggle-track"></div>
+                <div
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
+                ></div>
               </label>
             </div>
 
@@ -998,8 +1056,13 @@
       </div>
 
       <!-- Review Settings Modal -->
-      <div id="review-settings-modal" class="modal-backdrop">
-        <div class="modal-card">
+      <div
+        id="review-settings-modal"
+        class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 border border-gray-200 dark:border-gray-700"
+        >
           <!-- Header -->
           <div
             class="flex justify-between items-center mb-6 border-b border-gray-100 dark:border-gray-700 pb-3"
@@ -1037,7 +1100,9 @@
                   onchange="toggleHideABCD()"
                   checked
                 />
-                <div class="toggle-track"></div>
+                <div
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
+                ></div>
               </label>
             </div>
 
@@ -1060,7 +1125,9 @@
                   onchange="toggleShowWrongChoices()"
                   checked
                 />
-                <div class="toggle-track"></div>
+                <div
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
+                ></div>
               </label>
             </div>
 
@@ -1105,8 +1172,13 @@
       </div>
 
       <!-- NEW: DECK PASSWORD MODAL OVERLAY (ADDED FIX) -->
-      <div id="deck-password-modal" class="modal-backdrop">
-        <div class="modal-card max-w-sm">
+      <div
+        id="deck-password-modal"
+        class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700"
+        >
           <div
             class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3"
           >
@@ -1145,7 +1217,7 @@
             <input
               type="password"
               id="deck-password-input"
-              class="input-standard pr-12"
+              class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 pr-12"
               placeholder="Enter Password"
             />
 
@@ -1159,7 +1231,10 @@
           </div>
 
           <div class="flex gap-3">
-            <button onclick="closeDeckPasswordModal()" class="btn-secondary">
+            <button
+              onclick="closeDeckPasswordModal()"
+              class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all"
+            >
               Cancel
             </button>
             <!-- In app.js, your download logic should hook into this button -->
@@ -1174,8 +1249,13 @@
       </div>
 
       <!-- NEW: FOLDER PASSWORD MODAL OVERLAY -->
-      <div id="folder-password-modal" class="modal-backdrop">
-        <div class="modal-card max-w-sm">
+      <div
+        id="folder-password-modal"
+        class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700"
+        >
           <div
             class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3"
           >
@@ -1214,7 +1294,7 @@
             <input
               type="password"
               id="folder-password-input"
-              class="input-standard pr-12"
+              class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 pr-12"
               placeholder="Enter Folder Password"
             />
 
@@ -1228,7 +1308,10 @@
           </div>
 
           <div class="flex gap-3">
-            <button onclick="closeFolderPasswordModal()" class="btn-secondary">
+            <button
+              onclick="closeFolderPasswordModal()"
+              class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all"
+            >
               Cancel
             </button>
             <!-- Hook this up in app.js to process the folder password -->
@@ -1243,8 +1326,13 @@
       </div>
 
       <!-- ADMIN EDIT QUESTION MODAL -->
-      <div id="admin-edit-modal" class="modal-backdrop">
-        <div class="modal-card max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div
+        id="admin-edit-modal"
+        class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-2xl w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700 max-h-[90vh] overflow-y-auto"
+        >
           <div
             class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3"
           >
@@ -1270,7 +1358,7 @@
               >
               <textarea
                 id="edit-q-text"
-                class="input-standard resize-none"
+                class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 resize-none"
                 rows="3"
               ></textarea>
             </div>
@@ -1278,19 +1366,35 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm font-semibold mb-2">Option A</label>
-                <input type="text" id="edit-q-optA" class="input-standard" />
+                <input
+                  type="text"
+                  id="edit-q-optA"
+                  class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+                />
               </div>
               <div>
                 <label class="block text-sm font-semibold mb-2">Option B</label>
-                <input type="text" id="edit-q-optB" class="input-standard" />
+                <input
+                  type="text"
+                  id="edit-q-optB"
+                  class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+                />
               </div>
               <div>
                 <label class="block text-sm font-semibold mb-2">Option C</label>
-                <input type="text" id="edit-q-optC" class="input-standard" />
+                <input
+                  type="text"
+                  id="edit-q-optC"
+                  class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+                />
               </div>
               <div>
                 <label class="block text-sm font-semibold mb-2">Option D</label>
-                <input type="text" id="edit-q-optD" class="input-standard" />
+                <input
+                  type="text"
+                  id="edit-q-optD"
+                  class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+                />
               </div>
             </div>
 
@@ -1298,12 +1402,19 @@
               <label class="block text-sm font-semibold mb-2"
                 >Correct Answer (e.g., A)</label
               >
-              <input type="text" id="edit-q-answer" class="input-standard" />
+              <input
+                type="text"
+                id="edit-q-answer"
+                class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+              />
             </div>
           </div>
 
           <div class="flex gap-3 mt-6">
-            <button onclick="closeEditModal()" class="btn-secondary">
+            <button
+              onclick="closeEditModal()"
+              class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all"
+            >
               Cancel
             </button>
             <button
