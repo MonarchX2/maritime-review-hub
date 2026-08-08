@@ -49,6 +49,10 @@ let initialSyncSuccessShown = false;
 let pendingSummaryData = null;
 let syncConnected = false;
 let lastSyncAt = 0;
+let progressSyncTimer = null;
+let progressSyncInFlight = false;
+let suppressProgressSync = false;
+let progressServerUpdatedAt = "";
 
 function generateUserId() {
   if (window.crypto && window.crypto.randomUUID) {
@@ -69,13 +73,26 @@ if (!state.prefs.userId) {
   state.prefs.userId = generateUserId();
 }
 
+function getActiveIdentity() {
+  const authenticatedUsername =
+    typeof userState !== "undefined" && userState.isLoggedIn
+      ? userState.username
+      : "";
+  return authenticatedUsername || state.prefs.userId;
+}
+
 function sendTelemetry(action, details) {
+  const authenticatedUsername =
+    typeof userState !== "undefined" && userState.isLoggedIn
+      ? userState.username
+      : "";
   const event = {
     type: "telemetry",
-    userId: state.prefs.userId,
+    userId: getActiveIdentity(),
     action,
     details: {
       ...details,
+      username: authenticatedUsername || null,
       timestamp: new Date().toISOString(),
       currentView: document.querySelector(".view-section.active")?.id || null,
       appMode: typeof currentAppMode === "string" ? currentAppMode : null,
@@ -275,6 +292,16 @@ async function saveState() {
     localStorage.setItem("mrh_stats", JSON.stringify(state.stats));
     localStorage.setItem("mrh_prefs", JSON.stringify(state.prefs));
     localStorage.setItem("mrh_summary", JSON.stringify(state.categorySummary));
+    if (
+      !suppressProgressSync &&
+      typeof userState !== "undefined" &&
+      userState.isLoggedIn
+    ) {
+      const meta = getProgressMeta();
+      meta.localUpdatedAt = new Date().toISOString();
+      localStorage.setItem("mrh_progress_meta", JSON.stringify(meta));
+      queueProgressSync();
+    }
   } catch (e) {
     console.error(e);
   }
@@ -2308,7 +2335,9 @@ async function fetchGlobalReports() {
 
 window.onload = async () => {
   setupTelemetry();
+  await restoreUserSession();
   await loadState();
+  showLoginSuggestion();
 
   const toggleElement = document.getElementById("globalModeToggle");
   if (toggleElement) {
@@ -2316,6 +2345,7 @@ window.onload = async () => {
   }
 
   syncDatabase();
+  await syncUserProgress();
   fetchGlobalReports();
 };
 
@@ -2670,14 +2700,6 @@ function openAboutModal() {
 
 function closeAboutModal() {
   toggleModal("about-modal", false);
-}
-
-function openProfileModal() {
-  toggleModal("profile-modal", true);
-}
-
-function closeProfileModal() {
-  toggleModal("profile-modal", false);
 }
 
 let confirmResolver = null;
@@ -3249,7 +3271,394 @@ async function autoSaveDeckPassword(deckPath, newPassword) {
 let userState = {
   username: "",
   isLoggedIn: false,
+  sessionToken: "",
 };
+
+async function restoreUserSession() {
+  try {
+    const saved = JSON.parse(
+      localStorage.getItem("mrh_user_session") || "null",
+    );
+    if (saved?.username && saved?.sessionToken) {
+      const response = await fetch(DB_URL, {
+        method: "POST",
+        redirect: "follow",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          type: "verify_session",
+          sessionToken: saved.sessionToken,
+        }),
+      });
+      const result = await response.json();
+      if (result.status === "success") userState = saved;
+      else localStorage.removeItem("mrh_user_session");
+    }
+  } catch (e) {
+    localStorage.removeItem("mrh_user_session");
+  }
+  updateProfileUI();
+}
+
+function updateProfileUI() {
+  const loggedIn = userState.isLoggedIn === true;
+  const loginPanel = document.getElementById("profile-login-state");
+  const signupPanel = document.getElementById("profile-signup-state");
+  const loggedInPanel = document.getElementById("profile-logged-in-state");
+  if (loginPanel) {
+    loginPanel.hidden = loggedIn;
+    loginPanel.classList.toggle("auth-panel-hidden", loggedIn);
+  }
+  if (signupPanel) {
+    signupPanel.hidden = true;
+    signupPanel.classList.add("auth-panel-hidden");
+  }
+  if (loggedInPanel) {
+    loggedInPanel.hidden = !loggedIn;
+    loggedInPanel.classList.toggle("auth-panel-hidden", !loggedIn);
+  }
+  const username = document.getElementById("profile-username");
+  if (username) username.textContent = userState.username || "";
+}
+
+function getProgressPayload() {
+  let savedSession = null;
+  try {
+    savedSession = JSON.parse(
+      localStorage.getItem("mrh_saved_session") || "null",
+    );
+  } catch (e) {}
+  const syncedPrefs = { ...state.prefs };
+  delete syncedPrefs.userId;
+  return {
+    stats: state.stats,
+    prefs: syncedPrefs,
+    savedSession,
+  };
+}
+
+function getProgressMeta() {
+  try {
+    return JSON.parse(localStorage.getItem("mrh_progress_meta") || "{}");
+  } catch (e) {
+    return {};
+  }
+}
+
+function setProgressMeta(updatedAt) {
+  progressServerUpdatedAt = updatedAt || "";
+  localStorage.setItem(
+    "mrh_progress_meta",
+    JSON.stringify({
+      username: userState.username,
+      updatedAt: progressServerUpdatedAt,
+      localUpdatedAt: progressServerUpdatedAt,
+    }),
+  );
+}
+
+function clearLocalUserProgress() {
+  state.stats = {
+    totalAnswered: 0,
+    correct: 0,
+    mistakes: [],
+    subjectAccuracy: {},
+  };
+  state.session = {
+    active: false,
+    questions: [],
+    currentIndex: 0,
+    userAnswers: {},
+    autoNextTimeout: null,
+  };
+  localStorage.removeItem("mrh_stats");
+  localStorage.removeItem("mrh_saved_session");
+  localStorage.removeItem("mrh_progress_meta");
+}
+
+function hasLocalProgress() {
+  return Boolean(
+    localStorage.getItem("mrh_stats") ||
+    localStorage.getItem("mrh_saved_session") ||
+    localStorage.getItem("mrh_prefs"),
+  );
+}
+
+function applyRemoteProgress(payload, updatedAt) {
+  if (!payload || typeof payload !== "object") return;
+  suppressProgressSync = true;
+  try {
+    if (payload.stats && typeof payload.stats === "object") {
+      state.stats = payload.stats;
+      localStorage.setItem("mrh_stats", JSON.stringify(state.stats));
+    }
+    if (payload.prefs && typeof payload.prefs === "object") {
+      state.prefs = {
+        ...state.prefs,
+        ...payload.prefs,
+        userId: state.prefs.userId,
+      };
+      localStorage.setItem("mrh_prefs", JSON.stringify(state.prefs));
+    }
+    if (payload.savedSession) {
+      localStorage.setItem(
+        "mrh_saved_session",
+        JSON.stringify(payload.savedSession),
+      );
+    } else {
+      localStorage.removeItem("mrh_saved_session");
+    }
+    setProgressMeta(updatedAt);
+    updateDashboard();
+    syncPreferenceControls();
+  } finally {
+    suppressProgressSync = false;
+  }
+}
+
+async function chooseProgressConflict(
+  localPayload,
+  remotePayload,
+  remoteUpdatedAt,
+) {
+  const useLocal = await requestConfirmation(
+    "Both this device and the database have changed progress. Choose OK to replace the database with this device's progress. Choose Cancel to use the database progress instead.",
+    "Progress Conflict",
+  );
+  if (useLocal) {
+    return saveUserProgress(localPayload, true);
+  }
+  applyRemoteProgress(remotePayload, remoteUpdatedAt);
+  return true;
+}
+
+async function saveUserProgress(payload = getProgressPayload(), force = false) {
+  if (!userState.isLoggedIn || !userState.sessionToken || progressSyncInFlight)
+    return false;
+  progressSyncInFlight = true;
+  const syncStatus = document.getElementById("user-sync-status");
+  if (syncStatus) syncStatus.textContent = "Saving progress securely...";
+  try {
+    const meta = getProgressMeta();
+    const response = await fetch(DB_URL, {
+      method: "POST",
+      redirect: "follow",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        type: "save_progress",
+        sessionToken: userState.sessionToken,
+        progress: payload,
+        baseUpdatedAt: meta.updatedAt || "",
+        deviceUpdatedAt: new Date().toISOString(),
+        force,
+      }),
+    });
+    const result = await response.json();
+    if (result.status === "success") {
+      setProgressMeta(result.updatedAt);
+      if (syncStatus)
+        syncStatus.textContent = "Progress synced across devices.";
+      return true;
+    }
+    if (result.status === "conflict") {
+      progressSyncInFlight = false;
+      return chooseProgressConflict(payload, result.payload, result.updatedAt);
+    }
+    return false;
+  } catch (e) {
+    if (syncStatus)
+      syncStatus.textContent =
+        "Progress sync is unavailable; local progress is saved.";
+    sendTelemetry("progress_sync_failure", {
+      message: e.message || "Network error",
+    });
+    return false;
+  } finally {
+    progressSyncInFlight = false;
+  }
+}
+
+function queueProgressSync() {
+  if (!userState?.isLoggedIn || suppressProgressSync) return;
+  clearTimeout(progressSyncTimer);
+  progressSyncTimer = setTimeout(() => saveUserProgress(), 1200);
+}
+
+async function syncUserProgress() {
+  if (!userState.isLoggedIn || !userState.sessionToken) return;
+  const existingMeta = getProgressMeta();
+  if (existingMeta.username && existingMeta.username !== userState.username) {
+    clearLocalUserProgress();
+  }
+  const syncStatus = document.getElementById("user-sync-status");
+  if (syncStatus) syncStatus.textContent = "Checking for newer progress...";
+  try {
+    const response = await fetch(DB_URL, {
+      method: "POST",
+      redirect: "follow",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        type: "get_progress",
+        sessionToken: userState.sessionToken,
+      }),
+    });
+    const result = await response.json();
+    if (result.status !== "success") return;
+
+    if (!result.exists) {
+      if (hasLocalProgress()) await saveUserProgress();
+      else if (syncStatus)
+        syncStatus.textContent = "Progress syncing is ready.";
+      return;
+    }
+
+    const localMeta = getProgressMeta();
+    if (!hasLocalProgress() || !localMeta.updatedAt) {
+      applyRemoteProgress(result.payload, result.updatedAt);
+      if (syncStatus)
+        syncStatus.textContent = "Database progress loaded on this device.";
+      return;
+    }
+
+    const remoteDeviceTime = Date.parse(
+      result.deviceUpdatedAt || result.updatedAt,
+    );
+    const localTime = Date.parse(
+      localMeta.localUpdatedAt || localMeta.updatedAt,
+    );
+    if (Number.isFinite(localTime) && Number.isFinite(remoteDeviceTime)) {
+      if (localTime > remoteDeviceTime) {
+        await chooseProgressConflict(
+          getProgressPayload(),
+          result.payload,
+          result.updatedAt,
+        );
+      } else if (remoteDeviceTime > localTime) {
+        const useRemote = await requestConfirmation(
+          "A newer progress version is available in the database. Choose OK to use it on this device. Choose Cancel to keep this device's progress and upload it.",
+          "Newer Progress Available",
+        );
+        if (useRemote) applyRemoteProgress(result.payload, result.updatedAt);
+        else await saveUserProgress(getProgressPayload(), true);
+      }
+    } else {
+      await chooseProgressConflict(
+        getProgressPayload(),
+        result.payload,
+        result.updatedAt,
+      );
+    }
+  } catch (e) {
+    sendTelemetry("progress_sync_failure", {
+      message: e.message || "Network error",
+    });
+  }
+}
+
+function showLoginForm() {
+  const loginPanel = document.getElementById("profile-login-state");
+  const signupPanel = document.getElementById("profile-signup-state");
+  if (loginPanel) {
+    loginPanel.hidden = false;
+    loginPanel.classList.remove("auth-panel-hidden");
+  }
+  if (signupPanel) {
+    signupPanel.hidden = true;
+    signupPanel.classList.add("auth-panel-hidden");
+  }
+}
+
+function showSignupForm() {
+  const loginPanel = document.getElementById("profile-login-state");
+  const signupPanel = document.getElementById("profile-signup-state");
+  if (loginPanel) {
+    loginPanel.hidden = true;
+    loginPanel.classList.add("auth-panel-hidden");
+  }
+  if (signupPanel) {
+    signupPanel.hidden = false;
+    signupPanel.classList.remove("auth-panel-hidden");
+  }
+  document.getElementById("user-signup-error")?.classList.add("hidden");
+}
+
+function hideLoginSuggestion() {
+  const suggestion = document.getElementById("sync-login-suggestion");
+  if (suggestion) suggestion.classList.add("login-suggestion-hidden");
+  if (window.loginSuggestionTimer) {
+    clearTimeout(window.loginSuggestionTimer);
+    window.loginSuggestionTimer = null;
+  }
+}
+
+function dismissLoginSuggestion() {
+  localStorage.setItem("mrh_login_suggestion_dismissed", "1");
+  hideLoginSuggestion();
+}
+
+function openLoginFromSuggestion() {
+  dismissLoginSuggestion();
+  navigate("profile");
+}
+
+function showLoginSuggestion() {
+  if (
+    userState.isLoggedIn ||
+    localStorage.getItem("mrh_login_suggestion_dismissed") === "1"
+  )
+    return;
+
+  const suggestion = document.getElementById("sync-login-suggestion");
+  const timer = document.getElementById("login-suggestion-timer");
+  if (!suggestion || !timer) return;
+
+  suggestion.classList.remove("login-suggestion-hidden");
+  timer.style.transition = "transform 8s linear";
+  timer.style.transform = "scaleX(1)";
+  window.requestAnimationFrame(() => {
+    timer.style.transform = "scaleX(0)";
+  });
+  window.loginSuggestionTimer = setTimeout(hideLoginSuggestion, 8000);
+}
+
+async function submitUserLogin() {
+  const username = document.getElementById("user-username")?.value.trim();
+  const password = document.getElementById("user-password")?.value;
+  const errorEl = document.getElementById("user-login-error");
+  if (!username || !password) {
+    if (errorEl) {
+      errorEl.textContent = "Username and password are required.";
+      errorEl.classList.remove("hidden");
+    }
+    return;
+  }
+  await userLogin(username, password);
+}
+
+async function submitUserSignup() {
+  const username = document.getElementById("signup-username")?.value.trim();
+  const password = document.getElementById("signup-password")?.value;
+  const confirmation = document.getElementById(
+    "signup-password-confirm",
+  )?.value;
+  const errorEl = document.getElementById("user-signup-error");
+  const usernamePattern = /^[A-Za-z0-9_.-]{3,50}$/;
+
+  let error = "";
+  if (!usernamePattern.test(username || ""))
+    error = "Use 3-50 letters, numbers, periods, underscores, or hyphens.";
+  else if (!password || password.length < 8)
+    error = "Use a website-only password with at least 8 characters.";
+  else if (password !== confirmation) error = "Passwords do not match.";
+
+  if (error) {
+    if (errorEl) {
+      errorEl.textContent = error;
+      errorEl.classList.remove("hidden");
+    }
+    return;
+  }
+  await userSignup(username, password);
+}
 
 async function userLogin(username, password) {
   const btn = document.getElementById("btn-user-login");
@@ -3274,11 +3683,27 @@ async function userLogin(username, password) {
     const result = await response.json();
 
     if (result.status === "success") {
-      userState.username = username;
-      userState.isLoggedIn = true;
-      alert("Login successful!");
+      userState = {
+        username,
+        isLoggedIn: true,
+        sessionToken: result.sessionToken || "",
+      };
+      localStorage.setItem("mrh_user_session", JSON.stringify(userState));
+      document.getElementById("user-password").value = "";
+      document.getElementById("user-login-error")?.classList.add("hidden");
+      updateProfileUI();
+      hideLoginSuggestion();
+      sendTelemetry("user_login", { username });
+      syncUserProgress().catch((error) =>
+        console.error("Background progress sync failed.", error),
+      );
     } else {
-      alert("Incorrect username or password.");
+      const errorEl = document.getElementById("user-login-error");
+      if (errorEl) {
+        errorEl.textContent =
+          result.message || "Incorrect username or password.";
+        errorEl.classList.remove("hidden");
+      }
     }
   } catch (e) {
     alert("Network error while verifying user.");
@@ -3289,6 +3714,77 @@ async function userLogin(username, password) {
       btn.disabled = false;
     }
   }
+}
+
+async function userSignup(username, password) {
+  const btn = document.getElementById("btn-user-signup");
+  if (btn) {
+    btn.innerHTML =
+      '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Creating...';
+    btn.disabled = true;
+  }
+
+  try {
+    const response = await fetch(DB_URL, {
+      method: "POST",
+      redirect: "follow",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        type: "signup_user",
+        username,
+        password,
+      }),
+    });
+    const result = await response.json();
+    if (result.status === "success") {
+      userState = {
+        username,
+        isLoggedIn: true,
+        sessionToken: result.sessionToken || "",
+      };
+      localStorage.setItem("mrh_user_session", JSON.stringify(userState));
+      document.getElementById("signup-password").value = "";
+      document.getElementById("signup-password-confirm").value = "";
+      updateProfileUI();
+      hideLoginSuggestion();
+      sendTelemetry("user_signup", { username });
+      syncUserProgress().catch((error) =>
+        console.error("Background progress sync failed.", error),
+      );
+    } else {
+      const errorEl = document.getElementById("user-signup-error");
+      if (errorEl) {
+        errorEl.textContent = result.message || "Unable to create account.";
+        errorEl.classList.remove("hidden");
+      }
+    }
+  } catch (e) {
+    const errorEl = document.getElementById("user-signup-error");
+    if (errorEl) {
+      errorEl.textContent = "Network error while creating account.";
+      errorEl.classList.remove("hidden");
+    }
+  } finally {
+    if (btn) {
+      btn.innerHTML = "Create Account";
+      btn.disabled = false;
+    }
+  }
+}
+
+async function userLogout() {
+  if (
+    !(await requestConfirmation(
+      "Log out of this device? Your saved account progress will remain available when you log in again.",
+      "Log Out",
+    ))
+  )
+    return;
+  clearTimeout(progressSyncTimer);
+  if (userState.isLoggedIn) await saveUserProgress();
+  userState = { username: "", isLoggedIn: false, sessionToken: "" };
+  localStorage.removeItem("mrh_user_session");
+  updateProfileUI();
 }
 
 document
@@ -3359,9 +3855,13 @@ function togglePasswordVisibility(inputId, btnElement) {
   if (input.type === "password") {
     input.type = "text";
     icon.classList.replace("fa-eye", "fa-eye-slash");
+    btnElement.setAttribute("aria-label", "Hide password");
+    btnElement.setAttribute("title", "Hide password");
   } else {
     input.type = "password";
     icon.classList.replace("fa-eye-slash", "fa-eye");
+    btnElement.setAttribute("aria-label", "Show password");
+    btnElement.setAttribute("title", "Show password");
   }
 }
 
@@ -3519,7 +4019,7 @@ async function submitGeneralFeedback() {
       body: JSON.stringify({
         type: "submit_feedback",
         comments: comments,
-        userId: state.prefs.userId,
+        userId: getActiveIdentity(),
       }),
     });
     btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Sent!';

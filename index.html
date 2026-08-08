@@ -108,10 +108,10 @@
           <i class="fa-solid fa-sun dark:hidden"></i>
           <i class="fa-solid fa-moon hidden dark:inline"></i>
         </button>
-        <!-- Profile feature placeholder -->
+        <!-- Profile -->
         <button
           type="button"
-          onclick="openProfileModal()"
+          onclick="navigate('profile')"
           class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg"
           aria-label="User Profile"
           title="User Profile"
@@ -1312,35 +1312,201 @@
         </div>
       </div>
 
-      <!-- Profile Modal -->
-      <div
-        id="profile-modal"
-        class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
-      >
+      <!-- PROFILE SECTION -->
+      <section id="view-profile" class="view-section">
+        <h2 class="text-2xl font-bold mb-6">Profile</h2>
         <div
-          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 border border-gray-200 dark:border-gray-700"
+          class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 max-w-md mx-auto"
         >
+          <div id="profile-login-state">
+            <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">
+              Login is optional and is only needed to sync your progress between
+              devices.
+            </p>
+            <div
+              class="mb-4 rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-xs text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-200"
+            >
+              Use a unique password for this website only. Do not use your
+              personal email, banking, school, or other important password.
+            </div>
+            <label class="block text-sm font-semibold mb-1" for="user-username"
+              >Username</label
+            >
+            <input
+              id="user-username"
+              type="text"
+              autocomplete="username"
+              class="w-full p-3 mb-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+              maxlength="100"
+            />
+            <label class="block text-sm font-semibold mb-1" for="user-password"
+              >Password</label
+            >
+            <div class="relative mb-4">
+              <input
+                id="user-password"
+                type="password"
+                autocomplete="current-password"
+                class="w-full p-3 pr-12 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+                maxlength="200"
+              />
+              <button
+                type="button"
+                onclick="togglePasswordVisibility('user-password', this)"
+                class="absolute right-3 top-3 text-gray-500"
+                aria-label="Show password"
+                title="Show password"
+              >
+                <i class="fa-solid fa-eye"></i>
+              </button>
+            </div>
+            <button
+              id="btn-user-login"
+              type="button"
+              onclick="submitUserLogin()"
+              class="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 transition-colors"
+            >
+              Log In
+            </button>
+            <p
+              id="user-login-error"
+              class="hidden text-red-500 text-sm mt-3 text-center"
+            ></p>
+            <p
+              class="text-center text-sm text-gray-500 dark:text-gray-400 mt-4"
+            >
+              No account yet?
+              <button
+                type="button"
+                onclick="showSignupForm()"
+                class="font-bold text-brand-500 hover:text-brand-600 hover:underline"
+              >
+                Sign Up
+              </button>
+            </p>
+          </div>
+          <div id="profile-signup-state" class="auth-panel-hidden" hidden>
+            <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">
+              Create an account only if you want progress syncing between
+              devices.
+            </p>
+            <div
+              class="mb-4 rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-xs text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-200"
+            >
+              Choose a new password used only for this website. Never reuse a
+              personal or important password here.
+            </div>
+            <label
+              class="block text-sm font-semibold mb-1"
+              for="signup-username"
+              >Username</label
+            >
+            <input
+              id="signup-username"
+              type="text"
+              autocomplete="username"
+              class="w-full p-3 mb-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+              maxlength="50"
+            />
+            <label
+              class="block text-sm font-semibold mb-1"
+              for="signup-password"
+              >Website-only password</label
+            >
+            <div class="relative mb-3">
+              <input
+                id="signup-password"
+                type="password"
+                autocomplete="new-password"
+                class="w-full p-3 pr-12 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+                minlength="8"
+                maxlength="200"
+              />
+              <button
+                type="button"
+                onclick="togglePasswordVisibility('signup-password', this)"
+                class="absolute right-3 top-3 text-gray-500"
+                aria-label="Show password"
+                title="Show password"
+              >
+                <i class="fa-solid fa-eye"></i>
+              </button>
+            </div>
+            <label
+              class="block text-sm font-semibold mb-1"
+              for="signup-password-confirm"
+              >Confirm password</label
+            >
+            <div class="relative mb-4">
+              <input
+                id="signup-password-confirm"
+                type="password"
+                autocomplete="new-password"
+                class="w-full p-3 pr-12 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+                minlength="8"
+                maxlength="200"
+              />
+              <button
+                type="button"
+                onclick="
+                  togglePasswordVisibility('signup-password-confirm', this)
+                "
+                class="absolute right-3 top-3 text-gray-500"
+                aria-label="Show password"
+                title="Show password"
+              >
+                <i class="fa-solid fa-eye"></i>
+              </button>
+            </div>
+            <button
+              id="btn-user-signup"
+              type="button"
+              onclick="submitUserSignup()"
+              class="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 transition-colors"
+            >
+              Create Account
+            </button>
+            <p
+              id="user-signup-error"
+              class="hidden text-red-500 text-sm mt-3 text-center"
+            ></p>
+            <p
+              class="text-center text-sm text-gray-500 dark:text-gray-400 mt-4"
+            >
+              Already have an account?
+              <button
+                type="button"
+                onclick="showLoginForm()"
+                class="font-bold text-brand-500 hover:text-brand-600 hover:underline"
+              >
+                Log In
+              </button>
+            </p>
+          </div>
           <div
-            class="flex justify-between items-center mb-5 border-b border-gray-100 dark:border-gray-700 pb-3"
+            id="profile-logged-in-state"
+            class="auth-panel-hidden text-center"
+            hidden
           >
-            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
-              <i class="fa-solid fa-user text-brand-500 mr-2"></i>
-              Profile
-            </h3>
+            <p class="text-sm text-gray-600 dark:text-gray-300">
+              Signed in as <strong id="profile-username"></strong>
+            </p>
+            <p
+              id="user-sync-status"
+              class="mt-3 text-xs text-gray-500 dark:text-gray-400"
+              role="status"
+              aria-live="polite"
+            ></p>
             <button
               type="button"
-              onclick="closeProfileModal()"
-              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-              aria-label="Close Profile"
+              onclick="userLogout()"
+              class="mt-5 w-full bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-colors"
             >
-              <i class="fa-solid fa-xmark text-xl"></i>
+              Log Out
             </button>
           </div>
-          <p class="text-center text-sm text-gray-600 dark:text-gray-300">
-            This feature will be coming soon.
-          </p>
         </div>
-      </div>
+      </section>
 
       <!-- Review Settings Modal -->
       <div
@@ -1783,6 +1949,42 @@
         </div>
       </div>
     </main>
+
+    <aside
+      id="sync-login-suggestion"
+      class="login-suggestion-hidden fixed bottom-5 left-5 z-40 max-w-sm rounded-xl border border-brand-200 bg-white p-4 shadow-xl dark:border-brand-800 dark:bg-gray-800"
+      role="status"
+      aria-live="polite"
+    >
+      <button
+        type="button"
+        onclick="dismissLoginSuggestion()"
+        class="absolute right-2 top-2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+        aria-label="Close login suggestion"
+        title="Close"
+      >
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+      <p class="pr-5 text-sm font-bold text-gray-800 dark:text-gray-100">
+        Sync progress between devices
+      </p>
+      <p class="mt-1 pr-3 text-xs text-gray-600 dark:text-gray-300">
+        Login is optional. Use a unique website-only password if you choose to
+        create an account.
+      </p>
+      <button
+        type="button"
+        onclick="openLoginFromSuggestion()"
+        class="mt-3 rounded-lg bg-brand-600 px-3 py-2 text-xs font-bold text-white hover:bg-brand-700"
+      >
+        Log In or Sign Up
+      </button>
+      <div
+        class="mt-3 h-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+      >
+        <div id="login-suggestion-timer" class="login-suggestion-timer"></div>
+      </div>
+    </aside>
 
     <script src="app.js"></script>
     <script src="admin.js"></script>
