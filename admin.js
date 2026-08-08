@@ -519,7 +519,7 @@ async function saveEditedQuestion() {
   };
 
   try {
-    const response = await fetch(API_URL, {
+    const response = await fetch(DB_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(payload),
@@ -530,9 +530,7 @@ async function saveEditedQuestion() {
     if (result.status === "success") {
       alert("Question updated and cache rebuilt successfully!");
       closeEditModal();
-      if (typeof resolveReport === "function") {
-        resolveReport(reportId, "resolve");
-      }
+      await adminActionReport(reportId, "resolve");
     } else {
       alert("Error: " + (result.message || "Failed to update question."));
     }

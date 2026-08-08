@@ -7,6 +7,14 @@
 
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#1e3a8a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="MRH" />
+    <link rel="apple-touch-icon" href="icon.svg" />
 
     <!-- Dark Mode Memory Fix to avoid white flash -->
     <script>
@@ -58,12 +66,20 @@
     <header
       class="bg-brand-900 text-white p-4 flex justify-between items-center shadow-lg sticky top-0 z-50 w-full transition-all duration-300"
     >
-      <button
-        onclick="navigate('dashboard')"
-        class="font-bold text-lg hover:text-brand-200 transition-colors text-left flex items-center transform hover:scale-105 active:scale-95 origin-left"
-      >
-        <i class="fa-solid fa-anchor mr-2"></i> MRH
-      </button>
+      <div class="flex items-center">
+        <button
+          onclick="navigate('dashboard')"
+          class="font-bold text-lg hover:text-brand-200 transition-colors text-left flex items-center transform hover:scale-105 active:scale-95 origin-left"
+        >
+          <i class="fa-solid fa-anchor mr-2"></i> MRH
+        </button>
+        <i
+          id="database-connection-icon"
+          class="database-connection-icon fa-solid fa-spinner fa-spin text-yellow-300 ml-2"
+          title="Checking database connection"
+          aria-label="Database connection status"
+        ></i>
+      </div>
       <div class="flex items-center gap-5">
         <button
           id="btn-admin-nav"
@@ -103,6 +119,16 @@
           <i class="fa-solid fa-sun dark:hidden"></i>
           <i class="fa-solid fa-moon hidden dark:inline"></i>
         </button>
+        <!-- Profile feature placeholder -->
+        <button
+          type="button"
+          disabled
+          class="cursor-not-allowed text-white/45 text-lg opacity-60"
+          aria-label="User Profile - Coming Soon"
+          title="User Profile - Coming Soon"
+        >
+          <i class="fa-solid fa-user"></i>
+        </button>
         <!-- Settings Button -->
         <button
           onclick="navigate('settings')"
@@ -116,7 +142,7 @@
 
     <div
       id="connection-status"
-      class="hidden w-full text-center px-4 py-2 text-xs font-medium"
+      class="hidden"
       role="status"
       aria-live="polite"
     ></div>
@@ -148,14 +174,16 @@
         </div>
 
         <!-- Subject Progress Header Row -->
-        <div class="flex flex-row justify-between items-center mb-4 gap-2">
+        <div
+          class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-3"
+        >
           <h2
             class="text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100 truncate"
           >
             Subjects
           </h2>
 
-          <div class="flex items-center gap-2 flex-shrink-0">
+          <div class="dashboard-controls">
             <!-- Deck Source Filter (Feature 4) -->
             <select
               id="deck-source-filter"
@@ -270,7 +298,6 @@
                 id="layout-icon"
                 class="fa-solid fa-list text-brand-500 mr-1.5 sm:mr-2"
               ></i>
-              <span id="layout-text" class="hidden sm:inline">List View</span>
             </button>
           </div>
         </div>
@@ -739,26 +766,37 @@
             Current Database Size:
             <span id="db-size-display" class="font-bold">0</span> questions.
           </p>
+          <button
+            id="btn-install-app"
+            type="button"
+            onclick="installApp()"
+            class="hidden mt-4 w-full sm:w-auto bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+          >
+            <i class="fa-solid fa-download mr-2"></i> Install MRH App
+          </button>
         </div>
 
         <div class="mt-6 border-t dark:border-gray-700 pt-4">
           <div class="flex justify-between items-center mb-4 gap-4">
             <div>
               <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                >Navigation Buttons</span
+                >Navigation Below Deck</span
               >
               <p class="text-xs text-gray-500">
-                Place Prev, Reveal, and Next above or below the active deck.
+                Put Prev, Reveal, and Next below the current card.
               </p>
             </div>
-            <select
-              id="navigation-position-select"
-              onchange="changeNavigationPosition(this.value)"
-              class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2 text-sm"
-            >
-              <option value="bottom">Bottom</option>
-              <option value="top">Top</option>
-            </select>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                id="toggle-main-navigation-bottom"
+                class="sr-only peer"
+                onchange="toggleNavigationPosition(this)"
+              />
+              <div
+                class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
+              ></div>
+            </label>
           </div>
           <label class="flex items-center justify-between cursor-pointer mb-2">
             <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
@@ -1114,28 +1152,6 @@
 
           <!-- Settings Options -->
           <div class="space-y-6 mb-6">
-            <div class="flex justify-between items-center">
-              <div class="pr-4">
-                <span
-                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
-                  >Navigation Below Deck</span
-                >
-                <span class="text-xs text-gray-500"
-                  >Put Prev, Reveal, and Next below the current card.</span
-                >
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  id="toggle-session-navigation-bottom"
-                  class="sr-only peer"
-                  onchange="toggleNavigationPosition(this)"
-                />
-                <div
-                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
-                ></div>
-              </label>
-            </div>
             <!-- Active Recall Toggle -->
             <div class="flex justify-between items-center">
               <div class="pr-4">
@@ -1160,6 +1176,8 @@
                 ></div>
               </label>
             </div>
+
+            <div class="border-t border-gray-100 dark:border-gray-700"></div>
 
             <!-- Shuffle Choices Toggle -->
             <div class="flex justify-between items-center">
@@ -1206,6 +1224,31 @@
                 />
                 <div
                   class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
+                ></div>
+              </label>
+            </div>
+
+            <div class="border-t border-gray-100 dark:border-gray-700"></div>
+
+            <div class="flex justify-between items-center">
+              <div class="pr-4">
+                <span
+                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
+                  >Navigation Below Deck</span
+                >
+                <span class="text-xs text-gray-500"
+                  >Put Prev, Reveal, and Next below the current card.</span
+                >
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="toggle-session-navigation-bottom"
+                  class="sr-only peer"
+                  onchange="toggleNavigationPosition(this)"
+                />
+                <div
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
                 ></div>
               </label>
             </div>

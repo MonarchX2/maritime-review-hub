@@ -18,10 +18,10 @@ let state = {
     showWrongChoices: false,
     archivedDecks: [],
     databaseUpdateMode: "idle",
-      quizNavigationPosition: "bottom",
-      reviewNavigationPosition: "top",
-      deckSortBy: "letters",
-      deckSortDirection: "asc",
+    quizNavigationPosition: "bottom",
+    reviewNavigationPosition: "top",
+    deckSortBy: "letters",
+    deckSortDirection: "asc",
     lastActivity: null,
   },
   session: {
@@ -38,10 +38,15 @@ let state = {
 let chartInstance = null;
 let syncAbortController = null;
 let syncRetryTimer = null;
+let syncCountdownTimer = null;
+let syncStatusHideTimer = null;
 let syncPollTimer = null;
 let syncAttempt = 0;
+let initialSyncSuccessShown = false;
 let pendingSummaryData = null;
 let syncConnected = false;
+let deferredInstallPrompt = null;
+let lastSyncAt = 0;
 
 function generateUserId() {
   if (window.crypto && window.crypto.randomUUID) {
@@ -132,6 +137,11 @@ function setupTelemetry() {
       visibility: document.visibilityState,
     }),
   );
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && Date.now() - lastSyncAt > 60000) {
+      syncDatabase(true, true);
+    }
+  });
   window.addEventListener("error", (event) =>
     sendTelemetry("client_error", {
       message: event.message,
@@ -280,12 +290,14 @@ function syncPreferenceControls() {
   const navigationSelect = document.getElementById(
     "navigation-position-select",
   );
-  const activeNavigationPosition =
-    document.getElementById("view-deck-review")?.classList.contains("active")
-      ? state.prefs.reviewNavigationPosition
-      : state.prefs.quizNavigationPosition;
+  const activeNavigationPosition = document
+    .getElementById("view-deck-review")
+    ?.classList.contains("active")
+    ? state.prefs.reviewNavigationPosition
+    : state.prefs.quizNavigationPosition;
   if (navigationSelect) navigationSelect.value = activeNavigationPosition;
   [
+    "toggle-main-navigation-bottom",
     "toggle-session-navigation-bottom",
     "toggle-review-navigation-bottom",
   ].forEach((id) => {
@@ -293,19 +305,30 @@ function syncPreferenceControls() {
     if (control) control.checked = activeNavigationPosition === "bottom";
   });
   const sortBy = state.prefs.deckSortBy || "letters";
-  const sortDirection = state.prefs.deckSortDirection === "desc" ? "desc" : "asc";
+  const sortDirection =
+    state.prefs.deckSortDirection === "desc" ? "desc" : "asc";
   const deckSortIcon = document.getElementById("deck-sort-icon");
   if (deckSortIcon) {
     deckSortIcon.className = `fa-solid fa-arrow-${sortDirection === "desc" ? "down" : "up"}`;
   }
-  document.querySelectorAll(".deck-sort-option[data-sort-value]").forEach((option) => {
-    const check = option.querySelector(".sort-check");
-    if (check) check.style.display = option.dataset.sortValue === sortBy ? "inline-block" : "none";
-  });
-  document.querySelectorAll(".deck-sort-option[data-sort-direction]").forEach((option) => {
-    const check = option.querySelector(".sort-direction-check");
-    if (check) check.style.display = option.dataset.sortDirection === sortDirection ? "inline-block" : "none";
-  });
+  document
+    .querySelectorAll(".deck-sort-option[data-sort-value]")
+    .forEach((option) => {
+      const check = option.querySelector(".sort-check");
+      if (check)
+        check.style.display =
+          option.dataset.sortValue === sortBy ? "inline-block" : "none";
+    });
+  document
+    .querySelectorAll(".deck-sort-option[data-sort-direction]")
+    .forEach((option) => {
+      const check = option.querySelector(".sort-direction-check");
+      if (check)
+        check.style.display =
+          option.dataset.sortDirection === sortDirection
+            ? "inline-block"
+            : "none";
+    });
 }
 
 async function safeIdbSet(key, value) {
@@ -392,11 +415,10 @@ async function navigate(viewId) {
   sendTelemetry("navigate", { view: viewId });
 }
 
-function updateSyncStatus(message, tone = "info") {
-  const statusElements = [
-    document.getElementById("sync-status"),
-    document.getElementById("connection-status"),
-  ].filter(Boolean);
+function updateSyncStatus(message, tone = "info", showOverlay = true) {
+  const statusElements = [document.getElementById("sync-status")].filter(
+    Boolean,
+  );
   const classes = {
     info: "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300",
     success:
@@ -409,13 +431,46 @@ function updateSyncStatus(message, tone = "info") {
   statusElements.forEach((element) => {
     element.classList.remove("hidden");
     element.innerHTML = message;
-    element.className = `text-xs font-medium px-3 py-1.5 rounded-lg ${classes[tone] || classes.info}`;
+    element.className = `text-xs font-medium px-3 py-1.5 rounded-lg transition-all duration-500 overflow-hidden ${classes[tone] || classes.info}`;
   });
+
+  const icon = document.getElementById("database-connection-icon");
+  if (icon) {
+    const iconByTone = {
+      info: "fa-spinner fa-spin text-yellow-300",
+      success: "fa-check-circle text-green-300",
+      warning: "fa-xmark-circle text-red-300",
+      error: "fa-xmark-circle text-red-300",
+    };
+    icon.className = `database-connection-icon fa-solid ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/10 p-1 text-xs transition-all duration-300 ${iconByTone[tone] || iconByTone.info}`;
+    icon.title =
+      tone === "success"
+        ? "Database connected"
+        : "Database connection unavailable";
+  }
+
+  const connectionStatus = document.getElementById("connection-status");
+  if (connectionStatus && showOverlay) {
+    clearTimeout(syncStatusHideTimer);
+    connectionStatus.classList.remove("hidden", "opacity-0", "scale-95");
+    connectionStatus.innerHTML = message;
+    connectionStatus.className = `fixed bottom-5 left-1/2 z-[60] w-max max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-lg px-4 py-2 text-center text-xs font-medium shadow-lg transition-all duration-500 ${classes[tone] || classes.info}`;
+  }
+}
+
+function hideConnectionStatusAfterDelay(delay = 3000) {
+  clearTimeout(syncStatusHideTimer);
+  syncStatusHideTimer = setTimeout(() => {
+    const element = document.getElementById("connection-status");
+    if (!element) return;
+    element.classList.add("opacity-0", "scale-95");
+    setTimeout(() => element.classList.add("hidden"), 500);
+  }, delay);
 }
 
 function scheduleSyncPoll() {
   clearTimeout(syncPollTimer);
-  syncPollTimer = setTimeout(() => syncDatabase(true), 60000);
+  syncPollTimer = setTimeout(() => syncDatabase(true, true), 60000);
 }
 
 function applySummaryData(summaryData) {
@@ -427,25 +482,34 @@ function applySummaryData(summaryData) {
   syncConnected = true;
   saveState();
   populateFilters();
-  renderCategoryProgress();
   return changed;
 }
 
-function scheduleSyncRetry() {
+function scheduleSyncRetry(showOverlay = true) {
   clearTimeout(syncRetryTimer);
+  clearInterval(syncCountdownTimer);
   const delay = Math.min(60000, 3000 * 2 ** Math.min(syncAttempt - 1, 4));
-  const seconds = Math.ceil(delay / 1000);
+  const retryAt = Date.now() + delay;
+  const wasConnected = syncConnected;
   syncConnected = false;
-  renderCategoryProgress();
-  updateSyncStatus(
-    `<i class="fa-solid fa-xmark mr-1"></i> Database unavailable. Trying to reconnect (attempt ${syncAttempt}) in ${seconds}s...`,
-    "warning",
-  );
-  syncRetryTimer = setTimeout(() => syncDatabase(true), delay);
+  if (wasConnected) renderCategoryProgress();
+  const renderCountdown = () => {
+    const seconds = Math.max(0, Math.ceil((retryAt - Date.now()) / 1000));
+    updateSyncStatus(
+      `<i class="fa-solid fa-xmark mr-1"></i> Database unavailable. Trying to reconnect (attempt ${syncAttempt}) in ${seconds}s...`,
+      "warning",
+      showOverlay,
+    );
+    if (seconds === 0) clearInterval(syncCountdownTimer);
+  };
+  renderCountdown();
+  syncCountdownTimer = setInterval(renderCountdown, 1000);
+  syncRetryTimer = setTimeout(() => syncDatabase(true, !showOverlay), delay);
 }
 
-async function syncDatabase(isRetry = false) {
+async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
   clearTimeout(syncRetryTimer);
+  clearInterval(syncCountdownTimer);
   clearTimeout(syncPollTimer);
   if (syncAbortController) {
     syncAbortController.abort();
@@ -461,6 +525,7 @@ async function syncDatabase(isRetry = false) {
   updateSyncStatus(
     `<i class="fa-solid fa-spinner fa-spin mr-1"></i> ${isRetry ? "Checking for database updates" : "Connecting to database"}...`,
     "info",
+    !isBackgroundCheck,
   );
   sendTelemetry("sync_attempt", { attempt: syncAttempt, retry: isRetry });
 
@@ -476,20 +541,23 @@ async function syncDatabase(isRetry = false) {
 
     if (Array.isArray(summaryData) && summaryData.length > 0) {
       clearTimeout(timeoutId);
+      lastSyncAt = Date.now();
       const completedAttempt = syncAttempt;
+      const wasConnected = syncConnected;
       syncAttempt = 0;
       syncConnected = true;
       const changed =
-        JSON.stringify(state.categorySummary || []) !== JSON.stringify(summaryData);
+        JSON.stringify(state.categorySummary || []) !==
+        JSON.stringify(summaryData);
       const canApplyNow =
         state.prefs.databaseUpdateMode === "immediate" || !state.session.active;
 
-      if (canApplyNow) {
+      if (canApplyNow && (changed || !wasConnected)) {
         pendingSummaryData = null;
         applySummaryData(summaryData);
-      } else {
+      } else if (!canApplyNow) {
         if (changed) pendingSummaryData = summaryData;
-        renderCategoryProgress();
+        if (!wasConnected) renderCategoryProgress();
       }
 
       sendTelemetry("sync_success", {
@@ -502,13 +570,19 @@ async function syncDatabase(isRetry = false) {
       updateSyncStatus(
         `<i class="fa-solid fa-check mr-1"></i> Connected. ${changed && !canApplyNow ? "Update waiting until your session ends." : `Checked ${summaryData.length} subjects.`}`,
         "success",
+        !isBackgroundCheck && !initialSyncSuccessShown,
       );
+      if (!isBackgroundCheck && !initialSyncSuccessShown) {
+        initialSyncSuccessShown = true;
+        hideConnectionStatusAfterDelay();
+      }
       scheduleSyncPoll();
     } else {
       clearTimeout(timeoutId);
       sendTelemetry("sync_empty", { attempt: syncAttempt });
-      scheduleSyncRetry();
-      if (state.categorySummary.length) renderCategoryProgress();
+      scheduleSyncRetry(!isBackgroundCheck);
+      if (state.categorySummary.length && syncConnected)
+        renderCategoryProgress();
     }
   } catch (err) {
     clearTimeout(timeoutId);
@@ -519,7 +593,7 @@ async function syncDatabase(isRetry = false) {
       error: err.name || "NetworkError",
       message: err.message || "Unknown sync error",
     });
-    scheduleSyncRetry();
+    scheduleSyncRetry(!isBackgroundCheck);
 
     const catList = document.getElementById("category-list");
     if (catList && state.categorySummary.length === 0) {
@@ -532,6 +606,31 @@ async function syncDatabase(isRetry = false) {
     }
   }
 }
+
+async function installApp() {
+  if (!deferredInstallPrompt) return;
+
+  deferredInstallPrompt.prompt();
+  const choice = await deferredInstallPrompt.userChoice;
+  sendTelemetry("pwa_install_prompt", { outcome: choice.outcome });
+  deferredInstallPrompt = null;
+  const installButton = document.getElementById("btn-install-app");
+  if (installButton) installButton.classList.add("hidden");
+}
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  const installButton = document.getElementById("btn-install-app");
+  if (installButton) installButton.classList.remove("hidden");
+});
+
+window.addEventListener("appinstalled", () => {
+  deferredInstallPrompt = null;
+  const installButton = document.getElementById("btn-install-app");
+  if (installButton) installButton.classList.add("hidden");
+  sendTelemetry("pwa_installed", {});
+});
 
 function populateFilters() {
   const select = document.getElementById("filter-subject");
@@ -865,14 +964,6 @@ function renderQuestion() {
 }
 
 function enterFolder(folderName, isLockedFolder) {
-  if (!syncConnected) {
-    updateSyncStatus(
-      '<i class="fa-solid fa-xmark mr-1"></i> Decks are temporarily unavailable while the database reconnects.',
-      "warning",
-    );
-    return;
-  }
-
   const fullPath =
     state.currentPath && state.currentPath.length > 0
       ? state.currentPath.join("::") + "::" + folderName
@@ -902,12 +993,10 @@ function renderCategoryProgress() {
   const container = document.getElementById("category-list");
   const isGrid = state.prefs.layoutMode === "grid";
   const layoutIcon = document.getElementById("layout-icon");
-  const layoutText = document.getElementById("layout-text");
-  if (layoutIcon && layoutText) {
+  if (layoutIcon) {
     layoutIcon.className = isGrid
       ? "fa-solid fa-list text-brand-500"
       : "fa-solid fa-table-cells text-brand-500";
-    layoutText.innerText = isGrid ? "List View" : "Grid View";
   }
   let tree = {};
   if (state.categorySummary && state.categorySummary.length > 0) {
@@ -978,14 +1067,18 @@ function renderCategoryProgress() {
     const leftNode = currentNode[left];
     const rightNode = currentNode[right];
     const leftIsFolder =
-      Object.keys(leftNode._children || {}).length > 0 || leftNode._data?.IsFolder;
+      Object.keys(leftNode._children || {}).length > 0 ||
+      leftNode._data?.IsFolder;
     const rightIsFolder =
-      Object.keys(rightNode._children || {}).length > 0 || rightNode._data?.IsFolder;
+      Object.keys(rightNode._children || {}).length > 0 ||
+      rightNode._data?.IsFolder;
     if (leftIsFolder !== rightIsFolder) return leftIsFolder ? -1 : 1;
     if (sortBy === "questions") {
       const leftCount = getFolderStats(leftNode);
       const rightCount = getFolderStats(rightNode);
-      return (leftCount - rightCount) * sortDirection || left.localeCompare(right);
+      return (
+        (leftCount - rightCount) * sortDirection || left.localeCompare(right)
+      );
     }
     const result = left.localeCompare(right, undefined, {
       sensitivity: "base",
@@ -1111,7 +1204,7 @@ function renderCategoryProgress() {
       ? "bg-green-50 dark:bg-green-900/30 border-green-300"
       : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700";
     const availabilityClasses = databaseUnavailable
-      ? "opacity-50 grayscale cursor-not-allowed"
+      ? "opacity-50 grayscale cursor-not-allowed pointer-events-none"
       : "";
     const isDownloaded = state.db.some((q) => q.Subject === subj);
     const statusBadge = isDownloaded
@@ -1235,9 +1328,6 @@ function renderCategoryProgress() {
     if (hasChildren || isExplicitFolder) {
       const totalCards = getFolderStats(item);
       const folderClass = isGrid ? "h-full min-h-[140px]" : "h-auto";
-      const availabilityClasses = !syncConnected
-        ? "opacity-50 grayscale cursor-not-allowed"
-        : "";
 
       const isReview = currentAppMode === "review";
       const folderColorClass = isReview
@@ -1272,7 +1362,7 @@ function renderCategoryProgress() {
       }
 
       html += `
-                <div onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in ${availabilityClasses} bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;" title="${!syncConnected ? "Waiting for database connection" : ""}">
+                <div onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
                     <div class="h-12 ${folderColorClass} transition-colors relative">                        
                         <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
                     </div>
@@ -1831,7 +1921,12 @@ async function toggleArchiveDeck(subjectId) {
     state.prefs.archivedDecks.splice(index, 1);
     showToast("Deck unarchived");
   } else {
-    if (!(await requestConfirmation(`Are you sure you want to archive "${subjectId}"?`, "Archive Deck"))) {
+    if (
+      !(await requestConfirmation(
+        `Are you sure you want to archive "${subjectId}"?`,
+        "Archive Deck",
+      ))
+    ) {
       return;
     }
     state.prefs.archivedDecks.push(subjectId);
@@ -2106,17 +2201,31 @@ async function clearDatabase() {
   }
 }
 
+let clearAppDataInProgress = false;
+
 async function clearAppData() {
-  if (
-    !(await requestConfirmation(
-      "This permanently deletes all locally saved app data, including downloaded questions, progress, preferences, and saved sessions. Continue?",
-      "Clear App Data",
-    ))
-  ) {
-    return;
-  }
+  if (clearAppDataInProgress) return;
+  clearAppDataInProgress = true;
 
   try {
+    if (
+      !(await requestConfirmation(
+        "This permanently deletes all locally saved app data, including downloaded questions, progress, preferences, and saved sessions. Continue?",
+        "Clear App Data",
+      ))
+    ) {
+      return;
+    }
+
+    if (
+      !(await requestConfirmation(
+        "Final confirmation: this will permanently erase your downloaded decks, progress, preferences, saved sessions, caches, and service worker data. This cannot be undone.",
+        "Confirm Permanent Deletion",
+      ))
+    ) {
+      return;
+    }
+
     if (typeof idbKeyval !== "undefined") {
       await idbKeyval.clear();
     }
@@ -2140,6 +2249,8 @@ async function clearAppData() {
   } catch (error) {
     console.error("Unable to clear app data.", error);
     alert("Some app data could not be cleared. Please try again.");
+  } finally {
+    clearAppDataInProgress = false;
   }
 }
 
@@ -2470,7 +2581,9 @@ function changeDeckSort(sortOrder) {
 }
 
 function toggleDeckSortDirection() {
-  setDeckSortDirection(state.prefs.deckSortDirection === "desc" ? "asc" : "desc");
+  setDeckSortDirection(
+    state.prefs.deckSortDirection === "desc" ? "asc" : "desc",
+  );
 }
 
 function setDeckSortDirection(direction) {
@@ -2500,7 +2613,9 @@ function applyNavigationPosition() {
 
 function changeNavigationPosition(position) {
   const normalized = position === "top" ? "top" : "bottom";
-  if (document.getElementById("view-deck-review")?.classList.contains("active")) {
+  if (
+    document.getElementById("view-deck-review")?.classList.contains("active")
+  ) {
     state.prefs.reviewNavigationPosition = normalized;
   } else {
     state.prefs.quizNavigationPosition = normalized;
@@ -2566,7 +2681,7 @@ function closeConfirmModal(confirmed) {
   if (confirmResolver) {
     const resolve = confirmResolver;
     confirmResolver = null;
-    resolve(confirmed);
+    setTimeout(() => resolve(confirmed), 320);
   }
 }
 
@@ -2654,7 +2769,8 @@ function openReviewSettingsModal() {
     "toggle-review-navigation-bottom",
   );
   if (navigationToggle)
-    navigationToggle.checked = state.prefs.reviewNavigationPosition === "bottom";
+    navigationToggle.checked =
+      state.prefs.reviewNavigationPosition === "bottom";
   modal.classList.remove("hidden");
   // Small delay allows the browser to render 'block' before applying opacity for the transition
   setTimeout(() => {
@@ -2867,8 +2983,10 @@ async function loadReports() {
     const reports = await response.json();
 
     if (reports.length === 0) {
-      if (pendingContainer) pendingContainer.innerHTML = `<p class="text-center text-gray-500 py-4">No pending reports.</p>`;
-      if (resolvedContainer) resolvedContainer.innerHTML = `<p class="text-center text-gray-500 py-4">No resolved reports.</p>`;
+      if (pendingContainer)
+        pendingContainer.innerHTML = `<p class="text-center text-gray-500 py-4">No pending reports.</p>`;
+      if (resolvedContainer)
+        resolvedContainer.innerHTML = `<p class="text-center text-gray-500 py-4">No resolved reports.</p>`;
       return;
     }
 
@@ -2895,7 +3013,10 @@ async function loadReports() {
       const questionType = choices.length <= 1 ? "Identification" : "MCQ";
       const choicesHTML = choices.length
         ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-xs">${choices
-            .map((choice, index) => `<div class="bg-gray-50 dark:bg-gray-900/50 p-2 rounded"><strong>${String.fromCharCode(65 + index)}:</strong> ${escapeHTML(choice)}</div>`)
+            .map(
+              (choice, index) =>
+                `<div class="bg-gray-50 dark:bg-gray-900/50 p-2 rounded"><strong>${String.fromCharCode(65 + index)}:</strong> ${escapeHTML(choice)}</div>`,
+            )
             .join("")}</div>`
         : `<p class="text-xs text-gray-500 mt-3">No choices recorded.</p>`;
       const reportHTML = `
@@ -2917,9 +3038,11 @@ async function loadReports() {
       else pendingHTML += reportHTML;
     });
     document.getElementById("public-pending-reports").innerHTML =
-      pendingHTML || `<p class="text-center text-gray-500 py-4">No pending reports.</p>`;
+      pendingHTML ||
+      `<p class="text-center text-gray-500 py-4">No pending reports.</p>`;
     document.getElementById("public-resolved-reports").innerHTML =
-      resolvedHTML || `<p class="text-center text-gray-500 py-4">No resolved reports.</p>`;
+      resolvedHTML ||
+      `<p class="text-center text-gray-500 py-4">No resolved reports.</p>`;
   } catch (err) {
     if (pendingContainer)
       pendingContainer.innerHTML = `<div class="text-red-500 text-center p-4">Failed to load reports. Check your connection.</div>`;
