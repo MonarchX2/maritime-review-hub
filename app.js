@@ -24,6 +24,9 @@ let state = {
     reviewNavigationPosition: "top",
     deckSortBy: "letters",
     deckSortDirection: "asc",
+    favoriteDecks: [],
+    recentDecks: [],
+    discoverySearch: "",
     lastActivity: null,
   },
   session: {
@@ -56,6 +59,8 @@ let authChannel = null;
 let authStateVersion = 0;
 let pendingProgressRequestKey = null;
 let pendingOfflineSyncTimer = null;
+let discoverySearchDebounceTimer = null;
+let discoveryUiBound = false;
 
 function generateUserId() {
   if (window.crypto && window.crypto.randomUUID) {
@@ -432,6 +437,209 @@ function decodeHandlerValue(value) {
   }
 }
 
+function getDiscoveryViewModel() {
+  const builder =
+    window.DiscoveryUtils &&
+    typeof window.DiscoveryUtils.buildDiscoveryViewModel === "function"
+      ? window.DiscoveryUtils.buildDiscoveryViewModel
+      : null;
+
+  if (!builder) {
+    return {
+      favoriteDecks: [],
+      recentDecks: [],
+      searchQuery: "",
+      visibleDecks: [],
+      hasQuickAccess: false,
+    };
+  }
+
+  return builder(state, state.categorySummary || []);
+}
+
+function bindDiscoveryUi() {
+  if (discoveryUiBound) return;
+
+  document.addEventListener("click", (event) => {
+    const panel = document.getElementById("header-search-panel");
+    const toggle = document.getElementById("header-discovery-toggle");
+    if (!panel || panel.classList.contains("hidden")) return;
+    if (panel.contains(event.target) || toggle?.contains(event.target)) return;
+    closeDiscoverySearchPanel();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeDiscoverySearchPanel();
+  });
+
+  discoveryUiBound = true;
+}
+
+function toggleFavoriteDeck(subject) {
+  const safeSubject = decodeHandlerValue(subject || "");
+  if (!safeSubject) return;
+
+  const toggler =
+    window.DiscoveryUtils &&
+    typeof window.DiscoveryUtils.toggleDiscoveryEntry === "function"
+      ? window.DiscoveryUtils.toggleDiscoveryEntry
+      : null;
+
+  state.prefs.favoriteDecks = toggler
+    ? toggler(state.prefs.favoriteDecks, safeSubject, 8)
+    : [safeSubject];
+  saveState();
+  renderCategoryProgress();
+}
+
+function updateRecentDecks(subject) {
+  const safeSubject = decodeHandlerValue(subject || "");
+  if (!safeSubject) return;
+
+  const adder =
+    window.DiscoveryUtils &&
+    typeof window.DiscoveryUtils.addDiscoveryEntry === "function"
+      ? window.DiscoveryUtils.addDiscoveryEntry
+      : null;
+
+  state.prefs.recentDecks = adder
+    ? adder(state.prefs.recentDecks, safeSubject, 8)
+    : [safeSubject];
+}
+
+function getDiscoveryQueryText() {
+  const builder =
+    window.DiscoveryUtils &&
+    typeof window.DiscoveryUtils.normalizeQueryText === "function"
+      ? window.DiscoveryUtils.normalizeQueryText
+      : null;
+
+  const rawQuery = String(state.prefs.discoverySearch || "").trim();
+  return builder ? builder(rawQuery) : rawQuery;
+}
+
+function updateDiscoveryPanel() {
+  const panel = document.getElementById("header-search-panel");
+  const resultsContainer = document.getElementById("header-search-results");
+  const input = document.getElementById("header-discovery-input");
+  const toggle = document.getElementById("header-discovery-toggle");
+
+  if (!panel || !resultsContainer) return;
+
+  if (input) input.value = state.prefs.discoverySearch || "";
+  if (toggle) {
+    toggle.setAttribute(
+      "aria-expanded",
+      panel.classList.contains("hidden") ? "false" : "true",
+    );
+  }
+
+  const query = getDiscoveryQueryText();
+  const viewModel = getDiscoveryViewModel();
+  const favoriteDecks = Array.isArray(viewModel.favoriteDecks)
+    ? viewModel.favoriteDecks
+    : [];
+  const recentDecks = Array.isArray(viewModel.recentDecks)
+    ? viewModel.recentDecks
+    : [];
+
+  const dedupedQuickAccess = [];
+  [...favoriteDecks, ...recentDecks].forEach((subject) => {
+    const normalized = String(subject || "").trim();
+    if (!normalized || dedupedQuickAccess.includes(normalized)) return;
+    dedupedQuickAccess.push(normalized);
+  });
+
+  const suggestions = query
+    ? (viewModel.visibleDecks || []).slice(0, 6)
+    : dedupedQuickAccess.slice(0, 6);
+
+  if (suggestions.length === 0) {
+    resultsContainer.innerHTML = `
+      <div class="rounded-lg border border-dashed border-gray-200 px-3 py-4 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+        ${query ? `No decks found for “${escapeHTML(state.prefs.discoverySearch || "")}”.` : "Search decks or open one to build shortcuts."}
+      </div>
+    `;
+    return;
+  }
+
+  resultsContainer.innerHTML = `
+    <div class="flex flex-col gap-1.5">
+      ${suggestions
+        .map((entry) => {
+          const subject =
+            typeof entry === "string" ? entry : entry.Subject || "";
+          const safeSubject = String(subject || "").trim();
+          if (!safeSubject) return "";
+
+          return `
+            <div class="search-result-item flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-sm text-gray-700 dark:text-gray-200">
+              <button
+                type="button"
+                onclick="handleDeckClick('${encodeHandlerValue(safeSubject)}')"
+                class="flex-1 min-w-0 text-left truncate"
+                title="${escapeHTML(safeSubject)}"
+              >
+                <i class="fa-solid fa-file-lines mr-2 text-gray-400"></i>
+                <span class="truncate">${escapeHTML(safeSubject)}</span>
+              </button>
+              <button
+                type="button"
+                onclick="event.stopPropagation(); toggleFavoriteDeck('${encodeHandlerValue(safeSubject)}')"
+                class="shrink-0 rounded-full p-1.5 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/30"
+                title="Toggle favorite"
+              >
+                <i class="fa-solid fa-star"></i>
+              </button>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function toggleDiscoverySearchPanel() {
+  const panel = document.getElementById("header-search-panel");
+  const input = document.getElementById("header-discovery-input");
+  if (!panel) return;
+
+  const shouldOpen = panel.classList.contains("hidden");
+  panel.classList.toggle("hidden", !shouldOpen);
+  if (shouldOpen) {
+    bindDiscoveryUi();
+    updateDiscoveryPanel();
+    window.setTimeout(() => input?.focus(), 50);
+  }
+}
+
+function closeDiscoverySearchPanel() {
+  const panel = document.getElementById("header-search-panel");
+  if (!panel) return;
+  panel.classList.add("hidden");
+  const toggle = document.getElementById("header-discovery-toggle");
+  if (toggle) toggle.setAttribute("aria-expanded", "false");
+}
+
+function handleDiscoverySearchInput(event) {
+  const nextValue = event?.target?.value || "";
+  clearTimeout(discoverySearchDebounceTimer);
+  state.prefs.discoverySearch = nextValue;
+  discoverySearchDebounceTimer = window.setTimeout(() => {
+    saveState();
+    updateDiscoveryPanel();
+  }, 120);
+}
+
+function clearDiscoverySearch() {
+  state.prefs.discoverySearch = "";
+  clearTimeout(discoverySearchDebounceTimer);
+  saveState();
+  updateDiscoveryPanel();
+  const input = document.getElementById("header-discovery-input");
+  if (input) input.focus();
+}
+
 const actionLocks = {};
 
 function runWithActionLock(lockKey, action) {
@@ -529,6 +737,13 @@ async function loadState() {
         ...state.prefs,
         ...prefs,
       };
+      state.prefs.favoriteDecks = Array.isArray(state.prefs.favoriteDecks)
+        ? state.prefs.favoriteDecks
+        : [];
+      state.prefs.recentDecks = Array.isArray(state.prefs.recentDecks)
+        ? state.prefs.recentDecks
+        : [];
+      state.prefs.discoverySearch = state.prefs.discoverySearch || "";
       if (
         !Object.prototype.hasOwnProperty.call(prefs, "quizNavigationMode") &&
         prefs.quizNavigationPosition === "bottom"
@@ -559,6 +774,7 @@ async function loadState() {
   }
 
   populateFilters();
+  bindDiscoveryUi();
   updateDashboard();
   updateThemeButton();
   syncPreferenceControls();
@@ -684,6 +900,7 @@ function updateDashboard() {
 
   if (typeof checkSavedSession === "function") checkSavedSession();
   if (typeof renderCategoryProgress === "function") renderCategoryProgress();
+  updateDiscoveryPanel();
 }
 
 let settingsClickCount = 0;
@@ -1390,6 +1607,7 @@ function renderCategoryProgress() {
     }
     return total;
   }
+  const discoverySearchValue = state.prefs.discoverySearch || "";
   let html = `
         <div class="flex items-center gap-2 mb-6 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto pb-2 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
             <button onclick="goToPath(-1)" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2">
@@ -1436,6 +1654,32 @@ function renderCategoryProgress() {
   });
   const sourceFilter =
     document.getElementById("deck-source-filter")?.value || "all";
+
+  function nodeMatchesDiscoveryQuery(node, query, currentKey = null) {
+    const normalizedQuery = String(query || "")
+      .trim()
+      .toLowerCase();
+    if (!normalizedQuery) return true;
+
+    const subject = node?._data?.Subject || "";
+    const folderName = currentKey ? String(currentKey) : "";
+    const haystack = [subject, folderName]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    if (haystack.includes(normalizedQuery)) return true;
+
+    const childKeys = Object.keys(node?._children || {});
+    if (childKeys.length === 0) return false;
+
+    return childKeys.some((childKey) =>
+      nodeMatchesDiscoveryQuery(
+        node._children[childKey],
+        normalizedQuery,
+        childKey,
+      ),
+    );
+  }
 
   // CHANGED: Added currentKey and deep folder archive checks
   function nodeMatchesFilter(node, filter, currentKey = null) {
@@ -1501,11 +1745,14 @@ function renderCategoryProgress() {
 
   // CHANGED: Pass the current key for folder evaluation
   let visibleKeys = keys.filter((key) => {
-    return nodeMatchesFilter(currentNode[key], sourceFilter, key);
+    return (
+      nodeMatchesFilter(currentNode[key], sourceFilter, key) &&
+      nodeMatchesDiscoveryQuery(currentNode[key], discoverySearchValue, key)
+    );
   });
 
   if (visibleKeys.length === 0) {
-    html += `<div class="col-span-full text-center py-10 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">No decks match your filter.</div>`;
+    html += `<div class="col-span-full text-center py-10 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">${discoverySearchValue ? `No decks match “${escapeHTML(discoverySearchValue)}”.` : "No decks match your filter."}</div>`;
   }
 
   function generateCardHTML(cat, displayName, delay = 0) {
@@ -3511,6 +3758,8 @@ let pendingDeckAction = null;
 
 function handleDeckClick(subj, action = "continue") {
   subj = decodeHandlerValue(subj);
+  if (!subj) return;
+
   if (!syncConnected) {
     updateSyncStatus(
       '<i class="fa-solid fa-xmark mr-1"></i> Decks are temporarily unavailable while the database reconnects.',
@@ -3518,6 +3767,9 @@ function handleDeckClick(subj, action = "continue") {
     );
     return;
   }
+
+  updateRecentDecks(subj);
+  saveState();
 
   const deckInfo = state.categorySummary.find((c) => c.Subject === subj);
   if (deckInfo && deckInfo.Locked) {
