@@ -1,4 +1,5 @@
 const CACHE_NAME = "1";
+
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",
@@ -12,60 +13,60 @@ const ASSETS_TO_CACHE = [
   "https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js",
 ];
 
+// Install: cache core assets
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
-    }),
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE)),
   );
 });
 
+// Activate: claim clients and remove old caches
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    clients.claim().then(() => {
-      return caches.keys().then((cacheNames) => {
-        return Promise.all(
-          cacheNames.map((cacheName) => {
-            if (cacheName !== CACHE_NAME) {
-              return caches.delete(cacheName);
-            }
-          }),
-        );
-      });
-    }),
+    (async () => {
+      await clients.claim();
+      const cacheNames = await caches.keys();
+      await Promise.all(
+        cacheNames.map((name) =>
+          name !== CACHE_NAME ? caches.delete(name) : Promise.resolve(),
+        ),
+      );
+    })(),
   );
 });
 
+// Fetch: cache-first with background update; ignore non-GET requests and Google Scripts
 self.addEventListener("fetch", (event) => {
-  const url = new URL(event.request.url);
+  const { request } = event;
 
-  // Ignore non-GET requests or Google Script API calls
-  if (
-    event.request.method !== "GET" ||
-    url.origin.includes("script.google.com")
-  ) {
+  if (request.method !== "GET") return;
+
+  try {
+    const url = new URL(request.url);
+    if (url.origin.includes("script.google.com")) return;
+  } catch (e) {
+    // If URL parsing fails, fall back to network
     return;
   }
 
   event.respondWith(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.match(event.request).then((cachedResponse) => {
-        // Fetch a fresh version from the network in the background
-        const fetchPromise = fetch(event.request)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
-              cache.put(event.request, networkResponse.clone());
-            }
-            return networkResponse;
-          })
-          .catch(() => {
-            // Network failed, safe to ignore if we have a cache fallback
-          });
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const cached = await cache.match(request);
 
-        // Return cached response immediately if available, otherwise wait for network
-        return cachedResponse || fetchPromise;
-      });
-    }),
+      // Start network fetch in background to update cache
+      const networkFetch = fetch(request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            cache.put(request, response.clone());
+          }
+          return response;
+        })
+        .catch(() => undefined);
+
+      // Prefer cached response if available, otherwise wait for network
+      return cached || networkFetch;
+    })(),
   );
 });

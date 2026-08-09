@@ -1,7 +1,6 @@
-const DB_URL =
+﻿const DB_URL =
   "https://script.google.com/macros/s/AKfycbx4HFy5LmX_CFZMTOdl809OrnsgxzQvpzHDOhrMK3yk7fNZb7Gp2pImwBCS_I1Gx-D20g/exec";
 
-const CHOICES_ARRAY = ["A", "B", "C", "D"];
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
 const QUIZ_NAVIGATION_BREAKPOINT = 768;
 
