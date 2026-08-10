@@ -23,6 +23,15 @@ body {
   scroll-behavior: smooth;
 }
 
+.app-content-shell {
+  max-width: none;
+  margin-inline: auto;
+}
+
+#view-dashboard {
+  min-width: 0;
+}
+
 html,
 body,
 main {
@@ -45,6 +54,64 @@ input {
 
 #header-search-panel {
   min-width: min(20rem, calc(100vw - 1rem));
+}
+
+#header-discovery-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
+#header-discovery-input::-ms-clear {
+  display: none;
+}
+
+#header-discovery-input::-webkit-search-decoration {
+  display: none;
+}
+
+#resume-container {
+  transition: all var(--time-fast) var(--ease-base);
+}
+
+#resume-container button {
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  #view-dashboard {
+    overflow: visible;
+  }
+
+  #resume-container {
+    width: min(18rem, 26vw);
+    float: left;
+    margin-right: 1.75rem;
+    position: sticky;
+    top: 1rem;
+  }
+
+  #resume-container:not(.hidden) {
+    display: block;
+  }
+
+  #view-dashboard .dashboard-header-row,
+  #view-dashboard #category-list {
+    min-width: min(100%, 55rem);
+  }
+}
+
+@media (max-width: 1023px) {
+  #resume-container {
+    width: 100%;
+    float: none;
+    position: static;
+    margin-right: 0;
+  }
+
+  #resume-container:not(.hidden) {
+    display: block;
+  }
 }
 
 #header-search-results .search-result-item {

@@ -7,7 +7,14 @@ const QUIZ_NAVIGATION_BREAKPOINT = 768;
 let state = {
   db: [],
   categorySummary: [],
-  stats: { totalAnswered: 0, correct: 0, mistakes: [], subjectAccuracy: {} },
+  stats: {
+    totalAnswered: 0,
+    correct: 0,
+    mistakes: [],
+    subjectAccuracy: {},
+    completedQs: [],
+    srsMap: {},
+  },
   prefs: {
     darkMode: true,
     layoutMode: "grid",
@@ -17,6 +24,8 @@ let state = {
     hideABCD: false,
     quizHideABCD: false,
     showWrongChoices: false,
+    clozeEnabled: true,
+    srsEnabled: true,
     archivedDecks: [],
     databaseUpdateMode: "idle",
     quizNavigationPosition: "auto",
@@ -35,6 +44,7 @@ let state = {
     currentIndex: 0,
     userAnswers: {},
     autoNextTimeout: null,
+    revealedCloze: false,
   },
   currentPath: [],
   reportQuestion: null,
@@ -61,6 +71,7 @@ let pendingProgressRequestKey = null;
 let pendingOfflineSyncTimer = null;
 let discoverySearchDebounceTimer = null;
 let discoveryUiBound = false;
+let discoveryActiveIndex = -1;
 
 function generateUserId() {
   if (window.crypto && window.crypto.randomUUID) {
@@ -469,7 +480,18 @@ function bindDiscoveryUi() {
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeDiscoverySearchPanel();
+    if (event.key === "Escape") {
+      closeDiscoverySearchPanel();
+      return;
+    }
+
+    if (
+      event.key === "ArrowDown" ||
+      event.key === "ArrowUp" ||
+      event.key === "Enter"
+    ) {
+      handleDiscoveryKeyboard(event);
+    }
   });
 
   discoveryUiBound = true;
@@ -560,22 +582,33 @@ function updateDiscoveryPanel() {
         ${query ? `No decks found for “${escapeHTML(state.prefs.discoverySearch || "")}”.` : "Search decks or open one to build shortcuts."}
       </div>
     `;
+    discoveryActiveIndex = -1;
     return;
+  }
+
+  if (discoveryActiveIndex < 0 || discoveryActiveIndex >= suggestions.length) {
+    discoveryActiveIndex = 0;
   }
 
   resultsContainer.innerHTML = `
     <div class="flex flex-col gap-1.5">
       ${suggestions
-        .map((entry) => {
+        .map((entry, index) => {
           const subject =
             typeof entry === "string" ? entry : entry.Subject || "";
           const safeSubject = String(subject || "").trim();
           if (!safeSubject) return "";
 
+          const isActive = index === discoveryActiveIndex;
+          const activeClass = isActive
+            ? "bg-brand-50 border-brand-500 dark:bg-brand-900/30 dark:border-brand-500"
+            : "";
+
           return `
-            <div class="search-result-item flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-sm text-gray-700 dark:text-gray-200">
+            <div class="search-result-item flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-sm text-gray-700 dark:text-gray-200 ${activeClass}" data-discovery-index="${index}">
               <button
                 type="button"
+                data-discovery-select="${index}"
                 onclick="handleDeckClick('${encodeHandlerValue(safeSubject)}')"
                 class="flex-1 min-w-0 text-left truncate"
                 title="${escapeHTML(safeSubject)}"
@@ -621,23 +654,115 @@ function closeDiscoverySearchPanel() {
   if (toggle) toggle.setAttribute("aria-expanded", "false");
 }
 
+function activateDiscoverySelection() {
+  const panel = document.getElementById("header-search-panel");
+  const resultsContainer = document.getElementById("header-search-results");
+  if (!panel || !resultsContainer || panel.classList.contains("hidden")) {
+    return;
+  }
+
+  const rows = Array.from(
+    resultsContainer?.querySelectorAll("[data-discovery-index]") || [],
+  );
+
+  if (rows.length === 0) return;
+
+  const safeIndex = Math.max(
+    0,
+    Math.min(discoveryActiveIndex, rows.length - 1),
+  );
+  const activeRow = rows[safeIndex] || rows[0];
+  const button = activeRow?.querySelector("[data-discovery-select]");
+  if (button) {
+    button.click();
+  }
+}
+
+function moveDiscoverySelection(delta) {
+  const resultsContainer = document.getElementById("header-search-results");
+  const rows = Array.from(
+    resultsContainer?.querySelectorAll("[data-discovery-index]") || [],
+  );
+
+  if (rows.length === 0) return;
+
+  const nextIndex = Math.max(
+    0,
+    Math.min(rows.length - 1, discoveryActiveIndex + delta),
+  );
+
+  discoveryActiveIndex = nextIndex;
+  updateDiscoveryPanel();
+}
+
 function handleDiscoverySearchInput(event) {
   const nextValue = event?.target?.value || "";
   clearTimeout(discoverySearchDebounceTimer);
   state.prefs.discoverySearch = nextValue;
+  discoveryActiveIndex = -1;
+
   discoverySearchDebounceTimer = window.setTimeout(() => {
     saveState();
+    renderCategoryProgress();
     updateDiscoveryPanel();
   }, 120);
 }
 
 function clearDiscoverySearch() {
   state.prefs.discoverySearch = "";
+  discoveryActiveIndex = -1;
   clearTimeout(discoverySearchDebounceTimer);
   saveState();
+  renderCategoryProgress();
   updateDiscoveryPanel();
   const input = document.getElementById("header-discovery-input");
   if (input) input.focus();
+}
+
+function handleDiscoveryKeyboard(event) {
+  const input = document.getElementById("header-discovery-input");
+  if (event.target !== input) return;
+
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    const rows = Array.from(
+      document
+        .getElementById("header-search-results")
+        ?.querySelectorAll("[data-discovery-index]") || [],
+    );
+
+    if (rows.length === 0) return;
+
+    discoveryActiveIndex = Math.min(
+      Math.max(discoveryActiveIndex + 1, 0),
+      rows.length - 1,
+    );
+    updateDiscoveryPanel();
+    return;
+  }
+
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    const rows = Array.from(
+      document
+        .getElementById("header-search-results")
+        ?.querySelectorAll("[data-discovery-index]") || [],
+    );
+
+    if (rows.length === 0) return;
+
+    discoveryActiveIndex = Math.max(
+      Math.min(discoveryActiveIndex - 1, rows.length - 1),
+      0,
+    );
+    updateDiscoveryPanel();
+    return;
+  }
+
+  if (event.key === "Enter") {
+    event.preventDefault();
+    activateDiscoverySelection();
+  }
 }
 
 const actionLocks = {};
@@ -811,6 +936,10 @@ function syncPreferenceControls() {
     "toggle-shuffle-questions": state.prefs.shuffleQuestions !== false,
     "toggle-hide-abcd": state.prefs.hideABCD === true,
     "toggle-quiz-hide-abcd": state.prefs.quizHideABCD === true,
+    "toggle-cloze-mode": state.prefs.clozeEnabled !== false,
+    "toggle-main-cloze-mode": state.prefs.clozeEnabled !== false,
+    "toggle-srs-mode": state.prefs.srsEnabled === true,
+    "toggle-main-srs-mode": state.prefs.srsEnabled === true,
     "toggle-wrong-choices": state.prefs.showWrongChoices !== false,
     globalModeToggle: state.prefs.lastActivity?.mode === "review",
   };
@@ -1294,6 +1423,7 @@ function initSession() {
     currentIndex: 0,
     userAnswers: {},
     mode: "quiz",
+    revealedCloze: false,
   };
 
   document.getElementById("session-setup").classList.add("hidden");
@@ -1328,7 +1458,13 @@ function renderQuestion() {
     displayId = match ? match[1] : displayId.split("::").pop();
   }
   document.getElementById("q-id").innerText = "Question " + displayId;
-  document.getElementById("q-text").innerHTML = formatQuestionText(q.Question);
+  const clozeEnabled = state.prefs.clozeEnabled !== false;
+  const shouldRevealCloze =
+    Boolean(userAnswer) || Boolean(state.session.revealedCloze);
+  document.getElementById("q-text").innerHTML = formatQuestionText(q.Question, {
+    revealCloze: shouldRevealCloze && clozeEnabled,
+    clozeEnabled,
+  });
 
   const imgEl = document.getElementById("q-image");
   if (q.ImageURL && q.ImageURL.trim() !== "") {
@@ -1624,7 +1760,7 @@ function renderCategoryProgress() {
         </div>`;
 
   const layoutClass = isGrid
-    ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 lg:gap-8"
+    ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6 lg:gap-8"
     : "flex flex-col space-y-4";
 
   html += `<div class="${layoutClass}">`;
@@ -2011,17 +2147,51 @@ async function fetchAndStartCategory(subject, mode, pass = null) {
   }
 
   if (!state.stats.completedQs) state.stats.completedQs = [];
+  if (!state.stats.srsMap) state.stats.srsMap = {};
 
   let pool = [];
   if (mode === "continue") {
     pool = validQuestions.filter(
       (q) => !state.stats.completedQs.includes(q.ID),
     );
+
+    if (state.prefs.srsEnabled === true) {
+      const now = Date.now();
+      const duePool = pool.filter((q) => {
+        const srs = state.stats.srsMap?.[q.ID];
+        if (!srs) return true;
+        return Number(srs.due || 0) <= now;
+      });
+
+      if (duePool.length > 0) {
+        pool = duePool;
+      } else {
+        const retryQueue = pool.slice(0);
+        if (retryQueue.length > 0) {
+          pool = retryQueue;
+        }
+      }
+    }
+
     if (pool.length === 0) {
-      alert(
-        `You have answered all available questions for ${subject}! Reset the category to start over.`,
-      );
-      return;
+      if (state.prefs.srsEnabled === true) {
+        const queue = validQuestions.filter(
+          (q) => !state.stats.completedQs.includes(q.ID),
+        );
+        if (queue.length > 0) {
+          pool = queue;
+        } else {
+          alert(
+            `You have answered all available questions for ${subject}! Reset the category to start over.`,
+          );
+          return;
+        }
+      } else {
+        alert(
+          `You have answered all available questions for ${subject}! Reset the category to start over.`,
+        );
+        return;
+      }
     }
   } else if (mode === "mistakes") {
     pool = validQuestions.filter((q) => state.stats.mistakes.includes(q.ID));
@@ -2047,6 +2217,7 @@ function startCustomSession(pool) {
     currentIndex: 0,
     userAnswers: {},
     mode: "quiz",
+    revealedCloze: false,
   };
 
   renderQuestion();
@@ -2078,6 +2249,14 @@ async function resetCategory(subject) {
     if (state.stats.mistakes) {
       state.stats.mistakes = state.stats.mistakes.filter(
         (id) => !subjectQIDs.includes(id),
+      );
+    }
+
+    if (state.stats.srsMap) {
+      state.stats.srsMap = Object.fromEntries(
+        Object.entries(state.stats.srsMap || {}).filter(
+          ([qId]) => !subjectQIDs.includes(qId),
+        ),
       );
     }
 
@@ -2514,6 +2693,30 @@ function toggleShowWrongChoices() {
   reRenderDeckReview();
 }
 
+function toggleClozeMode(source) {
+  const element = source || document.getElementById("toggle-cloze-mode");
+  state.prefs.clozeEnabled = Boolean(element?.checked ?? true);
+  saveState();
+
+  if (state.session.active) {
+    renderQuestion();
+  }
+}
+
+function toggleSrsMode(source) {
+  const element = source || document.getElementById("toggle-srs-mode");
+  state.prefs.srsEnabled = Boolean(element?.checked ?? false);
+  saveState();
+
+  if (state.session.active) {
+    const activeQuestions = state.session.questions || [];
+    const current = activeQuestions[state.session.currentIndex] || null;
+    if (current) {
+      renderQuestion();
+    }
+  }
+}
+
 async function toggleArchiveDeck(subjectId) {
   subjectId = decodeHandlerValue(subjectId);
   if (!state.prefs.archivedDecks) {
@@ -2621,6 +2824,62 @@ function prevQuestion() {
   saveSessionProgress();
 }
 
+function getDefaultSrsEntry(qId) {
+  return {
+    qId,
+    ease: 2.5,
+    interval: 0,
+    due: 0,
+    reps: 0,
+    lapses: 0,
+    step: 0,
+    lastScore: null,
+    lastAnsweredAt: 0,
+  };
+}
+
+function updateSrsForQuestion(q, isCorrect) {
+  if (state.prefs.srsEnabled !== true) return;
+
+  const qId = q?.ID || q?.Question || "";
+  if (!qId) return;
+
+  if (!state.stats.srsMap) state.stats.srsMap = {};
+
+  const existing = state.stats.srsMap[qId] || getDefaultSrsEntry(qId);
+  const next = {
+    ...existing,
+    qId,
+    reps: Number(existing.reps || 0) + 1,
+    lastAnsweredAt: Date.now(),
+  };
+
+  if (isCorrect) {
+    next.lastScore = "correct";
+    next.step = Math.max(1, Number(existing.step || 0) + 1);
+    next.ease = Math.max(1.3, Number(existing.ease || 2.5) + 0.1);
+    next.interval = computeSrsInterval(next.step, next.ease);
+    next.due = Date.now() + next.interval * 24 * 60 * 60 * 1000;
+  } else {
+    next.lastScore = "wrong";
+    next.step = 0;
+    next.lapses = Number(existing.lapses || 0) + 1;
+    next.ease = Math.max(1.3, Number(existing.ease || 2.5) - 0.2);
+    next.interval = 1;
+    next.due = Date.now() + 60 * 60 * 1000;
+  }
+
+  state.stats.srsMap[qId] = next;
+}
+
+function computeSrsInterval(step, ease) {
+  if (step <= 0) return 1;
+  if (step === 1) return 1;
+  if (step === 2) return 2;
+  if (step === 3) return 4;
+  return Math.max(1, Math.round((step - 1) * (ease || 2.5) * 2));
+}
+
 function trackStats(q, isCorrect) {
   state.stats.totalAnswered++;
 
@@ -2641,6 +2900,8 @@ function trackStats(q, isCorrect) {
   } else {
     if (!state.stats.mistakes.includes(q.ID)) state.stats.mistakes.push(q.ID);
   }
+
+  updateSrsForQuestion(q, isCorrect);
   saveState();
   sendTelemetry("answer_question", { qId: q.ID, isCorrect });
 }
@@ -2911,6 +3172,14 @@ window.onload = async () => {
   await loadState();
   await restoreUserSession();
 
+  if ("serviceWorker" in navigator) {
+    try {
+      await navigator.serviceWorker.register("./sw.js");
+    } catch (e) {
+      console.warn("Service worker could not be registered", e);
+    }
+  }
+
   const toggleElement = document.getElementById("globalModeToggle");
   if (toggleElement) {
     currentAppMode = toggleElement.checked ? "review" : "quiz";
@@ -3123,6 +3392,7 @@ function revealAnswer() {
 
   const q = state.session.questions[state.session.currentIndex];
   state.session.userAnswers[state.session.currentIndex] = "REVEALED";
+  state.session.revealedCloze = true;
 
   // Use the helper function here too!
   const { isIdent: isPureIdent } = getQuestionTypeMode(q);
@@ -3356,6 +3626,12 @@ function openSessionSettingsModal() {
   const quizHideToggle = document.getElementById("toggle-quiz-hide-abcd");
   if (quizHideToggle)
     quizHideToggle.checked = state.prefs.quizHideABCD === true;
+
+  const clozeToggle = document.getElementById("toggle-cloze-mode");
+  if (clozeToggle) clozeToggle.checked = state.prefs.clozeEnabled !== false;
+
+  const srsToggle = document.getElementById("toggle-srs-mode");
+  if (srsToggle) srsToggle.checked = state.prefs.srsEnabled === true;
 
   const qTypeSelect = document.getElementById("toggle-question-type");
   if (qTypeSelect) qTypeSelect.value = state.prefs.qTypeOverride || "auto";
@@ -4190,6 +4466,7 @@ function getProgressPayload() {
         ? [...state.stats.mistakes]
         : [],
       subjectAccuracy: state.stats.subjectAccuracy || {},
+      srsMap: state.stats.srsMap || {},
     },
     prefs: syncedPrefs,
     savedSession,
@@ -4234,7 +4511,9 @@ function clearLocalUserProgress() {
     totalAnswered: 0,
     correct: 0,
     mistakes: [],
+    completedQs: [],
     subjectAccuracy: {},
+    srsMap: {},
   };
   state.session = {
     active: false,
@@ -4276,6 +4555,10 @@ function applyRemoteProgress(payload, updatedAt) {
           ? payload.stats.completedQs
           : [],
         subjectAccuracy: payload.stats.subjectAccuracy || {},
+        srsMap:
+          payload.stats.srsMap && typeof payload.stats.srsMap === "object"
+            ? payload.stats.srsMap
+            : {},
       };
       setStoredJSON("stats", state.stats);
     }
@@ -4869,9 +5152,30 @@ function togglePasswordVisibility(inputId, btnElement) {
   }
 }
 
-function formatQuestionText(text) {
+function formatQuestionText(text, options = {}) {
   if (!text) return "";
+
+  const revealCloze = Boolean(options.revealCloze);
+  const clozeEnabled =
+    options.clozeEnabled ?? state.prefs.clozeEnabled !== false;
   let formatted = escapeHTML(text);
+
+  if (clozeEnabled) {
+    const clozeRegex = /\{\{c\d+::([^{}]+)\}\}/g;
+    formatted = formatted.replace(clozeRegex, (match, innerText) => {
+      const safeInner = escapeHTML(String(innerText || "").trim());
+      const safeInnerValue = safeInner || "••••";
+      const clozeVisual = revealCloze
+        ? `<span class="cloze-answer text-brand-700 dark:text-brand-300">${safeInnerValue}</span>`
+        : `<span class="cloze-answer hidden">${safeInnerValue}</span>`;
+      return `<span class="cloze-token inline-flex items-center">
+        <button type="button" class="cloze-trigger rounded border border-dashed border-brand-500 px-2 py-0.5 text-xs font-bold bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-200 ${revealCloze ? "cloze-visible" : ""}" onclick="event.preventDefault(); event.stopPropagation(); revealClozeAnswer(this)">
+          <span class="cloze-mask">${revealCloze ? safeInnerValue : "□ □ □"}</span>
+          ${clozeVisual}
+        </button>
+      </span>`;
+    });
+  }
 
   const listRegex = /(?:\s|^)((?:\d+|[A-Za-z]|[IVXLCDMivxlcdm]{1,4})\.)\s/g;
 
@@ -4882,6 +5186,22 @@ function formatQuestionText(text) {
   }
 
   return formatted;
+}
+
+function revealClozeAnswer(trigger) {
+  if (!trigger) return;
+  const mask = trigger.querySelector(".cloze-mask");
+  const hiddenAnswer = trigger.querySelector(".cloze-answer");
+  if (!hiddenAnswer) return;
+
+  const nextVisible = !trigger.classList.contains("cloze-visible");
+  trigger.classList.toggle("cloze-visible", nextVisible);
+  if (mask) {
+    mask.classList.toggle("hidden", nextVisible);
+  }
+  if (hiddenAnswer) {
+    hiddenAnswer.classList.toggle("hidden", !nextVisible);
+  }
 }
 
 if (!state.prefs.studyLayout) state.prefs.studyLayout = "scroll";

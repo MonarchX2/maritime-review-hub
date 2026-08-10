@@ -60,12 +60,31 @@
       .trim();
   }
 
+  function getQueryTokens(value) {
+    const normalizedValue = normalizeQueryText(value);
+    if (!normalizedValue) return [];
+
+    return normalizedValue.split(" ").filter((token) => token.length >= 1);
+  }
+
   function isDeckMatch(subject, query) {
     const normalizedQuery = normalizeQueryText(query);
     if (!normalizedQuery) return true;
 
     const normalizedSubject = normalizeQueryText(subject);
-    return normalizedSubject.includes(normalizedQuery);
+    const queryTokens = getQueryTokens(normalizedQuery);
+    if (queryTokens.length === 0) return true;
+
+    const subjectTokens = getQueryTokens(normalizedSubject);
+    const normalizedSubjectText = subjectTokens.join(" ");
+
+    if (normalizedSubjectText.includes(normalizedQuery)) return true;
+
+    return queryTokens.every((token) => {
+      return subjectTokens.some((subjectToken) => {
+        return subjectToken.includes(token) || token.includes(subjectToken);
+      });
+    });
   }
 
   function buildDiscoveryViewModel(state, categorySummary) {

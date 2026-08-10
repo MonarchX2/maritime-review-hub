@@ -1,5 +1,4 @@
-const CACHE_NAME = "1";
-
+const CACHE_PREFIX = "mrh-static";
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",
@@ -7,36 +6,65 @@ const ASSETS_TO_CACHE = [
   "./app.js",
   "./admin.js",
   "./styles.css",
-  "https://cdn.tailwindcss.com",
-  "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css",
-  "https://cdn.jsdelivr.net/npm/chart.js",
-  "https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js",
 ];
 
-// Install: cache core assets
+let CACHE_NAME = `${CACHE_PREFIX}-v0`;
+
+async function computeAssetFingerprint() {
+  const bodyParts = [];
+
+  for (const asset of ASSETS_TO_CACHE) {
+    try {
+      const response = await fetch(asset, { cache: "no-cache" });
+      if (!response || !response.ok) continue;
+      const text = await response.text();
+      bodyParts.push(text);
+    } catch (e) {
+      // Ignore assets that are not fetchable during worker setup.
+    }
+  }
+
+  const fingerprintSource = bodyParts.join("\n---asset-separator---");
+  const data = new TextEncoder().encode(fingerprintSource);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  const bytes = Array.from(new Uint8Array(digest));
+  const hash = bytes
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 12);
+
+  return hash;
+}
+
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE)),
+    (async () => {
+      const fingerprint = await computeAssetFingerprint();
+      CACHE_NAME = `${CACHE_PREFIX}-${fingerprint}`;
+      const cache = await caches.open(CACHE_NAME);
+      await cache.addAll(ASSETS_TO_CACHE);
+    })(),
   );
 });
 
-// Activate: claim clients and remove old caches
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       await clients.claim();
       const cacheNames = await caches.keys();
       await Promise.all(
-        cacheNames.map((name) =>
-          name !== CACHE_NAME ? caches.delete(name) : Promise.resolve(),
-        ),
+        cacheNames.map((name) => {
+          if (name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME) {
+            return caches.delete(name);
+          }
+          return Promise.resolve();
+        }),
       );
     })(),
   );
 });
 
-// Fetch: cache-first with background update; ignore non-GET requests and Google Scripts
 self.addEventListener("fetch", (event) => {
   const { request } = event;
 
@@ -46,7 +74,6 @@ self.addEventListener("fetch", (event) => {
     const url = new URL(request.url);
     if (url.origin.includes("script.google.com")) return;
   } catch (e) {
-    // If URL parsing fails, fall back to network
     return;
   }
 
@@ -55,7 +82,6 @@ self.addEventListener("fetch", (event) => {
       const cache = await caches.open(CACHE_NAME);
       const cached = await cache.match(request);
 
-      // Start network fetch in background to update cache
       const networkFetch = fetch(request)
         .then((response) => {
           if (response && response.status === 200) {
@@ -65,7 +91,6 @@ self.addEventListener("fetch", (event) => {
         })
         .catch(() => undefined);
 
-      // Prefer cached response if available, otherwise wait for network
       return cached || networkFetch;
     })(),
   );

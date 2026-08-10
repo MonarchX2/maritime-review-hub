@@ -81,6 +81,8 @@
           title="Checking database connection"
           aria-label="Database connection status"
         ></i>
+      </div>
+      <div class="flex items-center gap-5 relative">
         <button
           id="header-discovery-toggle"
           type="button"
@@ -88,7 +90,7 @@
             event.stopPropagation();
             toggleDiscoverySearchPanel();
           "
-          class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg ml-1"
+          class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg"
           aria-label="Search decks"
           title="Search decks"
         >
@@ -97,7 +99,7 @@
         <div
           id="header-search-panel"
           onclick="event.stopPropagation()"
-          class="hidden absolute left-0 top-full mt-2 w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 p-3 shadow-2xl backdrop-blur z-[60]"
+          class="hidden absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 p-3 shadow-2xl backdrop-blur z-[60]"
         >
           <div
             class="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 px-2.5 py-2"
@@ -105,9 +107,11 @@
             <i class="fa-solid fa-magnifying-glass text-gray-400"></i>
             <input
               id="header-discovery-input"
-              type="search"
+              type="text"
               placeholder="Search decks"
               class="w-full bg-transparent outline-none text-sm text-gray-700 dark:text-gray-200"
+              autocomplete="off"
+              spellcheck="false"
               oninput="handleDiscoverySearchInput(event)"
             />
           </div>
@@ -116,8 +120,6 @@
             class="mt-2 max-h-56 overflow-y-auto"
           ></div>
         </div>
-      </div>
-      <div class="flex items-center gap-5">
         <button
           id="btn-admin-nav"
           onclick="navigate('admin')"
@@ -184,7 +186,7 @@
       aria-live="polite"
     ></div>
 
-    <main class="flex-1 p-4 md:p-8 overflow-y-auto w-full max-w-5xl mx-auto">
+    <main class="flex-1 p-4 md:p-8 overflow-y-auto w-full app-content-shell">
       <!-- DASHBOARD SECTION -->
       <section id="view-dashboard" class="view-section active">
         <div id="resume-container" class="hidden mb-8 animate-card-in">
@@ -860,6 +862,36 @@
               class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
             ></div>
           </label>
+          <label class="flex items-center justify-between cursor-pointer mb-2">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
+              >Dynamic Cloze Deletion</span
+            >
+            <input
+              type="checkbox"
+              id="toggle-main-cloze-mode"
+              class="sr-only peer"
+              onchange="toggleClozeMode(this)"
+              checked
+            />
+            <div
+              class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
+            ></div>
+          </label>
+          <label class="flex items-center justify-between cursor-pointer mb-2">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
+              >Spaced Repetition System</span
+            >
+            <input
+              type="checkbox"
+              id="toggle-main-srs-mode"
+              class="sr-only peer"
+              onchange="toggleSrsMode(this)"
+              checked
+            />
+            <div
+              class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
+            ></div>
+          </label>
           <p
             class="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded border border-yellow-200 dark:border-yellow-800"
           >
@@ -1265,6 +1297,63 @@
                   id="toggle-quiz-hide-abcd"
                   class="sr-only peer"
                   onchange="toggleQuizHideABCD()"
+                />
+                <div
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
+                ></div>
+              </label>
+            </div>
+
+            <div class="border-t border-gray-100 dark:border-gray-700"></div>
+
+            <!-- Dynamic Cloze Toggle -->
+            <div class="flex justify-between items-center">
+              <div class="pr-4">
+                <span
+                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
+                >
+                  Dynamic Cloze Deletion
+                </span>
+                <span class="text-xs text-gray-500">
+                  Reveal fill-in-the-blank cards like Anki clozes.
+                </span>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="toggle-cloze-mode"
+                  class="sr-only peer"
+                  onchange="toggleClozeMode(this)"
+                  checked
+                />
+                <div
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
+                ></div>
+              </label>
+            </div>
+
+            <div class="border-t border-gray-100 dark:border-gray-700"></div>
+
+            <!-- SRS Toggle -->
+            <div class="flex justify-between items-center">
+              <div class="pr-4">
+                <span
+                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
+                >
+                  Spaced Repetition System
+                </span>
+                <span class="text-xs text-gray-500">
+                  Schedule reviews from answer performance instead of always
+                  resetting the deck.
+                </span>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="toggle-srs-mode"
+                  class="sr-only peer"
+                  onchange="toggleSrsMode(this)"
+                  checked
                 />
                 <div
                   class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"

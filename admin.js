@@ -66,8 +66,14 @@ async function loadAdminSubjects() {
     });
 
     const secureSubjects = await response.json();
-    if (secureSubjects.status === "error" || !Array.isArray(secureSubjects)) {
-      container.innerHTML = `<p class="text-center text-red-500 py-6">Failed to load secure subjects. Check backend configuration.</p>`;
+    if (secureSubjects.status === "error") {
+      container.innerHTML = `<p class="text-center text-red-500 py-6">Failed to load secure subjects: ${escapeHTML(
+        secureSubjects.message || "Backend rejected the request",
+      )}</p>`;
+      return;
+    }
+    if (!Array.isArray(secureSubjects)) {
+      container.innerHTML = `<p class="text-center text-red-500 py-6">Unexpected response from the backend. Please check server configuration.</p>`;
       return;
     }
 
@@ -328,8 +334,15 @@ async function adminLoadReports() {
     });
     const reports = await response.json();
 
-    if (reports.length === 0) {
+    if (reports && reports.status === "error") {
+      container.innerHTML = `<div class="text-red-500 text-center py-6">${escapeHTML(
+        reports.message || "Failed to load reports.",
+      )}</div>`;
+      return;
+    }
+    if (!Array.isArray(reports) || reports.length === 0) {
       container.innerHTML = `<div class="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-xl text-center text-gray-500">No reports found in the database.</div>`;
+      adminState.reports = [];
       return;
     }
     adminState.reports = reports;
@@ -457,10 +470,12 @@ window.cascadePassword = function (btn) {
 };
 
 function openEditModal(reportId) {
-  const report = adminState.reports.find((r) => r.id === reportId);
+  const report = adminState.reports.find(
+    (r) => String(r.id) === String(reportId),
+  );
   if (!report) return;
 
-  document.getElementById("edit-report-id").value = report.id;
+  document.getElementById("edit-report-id").value = String(report.id);
   document.getElementById("edit-question-id").value = report.questionId;
 
   document.getElementById("edit-q-text").value = report.questionText || "";
@@ -494,7 +509,9 @@ async function saveEditedQuestion() {
   const reportId = document.getElementById("edit-report-id").value;
   const questionId = document.getElementById("edit-question-id").value;
 
-  const report = adminState.reports.find((r) => r.id === reportId);
+  const report = adminState.reports.find(
+    (r) => String(r.id) === String(reportId),
+  );
   if (!report) {
     alert("Report reference not found.");
     return;
