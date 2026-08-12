@@ -93,16 +93,7 @@ function generateUserId() {
 }
 
 function getPersistentStorageIdentity() {
-  try {
-    const stored = localStorage.getItem("mrh_storage_identity");
-    if (stored) return stored;
-  } catch (e) {}
-
-  const generated = `device_${generateUserId()}`;
-  try {
-    localStorage.setItem("mrh_storage_identity", generated);
-  } catch (e) {}
-  return generated;
+  return StorageUtils.getPersistentStorageIdentity();
 }
 
 if (!state.prefs.userId) {
@@ -113,73 +104,39 @@ if (!state.prefs.userId) {
 }
 
 function getSafeStorageIdentity() {
-  const username =
-    typeof userState !== "undefined" && userState.username
-      ? userState.username
-      : "";
-  if (username) {
-    return String(username).replace(/[^a-zA-Z0-9_-]/g, "_") || "guest";
-  }
-
-  if (!state?.prefs?.storageIdentity) {
-    state.prefs.storageIdentity = getPersistentStorageIdentity();
-  }
-  const rawIdentity =
-    state?.prefs?.storageIdentity ||
-    localStorage.getItem("mrh_storage_identity") ||
-    state?.prefs?.userId ||
-    "guest";
-  return String(rawIdentity).replace(/[^a-zA-Z0-9_-]/g, "_") || "guest";
+  return StorageUtils.getSafeStorageIdentity();
 }
 
 function getStorageNamespace() {
-  return `mrh_${getSafeStorageIdentity()}`;
+  return StorageUtils.getStorageNamespace();
 }
 
 function getStorageKey(key) {
-  return `${getStorageNamespace()}:${key}`;
+  return StorageUtils.getStorageKey(key);
 }
 
 function getLegacyStorageKey(key) {
-  return `mrh_${key}`;
+  return StorageUtils.getLegacyStorageKey(key);
 }
 
 function getStoredItem(key, fallback = null) {
-  const namespacedValue = localStorage.getItem(getStorageKey(key));
-  if (namespacedValue !== null) return namespacedValue;
-  const legacyValue = localStorage.getItem(getLegacyStorageKey(key));
-  if (legacyValue !== null) return legacyValue;
-  return fallback;
+  return StorageUtils.getStoredItem(key, fallback);
 }
 
 function getAnyNamespaceStoredItem(key, fallback = null) {
-  for (let i = 0; i < localStorage.length; i++) {
-    const storedKey = localStorage.key(i) || "";
-    if (storedKey.endsWith(`:${key}`)) {
-      const value = localStorage.getItem(storedKey);
-      if (value !== null) return value;
-    }
-  }
-  return fallback;
+  return StorageUtils.getAnyNamespaceStoredItem(key, fallback);
 }
 
 function setStoredItem(key, value) {
-  localStorage.setItem(getStorageKey(key), value);
+  return StorageUtils.setStoredItem(key, value);
 }
 
 function removeStoredItem(key) {
-  localStorage.removeItem(getStorageKey(key));
-  localStorage.removeItem(getLegacyStorageKey(key));
+  return StorageUtils.removeStoredItem(key);
 }
 
 function getStoredJSON(key, fallback = null) {
-  try {
-    const stored = getStoredItem(key);
-    if (stored === null || stored === undefined) return fallback;
-    return JSON.parse(stored);
-  } catch (e) {
-    return fallback;
-  }
+  return StorageUtils.getStoredJSON(key, fallback);
 }
 
 function rebuildQuestionIndex() {
@@ -235,109 +192,31 @@ function setStoredJSON(key, value) {
 }
 
 function getSessionStoredItem(key, fallback = null) {
-  const namespacedValue = sessionStorage.getItem(getStorageKey(key));
-  if (namespacedValue !== null) return namespacedValue;
-  const legacyValue = sessionStorage.getItem(getLegacyStorageKey(key));
-  if (legacyValue !== null) return legacyValue;
-
-  // Fallback: session storage may have been written under a different namespace
-  // when the user identity was not yet known during restore.
-  for (let i = 0; i < sessionStorage.length; i++) {
-    const storedKey = sessionStorage.key(i) || "";
-    if (storedKey.endsWith(`:${key}`)) {
-      const fallbackValue = sessionStorage.getItem(storedKey);
-      if (fallbackValue !== null) return fallbackValue;
-    }
-  }
-  return fallback;
+  return StorageUtils.getSessionStoredItem(key, fallback);
 }
 
 function setSessionStoredItem(key, value) {
-  sessionStorage.setItem(getStorageKey(key), value);
+  return StorageUtils.setSessionStoredItem(key, value);
 }
 
 function removeSessionStoredItem(key) {
-  sessionStorage.removeItem(getStorageKey(key));
-  sessionStorage.removeItem(getLegacyStorageKey(key));
-  for (let i = sessionStorage.length - 1; i >= 0; i--) {
-    const storedKey = sessionStorage.key(i) || "";
-    if (storedKey.endsWith(`:${key}`)) {
-      sessionStorage.removeItem(storedKey);
-    }
-  }
+  return StorageUtils.removeSessionStoredItem(key);
 }
 
 function getSessionStoredJSON(key, fallback = null) {
-  try {
-    const stored = getSessionStoredItem(key);
-    if (stored === null || stored === undefined) return fallback;
-    return JSON.parse(stored);
-  } catch (e) {
-    return fallback;
-  }
+  return StorageUtils.getSessionStoredJSON(key, fallback);
 }
 
 function setSessionStoredJSON(key, value) {
-  setSessionStoredItem(key, JSON.stringify(value));
+  return StorageUtils.setSessionStoredJSON(key, value);
 }
 
 function migrateLegacyStorageKeys() {
-  const pairs = [
-    ["stats", "mrh_stats"],
-    ["prefs", "mrh_prefs"],
-    ["summary", "mrh_summary"],
-    ["saved_session", "mrh_saved_session"],
-    ["progress_meta", "mrh_progress_meta"],
-    ["user_session", "mrh_user_session"],
-    ["reported_qs", "mrh_reported_qs"],
-    ["login_suggestion_dismissed", "mrh_login_suggestion_dismissed"],
-    ["pending_sync_queue", "mrh_pending_sync_queue"],
-    ["recovery_snapshot", "mrh_recovery_snapshot"],
-  ];
-
-  pairs.forEach(([currentKey, legacyKey]) => {
-    const namespacedKey = getStorageKey(currentKey);
-    if (
-      localStorage.getItem(namespacedKey) === null &&
-      localStorage.getItem(legacyKey) !== null
-    ) {
-      localStorage.setItem(namespacedKey, localStorage.getItem(legacyKey));
-    }
-  });
+  return StorageUtils.migrateLegacyStorageKeys();
 }
 
 function purgeOrphanedStorage(identityToKeep = null) {
-  const activeIdentity = identityToKeep || getSafeStorageIdentity();
-  const namespaces = new Set();
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i) || "";
-    const match = key.match(/^mrh_([^:]+):/);
-    if (match) namespaces.add(match[1]);
-  }
-
-  namespaces.forEach((namespace) => {
-    if (namespace === activeIdentity) return;
-    for (let i = localStorage.length - 1; i >= 0; i--) {
-      const key = localStorage.key(i) || "";
-      if (key.startsWith(`mrh_${namespace}:`)) {
-        localStorage.removeItem(key);
-      }
-    }
-  });
-
-  const legacyKeys = [
-    "mrh_stats",
-    "mrh_prefs",
-    "mrh_summary",
-    "mrh_saved_session",
-    "mrh_progress_meta",
-    "mrh_user_session",
-    "mrh_reported_qs",
-    "mrh_login_suggestion_dismissed",
-    "mrh_pending_sync_queue",
-    "mrh_recovery_snapshot",
-  ];
-  legacyKeys.forEach((legacyKey) => localStorage.removeItem(legacyKey));
+  return StorageUtils.purgeOrphanedStorage(identityToKeep);
 }
 
 function getActiveIdentity() {
@@ -349,137 +228,15 @@ function getActiveIdentity() {
 }
 
 async function callBackend(payload, options = {}) {
-  const timeoutMs = options.timeoutMs || 20000;
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(DB_URL, {
-      method: "POST",
-      redirect: "follow",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-      ...options,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      let message = text || `Backend request failed (${response.status})`;
-      try {
-        const json = JSON.parse(text);
-        if (json && json.message) message = json.message;
-      } catch (e) {
-        // ignore invalid JSON
-      }
-      throw new Error(message);
-    }
-
-    const text = await response.text().catch(() => "");
-    try {
-      return JSON.parse(text);
-    } catch (error) {
-      throw new Error(
-        `Invalid response from backend. Expected JSON but received: ${text.slice(0, 200)}`,
-      );
-    }
-  } catch (error) {
-    if (error?.name === "AbortError") {
-      throw new Error("The request timed out. Please try again.");
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  return NetworkUtils.callBackend(payload, options);
 }
 
 function sendTelemetry(action, details) {
-  const authenticatedUsername =
-    typeof userState !== "undefined" && userState.isLoggedIn
-      ? userState.username
-      : "";
-  const event = {
-    type: "telemetry",
-    userId: getActiveIdentity(),
-    action,
-    details: {
-      ...details,
-      username: authenticatedUsername || null,
-      timestamp: new Date().toISOString(),
-      currentView: document.querySelector(".view-section.active")?.id || null,
-      appMode: typeof currentAppMode === "string" ? currentAppMode : null,
-      viewport: {
-        width: window.innerWidth,
-        height: window.innerHeight,
-        orientation: window.matchMedia("(orientation: portrait)").matches
-          ? "portrait"
-          : "landscape",
-      },
-      online: navigator.onLine,
-    },
-  };
-  const payload = JSON.stringify({
-    ...event,
-  });
-
-  if (navigator.sendBeacon) {
-    const blob = new Blob([payload], { type: "text/plain;charset=utf-8" });
-    navigator.sendBeacon(DB_URL, blob);
-  } else {
-    fetch(DB_URL, {
-      method: "POST",
-      redirect: "follow",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: payload,
-      keepalive: true,
-    }).catch(() => {});
-  }
+  return NetworkUtils.sendTelemetry(action, details);
 }
 
 function setupTelemetry() {
-  document.addEventListener("click", (event) => {
-    const target = event.target.closest(
-      "button, a, select, input, [role='button']",
-    );
-    if (!target || target.dataset.telemetryIgnore === "true") return;
-    sendTelemetry("ui_click", {
-      element: target.id || target.getAttribute("aria-label") || target.tagName,
-      text: (target.innerText || target.value || "").trim().slice(0, 120),
-    });
-  });
-
-  document.addEventListener("change", (event) => {
-    const target = event.target;
-    if (!target.matches("input, select, textarea")) return;
-    sendTelemetry("ui_change", {
-      element: target.id || target.name || target.tagName,
-      value: target.type === "checkbox" ? target.checked : target.value,
-    });
-  });
-
-  window.addEventListener("online", () =>
-    sendTelemetry("network_status", { online: true }),
-  );
-  window.addEventListener("offline", () =>
-    sendTelemetry("network_status", { online: false }),
-  );
-  document.addEventListener("visibilitychange", () =>
-    sendTelemetry("visibility_change", {
-      visibility: document.visibilityState,
-    }),
-  );
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && Date.now() - lastSyncAt > SYNC_INTERVAL_MS) {
-      syncDatabase(true, true);
-    }
-  });
-  window.addEventListener("error", (event) =>
-    sendTelemetry("client_error", {
-      message: event.message,
-      source: event.filename,
-      line: event.lineno,
-    }),
-  );
+  return NetworkUtils.setupTelemetry();
 }
 
 function normalizeQuestionRecord(question) {
@@ -512,101 +269,23 @@ function normalizeQuestionRecord(question) {
 }
 
 function escapeHTML(value) {
-  if (value === null || value === undefined) return "";
-
-  return String(value).replace(
-    /[&<>'"]/g,
-    (c) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        "'": "&#39;",
-        '"': "&quot;",
-      })[c],
-  );
+  return TextUtils.escapeHTML(value);
 }
 
 function renderMathExpression(rawExpression, displayMode) {
-  var expr = String(rawExpression || "").trim();
-  if (!expr) return "";
-
-  if (window.katex && typeof katex.renderToString === "function") {
-    try {
-      return katex.renderToString(expr, {
-        throwOnError: false,
-        displayMode: Boolean(displayMode),
-        strict: "ignore",
-      });
-    } catch (error) {
-      return `<code class="math-fallback">${escapeHTML(expr)}</code>`;
-    }
-  }
-
-  return `<code class="math-fallback">${escapeHTML(expr)}</code>`;
+  return TextUtils.renderMathExpression(rawExpression, displayMode);
 }
 
 function formatQuestionText(text, options = {}) {
-  if (!text) return "";
-
-  var revealCloze = Boolean(options.revealCloze);
-  var clozeEnabled = options.clozeEnabled ?? state.prefs.clozeEnabled !== false;
-
-  function formatNonMathSegment(segment) {
-    var safeSegment = escapeHTML(segment);
-
-    if (clozeEnabled) {
-      var clozeRegex = /\{\{c\d+::([^{}]+)\}\}/g;
-      safeSegment = safeSegment.replace(
-        clozeRegex,
-        function (_match, innerText) {
-          var safeInner = escapeHTML(String(innerText || "").trim());
-          var safeInnerValue = safeInner || "••••";
-          var clozeVisual = revealCloze
-            ? `<span class="cloze-answer text-brand-700 dark:text-brand-300">${safeInnerValue}</span>`
-            : `<span class="cloze-answer hidden">${safeInnerValue}</span>`;
-          return `<span class="cloze-token inline-flex items-center">
-        <button type="button" class="cloze-trigger rounded border border-dashed border-brand-500 px-2 py-0.5 text-xs font-bold bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-200 ${revealCloze ? "cloze-visible" : ""}" onclick="event.preventDefault(); event.stopPropagation(); revealClozeAnswer(this)">
-          <span class="cloze-mask">${revealCloze ? safeInnerValue : "□ □ □"}</span>
-          ${clozeVisual}
-        </button>
-      </span>`;
-        },
-      );
-    }
-
-    var listRegex = /(?:\s|^)((?:\d+|[A-Za-z]|[IVXLCDMivxlcdm]{1,4})\.)\s/g;
-    safeSegment = safeSegment.replace(listRegex, "<br><br>$1 ");
-
-    if (safeSegment.startsWith("<br><br>")) {
-      safeSegment = safeSegment.substring(8);
-    }
-
-    return safeSegment;
-  }
-
-  var parts = String(text).split(/(\$\$[\s\S]*?\$\$|\$[\s\S]*?\$)/g);
-  return parts
-    .map(function (segment) {
-      var mathMatch = segment.match(/^(\$\$?)([\s\S]*?)\1$/);
-      if (mathMatch) {
-        return renderMathExpression(mathMatch[2], mathMatch[1] === "$$");
-      }
-      return formatNonMathSegment(segment);
-    })
-    .join("");
+  return TextUtils.formatQuestionText(text, options);
 }
 
 function encodeHandlerValue(value) {
-  return encodeURIComponent(String(value));
+  return TextUtils.encodeHandlerValue(value);
 }
 
 function decodeHandlerValue(value) {
-  try {
-    return decodeURIComponent(value);
-  } catch (error) {
-    return value;
-  }
+  return TextUtils.decodeHandlerValue(value);
 }
 
 function getDiscoveryViewModel() {
@@ -701,6 +380,20 @@ function getDiscoveryQueryText() {
   return builder ? builder(rawQuery) : rawQuery;
 }
 
+async function ensureDiscoveryLoaded() {
+  if (window.DiscoveryUtils) return;
+  if (typeof window.loadFeatureScript === "function") {
+    await window.loadFeatureScript("discovery.js");
+  }
+}
+
+async function ensureAdminLoaded() {
+  if (window.adminState && typeof loadAdminSubjects === "function") return;
+  if (typeof window.loadFeatureScript === "function") {
+    await window.loadFeatureScript("admin.js");
+  }
+}
+
 function updateDiscoveryPanel() {
   const panel = document.getElementById("header-search-panel");
   const resultsContainer = document.getElementById("header-search-results");
@@ -793,7 +486,7 @@ function updateDiscoveryPanel() {
   `;
 }
 
-function toggleDiscoverySearchPanel() {
+async function toggleDiscoverySearchPanel() {
   const panel = document.getElementById("header-search-panel");
   const input = document.getElementById("header-discovery-input");
   if (!panel) return;
@@ -802,6 +495,7 @@ function toggleDiscoverySearchPanel() {
   panel.classList.toggle("hidden", !shouldOpen);
   if (shouldOpen) {
     bindDiscoveryUi();
+    await ensureDiscoveryLoaded();
     updateDiscoveryPanel();
     window.setTimeout(() => input?.focus(), 50);
   }
@@ -1185,7 +879,7 @@ async function safeIdbDel(key) {
   }
 }
 
-function updateDashboard() {
+async function updateDashboard() {
   const statTotal = document.getElementById("stat-total");
   if (statTotal) statTotal.innerText = state.stats.totalAnswered;
 
@@ -1197,6 +891,16 @@ function updateDashboard() {
 
   if (typeof checkSavedSession === "function") checkSavedSession();
   if (typeof renderCategoryProgress === "function") renderCategoryProgress();
+
+  const discoveryPanel = document.getElementById("header-search-panel");
+  const shouldLoadDiscovery =
+    (discoveryPanel && !discoveryPanel.classList.contains("hidden")) ||
+    Boolean(state.prefs.discoverySearch);
+
+  if (shouldLoadDiscovery) {
+    await ensureDiscoveryLoaded();
+  }
+
   updateDiscoveryPanel();
 }
 
@@ -1245,13 +949,12 @@ async function navigate(viewId) {
   if (viewId === "stats") renderCharts();
 
   // FIXED: Safely check if adminState is defined globally
-  if (
-    viewId === "admin" &&
-    typeof adminState !== "undefined" &&
-    adminState.token
-  ) {
-    if (typeof loadAdminSubjects === "function") {
-      loadAdminSubjects();
+  if (viewId === "admin") {
+    await ensureAdminLoaded();
+    if (typeof adminState !== "undefined" && adminState.token) {
+      if (typeof loadAdminSubjects === "function") {
+        loadAdminSubjects();
+      }
     }
   }
 
@@ -4617,208 +4320,44 @@ function areProgressPayloadsEquivalent(localPayload, remotePayload) {
   );
 }
 
-function getProgressPayload() {
-  let savedSession = null;
-  try {
-    savedSession = JSON.parse(getStoredItem("saved_session", "null"));
-  } catch (e) {}
-  const syncedPrefs = { ...state.prefs };
-  delete syncedPrefs.userId;
-  return {
-    version: 2,
-    stats: {
-      ...state.stats,
-      completedQs: Array.isArray(state.stats.completedQs)
-        ? [...state.stats.completedQs]
-        : [],
-      mistakes: Array.isArray(state.stats.mistakes)
-        ? [...state.stats.mistakes]
-        : [],
-      subjectAccuracy: state.stats.subjectAccuracy || {},
-      srsMap: state.stats.srsMap || {},
-    },
-    prefs: syncedPrefs,
-    savedSession,
-    deckState: {
-      downloadedDecks: Array.isArray(state.db)
-        ? [...new Set((state.db || []).map((q) => q.Subject).filter(Boolean))]
-        : [],
-      archivedDecks: Array.isArray(state.prefs.archivedDecks)
-        ? [...state.prefs.archivedDecks]
-        : [],
-      studyProgress: state.prefs.studyProgress || {},
-      qToggles: state.prefs.qToggles || {},
-      lastActivity: state.prefs.lastActivity || null,
-    },
-    localState: {
-      categorySummary: Array.isArray(state.categorySummary)
-        ? state.categorySummary
-        : [],
-      currentPath: Array.isArray(state.currentPath) ? state.currentPath : [],
-      appMode: typeof currentAppMode === "string" ? currentAppMode : null,
-      dbSize: Array.isArray(state.db) ? state.db.length : 0,
-    },
-  };
-}
-
 function getProgressMeta() {
-  return getStoredJSON("progress_meta", {});
+  return SessionUtils.getProgressMeta();
 }
 
 function setProgressMeta(updatedAt, serverUpdatedAt = updatedAt || "") {
-  progressServerUpdatedAt = serverUpdatedAt || updatedAt || "";
-  setStoredJSON("progress_meta", {
-    username: userState.username,
-    updatedAt: progressServerUpdatedAt,
-    localUpdatedAt: progressServerUpdatedAt,
-    serverUpdatedAt: progressServerUpdatedAt,
-  });
+  return SessionUtils.setProgressMeta(updatedAt, serverUpdatedAt);
 }
 
 function clearLocalUserProgress() {
-  state.stats = {
-    totalAnswered: 0,
-    correct: 0,
-    mistakes: [],
-    completedQs: [],
-    subjectAccuracy: {},
-    srsMap: {},
-  };
-  state.session = {
-    active: false,
-    questions: [],
-    currentIndex: 0,
-    userAnswers: {},
-    autoNextTimeout: null,
-  };
-  state.prefs.studyProgress = {};
-  state.prefs.qToggles = {};
-  state.prefs.lastActivity = null;
-  removeStoredItem("stats");
-  removeStoredItem("saved_session");
-  removeStoredItem("progress_meta");
-  removeStoredItem("pending_sync_queue");
-  removeStoredItem("recovery_snapshot");
+  return SessionUtils.clearLocalUserProgress();
 }
 
 function hasLocalProgress() {
-  return Boolean(
-    getStoredItem("stats") ||
-    getStoredItem("saved_session") ||
-    getStoredItem("prefs"),
-  );
+  return SessionUtils.hasLocalProgress();
 }
 
 function applyRemoteProgress(payload, updatedAt) {
-  if (!payload || typeof payload !== "object") return;
-  suppressProgressSync = true;
-  try {
-    if (payload.stats && typeof payload.stats === "object") {
-      state.stats = {
-        totalAnswered: Number(payload.stats.totalAnswered || 0),
-        correct: Number(payload.stats.correct || 0),
-        mistakes: Array.isArray(payload.stats.mistakes)
-          ? payload.stats.mistakes
-          : [],
-        completedQs: Array.isArray(payload.stats.completedQs)
-          ? payload.stats.completedQs
-          : [],
-        subjectAccuracy: payload.stats.subjectAccuracy || {},
-        srsMap:
-          payload.stats.srsMap && typeof payload.stats.srsMap === "object"
-            ? payload.stats.srsMap
-            : {},
-      };
-      setStoredJSON("stats", state.stats);
-    }
-    if (payload.prefs && typeof payload.prefs === "object") {
-      state.prefs = {
-        ...state.prefs,
-        ...payload.prefs,
-        userId: state.prefs.userId,
-      };
-      setStoredJSON("prefs", state.prefs);
-    }
-    if (payload.deckState && typeof payload.deckState === "object") {
-      if (Array.isArray(payload.deckState.archivedDecks)) {
-        state.prefs.archivedDecks = payload.deckState.archivedDecks;
-      }
-      if (payload.deckState.studyProgress) {
-        state.prefs.studyProgress = payload.deckState.studyProgress;
-      }
-      if (payload.deckState.qToggles) {
-        state.prefs.qToggles = payload.deckState.qToggles;
-      }
-      if (payload.deckState.lastActivity) {
-        state.prefs.lastActivity = payload.deckState.lastActivity;
-      }
-      setStoredJSON("prefs", state.prefs);
-    }
-    if (payload.localState && typeof payload.localState === "object") {
-      if (Array.isArray(payload.localState.categorySummary)) {
-        state.categorySummary = payload.localState.categorySummary;
-        setStoredJSON("summary", state.categorySummary);
-      }
-      if (Array.isArray(payload.localState.currentPath)) {
-        state.currentPath = payload.localState.currentPath;
-      }
-      if (payload.localState.appMode) {
-        currentAppMode = payload.localState.appMode;
-      }
-    }
-    if (payload.savedSession) {
-      setStoredJSON("saved_session", payload.savedSession);
-    } else {
-      removeStoredItem("saved_session");
-    }
-    setProgressMeta(updatedAt);
-    updateDashboard();
-    syncPreferenceControls();
-  } finally {
-    suppressProgressSync = false;
-  }
+  return SessionUtils.applyRemoteProgress(payload, updatedAt);
 }
 
 function createIdempotencyKey(payload) {
-  const keySeed = `${userState.username || "guest"}:${JSON.stringify(payload)}:${Date.now()}`;
-  return btoa(unescape(encodeURIComponent(keySeed))).replace(/=+$/g, "");
+  return SessionUtils.createIdempotencyKey(payload);
 }
 
 function getPendingOfflineQueue() {
-  try {
-    return JSON.parse(getStoredItem("pending_sync_queue", "[]"));
-  } catch (e) {
-    return [];
-  }
+  return SessionUtils.getPendingOfflineQueue();
 }
 
 function savePendingOfflineQueue(queue) {
-  setStoredJSON("pending_sync_queue", queue);
+  return SessionUtils.savePendingOfflineQueue(queue);
 }
 
 function queueOfflineProgress(payload, idempotencyKey) {
-  const queue = getPendingOfflineQueue();
-  queue.push({
-    idempotencyKey,
-    payload,
-    createdAt: new Date().toISOString(),
-    username: userState.username || "guest",
-  });
-  savePendingOfflineQueue(queue);
+  return SessionUtils.queueOfflineProgress(payload, idempotencyKey);
 }
 
 async function flushPendingOfflineProgress() {
-  if (!userState.isLoggedIn || userState.sessionMode === "guest") return;
-  const queue = getPendingOfflineQueue();
-  if (!queue.length) return;
-  const remaining = [];
-  for (const entry of queue) {
-    const ok = await saveUserProgress(entry.payload, false, {
-      idempotencyKey: entry.idempotencyKey,
-    });
-    if (!ok) remaining.push(entry);
-  }
-  savePendingOfflineQueue(remaining);
+  return SessionUtils.flushPendingOfflineProgress();
 }
 
 async function chooseProgressConflict(
@@ -4826,45 +4365,11 @@ async function chooseProgressConflict(
   remotePayload,
   remoteUpdatedAt,
 ) {
-  if (areProgressPayloadsEquivalent(localPayload, remotePayload)) {
-    applyRemoteProgress(remotePayload, remoteUpdatedAt);
-    return true;
-  }
-
-  if (state.session.active) {
-    const snapshot = {
-      timestamp: new Date().toISOString(),
-      payload: localPayload,
-      source: "recovery",
-    };
-    setStoredJSON("recovery_snapshot", snapshot);
-    showToast(
-      "A progress conflict was detected during the active session. The server copy is being preserved and a recovery snapshot was saved.",
-      "success",
-    );
-    applyRemoteProgress(remotePayload, remoteUpdatedAt);
-    return true;
-  }
-
-  const useLocal = await requestConfirmation(
-    "A newer progress version exists in the database. Choose OK to keep your current device progress and create a backup snapshot before overwriting the remote copy. Choose Cancel to merge with the server progress using server timestamps.",
-    "Sync Conflict",
+  return SessionUtils.chooseProgressConflict(
+    localPayload,
+    remotePayload,
+    remoteUpdatedAt,
   );
-  if (useLocal) {
-    const snapshot = {
-      timestamp: new Date().toISOString(),
-      payload: localPayload,
-      source: "recovery",
-    };
-    setStoredJSON("recovery_snapshot", snapshot);
-    showToast(
-      "A recovery snapshot was saved before the overwrite. You can restore it later.",
-      "success",
-    );
-    return saveUserProgress(localPayload, true);
-  }
-  applyRemoteProgress(remotePayload, remoteUpdatedAt);
-  return true;
 }
 
 async function saveUserProgress(
@@ -4872,181 +4377,15 @@ async function saveUserProgress(
   force = false,
   options = {},
 ) {
-  if (!userState.isLoggedIn || !userState.sessionToken || progressSyncInFlight)
-    return false;
-  if (userState.sessionMode === "guest") {
-    return false;
-  }
-  progressSyncInFlight = true;
-  const syncStatus = document.getElementById("user-sync-status");
-  if (syncStatus) syncStatus.textContent = "Saving progress securely...";
-  try {
-    const meta = getProgressMeta();
-    const idempotencyKey =
-      options.idempotencyKey || createIdempotencyKey(payload);
-    const result = await callBackend({
-      type: "save_progress",
-      sessionToken: userState.sessionToken,
-      progress: payload,
-      baseUpdatedAt: meta.updatedAt || meta.serverUpdatedAt || "",
-      deviceUpdatedAt: meta.serverUpdatedAt || new Date().toISOString(),
-      force,
-      idempotencyKey,
-    });
-    if (result.status === "success") {
-      setProgressMeta(result.updatedAt || result.serverUpdatedAt || "");
-      scheduleOfflineSync();
-      if (syncStatus)
-        syncStatus.textContent = "Progress synced across devices.";
-      updateProfileUI();
-      return true;
-    }
-    if (result.status === "guest") {
-      userState.sessionMode = "guest";
-      updateProfileUI();
-      showToast(
-        "This account is already active on another device. This device is now read-only.",
-        "error",
-      );
-      return false;
-    }
-    if (result.status === "conflict") {
-      progressSyncInFlight = false;
-      return chooseProgressConflict(payload, result.payload, result.updatedAt);
-    }
-    return false;
-  } catch (e) {
-    if (syncStatus)
-      syncStatus.textContent =
-        "Progress sync is unavailable; local progress is saved.";
-    updateProfileUI();
-    queueOfflineProgress(
-      payload,
-      options.idempotencyKey || createIdempotencyKey(payload),
-    );
-    scheduleOfflineSync();
-    sendTelemetry("progress_sync_failure", {
-      message: e.message || "Network error",
-    });
-    return false;
-  } finally {
-    progressSyncInFlight = false;
-  }
+  return SessionUtils.saveUserProgress(payload, force, options);
 }
 
 function queueProgressSync() {
-  if (!userState?.isLoggedIn || suppressProgressSync) return;
-  clearTimeout(progressSyncTimer);
-  progressSyncTimer = setTimeout(() => saveUserProgress(), 1200);
+  return SessionUtils.queueProgressSync();
 }
 
 async function syncUserProgress() {
-  if (!userState.isLoggedIn || !userState.sessionToken) return;
-  const existingMeta = getProgressMeta();
-  if (existingMeta.username && existingMeta.username !== userState.username) {
-    const snapshot = {
-      timestamp: new Date().toISOString(),
-      payload: getProgressPayload(),
-      source: "account-switch",
-    };
-    setStoredJSON("recovery_snapshot", snapshot);
-    const useRemote = await requestConfirmation(
-      "This device already has local progress for a different account. Choose OK to keep the server copy for the current account and preserve the old local progress as a recovery snapshot. Choose Cancel to keep the current local progress and avoid replacing it.",
-      "Account Switch",
-    );
-    if (!useRemote) {
-      const syncStatus = document.getElementById("user-sync-status");
-      if (syncStatus) {
-        syncStatus.textContent =
-          "Local progress for the previous account was preserved.";
-      }
-      updateProfileUI();
-      return;
-    }
-    clearLocalUserProgress();
-  }
-  const syncStatus = document.getElementById("user-sync-status");
-  if (syncStatus) syncStatus.textContent = "Checking for newer progress...";
-  try {
-    const result = await callBackend({
-      type: "get_progress",
-      sessionToken: userState.sessionToken,
-    });
-    if (result.status !== "success") return;
-
-    if (!result.exists) {
-      if (hasLocalProgress()) await saveUserProgress();
-      else if (syncStatus)
-        syncStatus.textContent = "Progress syncing is ready.";
-      updateProfileUI();
-      return;
-    }
-
-    const localMeta = getProgressMeta();
-    if (!hasLocalProgress() || !localMeta.updatedAt) {
-      applyRemoteProgress(result.payload, result.updatedAt);
-      if (syncStatus)
-        syncStatus.textContent = "Database progress loaded on this device.";
-      updateProfileUI();
-      return;
-    }
-
-    if (areProgressPayloadsEquivalent(getProgressPayload(), result.payload)) {
-      applyRemoteProgress(result.payload, result.updatedAt);
-      if (syncStatus)
-        syncStatus.textContent = "Progress is already up to date.";
-      updateProfileUI();
-      return;
-    }
-
-    const remoteTime = Date.parse(
-      result.updatedAt || result.deviceUpdatedAt || "",
-    );
-    const localTime = Date.parse(
-      localMeta.serverUpdatedAt ||
-        localMeta.updatedAt ||
-        localMeta.localUpdatedAt ||
-        "",
-    );
-    if (Number.isFinite(localTime) && Number.isFinite(remoteTime)) {
-      if (localTime > remoteTime) {
-        await chooseProgressConflict(
-          getProgressPayload(),
-          result.payload,
-          result.updatedAt,
-        );
-      } else if (remoteTime > localTime) {
-        const useRemote = state.session.active
-          ? true
-          : await requestConfirmation(
-              "A newer progress version is available in the database. Choose OK to use the database copy and keep a recovery snapshot if you want to restore local changes later. Choose Cancel to keep your current device progress and upload it.",
-              "Sync Conflict",
-            );
-        if (useRemote) {
-          const snapshot = {
-            timestamp: new Date().toISOString(),
-            payload: getProgressPayload(),
-            source: "recovery",
-          };
-          setStoredJSON("recovery_snapshot", snapshot);
-          applyRemoteProgress(result.payload, result.updatedAt);
-          updateProfileUI();
-        } else {
-          await saveUserProgress(getProgressPayload(), true);
-        }
-      }
-    } else {
-      await chooseProgressConflict(
-        getProgressPayload(),
-        result.payload,
-        result.updatedAt,
-      );
-    }
-  } catch (e) {
-    sendTelemetry("progress_sync_failure", {
-      message: e.message || "Network error",
-    });
-  }
+  return SessionUtils.syncUserProgress();
 }
 
 function showLoginForm() {

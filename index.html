@@ -1867,48 +1867,7 @@
             >
               Cancel
             </button>
-            <!-- In app.js, your download logic should hook into this button -->
-            <button
-              id="btn-submit-deck-password"
-              class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center"
-            >
-              Unlock
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- NEW: FOLDER PASSWORD MODAL OVERLAY -->
-      <div
-        id="folder-password-modal"
-        class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
-      >
-        <div
-          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700"
-        >
-          <div
-            class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3"
-          >
-            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
-              <i class="fa-solid fa-folder-closed text-brand-500 mr-2"></i>
-              Folder Locked
-            </h3>
-
-            <div class="flex items-center gap-4">
-              <!-- Request Access Link -->
-              <a
-                href="mailto:admin@example.com?subject=Requesting%20Access%20to%20MRH"
-                class="text-sm text-brand-600 hover:text-brand-500 font-bold flex items-center"
-              >
-                <i class="fa-solid fa-envelope mr-1"></i> Request Access
-              </a>
-
-              <button
-                onclick="closeFolderPasswordModal()"
-                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-              >
-                <i class="fa-solid fa-xmark text-xl"></i>
-              </button>
+          <!-- In app-core.js, your download logic should hook into this button -->
             </div>
           </div>
 
@@ -1944,7 +1903,7 @@
             >
               Cancel
             </button>
-            <!-- Hook this up in app.js to process the folder password -->
+            <!-- Hook this up in app-core.js to process the folder password -->
             <button
               id="btn-submit-folder-password"
               class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center"
@@ -2106,9 +2065,7 @@
     </div>
 
     <script src="question-compat.js"></script>
-    <script src="discovery.js" defer></script>
-    <script src="app.js" defer></script>
-    <script src="admin.js" defer></script>
+    <script src="app-entry.js" defer></script>
 
     <div
       id="toast-container"
