@@ -4,6 +4,26 @@ let adminState = {
   reports: [],
 };
 
+async function parseJsonResponse(response) {
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    let message = `Backend request failed (${response.status})`;
+    try {
+      const json = JSON.parse(text);
+      if (json && typeof json.message === "string") message = json.message;
+    } catch (ignore) {}
+    throw new Error(message);
+  }
+  const text = await response.text().catch(() => "");
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new Error(
+      `Invalid JSON response from backend: ${text.slice(0, 200)}`,
+    );
+  }
+}
+
 async function adminLogin() {
   const pass = document.getElementById("admin-password").value;
   if (!pass) return;
@@ -25,7 +45,7 @@ async function adminLogin() {
       }),
     });
 
-    const result = await response.json();
+    const result = await parseJsonResponse(response);
 
     if (result.status === "success") {
       adminState.token = pass;
@@ -65,7 +85,7 @@ async function loadAdminSubjects() {
       }),
     });
 
-    const secureSubjects = await response.json();
+    const secureSubjects = await parseJsonResponse(response);
     if (secureSubjects.status === "error") {
       container.innerHTML = `<p class="text-center text-red-500 py-6">Failed to load secure subjects: ${escapeHTML(
         secureSubjects.message || "Backend rejected the request",
@@ -81,7 +101,11 @@ async function loadAdminSubjects() {
     renderAdminSubjectList();
   } catch (e) {
     console.error(e);
-    if (state.categorySummary && state.categorySummary.length > 0) {
+    if (
+      typeof state !== "undefined" &&
+      state.categorySummary &&
+      state.categorySummary.length > 0
+    ) {
       adminState.subjects = state.categorySummary;
       renderAdminSubjectList();
     } else {
@@ -96,7 +120,7 @@ function renderAdminSubjectList() {
 
   adminState.subjects.forEach((cat, index) => {
     const subjString = cat.Subject;
-    const passString = cat.Password || cat.password || "";
+    const passString = String(cat.Password || cat.password || "").trim();
     const parts = subjString.split("::").map((s) => s.trim());
     if (
       cat.IsFolder === true ||
@@ -254,8 +278,8 @@ async function saveAdminChanges() {
   const updates = [];
   document.querySelectorAll(".folder-pass-input").forEach((input) => {
     const path = input.getAttribute("data-path");
-    const pass = input.value.trim();
-    const orig = input.getAttribute("data-orig");
+    const pass = String(input.value || "").trim();
+    const orig = String(input.getAttribute("data-orig") || "").trim();
 
     if (pass !== orig) {
       updates.push({ oldName: path, newName: path, password: pass });
@@ -273,9 +297,10 @@ async function saveAdminChanges() {
     if (!newNameInput || !deckPassInput) return;
 
     const newName = newNameInput.value.trim() || originalName;
-    const deckPass = deckPassInput.value.trim();
+    const deckPass = String(deckPassInput.value || "").trim();
+    const originalPassword = String(originalPass || "").trim();
 
-    if (newName !== originalName || deckPass !== originalPass) {
+    if (newName !== originalName || deckPass !== originalPassword) {
       updates.push({
         oldName: originalName,
         newName: newName,
@@ -301,7 +326,7 @@ async function saveAdminChanges() {
         updates: updates,
       }),
     });
-    const result = await response.json();
+    const result = await parseJsonResponse(response);
 
     if (result.status === "success") {
       alert("Changes saved! Refreshing secure layout...");
@@ -332,7 +357,7 @@ async function adminLoadReports() {
         token: adminState.token,
       }),
     });
-    const reports = await response.json();
+    const reports = await parseJsonResponse(response);
 
     if (reports && reports.status === "error") {
       container.innerHTML = `<div class="text-red-500 text-center py-6">${escapeHTML(
@@ -424,7 +449,7 @@ async function adminActionReport(reportId, action) {
       }),
     });
 
-    const result = await response.json();
+    const result = await parseJsonResponse(response);
     if (result.status === "success") {
       alert(
         action === "resolve"
@@ -443,7 +468,7 @@ async function adminActionReport(reportId, action) {
 window.cascadePassword = function (btn) {
   const input = btn.previousElementSibling;
   const folderPath = input.getAttribute("data-path");
-  const pass = input.value;
+  const pass = String(input.value || "").trim();
 
   let count = 0;
   adminState.subjects.forEach((subj, index) => {
@@ -542,7 +567,7 @@ async function saveEditedQuestion() {
       body: JSON.stringify(payload),
     });
 
-    const result = await response.json();
+    const result = await parseJsonResponse(response);
 
     if (result.status === "success") {
       alert("Question updated and cache rebuilt successfully!");

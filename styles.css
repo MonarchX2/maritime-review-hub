@@ -52,6 +52,15 @@ input {
   transition: all var(--time-fast) var(--ease-base);
 }
 
+.math-fallback {
+  display: inline-block;
+  font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  font-style: italic;
+  background: rgba(148, 163, 184, 0.08);
+  padding: 0.1em 0.2em;
+  border-radius: 0.35rem;
+}
+
 #header-search-panel {
   min-width: min(20rem, calc(100vw - 1rem));
 }

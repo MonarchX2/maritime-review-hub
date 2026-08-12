@@ -7,6 +7,10 @@ const QUIZ_NAVIGATION_BREAKPOINT = 768;
 let state = {
   db: [],
   categorySummary: [],
+  subjectIndex: {
+    bySubject: new Map(),
+    byId: new Map(),
+  },
   stats: {
     totalAnswered: 0,
     correct: 0,
@@ -28,9 +32,9 @@ let state = {
     srsEnabled: true,
     archivedDecks: [],
     databaseUpdateMode: "idle",
-    quizNavigationPosition: "auto",
+    quizNavigationPosition: "bottom",
     quizNavigationMode: "auto",
-    reviewNavigationPosition: "top",
+    reviewNavigationPosition: "bottom",
     deckSortBy: "letters",
     deckSortDirection: "asc",
     favoriteDecks: [],
@@ -178,6 +182,54 @@ function getStoredJSON(key, fallback = null) {
   }
 }
 
+function rebuildQuestionIndex() {
+  const bySubject = new Map();
+  const byId = new Map();
+
+  (state.db || []).forEach((question) => {
+    if (!question || typeof question !== "object") return;
+
+    const normalized = normalizeQuestionRecord(question);
+    const subject = String(normalized.Subject || "").trim();
+    const id = String(normalized.ID || "").trim();
+
+    if (subject) {
+      const subjectList = bySubject.get(subject) || [];
+      if (id) subjectList.push(id);
+      bySubject.set(subject, subjectList);
+    }
+
+    if (id) {
+      byId.set(id, normalized);
+    }
+  });
+
+  state.subjectIndex = { bySubject, byId };
+  return state.subjectIndex;
+}
+
+function ensureQuestionIndex() {
+  if (!state.subjectIndex || !state.subjectIndex.bySubject) {
+    return rebuildQuestionIndex();
+  }
+  return state.subjectIndex;
+}
+
+function getQuestionsForSubject(subject, customFilter = null) {
+  const index = ensureQuestionIndex();
+  const targetSubject = String(subject || "").trim();
+  if (!targetSubject) return [];
+
+  const ids = index.bySubject.get(targetSubject) || [];
+  const questions = ids.map((id) => index.byId.get(String(id))).filter(Boolean);
+
+  if (typeof customFilter === "function") {
+    return questions.filter(customFilter);
+  }
+
+  return questions;
+}
+
 function setStoredJSON(key, value) {
   setStoredItem(key, JSON.stringify(value));
 }
@@ -313,13 +365,23 @@ async function callBackend(payload, options = {}) {
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      throw new Error(text || `Backend request failed (${response.status})`);
+      let message = text || `Backend request failed (${response.status})`;
+      try {
+        const json = JSON.parse(text);
+        if (json && json.message) message = json.message;
+      } catch (e) {
+        // ignore invalid JSON
+      }
+      throw new Error(message);
     }
 
+    const text = await response.text().catch(() => "");
     try {
-      return await response.json();
+      return JSON.parse(text);
     } catch (error) {
-      return {};
+      throw new Error(
+        `Invalid response from backend. Expected JSON but received: ${text.slice(0, 200)}`,
+      );
     }
   } catch (error) {
     if (error?.name === "AbortError") {
@@ -420,6 +482,35 @@ function setupTelemetry() {
   );
 }
 
+function normalizeQuestionRecord(question) {
+  if (!question || typeof question !== "object") return {};
+
+  const source = { ...question };
+  const normalized = {
+    Subject: source.Subject ?? source.s ?? "",
+    ID: source.ID ?? source.i ?? "",
+    Question: source.Question ?? source.q ?? "",
+    ChoiceA: source.ChoiceA ?? source.c?.[0] ?? "",
+    ChoiceB: source.ChoiceB ?? source.c?.[1] ?? "",
+    ChoiceC: source.ChoiceC ?? source.c?.[2] ?? "",
+    ChoiceD: source.ChoiceD ?? source.c?.[3] ?? "",
+    Answer: source.Answer ?? source.a ?? "",
+    Explanation: source.Explanation ?? source.e ?? "",
+    ImageURL: source.ImageURL ?? source.u ?? "",
+    Tags: source.Tags ?? source.t ?? "",
+  };
+
+  if (typeof normalized.Answer === "number") {
+    normalized.Answer = ["A", "B", "C", "D"][normalized.Answer] || "";
+  }
+
+  if (normalized.Answer) {
+    normalized.Answer = String(normalized.Answer).trim().toUpperCase();
+  }
+
+  return normalized;
+}
+
 function escapeHTML(value) {
   if (value === null || value === undefined) return "";
 
@@ -434,6 +525,76 @@ function escapeHTML(value) {
         '"': "&quot;",
       })[c],
   );
+}
+
+function renderMathExpression(rawExpression, displayMode) {
+  var expr = String(rawExpression || "").trim();
+  if (!expr) return "";
+
+  if (window.katex && typeof katex.renderToString === "function") {
+    try {
+      return katex.renderToString(expr, {
+        throwOnError: false,
+        displayMode: Boolean(displayMode),
+        strict: "ignore",
+      });
+    } catch (error) {
+      return `<code class="math-fallback">${escapeHTML(expr)}</code>`;
+    }
+  }
+
+  return `<code class="math-fallback">${escapeHTML(expr)}</code>`;
+}
+
+function formatQuestionText(text, options = {}) {
+  if (!text) return "";
+
+  var revealCloze = Boolean(options.revealCloze);
+  var clozeEnabled = options.clozeEnabled ?? state.prefs.clozeEnabled !== false;
+
+  function formatNonMathSegment(segment) {
+    var safeSegment = escapeHTML(segment);
+
+    if (clozeEnabled) {
+      var clozeRegex = /\{\{c\d+::([^{}]+)\}\}/g;
+      safeSegment = safeSegment.replace(
+        clozeRegex,
+        function (_match, innerText) {
+          var safeInner = escapeHTML(String(innerText || "").trim());
+          var safeInnerValue = safeInner || "••••";
+          var clozeVisual = revealCloze
+            ? `<span class="cloze-answer text-brand-700 dark:text-brand-300">${safeInnerValue}</span>`
+            : `<span class="cloze-answer hidden">${safeInnerValue}</span>`;
+          return `<span class="cloze-token inline-flex items-center">
+        <button type="button" class="cloze-trigger rounded border border-dashed border-brand-500 px-2 py-0.5 text-xs font-bold bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-200 ${revealCloze ? "cloze-visible" : ""}" onclick="event.preventDefault(); event.stopPropagation(); revealClozeAnswer(this)">
+          <span class="cloze-mask">${revealCloze ? safeInnerValue : "□ □ □"}</span>
+          ${clozeVisual}
+        </button>
+      </span>`;
+        },
+      );
+    }
+
+    var listRegex = /(?:\s|^)((?:\d+|[A-Za-z]|[IVXLCDMivxlcdm]{1,4})\.)\s/g;
+    safeSegment = safeSegment.replace(listRegex, "<br><br>$1 ");
+
+    if (safeSegment.startsWith("<br><br>")) {
+      safeSegment = safeSegment.substring(8);
+    }
+
+    return safeSegment;
+  }
+
+  var parts = String(text).split(/(\$\$[\s\S]*?\$\$|\$[\s\S]*?\$)/g);
+  return parts
+    .map(function (segment) {
+      var mathMatch = segment.match(/^(\$\$?)([\s\S]*?)\1$/);
+      if (mathMatch) {
+        return renderMathExpression(mathMatch[2], mathMatch[1] === "$$");
+      }
+      return formatNonMathSegment(segment);
+    })
+    .join("");
 }
 
 function encodeHandlerValue(value) {
@@ -818,12 +979,17 @@ async function loadState() {
       const savedDb = await idbKeyval.get("mrh_db");
       if (savedDb) {
         state.db = savedDb.map((q) => {
-          if (q.ID && !q.ID.toString().includes("::")) {
-            let cleanId = q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, "");
-            q.ID = `${q.Subject}::${cleanId}`;
+          const normalized = normalizeQuestionRecord(q);
+          if (normalized.ID && !normalized.ID.toString().includes("::")) {
+            let cleanId = normalized.ID.toString().replace(
+              /^[a-zA-Z]+[-\s]?/,
+              "",
+            );
+            normalized.ID = `${normalized.Subject}::${cleanId}`;
           }
-          return q;
+          return normalized;
         });
+        rebuildQuestionIndex();
       }
     } else {
       console.warn("idbKeyval library not loaded.");
@@ -840,6 +1006,8 @@ async function loadState() {
       state.categorySummary = [];
     }
   }
+
+  ensureQuestionIndex();
 
   if (savedStats) {
     try {
@@ -1217,7 +1385,15 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
     });
 
     if (!response.ok) throw new Error("Network response failed");
-    const summaryData = await response.json();
+    const text = await response.text();
+    let summaryData;
+    try {
+      summaryData = JSON.parse(text);
+    } catch (parseError) {
+      throw new Error(
+        `Invalid backend response while syncing database: ${text.slice(0, 200)}`,
+      );
+    }
 
     if (Array.isArray(summaryData) && summaryData.length > 0) {
       clearTimeout(timeoutId);
@@ -1289,11 +1465,12 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
 
 function populateFilters() {
   const select = document.getElementById("filter-subject");
-  const subjects = [...new Set(state.db.map((q) => q.Subject).filter(Boolean))];
+  const subjectIndex = ensureQuestionIndex();
+  const subjects = [...subjectIndex.bySubject.keys()];
 
   let tags = new Set();
-  state.db.forEach((q) => {
-    if (q.Tags) {
+  (state.db || []).forEach((q) => {
+    if (q && q.Tags) {
       q.Tags.split(",")
         .map((t) => t.trim())
         .forEach((t) => tags.add(t));
@@ -1397,7 +1574,7 @@ function initSession() {
     pool = state.db.filter((q) => state.stats.mistakes.includes(q.ID));
   } else if (filterVal.startsWith("SUBJ:")) {
     const subj = filterVal.replace("SUBJ:", "");
-    pool = state.db.filter((q) => q.Subject === subj);
+    pool = getQuestionsForSubject(subj);
   } else if (filterVal.startsWith("TAG:")) {
     const tag = filterVal.replace("TAG:", "");
     pool = state.db.filter((q) => q.Tags && q.Tags.includes(tag));
@@ -1692,13 +1869,7 @@ function renderCategoryProgress() {
   }
   const completedSet = new Set(state.stats?.completedQs || []);
   const mistakesSet = new Set(state.stats?.mistakes || []);
-  const subjectIdsBySubject = new Map();
-  (state.db || []).forEach((question) => {
-    if (!question?.Subject) return;
-    const subjectIds = subjectIdsBySubject.get(question.Subject) || [];
-    subjectIds.push(question.ID);
-    subjectIdsBySubject.set(question.Subject, subjectIds);
-  });
+  const subjectIdsBySubject = ensureQuestionIndex().bySubject;
 
   let tree = {};
   if (state.categorySummary && state.categorySummary.length > 0) {
@@ -1881,6 +2052,14 @@ function renderCategoryProgress() {
 
   // CHANGED: Pass the current key for folder evaluation
   let visibleKeys = keys.filter((key) => {
+    const item = currentNode[key];
+    if (
+      item._data &&
+      !item._data.IsFolder &&
+      Number(item._data.QuestionCount || 0) === 0
+    ) {
+      return false;
+    }
     return (
       nodeMatchesFilter(currentNode[key], sourceFilter, key) &&
       nodeMatchesDiscoveryQuery(currentNode[key], discoverySearchValue, key)
@@ -2236,9 +2415,7 @@ async function resetCategory(subject) {
       state.stats.subjectAccuracy[subject] = { total: 0, correct: 0 };
     }
 
-    const subjectQIDs = state.db
-      .filter((q) => q.Subject === subject)
-      .map((q) => q.ID);
+    const subjectQIDs = getQuestionsForSubject(subject).map((q) => q.ID);
 
     if (state.stats.completedQs) {
       state.stats.completedQs = state.stats.completedQs.filter(
@@ -2346,7 +2523,7 @@ async function fetchDeckQuestions(
   loaderElement = null,
   customFilter = null,
 ) {
-  let cachedQuestions = state.db.filter((q) => q.Subject === subject);
+  let cachedQuestions = getQuestionsForSubject(subject);
   if (typeof customFilter === "function") {
     cachedQuestions = cachedQuestions.filter(customFilter);
   }
@@ -2375,12 +2552,23 @@ async function fetchDeckQuestionsFromNetwork(
     if (pass) fetchUrl += `&password=${encodeURIComponent(pass)}`;
 
     const response = await fetch(fetchUrl, { cache: "no-store" });
-    const newQuestions = await response.json();
-    if (newQuestions.error) throw new Error(newQuestions.error);
+    const text = await response.text();
+    let newQuestions;
+    try {
+      newQuestions = JSON.parse(text);
+    } catch (parseError) {
+      throw new Error(
+        `Invalid backend response while loading deck: ${text.slice(0, 200)}`,
+      );
+    }
+    if (newQuestions && newQuestions.error) throw new Error(newQuestions.error);
+    if (!Array.isArray(newQuestions)) {
+      throw new Error("Unexpected backend response format while loading deck.");
+    }
 
-    let validQuestions = newQuestions.filter(
-      (q) => q.Question && q.Question.trim() !== "",
-    );
+    let validQuestions = newQuestions
+      .map((q) => normalizeQuestionRecord(q, subject))
+      .filter((q) => q.Question && q.Question.trim() !== "");
     if (typeof customFilter === "function")
       validQuestions = validQuestions.filter(customFilter);
 
@@ -2394,12 +2582,13 @@ async function fetchDeckQuestionsFromNetwork(
 
     const otherQuestions = state.db.filter((q) => q.Subject !== subject);
     state.db = [...otherQuestions, ...validQuestions];
+    rebuildQuestionIndex();
     await safeIdbSet("mrh_db", state.db);
 
     return validQuestions;
   } catch (err) {
     console.warn("Network fetch failed.", err);
-    return state.db.filter((q) => q.Subject === subject);
+    return getQuestionsForSubject(subject);
   } finally {
     if (loaderElement) loaderElement.classList.add("hidden");
   }
@@ -2411,7 +2600,7 @@ async function reviewDeck(subject, pass = null) {
   // Check local cache first if no password is provided
   let validQuestions = [];
   if (!pass) {
-    validQuestions = state.db.filter((q) => q.Subject === subject);
+    validQuestions = getQuestionsForSubject(subject);
   }
 
   // Fetch if cache is empty or password is required
@@ -3060,6 +3249,7 @@ async function clearDatabase() {
   ) {
     await safeIdbDel("mrh_db");
     state.db = [];
+    rebuildQuestionIndex();
     clearSessionProgress();
     state.prefs.lastActivity = null;
     await saveState();
@@ -3155,16 +3345,12 @@ let globallyReportedQs = new Set();
 
 async function fetchGlobalReports() {
   try {
-    const response = await fetch(DB_URL, {
-      method: "POST",
-      redirect: "follow",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ type: "get_reports", role: "user" }),
-    });
-    const reports = await response.json();
+    const reports = await callBackend({ type: "get_reports", role: "user" });
     if (Array.isArray(reports))
       globallyReportedQs = new Set(reports.map((r) => r.questionId));
-  } catch (e) {}
+  } catch (e) {
+    console.warn("Unable to fetch global reports", e);
+  }
 }
 
 window.onload = async () => {
@@ -3174,9 +3360,12 @@ window.onload = async () => {
 
   if ("serviceWorker" in navigator) {
     try {
-      await navigator.serviceWorker.register("./sw.js");
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const registration of registrations) {
+        await registration.unregister();
+      }
     } catch (e) {
-      console.warn("Service worker could not be registered", e);
+      console.warn("Unable to clear stale service worker registrations", e);
     }
   }
 
@@ -3800,24 +3989,17 @@ async function submitReport() {
   }
 
   try {
-    const response = await fetch(DB_URL, {
-      method: "POST",
-      redirect: "follow",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({
-        type: "submit_report",
-        questionId: q.ID,
-        subject: q.Subject,
-        questionText: q.Question,
-        errorType: typeEl.value,
-        lesson: lesson,
-        comments: comments,
-        choices: { A: q.ChoiceA, B: q.ChoiceB, C: q.ChoiceC, D: q.ChoiceD },
-        correctAnswer: q.Answer,
-      }),
+    const result = await callBackend({
+      type: "submit_report",
+      questionId: q.ID,
+      subject: q.Subject,
+      questionText: q.Question,
+      errorType: typeEl.value,
+      lesson: lesson,
+      comments: comments,
+      choices: { A: q.ChoiceA, B: q.ChoiceB, C: q.ChoiceC, D: q.ChoiceD },
+      correctAnswer: q.Answer,
     });
-
-    const result = await response.json();
 
     if (result.status === "success") {
       const reportedQs = JSON.parse(getStoredItem("reported_qs", "[]"));
@@ -3864,15 +4046,8 @@ async function loadReports() {
     pendingContainer.innerHTML = `<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500"></i><p class="mt-2 text-gray-500">Fetching community reports...</p></div>`;
 
   try {
-    const response = await fetch(DB_URL, {
-      method: "POST",
-      redirect: "follow",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ type: "get_reports", role: "user" }),
-    });
-    const reports = await response.json();
-
-    if (reports.length === 0) {
+    const reports = await callBackend({ type: "get_reports", role: "user" });
+    if (!Array.isArray(reports) || reports.length === 0) {
       if (pendingContainer)
         pendingContainer.innerHTML = `<p class="text-center text-gray-500 py-4">No pending reports.</p>`;
       if (resolvedContainer)
@@ -4092,21 +4267,15 @@ function toggleShuffleQuestions() {
 
 async function autoSaveDeckPassword(deckPath, newPassword) {
   const safeToken = typeof adminState !== "undefined" ? adminState.token : null;
+  const password = String(newPassword || "").trim();
 
   try {
-    const response = await fetch(DB_URL, {
-      method: "POST",
-      redirect: "follow",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({
-        type: "admin_update_password",
-        token: safeToken,
-        deck: deckPath,
-        password: newPassword,
-      }),
+    const result = await callBackend({
+      type: "admin_update_password",
+      token: safeToken,
+      deck: deckPath,
+      password: password,
     });
-
-    const result = await response.json();
 
     if (result.status === "success") {
       console.log(`Password for ${deckPath} updated successfully.`);
@@ -5090,7 +5259,15 @@ if (folderPasswordButton) {
         const response = await fetch(
           `${DB_URL}?subject=${encodeURIComponent(pendingLockedFolderPath || "")}&password=${encodeURIComponent(pass)}&_t=${Date.now()}`,
         );
-        const result = await response.json();
+        const text = await response.text();
+        let result;
+        try {
+          result = JSON.parse(text);
+        } catch (parseError) {
+          throw new Error(
+            `Invalid backend response while verifying folder password: ${text.slice(0, 200)}`,
+          );
+        }
         if (result.error) {
           alert(result.error);
         } else {
@@ -5336,16 +5513,14 @@ async function submitGeneralFeedback() {
   btn.disabled = true;
 
   try {
-    await fetch(DB_URL, {
-      method: "POST",
-      redirect: "follow",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({
-        type: "submit_feedback",
-        comments: comments,
-        userId: getActiveIdentity(),
-      }),
+    const result = await callBackend({
+      type: "submit_feedback",
+      comments: comments,
+      userId: getActiveIdentity(),
     });
+    if (result.status !== "success") {
+      throw new Error(result.message || "Feedback submission failed.");
+    }
     btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Sent!';
     btn.classList.remove("bg-brand-500", "hover:bg-brand-600");
     btn.classList.add("bg-green-500", "hover:bg-green-600");

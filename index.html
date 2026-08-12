@@ -3,7 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
+
+    <link rel="preconnect" href="https://cdn.tailwindcss.com" />
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+    <link rel="dns-prefetch" href="https://cdn.tailwindcss.com" />
+    <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
 
     <!-- Dark Mode Memory Fix to avoid white flash -->
     <script>
@@ -38,8 +46,21 @@
     <!-- Deferred Chart.js for faster initial paint -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
 
+    <!-- KaTeX for inline math rendering -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css"
+    />
+    <script
+      src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"
+      defer
+    ></script>
+
     <!-- idb-keyval for IndexedDB (Bypasses 5MB localStorage limit) -->
-    <script src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js"
+      defer
+    ></script>
 
     <script>
       tailwind.config = {
@@ -1306,63 +1327,6 @@
 
             <div class="border-t border-gray-100 dark:border-gray-700"></div>
 
-            <!-- Dynamic Cloze Toggle -->
-            <div class="flex justify-between items-center">
-              <div class="pr-4">
-                <span
-                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
-                >
-                  Dynamic Cloze Deletion
-                </span>
-                <span class="text-xs text-gray-500">
-                  Reveal fill-in-the-blank cards like Anki clozes.
-                </span>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  id="toggle-cloze-mode"
-                  class="sr-only peer"
-                  onchange="toggleClozeMode(this)"
-                  checked
-                />
-                <div
-                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
-                ></div>
-              </label>
-            </div>
-
-            <div class="border-t border-gray-100 dark:border-gray-700"></div>
-
-            <!-- SRS Toggle -->
-            <div class="flex justify-between items-center">
-              <div class="pr-4">
-                <span
-                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
-                >
-                  Spaced Repetition System
-                </span>
-                <span class="text-xs text-gray-500">
-                  Schedule reviews from answer performance instead of always
-                  resetting the deck.
-                </span>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  id="toggle-srs-mode"
-                  class="sr-only peer"
-                  onchange="toggleSrsMode(this)"
-                  checked
-                />
-                <div
-                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
-                ></div>
-              </label>
-            </div>
-
-            <div class="border-t border-gray-100 dark:border-gray-700"></div>
-
             <div class="flex justify-between items-center">
               <div class="pr-4">
                 <span
@@ -2141,9 +2105,10 @@
       </div>
     </div>
 
-    <script src="discovery.js"></script>
-    <script src="app.js"></script>
-    <script src="admin.js"></script>
+    <script src="question-compat.js"></script>
+    <script src="discovery.js" defer></script>
+    <script src="app.js" defer></script>
+    <script src="admin.js" defer></script>
 
     <div
       id="toast-container"
