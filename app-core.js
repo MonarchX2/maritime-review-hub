@@ -4504,7 +4504,7 @@ if (btnSubmitDeckPassword) {
       if (pendingDeckAction === "resume") {
         await resumeSession(pass);
       } else if (pendingDeckAction === "resume-review") {
-        await resumeReviewSession(pass);
+        await reviewDeck(pendingDeckSubject, pass);
       } else if (currentAppMode === "review") {
         reviewDeck(pendingDeckSubject, pass);
       } else {

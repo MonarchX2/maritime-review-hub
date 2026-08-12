@@ -32,28 +32,38 @@
 
   function compactQuestionRecord(question, subjectOverride = null) {
     const normalized = normalizeQuestionRecord(question, subjectOverride);
-    const choices = [
+    const rawChoices = [
       normalized.ChoiceA || "",
       normalized.ChoiceB || "",
       normalized.ChoiceC || "",
       normalized.ChoiceD || "",
-    ].filter((choice) => String(choice).trim() !== "");
+    ];
+
+    const answerLetter = String(normalized.Answer || "")
+      .trim()
+      .toUpperCase();
+    const answerOrder = ["A", "B", "C", "D"];
+    const choices = [];
+    let answerIndex = 0;
+
+    rawChoices.forEach((choice, choiceIndex) => {
+      const trimmedChoice = String(choice).trim();
+      if (trimmedChoice === "") return;
+
+      const compactIndex = choices.length;
+      if (answerOrder[choiceIndex] === answerLetter) {
+        answerIndex = compactIndex;
+      }
+
+      choices.push(trimmedChoice);
+    });
 
     const compact = {
       s: normalized.Subject || "",
       i: normalized.ID || "",
       q: normalized.Question || "",
       c: choices,
-      a: (() => {
-        const answer = String(normalized.Answer || "")
-          .trim()
-          .toUpperCase();
-        if (answer === "A") return 0;
-        if (answer === "B") return 1;
-        if (answer === "C") return 2;
-        if (answer === "D") return 3;
-        return 0;
-      })(),
+      a: answerIndex,
     };
 
     if (normalized.Explanation && String(normalized.Explanation).trim()) {

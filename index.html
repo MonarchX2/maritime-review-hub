@@ -171,6 +171,7 @@
         </button>
         <!-- Theme Toggle Button (Sun/Moon) -->
         <button
+          id="btn-theme-toggle"
           onclick="toggleTheme()"
           class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg"
           aria-label="Toggle Theme"
@@ -1801,7 +1802,7 @@
         </div>
       </div>
 
-      <!-- NEW: DECK PASSWORD MODAL OVERLAY (ADDED FIX) -->
+      <!-- NEW: DECK PASSWORD MODAL OVERLAY -->
       <div
         id="deck-password-modal"
         class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
@@ -1816,23 +1817,12 @@
               <i class="fa-solid fa-lock text-brand-500 mr-2"></i> Deck Locked
             </h3>
 
-            <div class="flex items-center gap-4">
-              <!-- Request Access Link -->
-              <a
-                href="mailto:admin@example.com?subject=Requesting%20Access%20to%20MRH"
-                class="text-sm text-brand-600 hover:text-brand-500 font-bold flex items-center"
-              >
-                <i class="fa-solid fa-envelope mr-1"></i> Request Access
-              </a>
-
-              <!-- Close Button -->
-              <button
-                onclick="closeDeckPasswordModal()"
-                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-              >
-                <i class="fa-solid fa-xmark text-xl"></i>
-              </button>
-            </div>
+            <button
+              onclick="closeDeckPasswordModal()"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            >
+              <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
           </div>
 
           <p
@@ -1843,15 +1833,12 @@
           </p>
 
           <div class="relative w-full mb-6">
-            <!-- Input is type="password" initially -->
             <input
               type="password"
               id="deck-password-input"
               class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 pr-12"
               placeholder="Enter Password"
             />
-
-            <!-- Eye Toggle Button -->
             <button
               onclick="togglePasswordVisibility('deck-password-input', this)"
               class="absolute right-3 top-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
@@ -1867,27 +1854,52 @@
             >
               Cancel
             </button>
-          <!-- In app-core.js, your download logic should hook into this button -->
-            </div>
+            <button
+              id="btn-submit-deck-password"
+              class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center"
+            >
+              Unlock Deck
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- FOLDER PASSWORD MODAL -->
+      <div
+        id="folder-password-modal"
+        class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700"
+        >
+          <div
+            class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3"
+          >
+            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+              <i class="fa-solid fa-lock text-brand-500 mr-2"></i> Folder Locked
+            </h3>
+            <button
+              onclick="closeFolderPasswordModal()"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            >
+              <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
           </div>
 
           <p
-            class="text-sm text-gray-600 dark:text-gray-300 mb-4"
             id="folder-password-message"
+            class="text-sm text-gray-600 dark:text-gray-300 mb-4"
           >
             This folder requires a password to view its contents.
           </p>
 
           <div class="relative w-full mb-6">
-            <!-- Input is type="password" initially -->
             <input
               type="password"
               id="folder-password-input"
               class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 pr-12"
               placeholder="Enter Folder Password"
             />
-
-            <!-- Eye Toggle Button -->
             <button
               onclick="togglePasswordVisibility('folder-password-input', this)"
               class="absolute right-3 top-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
@@ -1903,7 +1915,6 @@
             >
               Cancel
             </button>
-            <!-- Hook this up in app-core.js to process the folder password -->
             <button
               id="btn-submit-folder-password"
               class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center"

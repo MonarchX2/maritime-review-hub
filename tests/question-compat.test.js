@@ -47,6 +47,20 @@ assert.deepStrictEqual(compacted.c, [
 ]);
 assert.strictEqual(compacted.a, 1);
 
+const legacyWithBlanks = {
+  Subject: "Biology::Cells",
+  ID: "CEL-2",
+  Question: "Which organelle is the powerhouse?",
+  ChoiceA: "",
+  ChoiceB: "Mitochondria",
+  ChoiceC: "",
+  ChoiceD: "Golgi Body",
+  Answer: "D",
+};
+const compactedWithBlanks = compactQuestionRecord(legacyWithBlanks);
+assert.deepStrictEqual(compactedWithBlanks.c, ["Mitochondria", "Golgi Body"]);
+assert.strictEqual(compactedWithBlanks.a, 1);
+
 const compactWithoutSubject = {
   i: "CEL-2",
   q: "Which organelle makes proteins?",
