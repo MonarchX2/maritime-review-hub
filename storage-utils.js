@@ -284,6 +284,7 @@
 
   const StorageUtils = {
     generateUserId,
+    getCrypto,
     getPersistentStorageIdentity,
     getSafeStorageIdentity,
     getStorageNamespace,
@@ -309,4 +310,10 @@
   }
 
   globalScope.StorageUtils = StorageUtils;
+  globalScope.getCrypto = getCrypto;
+  globalScope.getPersistentStorageIdentity = getPersistentStorageIdentity;
+  globalScope.getSafeStorageIdentity = getSafeStorageIdentity;
+  globalScope.getStorageKey = getStorageKey;
+  globalScope.getLegacyStorageKey = getLegacyStorageKey;
+  globalScope.getStorageNamespace = getStorageNamespace;
 })(typeof window !== "undefined" ? window : globalThis);

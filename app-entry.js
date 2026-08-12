@@ -6,7 +6,7 @@
     return new Promise((resolve, reject) => {
       const script = document.createElement("script");
       script.src = src;
-      script.async = true;
+      script.async = false;
       script.onload = resolve;
       script.onerror = () => reject(new Error(`Failed to load ${src}`));
       document.head.appendChild(script);
@@ -19,14 +19,20 @@
     loadedFeatures.add(src);
   };
 
-  function loadCoreHelpers() {
-    return Promise.all([
-      loadFeatureScript("storage-utils.js"),
-      loadFeatureScript("text-utils.js"),
-      loadFeatureScript("network-utils.js"),
-      loadFeatureScript("session-utils.js"),
-      loadFeatureScript("debug-utils.js"),
-    ]);
+  async function loadCoreHelpers() {
+    const cores = [
+      "storage-utils.js",
+      "text-utils.js",
+      "network-utils.js",
+      "session-utils.js",
+      "debug-utils.js",
+      "app-core-state.js",
+      "app-core-network.js",
+    ];
+
+    for (const src of cores) {
+      await loadFeatureScript(src);
+    }
   }
 
   try {
