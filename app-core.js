@@ -77,6 +77,46 @@ let discoverySearchDebounceTimer = null;
 let discoveryUiBound = false;
 let discoveryActiveIndex = -1;
 
+const debugLogger =
+  typeof DebugUtils !== "undefined" && DebugUtils.createDebugLogger
+    ? DebugUtils.createDebugLogger("mrh-app")
+    : {
+        snapshot: (label, details = {}) => ({ label, ...details }),
+        emit: () => undefined,
+      };
+
+function createDebugSnapshot(label, details = {}) {
+  return debugLogger.snapshot(label, {
+    state,
+    ...details,
+  });
+}
+
+function emitDebugState(label, details = {}) {
+  return debugLogger.emit(label, {
+    state,
+    ...details,
+  });
+}
+
+if (typeof window !== "undefined") {
+  const existingDebugApi = window.MRHDebug || {};
+  window.MRHDebug = {
+    ...existingDebugApi,
+    enable: () => {
+      window.__MRH_DEBUG__ = true;
+      return true;
+    },
+    disable: () => {
+      window.__MRH_DEBUG__ = false;
+      return false;
+    },
+    snapshot: createDebugSnapshot,
+    emit: emitDebugState,
+    inspect: createDebugSnapshot,
+  };
+}
+
 function generateUserId() {
   if (window.crypto && window.crypto.randomUUID) {
     return "user_" + crypto.randomUUID();
@@ -662,6 +702,7 @@ function setInlineError(element, message) {
 }
 
 async function loadState() {
+  emitDebugState("load_state:start");
   migrateLegacyStorageKeys();
   const savedStats = getStoredItem("stats");
   const savedPrefs = getStoredItem("prefs");
@@ -765,10 +806,18 @@ async function loadState() {
   updateDashboard();
   updateThemeButton();
   syncPreferenceControls();
+  emitDebugState("load_state:complete", {
+    dbCount: state.db.length,
+    summaryCount: state.categorySummary.length,
+  });
 }
 
 async function saveState() {
   try {
+    emitDebugState("save_state:begin", {
+      dbCount: state.db.length,
+      summaryCount: state.categorySummary.length,
+    });
     setStoredJSON("stats", state.stats);
     setStoredJSON("prefs", state.prefs);
     setStoredJSON("summary", state.categorySummary);
@@ -788,6 +837,10 @@ async function saveState() {
 
   syncPreferenceControls();
   updateDashboard();
+  emitDebugState("save_state:complete", {
+    dbCount: state.db.length,
+    summaryCount: state.categorySummary.length,
+  });
 }
 
 function syncPreferenceControls() {
@@ -951,10 +1004,10 @@ async function navigate(viewId) {
   // FIXED: Safely check if adminState is defined globally
   if (viewId === "admin") {
     await ensureAdminLoaded();
-    if (typeof adminState !== "undefined" && adminState.token) {
-      if (typeof loadAdminSubjects === "function") {
-        loadAdminSubjects();
-      }
+    const activeAdminToken =
+      typeof getAdminToken === "function" ? getAdminToken() : "";
+    if (activeAdminToken && typeof loadAdminSubjects === "function") {
+      loadAdminSubjects();
     }
   }
 
@@ -3969,7 +4022,7 @@ function toggleShuffleQuestions() {
 }
 
 async function autoSaveDeckPassword(deckPath, newPassword) {
-  const safeToken = typeof adminState !== "undefined" ? adminState.token : null;
+  const safeToken = typeof getAdminToken === "function" ? getAdminToken() : "";
   const password = String(newPassword || "").trim();
 
   try {

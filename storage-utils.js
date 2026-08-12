@@ -1,12 +1,74 @@
 (function (globalScope) {
+  const fallbackStorage =
+    typeof globalThis !== "undefined"
+      ? globalThis.__mrhNodeStorage || (globalThis.__mrhNodeStorage = {})
+      : {};
+
+  function getRuntimeState() {
+    if (typeof globalThis !== "undefined" && globalThis.state) {
+      return globalThis.state;
+    }
+    if (typeof state !== "undefined" && state) {
+      return state;
+    }
+    return {};
+  }
+
+  function getRuntimeUserState() {
+    if (typeof globalThis !== "undefined" && globalThis.userState) {
+      return globalThis.userState;
+    }
+    if (typeof userState !== "undefined" && userState) {
+      return userState;
+    }
+    return {};
+  }
+
+  function getLocalStorage() {
+    if (typeof localStorage !== "undefined") return localStorage;
+    return {
+      store: fallbackStorage,
+      getItem(key) {
+        return Object.prototype.hasOwnProperty.call(this.store, key)
+          ? this.store[key]
+          : null;
+      },
+      setItem(key, value) {
+        this.store[key] = String(value);
+      },
+      removeItem(key) {
+        delete this.store[key];
+      },
+      key(index) {
+        return Object.keys(this.store)[index] || null;
+      },
+      get length() {
+        return Object.keys(this.store).length;
+      },
+    };
+  }
+
+  function getSessionStorage() {
+    return getLocalStorage();
+  }
+
+  function getCrypto() {
+    if (typeof crypto !== "undefined") return crypto;
+    if (typeof globalThis !== "undefined" && globalThis.crypto) {
+      return globalThis.crypto;
+    }
+    return null;
+  }
+
   function generateUserId() {
-    if (window.crypto && window.crypto.randomUUID) {
-      return "user_" + crypto.randomUUID();
+    const cryptoApi = getCrypto();
+    if (cryptoApi && cryptoApi.randomUUID) {
+      return "user_" + cryptoApi.randomUUID();
     }
 
-    if (window.crypto && window.crypto.getRandomValues) {
+    if (cryptoApi && cryptoApi.getRandomValues) {
       const bytes = new Uint8Array(16);
-      crypto.getRandomValues(bytes);
+      cryptoApi.getRandomValues(bytes);
       return (
         "user_" +
         [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("")
@@ -17,34 +79,38 @@
   }
 
   function getPersistentStorageIdentity() {
+    const store = getLocalStorage();
     try {
-      const stored = localStorage.getItem("mrh_storage_identity");
+      const stored = store.getItem("mrh_storage_identity");
       if (stored) return stored;
     } catch (e) {}
 
     const generated = `device_${generateUserId()}`;
     try {
-      localStorage.setItem("mrh_storage_identity", generated);
+      store.setItem("mrh_storage_identity", generated);
     } catch (e) {}
     return generated;
   }
 
   function getSafeStorageIdentity() {
-    const username =
-      typeof userState !== "undefined" && userState.username
-        ? userState.username
-        : "";
+    const runtimeState = getRuntimeState();
+    const runtimeUserState = getRuntimeUserState();
+    const username = runtimeUserState?.username || "";
     if (username) {
       return String(username).replace(/[^a-zA-Z0-9_-]/g, "_") || "guest";
     }
 
-    if (!state?.prefs?.storageIdentity) {
-      state.prefs.storageIdentity = getPersistentStorageIdentity();
+    if (!runtimeState.prefs) runtimeState.prefs = {};
+    if (!runtimeState.prefs.storageIdentity) {
+      runtimeState.prefs.storageIdentity = getPersistentStorageIdentity();
     }
+    const store = getLocalStorage();
     const rawIdentity =
-      state?.prefs?.storageIdentity ||
-      localStorage.getItem("mrh_storage_identity") ||
-      state?.prefs?.userId ||
+      runtimeState.prefs.storageIdentity ||
+      (store && typeof store.getItem === "function"
+        ? store.getItem("mrh_storage_identity")
+        : null) ||
+      runtimeState.prefs.userId ||
       "guest";
     return String(rawIdentity).replace(/[^a-zA-Z0-9_-]/g, "_") || "guest";
   }
@@ -62,18 +128,20 @@
   }
 
   function getStoredItem(key, fallback = null) {
-    const namespacedValue = localStorage.getItem(getStorageKey(key));
+    const store = getLocalStorage();
+    const namespacedValue = store.getItem(getStorageKey(key));
     if (namespacedValue !== null) return namespacedValue;
-    const legacyValue = localStorage.getItem(getLegacyStorageKey(key));
+    const legacyValue = store.getItem(getLegacyStorageKey(key));
     if (legacyValue !== null) return legacyValue;
     return fallback;
   }
 
   function getAnyNamespaceStoredItem(key, fallback = null) {
-    for (let i = 0; i < localStorage.length; i++) {
-      const storedKey = localStorage.key(i) || "";
+    const store = getLocalStorage();
+    for (let i = 0; i < store.length; i++) {
+      const storedKey = store.key(i) || "";
       if (storedKey.endsWith(`:${key}`)) {
-        const value = localStorage.getItem(storedKey);
+        const value = store.getItem(storedKey);
         if (value !== null) return value;
       }
     }
@@ -81,12 +149,14 @@
   }
 
   function setStoredItem(key, value) {
-    localStorage.setItem(getStorageKey(key), value);
+    const store = getLocalStorage();
+    store.setItem(getStorageKey(key), value);
   }
 
   function removeStoredItem(key) {
-    localStorage.removeItem(getStorageKey(key));
-    localStorage.removeItem(getLegacyStorageKey(key));
+    const store = getLocalStorage();
+    store.removeItem(getStorageKey(key));
+    store.removeItem(getLegacyStorageKey(key));
   }
 
   function getStoredJSON(key, fallback = null) {
@@ -104,15 +174,16 @@
   }
 
   function getSessionStoredItem(key, fallback = null) {
-    const namespacedValue = sessionStorage.getItem(getStorageKey(key));
+    const store = getSessionStorage();
+    const namespacedValue = store.getItem(getStorageKey(key));
     if (namespacedValue !== null) return namespacedValue;
-    const legacyValue = sessionStorage.getItem(getLegacyStorageKey(key));
+    const legacyValue = store.getItem(getLegacyStorageKey(key));
     if (legacyValue !== null) return legacyValue;
 
-    for (let i = 0; i < sessionStorage.length; i++) {
-      const storedKey = sessionStorage.key(i) || "";
+    for (let i = 0; i < store.length; i++) {
+      const storedKey = store.key(i) || "";
       if (storedKey.endsWith(`:${key}`)) {
-        const fallbackValue = sessionStorage.getItem(storedKey);
+        const fallbackValue = store.getItem(storedKey);
         if (fallbackValue !== null) return fallbackValue;
       }
     }
@@ -120,16 +191,18 @@
   }
 
   function setSessionStoredItem(key, value) {
-    sessionStorage.setItem(getStorageKey(key), value);
+    const store = getSessionStorage();
+    store.setItem(getStorageKey(key), value);
   }
 
   function removeSessionStoredItem(key) {
-    sessionStorage.removeItem(getStorageKey(key));
-    sessionStorage.removeItem(getLegacyStorageKey(key));
-    for (let i = sessionStorage.length - 1; i >= 0; i--) {
-      const storedKey = sessionStorage.key(i) || "";
+    const store = getSessionStorage();
+    store.removeItem(getStorageKey(key));
+    store.removeItem(getLegacyStorageKey(key));
+    for (let i = store.length - 1; i >= 0; i--) {
+      const storedKey = store.key(i) || "";
       if (storedKey.endsWith(`:${key}`)) {
-        sessionStorage.removeItem(storedKey);
+        store.removeItem(storedKey);
       }
     }
   }
@@ -149,6 +222,7 @@
   }
 
   function migrateLegacyStorageKeys() {
+    const store = getLocalStorage();
     const pairs = [
       ["stats", "mrh_stats"],
       ["prefs", "mrh_prefs"],
@@ -165,29 +239,30 @@
     pairs.forEach(([currentKey, legacyKey]) => {
       const namespacedKey = getStorageKey(currentKey);
       if (
-        localStorage.getItem(namespacedKey) === null &&
-        localStorage.getItem(legacyKey) !== null
+        store.getItem(namespacedKey) === null &&
+        store.getItem(legacyKey) !== null
       ) {
-        localStorage.setItem(namespacedKey, localStorage.getItem(legacyKey));
+        store.setItem(namespacedKey, store.getItem(legacyKey));
       }
     });
   }
 
   function purgeOrphanedStorage(identityToKeep = null) {
+    const store = getLocalStorage();
     const activeIdentity = identityToKeep || getSafeStorageIdentity();
     const namespaces = new Set();
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i) || "";
+    for (let i = 0; i < store.length; i++) {
+      const key = store.key(i) || "";
       const match = key.match(/^mrh_([^:]+):/);
       if (match) namespaces.add(match[1]);
     }
 
     namespaces.forEach((namespace) => {
       if (namespace === activeIdentity) return;
-      for (let i = localStorage.length - 1; i >= 0; i--) {
-        const key = localStorage.key(i) || "";
+      for (let i = store.length - 1; i >= 0; i--) {
+        const key = store.key(i) || "";
         if (key.startsWith(`mrh_${namespace}:`)) {
-          localStorage.removeItem(key);
+          store.removeItem(key);
         }
       }
     });
@@ -204,7 +279,7 @@
       "mrh_pending_sync_queue",
       "mrh_recovery_snapshot",
     ];
-    legacyKeys.forEach((legacyKey) => localStorage.removeItem(legacyKey));
+    legacyKeys.forEach((legacyKey) => store.removeItem(legacyKey));
   }
 
   const StorageUtils = {

@@ -25,12 +25,19 @@
       loadFeatureScript("text-utils.js"),
       loadFeatureScript("network-utils.js"),
       loadFeatureScript("session-utils.js"),
+      loadFeatureScript("debug-utils.js"),
     ]);
   }
 
   try {
     await loadCoreHelpers();
     await loadScript("app-core.js");
+    await Promise.all([
+      loadFeatureScript("state-core.js"),
+      loadFeatureScript("sync-core.js"),
+      loadFeatureScript("ui-core.js"),
+      loadFeatureScript("session-core.js"),
+    ]);
   } catch (error) {
     console.error("App bootstrap failed:", error);
     const status = document.getElementById("connection-status");

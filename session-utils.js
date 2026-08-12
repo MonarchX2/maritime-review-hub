@@ -1,67 +1,160 @@
 (function (globalScope) {
+  const nodeStorage =
+    globalThis.__mrhNodeStorage || (globalThis.__mrhNodeStorage = {});
+
+  function getRuntimeState() {
+    if (typeof globalThis !== "undefined" && globalThis.state) {
+      return globalThis.state;
+    }
+    if (typeof state !== "undefined" && state) {
+      return state;
+    }
+    return {};
+  }
+
+  function getRuntimeUserState() {
+    if (typeof globalThis !== "undefined" && globalThis.userState) {
+      return globalThis.userState;
+    }
+    if (typeof userState !== "undefined" && userState) {
+      return userState;
+    }
+    return {};
+  }
+
+  function safeReadStorage(key, fallback = null) {
+    if (typeof getStoredItem === "function")
+      return getStoredItem(key, fallback);
+    if (typeof localStorage !== "undefined") {
+      const value = localStorage.getItem(key);
+      return value === null ? fallback : value;
+    }
+    return Object.prototype.hasOwnProperty.call(nodeStorage, key)
+      ? nodeStorage[key]
+      : fallback;
+  }
+
+  function safeWriteStorage(key, value) {
+    if (typeof setStoredItem === "function") return setStoredItem(key, value);
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(key, value);
+      return value;
+    }
+    nodeStorage[key] = value;
+    return value;
+  }
+
+  function safeDeleteStorage(key) {
+    if (typeof removeStoredItem === "function") return removeStoredItem(key);
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem(key);
+      return;
+    }
+    delete nodeStorage[key];
+  }
+
+  function safeReadJSON(key, fallback = null) {
+    const raw = safeReadStorage(key, null);
+    if (raw === null || raw === undefined) return fallback;
+    try {
+      return JSON.parse(raw);
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  function safeWriteJSON(key, value) {
+    safeWriteStorage(key, JSON.stringify(value));
+  }
+
+  function safeBtoa(value) {
+    const text = String(value);
+    if (typeof btoa === "function") return btoa(text);
+    if (typeof Buffer !== "undefined") {
+      return Buffer.from(text, "binary").toString("base64");
+    }
+    return text;
+  }
+
   function getProgressPayload() {
-    const savedSession = getStoredJSON("saved_session", null);
+    const currentState = getRuntimeState();
+    const savedSession = safeReadJSON("saved_session", null);
     return {
       version: 2,
       stats: {
-        totalAnswered: Number(state.stats.totalAnswered || 0),
-        correct: Number(state.stats.correct || 0),
-        mistakes: Array.isArray(state.stats.mistakes)
-          ? state.stats.mistakes
+        totalAnswered: Number(currentState.stats?.totalAnswered || 0),
+        correct: Number(currentState.stats?.correct || 0),
+        mistakes: Array.isArray(currentState.stats?.mistakes)
+          ? currentState.stats.mistakes
           : [],
-        completedQs: Array.isArray(state.stats.completedQs)
-          ? state.stats.completedQs
+        completedQs: Array.isArray(currentState.stats?.completedQs)
+          ? currentState.stats.completedQs
           : [],
         subjectAccuracy:
-          state.stats.subjectAccuracy &&
-          typeof state.stats.subjectAccuracy === "object"
-            ? state.stats.subjectAccuracy
+          currentState.stats?.subjectAccuracy &&
+          typeof currentState.stats.subjectAccuracy === "object"
+            ? currentState.stats.subjectAccuracy
             : {},
         srsMap:
-          state.stats.srsMap && typeof state.stats.srsMap === "object"
-            ? state.stats.srsMap
+          currentState.stats?.srsMap &&
+          typeof currentState.stats.srsMap === "object"
+            ? currentState.stats.srsMap
             : {},
       },
-      prefs: state.prefs && typeof state.prefs === "object" ? state.prefs : {},
+      prefs:
+        currentState.prefs && typeof currentState.prefs === "object"
+          ? currentState.prefs
+          : {},
       savedSession,
       deckState: {
-        downloadedDecks: Array.isArray(state.db)
-          ? [...new Set((state.db || []).map((q) => q.Subject).filter(Boolean))]
+        downloadedDecks: Array.isArray(currentState.db)
+          ? [
+              ...new Set(
+                (currentState.db || []).map((q) => q.Subject).filter(Boolean),
+              ),
+            ]
           : [],
-        archivedDecks: Array.isArray(state.prefs.archivedDecks)
-          ? [...state.prefs.archivedDecks]
+        archivedDecks: Array.isArray(currentState.prefs?.archivedDecks)
+          ? [...currentState.prefs.archivedDecks]
           : [],
-        studyProgress: state.prefs.studyProgress || {},
-        qToggles: state.prefs.qToggles || {},
-        lastActivity: state.prefs.lastActivity || null,
+        studyProgress: currentState.prefs?.studyProgress || {},
+        qToggles: currentState.prefs?.qToggles || {},
+        lastActivity: currentState.prefs?.lastActivity || null,
       },
       localState: {
-        categorySummary: Array.isArray(state.categorySummary)
-          ? state.categorySummary
+        categorySummary: Array.isArray(currentState.categorySummary)
+          ? currentState.categorySummary
           : [],
-        currentPath: Array.isArray(state.currentPath) ? state.currentPath : [],
-        appMode: typeof currentAppMode === "string" ? currentAppMode : null,
-        dbSize: Array.isArray(state.db) ? state.db.length : 0,
+        currentPath: Array.isArray(currentState.currentPath)
+          ? currentState.currentPath
+          : [],
+        appMode:
+          typeof globalThis?.currentAppMode === "string"
+            ? globalThis.currentAppMode
+            : null,
+        dbSize: Array.isArray(currentState.db) ? currentState.db.length : 0,
       },
     };
   }
 
   function getProgressMeta() {
-    return getStoredJSON("progress_meta", {});
+    return safeReadJSON("progress_meta", {});
   }
 
   function setProgressMeta(updatedAt, serverUpdatedAt = updatedAt || "") {
-    progressServerUpdatedAt = serverUpdatedAt || updatedAt || "";
-    setStoredJSON("progress_meta", {
-      username: userState.username,
-      updatedAt: progressServerUpdatedAt,
-      localUpdatedAt: progressServerUpdatedAt,
-      serverUpdatedAt: progressServerUpdatedAt,
+    const runtimeState = getRuntimeState();
+    runtimeState.progressServerUpdatedAt = serverUpdatedAt || updatedAt || "";
+    safeWriteJSON("progress_meta", {
+      username: getRuntimeUserState().username,
+      updatedAt: runtimeState.progressServerUpdatedAt,
+      localUpdatedAt: runtimeState.progressServerUpdatedAt,
+      serverUpdatedAt: runtimeState.progressServerUpdatedAt,
     });
   }
 
   function clearLocalUserProgress() {
-    state.stats = {
+    const currentState = getRuntimeState();
+    currentState.stats = {
       totalAnswered: 0,
       correct: 0,
       mistakes: [],
@@ -69,37 +162,40 @@
       subjectAccuracy: {},
       srsMap: {},
     };
-    state.session = {
+    currentState.session = {
       active: false,
       questions: [],
       currentIndex: 0,
       userAnswers: {},
       autoNextTimeout: null,
     };
-    state.prefs.studyProgress = {};
-    state.prefs.qToggles = {};
-    state.prefs.lastActivity = null;
-    removeStoredItem("stats");
-    removeStoredItem("saved_session");
-    removeStoredItem("progress_meta");
-    removeStoredItem("pending_sync_queue");
-    removeStoredItem("recovery_snapshot");
+    currentState.prefs = currentState.prefs || {};
+    currentState.prefs.studyProgress = {};
+    currentState.prefs.qToggles = {};
+    currentState.prefs.lastActivity = null;
+    safeDeleteStorage("stats");
+    safeDeleteStorage("saved_session");
+    safeDeleteStorage("progress_meta");
+    safeDeleteStorage("pending_sync_queue");
+    safeDeleteStorage("recovery_snapshot");
   }
 
   function hasLocalProgress() {
     return Boolean(
-      getStoredItem("stats") ||
-      getStoredItem("saved_session") ||
-      getStoredItem("prefs"),
+      safeReadStorage("stats") ||
+      safeReadStorage("saved_session") ||
+      safeReadStorage("prefs"),
     );
   }
 
   function applyRemoteProgress(payload, updatedAt) {
     if (!payload || typeof payload !== "object") return;
-    suppressProgressSync = true;
+    const currentState = getRuntimeState();
+    const runtimeSuppress = globalThis;
+    runtimeSuppress.suppressProgressSync = true;
     try {
       if (payload.stats && typeof payload.stats === "object") {
-        state.stats = {
+        currentState.stats = {
           totalAnswered: Number(payload.stats.totalAnswered || 0),
           correct: Number(payload.stats.correct || 0),
           mistakes: Array.isArray(payload.stats.mistakes)
@@ -114,59 +210,62 @@
               ? payload.stats.srsMap
               : {},
         };
-        setStoredJSON("stats", state.stats);
+        safeWriteJSON("stats", currentState.stats);
       }
       if (payload.prefs && typeof payload.prefs === "object") {
-        state.prefs = {
-          ...state.prefs,
+        currentState.prefs = {
+          ...(currentState.prefs || {}),
           ...payload.prefs,
-          userId: state.prefs.userId,
+          userId: currentState.prefs?.userId,
         };
-        setStoredJSON("prefs", state.prefs);
+        safeWriteJSON("prefs", currentState.prefs);
       }
       if (payload.deckState && typeof payload.deckState === "object") {
+        currentState.prefs = currentState.prefs || {};
         if (Array.isArray(payload.deckState.archivedDecks)) {
-          state.prefs.archivedDecks = payload.deckState.archivedDecks;
+          currentState.prefs.archivedDecks = payload.deckState.archivedDecks;
         }
         if (payload.deckState.studyProgress) {
-          state.prefs.studyProgress = payload.deckState.studyProgress;
+          currentState.prefs.studyProgress = payload.deckState.studyProgress;
         }
         if (payload.deckState.qToggles) {
-          state.prefs.qToggles = payload.deckState.qToggles;
+          currentState.prefs.qToggles = payload.deckState.qToggles;
         }
         if (payload.deckState.lastActivity) {
-          state.prefs.lastActivity = payload.deckState.lastActivity;
+          currentState.prefs.lastActivity = payload.deckState.lastActivity;
         }
-        setStoredJSON("prefs", state.prefs);
+        safeWriteJSON("prefs", currentState.prefs);
       }
       if (payload.localState && typeof payload.localState === "object") {
         if (Array.isArray(payload.localState.categorySummary)) {
-          state.categorySummary = payload.localState.categorySummary;
-          setStoredJSON("summary", state.categorySummary);
+          currentState.categorySummary = payload.localState.categorySummary;
+          safeWriteJSON("summary", currentState.categorySummary);
         }
         if (Array.isArray(payload.localState.currentPath)) {
-          state.currentPath = payload.localState.currentPath;
+          currentState.currentPath = payload.localState.currentPath;
         }
         if (payload.localState.appMode) {
-          currentAppMode = payload.localState.appMode;
+          globalThis.currentAppMode = payload.localState.appMode;
         }
       }
       if (payload.savedSession) {
-        setStoredJSON("saved_session", payload.savedSession);
+        safeWriteJSON("saved_session", payload.savedSession);
       } else {
-        removeStoredItem("saved_session");
+        safeDeleteStorage("saved_session");
       }
       setProgressMeta(updatedAt);
-      updateDashboard();
-      syncPreferenceControls();
+      if (typeof updateDashboard === "function") updateDashboard();
+      if (typeof syncPreferenceControls === "function")
+        syncPreferenceControls();
     } finally {
-      suppressProgressSync = false;
+      runtimeSuppress.suppressProgressSync = false;
     }
   }
 
   function createIdempotencyKey(payload) {
-    const keySeed = `${userState.username || "guest"}:${JSON.stringify(payload)}:${Date.now()}`;
-    return btoa(unescape(encodeURIComponent(keySeed))).replace(/=+$/g, "");
+    const currentUserState = getRuntimeUserState();
+    const keySeed = `${currentUserState.username || "guest"}:${JSON.stringify(payload)}:${Date.now()}`;
+    return safeBtoa(unescape(encodeURIComponent(keySeed))).replace(/=+$/g, "");
   }
 
   function getPendingOfflineQueue() {

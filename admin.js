@@ -4,6 +4,35 @@ let adminState = {
   reports: [],
 };
 
+adminState.token = getAdminToken();
+
+function getAdminToken() {
+  if (typeof sessionStorage !== "undefined") {
+    const candidate = sessionStorage.getItem("mrh_admin_token");
+    if (candidate) return candidate;
+  }
+  return "";
+}
+
+function setAdminToken(token) {
+  const sanitized = typeof token === "string" ? token.trim() : "";
+  if (typeof sessionStorage !== "undefined") {
+    if (sanitized) {
+      sessionStorage.setItem("mrh_admin_token", sanitized);
+    } else {
+      sessionStorage.removeItem("mrh_admin_token");
+    }
+  }
+  adminState.token = sanitized;
+}
+
+function clearAdminToken() {
+  if (typeof sessionStorage !== "undefined") {
+    sessionStorage.removeItem("mrh_admin_token");
+  }
+  adminState.token = "";
+}
+
 async function parseJsonResponse(response) {
   if (!response.ok) {
     const text = await response.text().catch(() => "");
@@ -48,7 +77,7 @@ async function adminLogin() {
     const result = await parseJsonResponse(response);
 
     if (result.status === "success") {
-      adminState.token = pass;
+      setAdminToken(pass);
       document.getElementById("admin-login-error").classList.add("hidden");
       document.getElementById("admin-login-section").classList.add("hidden");
       document
@@ -81,7 +110,7 @@ async function loadAdminSubjects() {
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({
         type: "admin_get_subjects",
-        token: adminState.token,
+        token: getAdminToken(),
       }),
     });
 
@@ -322,7 +351,7 @@ async function saveAdminChanges() {
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({
         type: "admin_update",
-        token: adminState.token,
+        token: getAdminToken(),
         updates: updates,
       }),
     });
@@ -354,7 +383,7 @@ async function adminLoadReports() {
       body: JSON.stringify({
         type: "get_reports",
         role: "admin",
-        token: adminState.token,
+        token: getAdminToken(),
       }),
     });
     const reports = await parseJsonResponse(response);
@@ -440,10 +469,10 @@ async function adminActionReport(reportId, action) {
   try {
     const response = await fetch(DB_URL, {
       method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" }, // ADD THIS LINE
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({
         type: "admin_resolve_report",
-        token: adminState.token,
+        token: getAdminToken(),
         reportId: reportId,
         action: action,
       }),
@@ -549,7 +578,7 @@ async function saveEditedQuestion() {
 
   const payload = {
     type: "admin_edit_question",
-    token: adminState.token,
+    token: getAdminToken(),
     subject: report.subject,
     questionId: questionId,
     questionText: document.getElementById("edit-q-text").value,
