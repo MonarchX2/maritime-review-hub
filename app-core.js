@@ -156,17 +156,13 @@ function sanitizeDeletedDeckReferences() {
 
   if (deletedSet.size === 0) return;
 
+  // Remove deleted decks from favorites and recent lists
+  // (but keep them in categorySummary so they remain visible with 0 questions)
   state.prefs.favoriteDecks = (state.prefs.favoriteDecks || []).filter(
     (item) => !deletedSet.has(String(item || "").trim()),
   );
   state.prefs.recentDecks = (state.prefs.recentDecks || []).filter(
     (item) => !deletedSet.has(String(item || "").trim()),
-  );
-  state.categorySummary = (state.categorySummary || []).filter(
-    (deck) =>
-      deck &&
-      String(deck.Subject || "").trim() &&
-      !deletedSet.has(String(deck.Subject || "").trim()),
   );
 }
 
@@ -1593,15 +1589,12 @@ function getDeckLoaderId(subject) {
 }
 
 function getVisibleCategorySummary() {
-  const deletedDecks = new Set(
-    (state.prefs?.deletedDecks || []).filter(Boolean),
-  );
   return (state.categorySummary || []).filter((deck) => {
     if (!deck || !deck.Subject) return false;
-    if (deletedDecks.has(deck.Subject)) return false;
-    // Filter out decks marked as hidden
+    // Filter out decks marked as hidden (admin-controlled)
     if (deck.Hidden === true || String(deck.Hidden).toLowerCase() === "true")
       return false;
+    // Deleted decks remain visible (just with 0 questions downloaded)
     return true;
   });
 }
@@ -2259,9 +2252,7 @@ async function deleteSubjectData(subject) {
     )
   ) {
     state.db = state.db.filter((q) => q.Subject !== subject);
-    state.categorySummary = (state.categorySummary || []).filter(
-      (deck) => deck && deck.Subject !== subject,
-    );
+    // Don't remove from categorySummary - the deck should remain visible (just with 0 questions)
     state.prefs.favoriteDecks = (state.prefs.favoriteDecks || []).filter(
       (deck) => deck !== subject,
     );
@@ -2347,11 +2338,6 @@ async function fetchDeckQuestions(
   loaderElement = null,
   customFilter = null,
 ) {
-  if ((state.prefs?.deletedDecks || []).includes(subject)) {
-    if (loaderElement) loaderElement.classList.add("hidden");
-    return [];
-  }
-
   let cachedQuestions = getQuestionsForSubject(subject);
   if (typeof customFilter === "function") {
     cachedQuestions = cachedQuestions.filter(customFilter);
@@ -4426,10 +4412,6 @@ let pendingDeckAction = null;
 function handleDeckClick(subj, action = "continue") {
   subj = decodeHandlerValue(subj);
   if (!subj) return;
-  if ((state.prefs?.deletedDecks || []).includes(subj)) {
-    showToast("This deck has been removed from your downloads.", "error");
-    return;
-  }
 
   if (!syncConnected) {
     updateSyncStatus(
