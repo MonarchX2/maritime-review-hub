@@ -187,7 +187,7 @@ function getDiscoveryViewModel() {
     };
   }
 
-  return builder(state, state.categorySummary || []);
+  return builder(state, getVisibleCategorySummary() || []);
 }
 
 function bindDiscoveryUi() {
@@ -1597,7 +1597,13 @@ function getVisibleCategorySummary() {
     (state.prefs?.deletedDecks || []).filter(Boolean),
   );
   return (state.categorySummary || []).filter(
-    (deck) => deck && deck.Subject && !deletedDecks.has(deck.Subject),
+    (deck) => {
+      if (!deck || !deck.Subject) return false;
+      if (deletedDecks.has(deck.Subject)) return false;
+      // Filter out decks marked as hidden
+      if (deck.Hidden === true || String(deck.Hidden).toLowerCase() === "true") return false;
+      return true;
+    }
   );
 }
 

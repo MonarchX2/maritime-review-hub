@@ -145,11 +145,12 @@ async function loadAdminSubjects() {
 
 function renderAdminSubjectList() {
   const container = document.getElementById("admin-subject-list");
-  const tree = { subfolders: {}, decks: [], folderPass: "" }; // Added folderPass state
+  const tree = { subfolders: {}, decks: [], folderPass: "", folderHidden: false }; // Added folderPass and folderHidden state
 
   adminState.subjects.forEach((cat, index) => {
     const subjString = cat.Subject;
     const passString = String(cat.Password || cat.password || "").trim();
+    const hiddenStatus = cat.Hidden === true || String(cat.Hidden).toLowerCase() === "true";
     const parts = subjString.split("::").map((s) => s.trim());
     if (
       cat.IsFolder === true ||
@@ -162,10 +163,12 @@ function renderAdminSubjectList() {
             subfolders: {},
             decks: [],
             folderPass: "",
+            folderHidden: false,
           };
         currentNode = currentNode.subfolders[part];
       });
       currentNode.folderPass = passString; // Assign password to the folder
+      currentNode.folderHidden = hiddenStatus; // Assign hidden status to the folder
       return; // Stop here, it's not a deck
     }
 
@@ -178,6 +181,7 @@ function renderAdminSubjectList() {
           subfolders: {},
           decks: [],
           folderPass: "",
+          folderHidden: false,
         };
       currentNode = currentNode.subfolders[part];
     });
@@ -187,6 +191,7 @@ function renderAdminSubjectList() {
       deckName: deckName,
       index: index,
       password: passString,
+      hidden: hiddenStatus,
     });
   });
 
@@ -228,6 +233,22 @@ function renderAdminSubjectList() {
                         <i class="fa-solid fa-angles-down mr-2"></i> Apply to all nested decks
                     </button>
                 </div>
+
+                <div class="mb-4 p-4 bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 rounded-lg shadow-sm">
+                    <label class="text-sm font-bold text-purple-700 dark:text-purple-400 flex items-center gap-2 cursor-pointer mb-2">
+                        <input type="checkbox" 
+                            class="folder-hidden-input w-4 h-4 cursor-pointer"
+                            data-path="${escapeHTML(fullPath)}"
+                            data-orig="${String(node.folderHidden || false)}"
+                            ${node.folderHidden ? "checked" : ""}>
+                        <i class="fa-solid fa-eye-slash mr-1"></i> Hide Entire '${escapeHTML(folderName)}' Folder
+                    </label>
+                    <p class="text-xs text-purple-600 dark:text-purple-300 mb-2">When enabled, this folder and all its contents will be hidden from regular users (not synced). Only visible in admin view.</p>
+                    
+                    <button onclick="cascadeHidden(this)" class="mt-3 w-full bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 py-2 rounded font-bold hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors shadow-sm active:scale-95 text-sm flex items-center justify-center">
+                        <i class="fa-solid fa-angles-down mr-2"></i> Hide all nested decks
+                    </button>
+                </div>
             `;
     }
 
@@ -266,6 +287,17 @@ function renderAdminSubjectList() {
                                 value="${escapeHTML(subj.password)}" 
                                 placeholder="Leave blank for public access"
                                 class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-red-500 focus:ring-2 outline-none transition-all">
+                        
+                        <div class="flex items-center mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                            <label class="text-xs font-bold text-purple-600 dark:text-purple-400 flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" 
+                                    id="deck-hidden-${subj.index}"
+                                    class="deck-hidden-input w-4 h-4 cursor-pointer"
+                                    data-index="${subj.index}"
+                                    ${subj.hidden ? "checked" : ""}>
+                                <i class="fa-solid fa-eye-slash"></i> Hide from users
+                            </label>
+                        </div>
                     </div>
                 </div>
             `;
@@ -305,6 +337,8 @@ async function saveAdminChanges() {
   btn.disabled = true;
 
   const updates = [];
+  
+  // Handle folder password and hidden status
   document.querySelectorAll(".folder-pass-input").forEach((input) => {
     const path = input.getAttribute("data-path");
     const pass = String(input.value || "").trim();
@@ -314,26 +348,43 @@ async function saveAdminChanges() {
       updates.push({ oldName: path, newName: path, password: pass });
     }
   });
+
+  // Handle folder hidden status
+  document.querySelectorAll(".folder-hidden-input").forEach((checkbox) => {
+    const path = checkbox.getAttribute("data-path");
+    const isHidden = checkbox.checked;
+    const origHidden = String(checkbox.getAttribute("data-orig") || "false") === "true";
+
+    if (isHidden !== origHidden) {
+      updates.push({ oldName: path, newName: path, hidden: isHidden });
+    }
+  });
+
+  // Handle deck edits
   adminState.subjects.forEach((cat, index) => {
     if (cat.IsFolder) return; // Handled above
 
     const originalName = cat.Subject;
     const originalPass = cat.Password || cat.password || "";
+    const originalHidden = cat.Hidden === true || String(cat.Hidden).toLowerCase() === "true";
 
     const newNameInput = document.getElementById(`new-subj-${index}`);
     const deckPassInput = document.getElementById(`deck-pass-${index}`);
+    const deckHiddenInput = document.getElementById(`deck-hidden-${index}`);
 
     if (!newNameInput || !deckPassInput) return;
 
     const newName = newNameInput.value.trim() || originalName;
     const deckPass = String(deckPassInput.value || "").trim();
+    const deckHidden = deckHiddenInput ? deckHiddenInput.checked : originalHidden;
     const originalPassword = String(originalPass || "").trim();
 
-    if (newName !== originalName || deckPass !== originalPassword) {
+    if (newName !== originalName || deckPass !== originalPassword || deckHidden !== originalHidden) {
       updates.push({
         oldName: originalName,
         newName: newName,
         password: deckPass,
+        hidden: deckHidden,
       });
     }
   });
@@ -520,6 +571,35 @@ window.cascadePassword = function (btn) {
 
   alert(
     `Applied to ${count} deck(s)! You can now customize individual decks below if needed before clicking Save.`,
+  );
+};
+
+window.cascadeHidden = function (btn) {
+  const checkbox = btn.previousElementSibling;
+  const folderPath = checkbox.getAttribute("data-path");
+  const isHidden = checkbox.checked;
+
+  let count = 0;
+  adminState.subjects.forEach((subj, index) => {
+    if (
+      subj.Subject.startsWith(folderPath + "::") ||
+      subj.Subject === folderPath
+    ) {
+      const deckCheckbox = document.getElementById(`deck-hidden-${index}`);
+      if (deckCheckbox) {
+        deckCheckbox.checked = isHidden;
+        deckCheckbox.parentElement.parentElement.classList.add("bg-purple-100", "dark:bg-purple-900/30");
+        setTimeout(
+          () => deckCheckbox.parentElement.parentElement.classList.remove("bg-purple-100", "dark:bg-purple-900/30"),
+          1000,
+        );
+        count++;
+      }
+    }
+  });
+
+  alert(
+    `${isHidden ? "Hidden" : "Shown"} ${count} deck(s)! You can now customize individual decks below if needed before clicking Save.`,
   );
 };
 
