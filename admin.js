@@ -2,9 +2,12 @@ let adminState = {
   token: "",
   subjects: [],
   reports: [],
+  admin_last_modified_timestamp: "", // OPTIMIZATION: For conflict detection
 };
 
-adminState.token = getAdminToken();
+// OPTIMIZATION: Optimistic UI Lock
+let adminSaveInProgress = false;
+let adminInputsLocked = false;
 
 function getAdminToken() {
   if (typeof sessionStorage !== "undefined") {
@@ -127,6 +130,30 @@ async function loadAdminSubjects() {
     }
 
     adminState.subjects = secureSubjects;
+
+    // OPTIMIZATION: Get admin_last_modified_timestamp for conflict detection
+    try {
+      const versionResponse = await fetch(DB_URL, {
+        method: "POST",
+        redirect: "follow",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          type: "get_cache_version",
+          token: getAdminToken(),
+        }),
+      });
+      const versionData = await parseJsonResponse(versionResponse);
+      if (versionData && versionData.timestamp) {
+        adminState.admin_last_modified_timestamp = versionData.timestamp;
+        console.log(
+          "[ADMIN] Loaded timestamp for conflict detection:",
+          adminState.admin_last_modified_timestamp,
+        );
+      }
+    } catch (e) {
+      console.warn("[ADMIN] Could not load admin modification timestamp:", e);
+    }
+
     renderAdminSubjectList();
   } catch (e) {
     console.error(e);
@@ -463,6 +490,18 @@ async function saveAdminChanges() {
     return;
   }
 
+  // OPTIMIZATION: Optimistic UI Lock
+  if (adminSaveInProgress) {
+    alert("Save already in progress. Please wait...");
+    return;
+  }
+
+  adminSaveInProgress = true;
+  lockAdminInputs(true);
+  btn.innerHTML =
+    '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Syncing with cloud...';
+  btn.disabled = true;
+
   console.log("Sending updates to backend:", JSON.stringify(updates, null, 2));
 
   try {
@@ -473,6 +512,9 @@ async function saveAdminChanges() {
         type: "admin_update",
         token: getAdminToken(),
         updates: updates,
+        // OPTIMIZATION: Send timestamp for conflict detection
+        admin_last_modified_timestamp: adminState.admin_last_modified_timestamp,
+        lastModifiedBy: adminState.token.substring(0, 10) + "...",
       }),
     });
     const result = await parseJsonResponse(response);
@@ -480,18 +522,76 @@ async function saveAdminChanges() {
     console.log("Backend response:", result);
 
     if (result.status === "success") {
-      alert("Changes saved! Refreshing secure layout...");
-      await loadAdminSubjects();
+      // OPTIMIZATION: Show success feedback
+      btn.innerHTML = '<i class="fa-solid fa-check-circle mr-2"></i> Saved ✓';
+      btn.classList.add("bg-green-600", "hover:bg-green-700");
+
+      // Update timestamp for next save
+      if (result.admin_last_modified_timestamp) {
+        adminState.admin_last_modified_timestamp =
+          result.admin_last_modified_timestamp;
+      }
+
+      // CRITICAL FIX: Broadcast cache invalidation to all connected clients
+      try {
+        if (typeof BroadcastChannel !== "undefined") {
+          const cacheChannel = new BroadcastChannel("mrh_cache_invalidation");
+          cacheChannel.postMessage({
+            type: "cache_invalidated",
+            timestamp: new Date().toISOString(),
+            cacheVersion: result.cacheVersion,
+          });
+          cacheChannel.close();
+        }
+      } catch (e) {
+        console.error("Failed to broadcast cache invalidation:", e);
+      }
+
+      setTimeout(() => {
+        loadAdminSubjects();
+        btn.innerHTML = originalHTML;
+        btn.classList.remove("bg-green-600", "hover:bg-green-700");
+      }, 1500);
+    } else if (result.status === "conflict") {
+      // OPTIMIZATION: Handle conflict from concurrent admin edits
+      alert(
+        "Conflict detected: " +
+          result.message +
+          "\n\nPlease refresh the page to load the latest changes before saving.",
+      );
+      btn.innerHTML = originalHTML;
+      await loadAdminSubjects(); // Reload to get latest timestamp
     } else {
       alert("Failed: " + result.message);
+      btn.innerHTML = originalHTML;
     }
   } catch (e) {
-    alert("Network error.");
+    alert("Network error: " + e.message);
     console.error(e);
-  } finally {
     btn.innerHTML = originalHTML;
+  } finally {
+    adminSaveInProgress = false;
+    lockAdminInputs(false);
     btn.disabled = false;
   }
+}
+
+// OPTIMIZATION: Lock/unlock admin inputs
+function lockAdminInputs(lock) {
+  adminInputsLocked = lock;
+  const inputs = document.querySelectorAll(
+    ".folder-pass-input, .folder-hidden-input, .deck-pass-input, " +
+      ".deck-hidden-input, #new-subj-input, input[id*='new-subj-'], input[id*='deck-pass-'], input[id*='deck-hidden-']",
+  );
+  inputs.forEach((input) => {
+    if (lock) {
+      input.disabled = true;
+      input.classList.add("opacity-50", "cursor-not-allowed");
+    } else {
+      input.disabled = false;
+      input.classList.remove("opacity-50", "cursor-not-allowed");
+    }
+  });
 }
 
 async function adminLoadReports() {

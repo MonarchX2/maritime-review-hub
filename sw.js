@@ -1,4 +1,8 @@
 const CACHE_PREFIX = "mrh-static";
+const CACHE_VERSION = "v1";
+const FULL_CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
+
+// CRITICAL FIX: Always include app entry point to ensure fresh data fetch
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -22,7 +26,7 @@ self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
     (async () => {
-      const cache = await caches.open(`${CACHE_PREFIX}-v1`);
+      const cache = await caches.open(FULL_CACHE_NAME);
       await cache.addAll(APP_SHELL.filter(Boolean));
     })(),
   );
@@ -33,11 +37,11 @@ self.addEventListener("activate", (event) => {
     (async () => {
       await clients.claim();
       const keys = await caches.keys();
+      // Clean up old cache versions
       await Promise.all(
         keys
           .filter(
-            (name) =>
-              name.startsWith(CACHE_PREFIX) && name !== `${CACHE_PREFIX}-v1`,
+            (name) => name.startsWith(CACHE_PREFIX) && name !== FULL_CACHE_NAME,
           )
           .map((name) => caches.delete(name)),
       );
@@ -67,7 +71,7 @@ self.addEventListener("fetch", (event) => {
           .then((response) => {
             const copy = response.clone();
             caches
-              .open(`${CACHE_PREFIX}-v1`)
+              .open(FULL_CACHE_NAME)
               .then((cache) => cache.put(request, copy));
             return response;
           })

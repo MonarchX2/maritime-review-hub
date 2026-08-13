@@ -124,6 +124,11 @@
       if (!document.hidden && Date.now() - lastSyncAt > SYNC_INTERVAL_MS) {
         syncDatabase(true, true);
       }
+
+      // CRITICAL FIX: On tab/page focus, check cache version and refresh if needed
+      if (!document.hidden && typeof checkCacheVersion === "function") {
+        checkCacheVersion();
+      }
     });
     window.addEventListener("error", (event) =>
       sendTelemetry("client_error", {

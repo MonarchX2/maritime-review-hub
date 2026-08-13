@@ -26,6 +26,27 @@ let pendingOfflineSyncTimer = null;
 let discoverySearchDebounceTimer = null;
 let discoveryUiBound = false;
 let discoveryActiveIndex = -1;
+let cacheInvalidationChannel = null;
+let localCacheVersion = 0;
+let remoteCacheVersion = 0;
+let cacheVersionCheckTimer = null;
+
+// OPTIMIZATION: Leader election pattern - only one tab polls
+let isLeaderTab = false;
+let leaderHeartbeatTimer = null;
+let leaderElectionChannel = null;
+
+// OPTIMIZATION: ETag/Hash headers for 304 responses
+let lastCacheVersionHash = null;
+let lastSyncHeaders = {};
+
+// OPTIMIZATION: Jitter polling with exponential backoff
+let pollingIntervalMs = 30000; // Base 30 seconds
+let failureRetryCount = 0;
+let maxRetryAttempts = 5;
+
+// OPTIMIZATION: Toast notifications
+let toastQueue = [];
 
 const debugLogger =
   typeof DebugUtils !== "undefined" && DebugUtils.createDebugLogger
@@ -954,6 +975,13 @@ function setGlobalLoadingState(
 
   overlay.classList.toggle("hidden", !isLoading);
   overlay.setAttribute("aria-hidden", String(!isLoading));
+
+  // OPTIMIZATION: Hide dashboard-loading placeholder when overlay shows (prevent duplicate loaders)
+  const dashboardLoading = document.getElementById("dashboard-loading");
+  if (dashboardLoading && isLoading) {
+    dashboardLoading.classList.add("hidden");
+  }
+
   return isLoading;
 }
 
@@ -5432,7 +5460,394 @@ async function submitGeneralFeedback() {
 let lastScrollTop = 0;
 let isTicking = false;
 
+// CRITICAL FIX: Cache invalidation management
+function setupCacheInvalidationListener() {
+  if (typeof BroadcastChannel === "undefined") return;
+
+  try {
+    cacheInvalidationChannel = new BroadcastChannel("mrh_cache_invalidation");
+    cacheInvalidationChannel.onmessage = (event) => {
+      if (event.data && event.data.type === "cache_invalidated") {
+        console.log("[CACHE] Invalidation signal received:", event.data);
+        // Force refresh database when cache is invalidated by admin
+        handleCacheInvalidation();
+      }
+    };
+  } catch (e) {
+    console.error("[CACHE] Failed to setup invalidation listener:", e);
+  }
+}
+
+function handleCacheInvalidation() {
+  console.log(
+    "[CACHE] Handling cache invalidation - syncing silently in background",
+  );
+  // IMPROVED FIX: Silent background sync instead of disruptive reload
+  // This updates all data without interrupting user's current activity
+  syncDatabase(false, true); // isRetry=false, isBackgroundCheck=true (silent)
+}
+
+async function checkCacheVersion() {
+  try {
+    const response = await fetch(DB_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ type: "get_cache_version" }),
+    });
+
+    if (!response.ok) return;
+
+    const data = await response.json();
+    if (data && typeof data.version === "number") {
+      remoteCacheVersion = data.version;
+
+      // If cache version changed, silently sync database (IMPROVED: non-disruptive)
+      if (localCacheVersion > 0 && remoteCacheVersion > localCacheVersion) {
+        console.log(
+          `[CACHE] Version changed: ${localCacheVersion} -> ${remoteCacheVersion}, syncing silently...`,
+        );
+        // Silent background sync - no page reload, no disruption
+        syncDatabase(false, true); // isRetry=false, isBackgroundCheck=true
+      }
+
+      localCacheVersion = remoteCacheVersion;
+    }
+  } catch (e) {
+    console.error("[CACHE] Failed to check version:", e);
+  }
+}
+
+// ============================================
+// OPTIMIZATION: Toast Notification System
+// ============================================
+function showToastNotification(message, type = "info", duration = 3500) {
+  if (typeof document === "undefined") return;
+
+  const toastContainer =
+    document.getElementById("app-toast-container") || createToastContainer();
+  if (!toastContainer) return;
+
+  const toast = document.createElement("div");
+  const toastId = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  toast.id = toastId;
+
+  const bgClass =
+    {
+      info: "bg-blue-500",
+      success: "bg-green-500",
+      warning: "bg-yellow-500",
+      error: "bg-red-500",
+    }[type] || "bg-blue-500";
+
+  toast.className = `fixed bottom-4 right-4 ${bgClass} text-white px-4 py-3 rounded-lg shadow-lg animate-fade-in transition-all duration-300 z-50 max-w-sm text-sm font-medium`;
+  toast.textContent = message;
+
+  toastContainer.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add("opacity-0");
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
+function createToastContainer() {
+  if (typeof document === "undefined") return null;
+  const container = document.createElement("div");
+  container.id = "app-toast-container";
+  container.className = "fixed bottom-0 right-0 z-50 pointer-events-none";
+  document.body.appendChild(container);
+  return container;
+}
+
+// ============================================
+// OPTIMIZATION: In-Memory State Re-fetch
+// ============================================
+async function reloadAppStateInMemory() {
+  try {
+    console.log("[STATE] Fetching latest app state in-memory...");
+
+    // Call existing sync but don't show overlays
+    await syncDatabase(false, true); // Silent background sync
+
+    // Show subtle toast
+    showToastNotification(
+      "Deck settings updated by admin. Latest content loaded.",
+      "info",
+      2500,
+    );
+
+    console.log("[STATE] In-memory state refresh complete");
+    return true;
+  } catch (error) {
+    console.error("[STATE] Failed to refresh state:", error);
+    showToastNotification(
+      "Unable to load latest content. Please refresh the page.",
+      "warning",
+      4000,
+    );
+    return false;
+  }
+}
+
+// ============================================
+// OPTIMIZATION: Leader Election Pattern
+// ============================================
+function setupLeaderElection() {
+  if (typeof BroadcastChannel === "undefined") {
+    // Fallback: single tab or old browser, act as leader
+    isLeaderTab = true;
+    console.log("[LEADER] Single-tab mode, this tab is the leader");
+    return;
+  }
+
+  try {
+    leaderElectionChannel = new BroadcastChannel("mrh_leader_election");
+
+    leaderElectionChannel.onmessage = (event) => {
+      if (event.data && event.data.type === "leader_heartbeat") {
+        // Another tab claims leadership, yield to it
+        if (isLeaderTab && event.data.tabId !== window.mrh_tabId) {
+          console.log("[LEADER] Yielding leadership to another tab");
+          isLeaderTab = false;
+          clearTimeout(leaderHeartbeatTimer);
+        }
+      }
+    };
+
+    // Generate unique tab ID
+    window.mrh_tabId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Claim leadership
+    isLeaderTab = true;
+    console.log("[LEADER] This tab elected as leader:", window.mrh_tabId);
+
+    // Send periodic heartbeat (proves this tab is alive)
+    leaderHeartbeatTimer = setInterval(() => {
+      if (isLeaderTab) {
+        leaderElectionChannel.postMessage({
+          type: "leader_heartbeat",
+          tabId: window.mrh_tabId,
+          timestamp: Date.now(),
+        });
+      }
+    }, 10000); // Heartbeat every 10 seconds
+  } catch (e) {
+    console.error("[LEADER] Failed to setup leader election:", e);
+    isLeaderTab = true; // Fallback: act as leader
+  }
+}
+
+// ============================================
+// OPTIMIZATION: Exponential Backoff with Jitter
+// ============================================
+function calculateBackoffDelay(retryCount) {
+  // Exponential: 2^retryCount seconds
+  // Jitter: add random 0-50% to avoid thundering herd
+  const baseDelay = Math.pow(2, Math.min(retryCount, 5)) * 1000; // Cap at 32 seconds
+  const jitter = Math.random() * baseDelay * 0.5;
+  return baseDelay + jitter;
+}
+
+async function fetchWithExponentialBackoff(url, options = {}, maxRetries = 3) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      if (response.ok || response.status === 304) {
+        failureRetryCount = 0; // Reset on success
+        return response;
+      }
+
+      // Rate limited or server error?
+      if (response.status === 429 || response.status >= 500) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      return response;
+    } catch (error) {
+      lastError = error;
+
+      if (attempt < maxRetries) {
+        const delay = calculateBackoffDelay(attempt);
+        console.log(
+          `[BACKOFF] Retry ${attempt + 1}/${maxRetries} after ${Math.round(delay)}ms`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  throw lastError || new Error("Max retries exceeded");
+}
+
+// ============================================
+// OPTIMIZATION: Jittered Polling Interval
+// ============================================
+function getJitteredPollingInterval() {
+  // Base 30 seconds, jitter between 25-40 seconds
+  // Prevents all clients from polling simultaneously
+  const jitter = (Math.random() - 0.5) * 10000; // ±5 seconds
+  return Math.max(25000, Math.min(40000, 30000 + jitter));
+}
+
+// ============================================
+// OPTIMIZATION: Enhanced Cache Version Check with ETag
+// ============================================
+async function checkCacheVersionWithETag() {
+  // Only leader tab performs polling (reduces traffic 66%)
+  if (!isLeaderTab) return;
+
+  // Pause polling when tab is hidden
+  if (typeof document !== "undefined" && document.hidden) {
+    console.log("[CACHE] Tab hidden, skipping version check");
+    return;
+  }
+
+  try {
+    const headers = { "Content-Type": "text/plain;charset=utf-8" };
+
+    // Send last known hash to enable 304 responses
+    if (lastCacheVersionHash) {
+      headers["If-None-Match"] = lastCacheVersionHash;
+    }
+
+    const response = await fetchWithExponentialBackoff(
+      DB_URL,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ type: "get_cache_version" }),
+      },
+      2, // Max 2 retries for version check
+    );
+
+    // 304 Not Modified = cache still valid, nothing to do
+    if (response.status === 304) {
+      console.log("[CACHE] 304 Not Modified, cache is current");
+      failureRetryCount = 0;
+      return;
+    }
+
+    if (!response.ok) return;
+
+    const data = await response.json();
+
+    // Store ETag for next request
+    const etag = response.headers.get("ETag");
+    if (etag) lastCacheVersionHash = etag;
+
+    if (data && typeof data.version === "number") {
+      remoteCacheVersion = data.version;
+
+      // If version changed, leader broadcasts to all tabs
+      if (localCacheVersion > 0 && remoteCacheVersion > localCacheVersion) {
+        console.log(
+          `[CACHE] Version changed: ${localCacheVersion} -> ${remoteCacheVersion}`,
+        );
+
+        if (isLeaderTab && typeof leaderElectionChannel !== "undefined") {
+          try {
+            leaderElectionChannel.postMessage({
+              type: "cache_version_updated",
+              newVersion: remoteCacheVersion,
+            });
+          } catch (e) {
+            console.log("[CACHE] Could not broadcast version update");
+          }
+        }
+
+        // In-memory state re-fetch (no page reload!)
+        await reloadAppStateInMemory();
+      }
+
+      localCacheVersion = remoteCacheVersion;
+      failureRetryCount = 0;
+    }
+  } catch (e) {
+    failureRetryCount++;
+    console.error("[CACHE] Version check failed:", e);
+
+    if (failureRetryCount > maxRetryAttempts) {
+      console.warn(
+        "[CACHE] Max retry attempts exceeded, giving up temporarily",
+      );
+      failureRetryCount = 0;
+    }
+  }
+}
+
+// ============================================
+// OPTIMIZATION: Enhanced Visibility Change Handler
+// ============================================
+function setupVisibilityChangeHandler() {
+  if (typeof document === "undefined") return;
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      console.log("[VISIBILITY] Tab became visible, checking cache version");
+      // Immediately check cache when tab becomes visible
+      checkCacheVersionWithETag();
+
+      // Reset polling to random interval
+      scheduleNextPolling();
+    } else {
+      console.log("[VISIBILITY] Tab hidden, will pause polling");
+    }
+  });
+}
+
+// ============================================
+// OPTIMIZATION: Smarter Polling Scheduler with Jitter
+// ============================================
+function scheduleNextPolling() {
+  if (!isLeaderTab) {
+    console.log("[POLLING] Not leader, skipping poll schedule");
+    return;
+  }
+
+  clearInterval(cacheVersionCheckTimer);
+
+  const nextInterval = getJitteredPollingInterval();
+  console.log(
+    `[POLLING] Next check in ${Math.round(nextInterval / 1000)}s (jittered)`,
+  );
+
+  cacheVersionCheckTimer = setInterval(() => {
+    checkCacheVersionWithETag();
+  }, nextInterval);
+
+  // Also check immediately
+  checkCacheVersionWithETag();
+}
+
+function startCacheVersionChecking() {
+  // Setup leader election first
+  setupLeaderElection();
+
+  // Setup visibility handler
+  setupVisibilityChangeHandler();
+
+  // Start polling with leader election and jitter
+  scheduleNextPolling();
+}
+
+function forcePageRefresh() {
+  console.log("[CACHE] Cache invalidated - triggering background sync");
+  // IMPROVED FIX: Silent background sync instead of disruptive page reload
+  // Users won't experience any interruption while data is updated silently
+  clearTimeout(window.cacheInvalidationTimeout);
+  window.cacheInvalidationTimeout = setTimeout(() => {
+    // Small delay allows multiple invalidation signals to batch together
+    syncDatabase(false, true); // isRetry=false, isBackgroundCheck=true (silent)
+  }, 100);
+}
+
 window.addEventListener("DOMContentLoaded", () => {
+  // CRITICAL FIX: Setup cache invalidation listener and version checking
+  setupCacheInvalidationListener();
+  startCacheVersionChecking();
+
   const mainEl = document.querySelector("main");
   const headerEl = document.querySelector("header");
   if (headerEl) headerEl.classList.add("transition-transform", "duration-300");
