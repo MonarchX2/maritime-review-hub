@@ -223,114 +223,151 @@ function renderAdminSubjectList() {
         : currentPath
           ? `${currentPath}::${folderName}`
           : folderName;
+
+    // Folder settings section (collapsible)
     if (
       depth > 0 &&
       (Object.keys(node.subfolders).length > 0 || node.decks.length > 0)
     ) {
       innerHtml += `
-                <div class="mb-4 p-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg shadow-sm">
-                    <label class="text-sm font-bold text-red-700 dark:text-red-400 block mb-2">
-                        <i class="fa-solid fa-lock mr-1"></i> Lock Entire '${escapeHTML(folderName)}' Folder
-                    </label>
-                    <p class="text-xs text-red-600 dark:text-red-300 mb-2">Setting a password here locks the folder itself. Users cannot open it to see subfolders or decks without this password.</p>
-                    
-                    <input type="text" 
-                        class="folder-pass-input w-full p-2 border border-red-300 dark:border-red-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-red-500 focus:ring-2 outline-none transition-all" 
-                        placeholder="Leave blank for public folder..."
-                        data-path="${escapeHTML(fullPath)}"
-                        data-orig="${escapeHTML(node.folderPass || "")}"
-                        value="${escapeHTML(node.folderPass || "")}">
-                    
-                    <!-- ADDED THE MISSING BUTTON -->
-                    <button onclick="cascadePassword(this)" class="mt-3 w-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 py-2 rounded font-bold hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors shadow-sm active:scale-95 text-sm flex items-center justify-center">
-                        <i class="fa-solid fa-angles-down mr-2"></i> Apply to all nested decks
-                    </button>
-                </div>
-
-                <div class="mb-4 p-4 bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 rounded-lg shadow-sm">
-                    <label class="text-sm font-bold text-purple-700 dark:text-purple-400 flex items-center gap-2 cursor-pointer mb-2">
-                        <input type="checkbox" 
-                            class="folder-hidden-input w-4 h-4 cursor-pointer"
-                            data-path="${escapeHTML(fullPath)}"
-                            data-orig="${String(node.folderHidden || false)}"
-                            ${node.folderHidden ? "checked" : ""}>
-                        <i class="fa-solid fa-eye-slash mr-1"></i> Hide Entire '${escapeHTML(folderName)}' Folder
-                    </label>
-                    <p class="text-xs text-purple-600 dark:text-purple-300 mb-2">When enabled, this folder and all its contents will be hidden from regular users (not synced). Only visible in admin view.</p>
-                    
-                    <button onclick="cascadeHidden(this)" class="mt-3 w-full bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 py-2 rounded font-bold hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors shadow-sm active:scale-95 text-sm flex items-center justify-center">
-                        <i class="fa-solid fa-angles-down mr-2"></i> Hide all nested decks
-                    </button>
-                </div>
+                <details class="mb-4 bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden group">
+                    <summary class="cursor-pointer p-3 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-between text-sm font-bold text-gray-700 dark:text-gray-300 outline-none list-none">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-sliders text-amber-600 dark:text-amber-500"></i>
+                            Folder Settings
+                        </span>
+                        <i class="fa-solid fa-chevron-right text-gray-400 transition-transform duration-200 group-open:rotate-90"></i>
+                    </summary>
+                    <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-700 space-y-4 bg-white dark:bg-gray-900/50">
+                        <div class="space-y-2">
+                            <label class="text-sm font-bold text-red-700 dark:text-red-400 flex items-center gap-2">
+                                <i class="fa-solid fa-lock"></i> Lock Folder
+                            </label>
+                            <p class="text-xs text-red-600 dark:text-red-300 mb-2">Password to access this folder and subfolders</p>
+                            <input type="text" 
+                                class="folder-pass-input w-full p-2 border border-red-300 dark:border-red-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-red-500 focus:ring-2 outline-none transition-all text-sm" 
+                                placeholder="Leave blank for public folder..."
+                                data-path="${escapeHTML(fullPath)}"
+                                data-orig="${escapeHTML(node.folderPass || "")}"
+                                value="${escapeHTML(node.folderPass || "")}">
+                            <button onclick="cascadePassword(this)" class="w-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 py-2 rounded font-semibold hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors active:scale-95 text-xs flex items-center justify-center gap-2 mt-2">
+                                <i class="fa-solid fa-angles-down"></i> Apply to all nested decks
+                            </button>
+                        </div>
+                        
+                        <div class="border-t border-gray-200 dark:border-gray-700 pt-3">
+                            <label class="text-sm font-bold text-purple-700 dark:text-purple-400 flex items-center gap-2 cursor-pointer mb-2">
+                                <input type="checkbox" 
+                                    class="folder-hidden-input w-4 h-4 cursor-pointer"
+                                    data-path="${escapeHTML(fullPath)}"
+                                    data-orig="${String(node.folderHidden || false)}"
+                                    ${node.folderHidden ? "checked" : ""}>
+                                <i class="fa-solid fa-eye-slash"></i> Hide Entire Folder
+                            </label>
+                            <p class="text-xs text-purple-600 dark:text-purple-300 mb-2">Hidden from regular users (not synced)</p>
+                            <button onclick="cascadeHidden(this)" class="w-full bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 py-2 rounded font-semibold hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors active:scale-95 text-xs flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-angles-down"></i> Hide all nested decks
+                            </button>
+                        </div>
+                    </div>
+                </details>
             `;
     }
 
+    // Render subfolders
     for (const [subName, subNode] of Object.entries(node.subfolders)) {
       innerHtml += renderNode(subNode, subName, depth + 1, fullPath);
     }
 
-    node.decks.forEach((subj) => {
-      innerHtml += `
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row items-center gap-4 mt-3">
-                    <div class="w-full md:w-1/3">
-                        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Deck Name</span>
-                        <div class="font-medium text-gray-700 dark:text-gray-200 truncate" title="${escapeHTML(subj.originalFull)}">${escapeHTML(subj.deckName)}</div>
-                    </div>
-                    <i class="fa-solid fa-arrow-right text-gray-400 hidden md:block"></i>
-                    <i class="fa-solid fa-arrow-down text-gray-400 block md:hidden"></i>
-                    <div class="w-full md:w-2/3">
-                        <div class="flex justify-between items-end mb-1">
-                            <span class="text-xs font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">New Full Path</span>
-                            <span class="text-xs text-gray-400 font-mono" id="char-count-${subj.index}">${subj.originalFull.length}/100</span>
+    // Render decks section with header
+    if (node.decks.length > 0) {
+      if (depth > 0) {
+        innerHtml += `<div class="my-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <span class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">📚 Decks in this folder</span>
+                     </div>`;
+      }
+
+      node.decks.forEach((subj) => {
+        innerHtml += `
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-md transition-all">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <!-- Left Column: Deck Info -->
+                        <div>
+                            <span class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">📖 Deck Name</span>
+                            <div class="font-semibold text-gray-800 dark:text-gray-100 text-sm break-words" title="${escapeHTML(subj.originalFull)}">${escapeHTML(subj.deckName)}</div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400 mt-2 font-mono">Full path: ${escapeHTML(subj.originalFull)}</div>
                         </div>
-                        <input type="text" 
-                                id="new-subj-${subj.index}" 
-                                value="${escapeHTML(subj.originalFull)}" 
-                                maxlength="100"
-                                oninput="const countEl = document.getElementById('char-count-${subj.index}');
-                                countEl.innerText = this.value.length + '/100';
-                                this.value.length >= 90 ? countEl.classList.add('text-red-500') : countEl.classList.remove('text-red-500');"
-                                class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-brand-500 focus:ring-2 outline-none transition-all">
                         
-                        <div class="flex justify-between items-end mt-3 mb-1">
-                            <span class="text-xs font-bold text-red-500 uppercase tracking-wider"><i class="fa-solid fa-lock mr-1"></i> Deck Password</span>
-                        </div>
-                        <input type="text" 
-                                id="deck-pass-${subj.index}" 
-                                value="${escapeHTML(subj.password)}" 
-                                placeholder="Leave blank for public access"
-                                class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-red-500 focus:ring-2 outline-none transition-all">
-                        
-                        <div class="flex items-center mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                            <label class="text-xs font-bold text-purple-600 dark:text-purple-400 flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" 
-                                    id="deck-hidden-${subj.index}"
-                                    class="deck-hidden-input w-4 h-4 cursor-pointer"
-                                    data-index="${subj.index}"
-                                    ${subj.hidden ? "checked" : ""}>
-                                <i class="fa-solid fa-eye-slash"></i> Hide from users
-                            </label>
+                        <!-- Right Column: Controls -->
+                        <div class="space-y-3">
+                            <!-- Path Input -->
+                            <div>
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="text-xs font-bold text-brand-600 dark:text-brand-400 uppercase">New Path</span>
+                                    <span class="text-xs text-gray-400 font-mono" id="char-count-${subj.index}">${subj.originalFull.length}/100</span>
+                                </div>
+                                <input type="text" 
+                                        id="new-subj-${subj.index}" 
+                                        value="${escapeHTML(subj.originalFull)}" 
+                                        maxlength="100"
+                                        oninput="const countEl = document.getElementById('char-count-${subj.index}');
+                                        countEl.innerText = this.value.length + '/100';
+                                        this.value.length >= 90 ? countEl.classList.add('text-red-500') : countEl.classList.remove('text-red-500');"
+                                        class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-sm focus:border-brand-500 focus:ring-2 outline-none transition-all">
+                            </div>
+                            
+                            <!-- Password & Hidden Status (Inline) -->
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-xs font-bold text-red-600 dark:text-red-400 block mb-1">
+                                        <i class="fa-solid fa-lock"></i> Password
+                                    </label>
+                                    <input type="text" 
+                                            id="deck-pass-${subj.index}" 
+                                            value="${escapeHTML(subj.password)}" 
+                                            placeholder="Public"
+                                            class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-sm focus:border-red-500 focus:ring-2 outline-none transition-all">
+                                </div>
+                                <div class="flex items-end">
+                                    <label class="text-xs font-bold text-purple-600 dark:text-purple-400 flex items-center gap-2 cursor-pointer p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-700 w-full">
+                                        <input type="checkbox" 
+                                            id="deck-hidden-${subj.index}"
+                                            class="deck-hidden-input w-4 h-4 cursor-pointer"
+                                            data-index="${subj.index}"
+                                            ${subj.hidden ? "checked" : ""}>
+                                        <i class="fa-solid fa-eye-slash text-sm"></i>
+                                        <span>Hidden</span>
+                                    </label>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             `;
-    });
+      });
+    }
 
     if (depth === 0) return innerHtml;
 
     const totalDecks = countTotalDecks(node);
-    const indentClass = depth > 1 ? "ml-4 md:ml-8" : "";
+    const depthColor =
+      depth === 1
+        ? "bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800"
+        : "bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700";
+
+    const indentClass = depth > 1 ? "ml-2 md:ml-4" : "";
 
     return `
-            <details class="${indentClass} mb-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 group shadow-sm">
-                <summary class="font-bold text-gray-700 dark:text-gray-300 p-4 cursor-pointer flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors rounded-xl outline-none list-none">
-                    <span class="flex items-center gap-2">
-                        <i class="fa-solid fa-folder text-brand-500"></i> ${escapeHTML(folderName)}
-                        <span class="bg-gray-200 dark:bg-gray-700 text-xs px-2 py-1 rounded-full text-gray-600 dark:text-gray-400 font-semibold ml-2">${totalDecks} deck${totalDecks !== 1 ? "s" : ""}</span>
+            <details class="${indentClass} mb-3 ${depthColor} rounded-lg border group shadow-sm">
+                <summary class="font-bold text-gray-700 dark:text-gray-300 p-4 cursor-pointer flex items-center justify-between hover:bg-white/50 dark:hover:bg-gray-900/30 transition-colors outline-none list-none group-open:bg-white/50 dark:group-open:bg-gray-900/30">
+                    <span class="flex items-center gap-3">
+                        <i class="fa-solid fa-folder text-brand-500 text-lg"></i>
+                        <span class="font-semibold">${escapeHTML(folderName)}</span>
+                        <span class="bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 text-xs px-2 py-1 rounded-full font-semibold">${totalDecks} deck${totalDecks !== 1 ? "s" : ""}</span>
                     </span>
                     <i class="fa-solid fa-chevron-down text-gray-400 transition-transform duration-300 group-open:rotate-180"></i>
                 </summary>
-                <div class="p-4 pt-0 mt-2 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-3">
+                <div class="px-4 py-3 border-t ${depthColor.includes("blue") ? "border-blue-200 dark:border-blue-800" : "border-gray-200 dark:border-gray-700"} space-y-3">
                     ${innerHtml}
                 </div>
             </details>

@@ -2252,13 +2252,15 @@ async function deleteSubjectData(subject) {
     )
   ) {
     state.db = state.db.filter((q) => q.Subject !== subject);
-    // Don't remove from categorySummary - the deck should remain visible (just with 0 questions)
     state.prefs.favoriteDecks = (state.prefs.favoriteDecks || []).filter(
       (deck) => deck !== subject,
     );
     state.prefs.recentDecks = (state.prefs.recentDecks || []).filter(
       (deck) => deck !== subject,
     );
+    if (state.prefs.lastActivity?.subject === subject) {
+      state.prefs.lastActivity = null;
+    }
     state.prefs.deletedDecks = Array.from(
       new Set([...(state.prefs.deletedDecks || []), subject].filter(Boolean)),
     );
@@ -2273,9 +2275,9 @@ async function deleteSubjectData(subject) {
     if (saved) {
       try {
         const sessionObj = JSON.parse(saved);
-        const hasDeletedQuestions = sessionObj.questions.some(
-          (q) => q.Subject === subject,
-        );
+        const hasDeletedQuestions = Array.isArray(sessionObj.questions)
+          ? sessionObj.questions.some((q) => q.Subject === subject)
+          : false;
 
         if (hasDeletedQuestions) {
           let newQuestions = [];
@@ -2287,7 +2289,7 @@ async function deleteSubjectData(subject) {
             if (sessionObj.questions[i].Subject !== subject) {
               newQuestions.push(sessionObj.questions[i]);
 
-              if (sessionObj.userAnswers[i]) {
+              if (sessionObj.userAnswers && sessionObj.userAnswers[i]) {
                 newUserAnswers[newIdx] = sessionObj.userAnswers[i];
               }
 
@@ -2314,20 +2316,42 @@ async function deleteSubjectData(subject) {
               keptBeforeCurrent,
               newQuestions.length - 1,
             );
-            localStorage.setItem(
-              "mrh_saved_session",
-              JSON.stringify(sessionObj),
-            );
+            setStoredJSON("saved_session", sessionObj);
 
             if (state.session.active) {
-              state.session = sessionObj;
+              state.session = { ...sessionObj };
             }
           }
+        } else if (
+          state.session?.questions?.some((q) => q.Subject === subject) ||
+          state.prefs.lastActivity?.subject === subject
+        ) {
+          clearSessionProgress();
+          state.session = {
+            active: false,
+            questions: [],
+            currentIndex: 0,
+            userAnswers: {},
+          };
         }
       } catch (e) {
         console.error("Error parsing saved session during deletion.", e);
       }
     }
+
+    if (
+      state.session?.questions?.some((q) => q.Subject === subject) ||
+      state.prefs.lastActivity?.subject === subject
+    ) {
+      clearSessionProgress();
+      state.session = {
+        active: false,
+        questions: [],
+        currentIndex: 0,
+        userAnswers: {},
+      };
+    }
+
     updateDashboard();
   }
 }
