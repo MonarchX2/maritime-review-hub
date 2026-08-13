@@ -334,6 +334,8 @@ function renderAdminSubjectList() {
                                             id="deck-hidden-${subj.index}"
                                             class="deck-hidden-input w-4 h-4 cursor-pointer"
                                             data-index="${subj.index}"
+                                            data-path="${escapeHTML(subj.originalFull)}"
+                                            data-orig="${String(subj.hidden || false)}"
                                             ${subj.hidden ? "checked" : ""}>
                                         <i class="fa-solid fa-eye-slash text-sm"></i>
                                         <span>Hidden</span>
@@ -437,17 +439,20 @@ async function saveAdminChanges() {
       `[Compare] ${originalName}: name=${newName !== originalName}, pass=${deckPass !== originalPassword}, hidden=${deckHidden}!==${originalHidden}=${deckHidden !== originalHidden}`,
     );
 
-    if (
-      newName !== originalName ||
-      deckPass !== originalPassword ||
-      deckHidden !== originalHidden
-    ) {
-      updates.push({
+    const hasNameChange = newName !== originalName;
+    const hasPasswordChange = deckPass !== originalPassword;
+    const hasHiddenChange = deckHidden !== originalHidden;
+
+    if (hasNameChange || hasPasswordChange || hasHiddenChange) {
+      const deckUpdate = {
         oldName: originalName,
         newName: newName,
-        password: deckPass,
-        hidden: deckHidden,
-      });
+      };
+
+      if (hasPasswordChange) deckUpdate.password = deckPass;
+      if (hasHiddenChange) deckUpdate.hidden = deckHidden;
+
+      updates.push(deckUpdate);
     }
   });
 
