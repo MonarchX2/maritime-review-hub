@@ -157,6 +157,11 @@ function renderAdminSubjectList() {
     const passString = String(cat.Password || cat.password || "").trim();
     const hiddenStatus =
       cat.Hidden === true || String(cat.Hidden).toLowerCase() === "true";
+
+    console.log(
+      `[Render] Subject: ${subjString}, Hidden: ${cat.Hidden}, Parsed: ${hiddenStatus}`,
+    );
+
     const parts = subjString.split("::").map((s) => s.trim());
     if (
       cat.IsFolder === true ||
@@ -199,6 +204,8 @@ function renderAdminSubjectList() {
       password: passString,
       hidden: hiddenStatus,
     });
+
+    console.log(`[Add Deck] ${deckName}, hidden=${hiddenStatus}`);
   });
 
   function countTotalDecks(node) {
@@ -389,6 +396,10 @@ async function saveAdminChanges() {
       : originalHidden;
     const originalPassword = String(originalPass || "").trim();
 
+    console.log(
+      `[Compare] ${originalName}: name=${newName !== originalName}, pass=${deckPass !== originalPassword}, hidden=${deckHidden}!==${originalHidden}=${deckHidden !== originalHidden}`,
+    );
+
     if (
       newName !== originalName ||
       deckPass !== originalPassword ||
@@ -410,6 +421,8 @@ async function saveAdminChanges() {
     return;
   }
 
+  console.log("Sending updates to backend:", JSON.stringify(updates, null, 2));
+
   try {
     const response = await fetch(DB_URL, {
       method: "POST",
@@ -421,6 +434,8 @@ async function saveAdminChanges() {
       }),
     });
     const result = await parseJsonResponse(response);
+
+    console.log("Backend response:", result);
 
     if (result.status === "success") {
       alert("Changes saved! Refreshing secure layout...");
