@@ -1,5 +1,5 @@
 ﻿const DB_URL =
-  "https://script.google.com/macros/s/AKfycbx4HFy5LmX_CFZMTOdl809OrnsgxzQvpzHDOhrMK3yk7fNZb7Gp2pImwBCS_I1Gx-D20g/exec";
+  "https://script.google.com/macros/s/AKfycbw_z0Xrr_4O1_CDep2benI6CMRyGuIJu8MfGBp8PnnR90S4fraESmNWJf1ulHfsZGrGzw/exec";
 
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
 const QUIZ_NAVIGATION_BREAKPOINT = 768;
