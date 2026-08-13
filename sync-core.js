@@ -23,7 +23,8 @@
         badgeClass: "fa-triangle-exclamation text-yellow-300",
         title: "Database reconnecting",
         overlayTitle: "Database reconnecting",
-        overlayDetail: "The app is retrying the connection and will resume shortly.",
+        overlayDetail:
+          "The app is retrying the connection and will resume shortly.",
       },
       error: {
         panelClass:
@@ -53,7 +54,8 @@
     const toneState = getSyncStatusVisualState(tone);
 
     if (titleEl) titleEl.textContent = title || "Loading...";
-    if (detailEl) detailEl.textContent = detail || "Preparing the latest data...";
+    if (detailEl)
+      detailEl.textContent = detail || "Preparing the latest data...";
     if (iconEl) {
       const iconClass =
         tone === "success"

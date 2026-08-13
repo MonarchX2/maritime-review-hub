@@ -12,20 +12,31 @@ const state = {
 };
 
 const visibleSummary = state.categorySummary.filter(
-  (deck) => !new Set((state.prefs.deletedDecks || []).filter(Boolean)).has(deck.Subject),
+  (deck) =>
+    !new Set((state.prefs.deletedDecks || []).filter(Boolean)).has(
+      deck.Subject,
+    ),
 );
-assert.deepStrictEqual(visibleSummary, [{ Subject: "Navigation::Basic", QuestionCount: 10 }]);
+assert.deepStrictEqual(visibleSummary, [
+  { Subject: "Navigation::Basic", QuestionCount: 10 },
+]);
 
 state.prefs.deletedDecks = Array.from(
-  new Set([...(state.prefs.deletedDecks || []), "Navigation::Basic"].filter(Boolean)),
+  new Set(
+    [...(state.prefs.deletedDecks || []), "Navigation::Basic"].filter(Boolean),
+  ),
 );
 const afterDelete = state.categorySummary.filter(
-  (deck) => !new Set((state.prefs.deletedDecks || []).filter(Boolean)).has(deck.Subject),
+  (deck) =>
+    !new Set((state.prefs.deletedDecks || []).filter(Boolean)).has(
+      deck.Subject,
+    ),
 );
 assert.deepStrictEqual(afterDelete, []);
 
 assert.strictEqual(
-  state.prefs.favoriteDecks.filter((deck) => deck !== "Navigation::Basic").length,
+  state.prefs.favoriteDecks.filter((deck) => deck !== "Navigation::Basic")
+    .length,
   0,
 );
 

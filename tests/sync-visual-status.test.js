@@ -66,7 +66,7 @@ const iconEl = elements["database-connection-icon"];
 const overlayEl = elements["app-loading-overlay"];
 
 globalThis.SyncCore.updateSyncStatus(
-  "<i class=\"fa-solid fa-spinner fa-spin mr-1\"></i> Connecting to database...",
+  '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Connecting to database...',
   "info",
   true,
 );

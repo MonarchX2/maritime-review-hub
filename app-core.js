@@ -167,7 +167,9 @@ function sanitizeDeletedDeckReferences() {
   );
   state.categorySummary = (state.categorySummary || []).filter(
     (deck) =>
-      deck && String(deck.Subject || "").trim() && !deletedSet.has(String(deck.Subject || "").trim()),
+      deck &&
+      String(deck.Subject || "").trim() &&
+      !deletedSet.has(String(deck.Subject || "").trim()),
   );
 }
 
@@ -661,7 +663,9 @@ async function loadState() {
       if (!Object.prototype.hasOwnProperty.call(prefs, "quizNavigationMode")) {
         state.prefs.quizNavigationMode = "manual";
       }
-      if (!Object.prototype.hasOwnProperty.call(prefs, "quizNavigationPosition")) {
+      if (
+        !Object.prototype.hasOwnProperty.call(prefs, "quizNavigationPosition")
+      ) {
         state.prefs.quizNavigationPosition = "top";
       }
     } catch (e) {
@@ -743,11 +747,17 @@ function syncPreferenceControls() {
     "toggle-srs-mode": state.prefs.srsEnabled === true,
     "toggle-main-srs-mode": state.prefs.srsEnabled === true,
     "toggle-wrong-choices": state.prefs.showWrongChoices !== false,
-    "toggle-main-navigation-quiz": state.prefs.quizNavigationPosition === "bottom",
-    "toggle-main-navigation-single": state.prefs.studySingleNavigationPosition === "bottom",
-    "toggle-main-navigation-scroll": state.prefs.studyScrollNavigationPosition === "bottom",
-    "toggle-session-navigation-bottom": state.prefs.quizNavigationPosition === "bottom",
-    "toggle-review-navigation-bottom": getStudyNavigationPosition(state.prefs.studyLayout || "scroll") === "bottom",
+    "toggle-main-navigation-quiz":
+      state.prefs.quizNavigationPosition === "bottom",
+    "toggle-main-navigation-single":
+      state.prefs.studySingleNavigationPosition === "bottom",
+    "toggle-main-navigation-scroll":
+      state.prefs.studyScrollNavigationPosition === "bottom",
+    "toggle-session-navigation-bottom":
+      state.prefs.quizNavigationPosition === "bottom",
+    "toggle-review-navigation-bottom":
+      getStudyNavigationPosition(state.prefs.studyLayout || "scroll") ===
+      "bottom",
     globalModeToggle: state.prefs.lastActivity?.mode === "review",
   };
 
@@ -930,11 +940,11 @@ function getSyncStatusVisualState(tone = "info") {
       badgeClass: "fa-triangle-exclamation text-yellow-300",
       title: "Database reconnecting",
       overlayTitle: "Database reconnecting",
-      overlayDetail: "The app is retrying the connection and will resume shortly.",
+      overlayDetail:
+        "The app is retrying the connection and will resume shortly.",
     },
     error: {
-      panelClass:
-        "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-300",
+      panelClass: "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-300",
       badgeClass: "fa-xmark-circle text-red-300",
       title: "Database unavailable",
       overlayTitle: "Database unavailable",
@@ -1125,7 +1135,7 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
       syncAttempt = 0;
       syncConnected = true;
       sanitizeDeletedDeckReferences();
-  const changed =
+      const changed =
         JSON.stringify(state.categorySummary || []) !==
         JSON.stringify(summaryData);
       const canApplyNow =
@@ -1608,7 +1618,9 @@ function getDeckLoaderId(subject) {
 }
 
 function getVisibleCategorySummary() {
-  const deletedDecks = new Set((state.prefs?.deletedDecks || []).filter(Boolean));
+  const deletedDecks = new Set(
+    (state.prefs?.deletedDecks || []).filter(Boolean),
+  );
   return (state.categorySummary || []).filter(
     (deck) => deck && deck.Subject && !deletedDecks.has(deck.Subject),
   );
@@ -2533,7 +2545,9 @@ function renderDeckReview(subject, questions) {
   }
 
   const showTopNavigation = ["top", "both"].includes(reviewNavigationPosition);
-  const showBottomNavigation = ["bottom", "both"].includes(reviewNavigationPosition);
+  const showBottomNavigation = ["bottom", "both"].includes(
+    reviewNavigationPosition,
+  );
 
   if (showTopNavigation) html += navigationHTML;
 
@@ -3110,20 +3124,23 @@ async function clearAppData() {
 
     if ("caches" in window) {
       const cacheNames = await caches.keys();
-      await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
+      await Promise.all(
+        cacheNames.map((cacheName) => caches.delete(cacheName)),
+      );
     }
 
     if ("indexedDB" in window && typeof indexedDB.databases === "function") {
       try {
         const dbs = await indexedDB.databases();
         await Promise.all(
-          dbs.map((db) =>
-            new Promise((resolve) => {
-              const request = indexedDB.deleteDatabase(db.name);
-              request.onsuccess = () => resolve();
-              request.onerror = () => resolve();
-              request.onblocked = () => resolve();
-            }),
+          dbs.map(
+            (db) =>
+              new Promise((resolve) => {
+                const request = indexedDB.deleteDatabase(db.name);
+                request.onsuccess = () => resolve();
+                request.onerror = () => resolve();
+                request.onblocked = () => resolve();
+              }),
           ),
         );
       } catch (error) {
@@ -3542,7 +3559,8 @@ function getDeckNavigationOverride(subject, type) {
 function setDeckNavigationOverride(subject, type, value) {
   const deckKey = String(subject || currentReviewSubject || "").trim();
   if (!deckKey) return;
-  state.prefs.deckNavigationOverrides = state.prefs.deckNavigationOverrides || {};
+  state.prefs.deckNavigationOverrides =
+    state.prefs.deckNavigationOverrides || {};
   state.prefs.deckNavigationOverrides[deckKey] =
     state.prefs.deckNavigationOverrides[deckKey] || {};
   state.prefs.deckNavigationOverrides[deckKey][type] = value;
@@ -3554,7 +3572,8 @@ function getStudyNavigationPosition(
   subject = currentReviewSubject,
 ) {
   const normalizedLayout = layoutType === "single" ? "single" : "scroll";
-  const overrideKey = normalizedLayout === "single" ? "studySingle" : "studyScroll";
+  const overrideKey =
+    normalizedLayout === "single" ? "studySingle" : "studyScroll";
   const overrideValue = getDeckNavigationOverride(subject, overrideKey);
   if (overrideValue) {
     if (normalizedLayout === "single") {
@@ -3581,13 +3600,13 @@ function getStudyNavigationPosition(
   return value;
 }
 
-function setStudyNavigationPosition(layoutType, position, subject = currentReviewSubject) {
+function setStudyNavigationPosition(
+  layoutType,
+  position,
+  subject = currentReviewSubject,
+) {
   const normalized =
-    position === "bottom"
-      ? "bottom"
-      : position === "both"
-        ? "both"
-        : "top";
+    position === "bottom" ? "bottom" : position === "both" ? "both" : "top";
   const effectiveLayout = layoutType === "single" ? "single" : "scroll";
 
   if (effectiveLayout === "single") {
@@ -3670,7 +3689,9 @@ function cycleNavigationModeButton(mode, button) {
 
   saveState();
   applyNavigationPosition();
-  if (document.getElementById("view-deck-review")?.classList.contains("active")) {
+  if (
+    document.getElementById("view-deck-review")?.classList.contains("active")
+  ) {
     reRenderDeckReview();
   }
 
@@ -3680,7 +3701,10 @@ function cycleNavigationModeButton(mode, button) {
 }
 
 function cycleScrollNavigationPosition() {
-  cycleNavigationModeButton("scroll", document.getElementById("main-navigation-scroll-button"));
+  cycleNavigationModeButton(
+    "scroll",
+    document.getElementById("main-navigation-scroll-button"),
+  );
 }
 
 function changeDeckNameMode(mode) {
@@ -3730,8 +3754,11 @@ function applyNavigationPosition() {
     ? savedPosition
     : "top";
 
-  if (navigation.parentElement) navigation.parentElement.removeChild(navigation);
-  const existingBottomClone = bottomAnchor.querySelector(".quiz-navigation-clone");
+  if (navigation.parentElement)
+    navigation.parentElement.removeChild(navigation);
+  const existingBottomClone = bottomAnchor.querySelector(
+    ".quiz-navigation-clone",
+  );
   if (existingBottomClone) existingBottomClone.remove();
 
   if (position === "both") {
@@ -3755,7 +3782,8 @@ function changeNavigationPosition(position) {
   if (
     document.getElementById("view-deck-review")?.classList.contains("active")
   ) {
-    const layoutType = state.prefs.studyLayout === "single" ? "single" : "scroll";
+    const layoutType =
+      state.prefs.studyLayout === "single" ? "single" : "scroll";
     setStudyNavigationPosition(layoutType, normalized);
   } else {
     state.prefs.quizNavigationPosition = normalized;
@@ -3780,7 +3808,9 @@ function toggleMainNavigationPosition(mode, source) {
   }
   saveState();
   applyNavigationPosition();
-  if (document.getElementById("view-deck-review")?.classList.contains("active")) {
+  if (
+    document.getElementById("view-deck-review")?.classList.contains("active")
+  ) {
     reRenderDeckReview();
   }
 }
@@ -3967,7 +3997,9 @@ function closeReviewSettingsModal() {
 // Handle layout changes directly from the modal
 function handleReviewLayoutChange(layoutType) {
   const perPageContainer = document.getElementById("review-per-page-container");
-  const navigationToggle = document.getElementById("toggle-review-navigation-bottom");
+  const navigationToggle = document.getElementById(
+    "toggle-review-navigation-bottom",
+  );
 
   if (layoutType === "single") {
     perPageContainer.classList.add("hidden");
