@@ -33,13 +33,9 @@
       let correctText = "";
 
       if (["A", "B", "C", "D"].includes(originalAns)) {
-        correctText = String(originalQ[`Choice${originalAns}`] || "")
-          .trim()
-          .toLowerCase();
+        correctText = String(originalQ[`Choice${originalAns}`] || "").trim();
       } else {
-        correctText = String(q.Answer || "")
-          .trim()
-          .toLowerCase();
+        correctText = String(q.Answer || "").trim();
       }
 
       if (validChoices.length > 0) {
@@ -52,12 +48,20 @@
         q.ChoiceC = validChoices[2] || "";
         q.ChoiceD = validChoices[3] || "";
 
-        if (q.ChoiceA.trim().toLowerCase() === correctText) q.Answer = "A";
-        else if (q.ChoiceB.trim().toLowerCase() === correctText) q.Answer = "B";
-        else if (q.ChoiceC.trim().toLowerCase() === correctText) q.Answer = "C";
-        else if (q.ChoiceD.trim().toLowerCase() === correctText) q.Answer = "D";
-        else if (validChoices.length === 1) q.Answer = "A";
-        else q.Answer = "A";
+        // Match answer with normalized comparison (case-insensitive, trimmed)
+        let answerFound = false;
+        const normalizedCorrect = correctText.toLowerCase();
+        for (let i = 0; i < validChoices.length; i++) {
+          if (validChoices[i].toLowerCase() === normalizedCorrect) {
+            q.Answer = ["A", "B", "C", "D"][i];
+            answerFound = true;
+            break;
+          }
+        }
+        // If answer not found through matching, default to first choice
+        if (!answerFound) {
+          q.Answer = "A";
+        }
       }
       return q;
     });
