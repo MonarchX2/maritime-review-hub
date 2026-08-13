@@ -1,22 +1,30 @@
 (function (globalScope) {
+  function firstAvailableValue(...values) {
+    for (const value of values) {
+      if (value === null || value === undefined) continue;
+      if (typeof value === "string" && value.trim() === "") continue;
+      return value;
+    }
+    return "";
+  }
+
   function normalizeQuestionRecord(question, subjectOverride = null) {
     if (!question || typeof question !== "object") return {};
 
     const source = { ...question };
-    const resolvedSubject = subjectOverride ?? source.Subject ?? source.s ?? "";
 
     const next = {
-      Subject: resolvedSubject,
-      ID: source.ID ?? source.i ?? "",
-      Question: source.Question ?? source.q ?? "",
-      ChoiceA: source.ChoiceA ?? source.c?.[0] ?? "",
-      ChoiceB: source.ChoiceB ?? source.c?.[1] ?? "",
-      ChoiceC: source.ChoiceC ?? source.c?.[2] ?? "",
-      ChoiceD: source.ChoiceD ?? source.c?.[3] ?? "",
-      Answer: source.Answer ?? source.a ?? "",
-      Explanation: source.Explanation ?? source.e ?? "",
-      ImageURL: source.ImageURL ?? source.u ?? "",
-      Tags: source.Tags ?? source.t ?? "",
+      Subject: firstAvailableValue(subjectOverride, source.Subject, source.s),
+      ID: firstAvailableValue(source.ID, source.i),
+      Question: firstAvailableValue(source.Question, source.q),
+      ChoiceA: firstAvailableValue(source.ChoiceA, source.c?.[0]),
+      ChoiceB: firstAvailableValue(source.ChoiceB, source.c?.[1]),
+      ChoiceC: firstAvailableValue(source.ChoiceC, source.c?.[2]),
+      ChoiceD: firstAvailableValue(source.ChoiceD, source.c?.[3]),
+      Answer: firstAvailableValue(source.Answer, source.a),
+      Explanation: firstAvailableValue(source.Explanation, source.e),
+      ImageURL: firstAvailableValue(source.ImageURL, source.u),
+      Tags: firstAvailableValue(source.Tags, source.t),
     };
 
     if (typeof next.Answer === "number") {

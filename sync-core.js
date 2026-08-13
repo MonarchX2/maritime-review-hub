@@ -160,9 +160,7 @@
         const changed =
           JSON.stringify(globalScope.state.categorySummary || []) !==
           JSON.stringify(summaryData);
-        const canApplyNow =
-          globalScope.state.prefs.databaseUpdateMode === "immediate" ||
-          !globalScope.state.session.active;
+        const canApplyNow = !globalScope.state.session.active;
 
         if (canApplyNow && (changed || !wasConnected)) {
           globalScope.pendingSummaryData = null;

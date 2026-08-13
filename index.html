@@ -149,6 +149,7 @@
         >
           <i class="fa-solid fa-lock"></i>
         </button>
+        <!--
         <button
           onclick="openGeneralFeedbackModal()"
           class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg"
@@ -157,6 +158,7 @@
         >
           <i class="fa-solid fa-bug"></i>
         </button>
+        -->
         <!-- View Reports Button -->
         <button
           onclick="
@@ -175,12 +177,13 @@
           onclick="toggleTheme()"
           class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg"
           aria-label="Toggle Theme"
-          title="Toggle Dark/Light Mode"
+          title="Toggle theme"
         >
           <i class="fa-solid fa-sun dark:hidden"></i>
           <i class="fa-solid fa-moon hidden dark:inline"></i>
         </button>
         <!-- Profile -->
+        <!--
         <button
           type="button"
           onclick="navigate('profile')"
@@ -190,6 +193,7 @@
         >
           <i class="fa-solid fa-user"></i>
         </button>
+        -->
         <!-- Settings Button -->
         <button
           onclick="navigate('settings')"
@@ -245,13 +249,15 @@
           </h2>
 
           <div class="dashboard-controls">
-            <!-- Deck Source Filter (Feature 4) -->
+            <!-- Deck Source Filter -->
             <select
               id="deck-source-filter"
               onchange="renderCategoryProgress()"
               class="dashboard-control bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-colors text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 outline-none cursor-pointer"
             >
               <option value="all">All Decks</option>
+              <option value="favorites">Favorites</option>
+              <option value="starred">Starred</option>
               <option value="downloaded">Downloaded</option>
               <option value="cloud">Cloud Only</option>
               <option value="archived">Archived</option>
@@ -781,7 +787,7 @@
               class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm px-4 py-2 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all font-bold flex items-center gap-2 active:scale-95"
               title="Study Settings"
             >
-              <i class="fa-solid fa-gear"></i>
+              <i class="fa-solid fa-sliders text-brand-500"></i>
             </button>
           </div>
         </div>
@@ -793,13 +799,13 @@
 
       <!-- SETTINGS SECTION -->
       <section id="view-settings" class="view-section">
-        <h2 class="text-2xl font-bold mb-6">Settings</h2>
+        <h2 class="text-2xl font-bold mb-6">Main Settings</h2>
 
         <div
-          class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 mb-6 border border-gray-100 dark:border-gray-700 animate-card-in"
+          class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 mb-6 animate-card-in"
           style="animation-delay: 0.1s"
         >
-          <h3 class="font-bold border-b dark:border-gray-700 pb-2 mb-4">
+          <h3 class="font-bold pb-2 mb-4">
             <i class="fa-solid fa-database text-brand-500 mr-2"></i> Database
             Sync
           </h3>
@@ -807,57 +813,20 @@
             id="sync-status"
             class="text-sm mt-3 font-medium bg-gray-50 dark:bg-gray-700 p-3 rounded-lg hidden transition-all duration-300"
           ></p>
-          <div class="mt-4 flex justify-between items-center gap-4">
-            <div>
-              <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                >Database Updates</span
-              >
-              <p class="text-xs text-gray-500">
-                Apply new database summaries immediately or wait until no quiz
-                session is active.
-              </p>
-            </div>
-            <select
-              id="database-update-mode"
-              onchange="changeDatabaseUpdateMode(this.value)"
-              class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2 text-sm"
-            >
-              <option value="idle">When idle</option>
-              <option value="immediate">Immediately</option>
-            </select>
-          </div>
           <p class="text-xs text-gray-400 mt-4 transition-colors">
             Current Database Size:
             <span id="db-size-display" class="font-bold">0</span> questions.
           </p>
         </div>
 
-        <div class="mt-6 border-t dark:border-gray-700 pt-4">
-          <div class="flex justify-between items-center mb-4 gap-4">
-            <div>
-              <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                >Navigation Below Deck</span
-              >
-              <p class="text-xs text-gray-500">
-                Put Prev, Reveal, and Next below the current card.
-              </p>
-            </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                id="toggle-main-navigation-bottom"
-                class="sr-only peer"
-                onchange="toggleNavigationPosition(this)"
-              />
-              <div
-                class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
-              ></div>
-            </label>
-          </div>
-          <label class="flex items-center justify-between cursor-pointer mb-2">
-            <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-              >Shuffle Choices</span
-            >
+        <label
+          class="flex items-center justify-between cursor-pointer mb-2 mt-4"
+        >
+          <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
+            >Shuffle Choices</span
+          >
+          <div class="flex items-center gap-2">
+            <span class="text-[11px] text-gray-500">Default to ON</span>
             <input
               type="checkbox"
               id="toggle-shuffle-choices"
@@ -868,11 +837,14 @@
             <div
               class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
             ></div>
-          </label>
-          <label class="flex items-center justify-between cursor-pointer mb-2">
-            <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-              >Shuffle Questions</span
-            >
+          </div>
+        </label>
+        <label class="flex items-center justify-between cursor-pointer mb-2">
+          <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
+            >Shuffle Questions</span
+          >
+          <div class="flex items-center gap-2">
+            <span class="text-[11px] text-gray-500">Default to ON</span>
             <input
               type="checkbox"
               id="toggle-shuffle-questions"
@@ -883,81 +855,250 @@
             <div
               class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
             ></div>
-          </label>
-          <label class="flex items-center justify-between cursor-pointer mb-2">
-            <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-              >Dynamic Cloze Deletion</span
+          </div>
+        </label>
+        <p
+          class="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded border border-yellow-200 dark:border-yellow-800"
+        >
+          <i class="fa-solid fa-triangle-exclamation mr-1"></i> Warning:
+          Disabling shuffling may lead to memorization.
+        </p>
+
+        <div class="mt-3 pt-3">
+          <div class="mb-4">
+            <button
+              type="button"
+              onclick="
+                togglePanel('deck-navigation-panel', 'deck-navigation-chevron')
+              "
+              class="w-full cursor-pointer list-none font-bold text-gray-800 dark:text-gray-100 flex items-center justify-between gap-3 text-left"
+              aria-expanded="false"
             >
-            <input
-              type="checkbox"
-              id="toggle-main-cloze-mode"
-              class="sr-only peer"
-              onchange="toggleClozeMode(this)"
-              checked
-            />
-            <div
-              class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
-            ></div>
-          </label>
-          <label class="flex items-center justify-between cursor-pointer mb-2">
-            <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-              >Spaced Repetition System</span
-            >
-            <input
-              type="checkbox"
-              id="toggle-main-srs-mode"
-              class="sr-only peer"
-              onchange="toggleSrsMode(this)"
-              checked
-            />
-            <div
-              class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
-            ></div>
-          </label>
-          <p
-            class="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded border border-yellow-200 dark:border-yellow-800"
+              <span>
+                <i class="fa-solid fa-compass-drafting text-brand-500 mr-2"></i>
+                Deck Navigation Buttons
+              </span>
+              <i
+                id="deck-navigation-chevron"
+                class="fa-solid fa-chevron-down text-xs text-gray-500 transition-transform"
+              ></i>
+            </button>
+          </div>
+
+          <div
+            id="deck-navigation-panel"
+            class="hidden space-y-3"
+            aria-hidden="true"
           >
-            <i class="fa-solid fa-triangle-exclamation mr-1"></i> Warning:
-            Disabling shuffling may lead to memorization of question order,
-            which can affect the effectiveness of your practice sessions.
-          </p>
+            <div class="space-y-3">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <div>
+                    <span
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >Quiz Mode</span
+                    >
+                    <div class="text-[11px] text-gray-500 mt-1">
+                      Default to TOP
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  id="toggle-main-navigation-quiz"
+                  onclick="cycleNavigationModeButton('quiz', this)"
+                  class="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                >
+                  on TOP
+                </button>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <div>
+                    <span
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >Study Mode (Single Flashcard)</span
+                    >
+                    <div class="text-[11px] text-gray-500 mt-1">
+                      Default to TOP
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  id="toggle-main-navigation-single"
+                  onclick="cycleNavigationModeButton('single', this)"
+                  class="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                >
+                  on TOP
+                </button>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <div>
+                    <span
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >Study Mode (Scroll List)</span
+                    >
+                    <div class="text-[11px] text-gray-500 mt-1">
+                      Default to TOP + BOTTOM
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  id="main-navigation-scroll-button"
+                  onclick="cycleNavigationModeButton('scroll', this)"
+                  class="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                >
+                  TOP + BOTTOM
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div
-          class="flex flex-col gap-4 border-t dark:border-gray-700 pt-4 mt-4 animate-card-in"
-          style="animation-delay: 0.3s"
-        >
-          <span class="font-medium text-red-500">Danger Zone</span>
-          <div class="flex justify-between items-center">
-            <span class="text-sm dark:text-gray-300 transition-colors"
-              >Clear Statistics</span
-            >
+        <div class="mt-3 pt-3">
+          <div class="mb-4">
             <button
-              onclick="resetProgress()"
-              class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300"
+              type="button"
+              onclick="
+                togglePanel(
+                  'advanced-settings-panel',
+                  'advanced-settings-chevron',
+                )
+              "
+              class="w-full cursor-pointer list-none font-bold text-gray-800 dark:text-gray-100 flex items-center justify-between gap-3 text-left"
+              aria-expanded="false"
             >
-              Reset Progress
+              <span>
+                <i class="fa-solid fa-sliders text-brand-500 mr-2"></i>
+                Advanced Settings
+              </span>
+              <i
+                id="advanced-settings-chevron"
+                class="fa-solid fa-chevron-down text-xs text-gray-500 transition-transform"
+              ></i>
             </button>
           </div>
-          <div class="flex justify-between items-center">
-            <span class="text-sm dark:text-gray-300 transition-colors"
-              >Clear Local Database</span
+
+          <div
+            id="advanced-settings-panel"
+            class="hidden space-y-3"
+            aria-hidden="true"
+          >
+            <div>
+              <label
+                class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+              >
+                Deck Name Display
+              </label>
+              <select
+                id="deck-name-mode"
+                onchange="changeDeckNameMode(this.value)"
+                class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2 text-sm w-full"
+              >
+                <option value="wrap">Wrap</option>
+                <option value="clip">Clip</option>
+              </select>
+              <p class="text-xs text-gray-500 mt-1">Default to Wrap</p>
+            </div>
+            <label
+              class="flex items-center justify-between cursor-pointer mb-3"
             >
-            <button
-              onclick="clearDatabase()"
-              class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300"
+              <div>
+                <span
+                  class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >Dynamic Cloze Deletion</span
+                >
+                <div class="text-[11px] text-gray-500">Default to OFF</div>
+              </div>
+              <input
+                type="checkbox"
+                id="toggle-main-cloze-mode"
+                class="sr-only peer"
+                onchange="toggleClozeMode(this)"
+              />
+              <div
+                class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
+              ></div>
+            </label>
+            <label
+              class="flex items-center justify-between cursor-pointer mb-2"
             >
-              Clear Database
-            </button>
-          </div>
-          <div class="flex justify-between items-center">
-            <span class="text-sm dark:text-gray-300">Clear App Data</span>
-            <button
-              onclick="clearAppData()"
-              class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300"
+              <div>
+                <span
+                  class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >Spaced Repetition System</span
+                >
+                <div class="text-[11px] text-gray-500">Default to OFF</div>
+              </div>
+              <input
+                type="checkbox"
+                id="toggle-main-srs-mode"
+                class="sr-only peer"
+                onchange="toggleSrsMode(this)"
+              />
+              <div
+                class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
+              ></div>
+            </label>
+
+            <div
+              class="pt-3 mt-3 border-t border-gray-200 dark:border-gray-700"
             >
-              Clear App Data
-            </button>
+              <button
+                type="button"
+                onclick="
+                  togglePanel('danger-zone-panel', 'danger-zone-chevron')
+                "
+                class="w-full cursor-pointer list-none font-medium text-red-500 flex items-center justify-between gap-3 text-left"
+                aria-expanded="false"
+              >
+                <span>Danger Zone</span>
+                <i
+                  id="danger-zone-chevron"
+                  class="fa-solid fa-chevron-down text-xs text-red-400 transition-transform"
+                ></i>
+              </button>
+              <div
+                id="danger-zone-panel"
+                class="hidden mt-4 flex flex-col gap-4"
+                aria-hidden="true"
+              >
+                <div class="flex justify-between items-center">
+                  <span class="text-sm dark:text-gray-300 transition-colors"
+                    >Clear Statistics</span
+                  >
+                  <button
+                    onclick="resetProgress()"
+                    class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300"
+                  >
+                    Reset Progress
+                  </button>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-sm dark:text-gray-300 transition-colors"
+                    >Clear Local Database</span
+                  >
+                  <button
+                    onclick="clearDatabase()"
+                    class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300"
+                  >
+                    Clear Database
+                  </button>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-sm dark:text-gray-300">Clear App Data</span>
+                  <button
+                    onclick="clearAppData()"
+                    class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300"
+                  >
+                    Clear App Data
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1230,14 +1371,12 @@
         class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
       >
         <div
-          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 border border-gray-200 dark:border-gray-700"
+          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300"
         >
           <!-- Header -->
-          <div
-            class="flex justify-between items-center mb-6 border-b border-gray-100 dark:border-gray-700 pb-3"
-          >
+          <div class="flex justify-between items-center mb-6 pb-3">
             <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
-              <i class="fa-solid fa-sliders text-brand-500 mr-2"></i> Session
+              <i class="fa-solid fa-sliders text-brand-500 mr-2"></i> Quiz
               Settings
             </h3>
             <button
@@ -1253,10 +1392,13 @@
             <!-- Active Recall Toggle -->
             <div class="flex justify-between items-center">
               <div class="pr-4">
-                <span
-                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
-                  >Active Recall Mode</span
-                >
+                <div class="flex items-center gap-2">
+                  <span
+                    class="block text-sm font-bold text-gray-800 dark:text-gray-200"
+                    >Active Recall Mode</span
+                  >
+                  <span class="text-[10px] text-gray-500">Default to OFF</span>
+                </div>
                 <span class="text-xs text-gray-500"
                   >Hide choices initially to test your memory.</span
                 >
@@ -1267,7 +1409,6 @@
                   id="toggle-active-recall"
                   class="sr-only peer"
                   onchange="toggleActiveRecall()"
-                  checked
                 />
                 <div
                   class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
@@ -1275,15 +1416,16 @@
               </label>
             </div>
 
-            <div class="border-t border-gray-100 dark:border-gray-700"></div>
-
             <!-- Shuffle Choices Toggle -->
             <div class="flex justify-between items-center">
               <div class="pr-4">
-                <span
-                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
-                  >Shuffle Choices</span
-                >
+                <div class="flex items-center gap-2">
+                  <span
+                    class="block text-sm font-bold text-gray-800 dark:text-gray-200"
+                    >Shuffle Choices</span
+                  >
+                  <span class="text-[10px] text-gray-500">Default to ON</span>
+                </div>
                 <span class="text-xs text-gray-500"
                   >Randomize the order of multiple-choice answers.</span
                 >
@@ -1305,10 +1447,13 @@
             <!-- Hide ABCD Labels Toggle -->
             <div class="flex justify-between items-center">
               <div class="pr-4">
-                <span
-                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
-                  >Hide ABCD Labels</span
-                >
+                <div class="flex items-center gap-2">
+                  <span
+                    class="block text-sm font-bold text-gray-800 dark:text-gray-200"
+                    >Hide ABCD Labels</span
+                  >
+                  <span class="text-[10px] text-gray-500">Default to OFF</span>
+                </div>
                 <span class="text-xs text-gray-500"
                   >Remove letter prefixes from choices for pure recall.</span
                 >
@@ -1326,29 +1471,28 @@
               </label>
             </div>
 
-            <div class="border-t border-gray-100 dark:border-gray-700"></div>
-
             <div class="flex justify-between items-center">
               <div class="pr-4">
-                <span
-                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
-                  >Navigation Below Deck</span
-                >
-                <span class="text-xs text-gray-500"
-                  >Put Prev, Reveal, and Next below the current card.</span
-                >
+                <div class="flex items-center gap-2">
+                  <div>
+                    <span
+                      class="block text-sm font-bold text-gray-800 dark:text-gray-200"
+                      >Deck Navigation Buttons</span
+                    >
+                    <div class="text-[10px] text-gray-500 mt-1">
+                      Default to TOP
+                    </div>
+                  </div>
+                </div>
               </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  id="toggle-session-navigation-bottom"
-                  class="sr-only peer"
-                  onchange="toggleNavigationPosition(this)"
-                />
-                <div
-                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
-                ></div>
-              </label>
+              <button
+                type="button"
+                id="toggle-session-navigation-bottom"
+                onclick="cycleNavigationModeButton('quiz', this)"
+                class="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+              >
+                on TOP
+              </button>
             </div>
 
             <!-- Question Type Override Dropdown -->
@@ -1693,33 +1837,37 @@
           <div class="space-y-6 mb-6">
             <div class="flex justify-between items-center">
               <div class="pr-4">
-                <span
-                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
-                  >Navigation Below Deck</span
-                >
-                <span class="text-xs text-gray-500"
-                  >Put Study navigation below the current card.</span
-                >
+                <div class="flex items-center gap-2">
+                  <div>
+                    <span
+                      class="block text-sm font-bold text-gray-800 dark:text-gray-200"
+                      >Deck Navigation Buttons</span
+                    >
+                    <div class="text-[10px] text-gray-500 mt-1">
+                      Default to TOP + BOTTOM
+                    </div>
+                  </div>
+                </div>
               </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  id="toggle-review-navigation-bottom"
-                  class="sr-only peer"
-                  onchange="toggleNavigationPosition(this)"
-                />
-                <div
-                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"
-                ></div>
-              </label>
+              <button
+                type="button"
+                id="toggle-review-navigation-bottom"
+                onclick="cycleNavigationModeButton('study', this)"
+                class="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+              >
+                TOP + BOTTOM
+              </button>
             </div>
             <!-- Hide ABCD Labels Toggle -->
             <div class="flex justify-between items-center">
               <div class="pr-4">
-                <span
-                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
-                  >Hide ABCD Labels</span
-                >
+                <div class="flex items-center gap-2">
+                  <span
+                    class="block text-sm font-bold text-gray-800 dark:text-gray-200"
+                    >Hide ABCD Labels</span
+                  >
+                  <span class="text-[10px] text-gray-500">Default to OFF</span>
+                </div>
                 <span class="text-xs text-gray-500"
                   >Remove letter prefixes from choices.</span
                 >
@@ -1741,10 +1889,13 @@
             <!-- Show Wrong Choices Toggle -->
             <div class="flex justify-between items-center">
               <div class="pr-4">
-                <span
-                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
-                  >Show Wrong Choices</span
-                >
+                <div class="flex items-center gap-2">
+                  <span
+                    class="block text-sm font-bold text-gray-800 dark:text-gray-200"
+                    >Show Wrong Choices</span
+                  >
+                  <span class="text-[10px] text-gray-500">Default to OFF</span>
+                </div>
                 <span class="text-xs text-gray-500"
                   >Display incorrect options alongside the correct one.</span
                 >
@@ -2075,6 +2226,15 @@
       </div>
     </div>
 
+    <script>
+      function togglePanel(panelId, chevronId) {
+        const panel = document.getElementById(panelId);
+        const icon = document.getElementById(chevronId);
+        const isHidden = panel.classList.toggle("hidden");
+        icon.classList.toggle("rotate-180", !isHidden);
+        panel.setAttribute("aria-hidden", String(isHidden));
+      }
+    </script>
     <script src="question-compat.js"></script>
     <script src="app-entry.js" defer></script>
 

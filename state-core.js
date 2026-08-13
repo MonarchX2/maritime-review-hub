@@ -35,22 +35,31 @@
     return globalScope.state.subjectIndex;
   }
 
-  function normalizeQuestionRecord(question) {
+  function firstAvailableValue(...values) {
+    for (const value of values) {
+      if (value === null || value === undefined) continue;
+      if (typeof value === "string" && value.trim() === "") continue;
+      return value;
+    }
+    return "";
+  }
+
+  function normalizeQuestionRecord(question, subjectOverride = null) {
     if (!question || typeof question !== "object") return {};
 
     const source = { ...question };
     const normalized = {
-      Subject: source.Subject ?? source.s ?? "",
-      ID: source.ID ?? source.i ?? "",
-      Question: source.Question ?? source.q ?? "",
-      ChoiceA: source.ChoiceA ?? source.c?.[0] ?? "",
-      ChoiceB: source.ChoiceB ?? source.c?.[1] ?? "",
-      ChoiceC: source.ChoiceC ?? source.c?.[2] ?? "",
-      ChoiceD: source.ChoiceD ?? source.c?.[3] ?? "",
-      Answer: source.Answer ?? source.a ?? "",
-      Explanation: source.Explanation ?? source.e ?? "",
-      ImageURL: source.ImageURL ?? source.u ?? "",
-      Tags: source.Tags ?? source.t ?? "",
+      Subject: firstAvailableValue(subjectOverride, source.Subject, source.s),
+      ID: firstAvailableValue(source.ID, source.i),
+      Question: firstAvailableValue(source.Question, source.q),
+      ChoiceA: firstAvailableValue(source.ChoiceA, source.c?.[0]),
+      ChoiceB: firstAvailableValue(source.ChoiceB, source.c?.[1]),
+      ChoiceC: firstAvailableValue(source.ChoiceC, source.c?.[2]),
+      ChoiceD: firstAvailableValue(source.ChoiceD, source.c?.[3]),
+      Answer: firstAvailableValue(source.Answer, source.a),
+      Explanation: firstAvailableValue(source.Explanation, source.e),
+      ImageURL: firstAvailableValue(source.ImageURL, source.u),
+      Tags: firstAvailableValue(source.Tags, source.t),
     };
 
     if (typeof normalized.Answer === "number") {
@@ -133,6 +142,11 @@
         )
           ? globalScope.state.prefs.favoriteDecks
           : [];
+        globalScope.state.prefs.starredDecks = Array.isArray(
+          globalScope.state.prefs.starredDecks,
+        )
+          ? globalScope.state.prefs.starredDecks
+          : [];
         globalScope.state.prefs.recentDecks = Array.isArray(
           globalScope.state.prefs.recentDecks,
         )
@@ -140,11 +154,44 @@
           : [];
         globalScope.state.prefs.discoverySearch =
           globalScope.state.prefs.discoverySearch || "";
+        globalScope.state.prefs.clozeEnabled =
+          globalScope.state.prefs.clozeEnabled === true;
+        globalScope.state.prefs.srsEnabled =
+          globalScope.state.prefs.srsEnabled === true;
+        if (!Object.prototype.hasOwnProperty.call(prefs, "activeRecall")) {
+          globalScope.state.prefs.activeRecall = false;
+        }
         if (
-          !Object.prototype.hasOwnProperty.call(prefs, "quizNavigationMode") &&
-          prefs.quizNavigationPosition === "bottom"
+          !Object.prototype.hasOwnProperty.call(prefs, "quizNavigationMode")
         ) {
-          globalScope.state.prefs.quizNavigationPosition = "auto";
+          globalScope.state.prefs.quizNavigationMode = "manual";
+        }
+        if (
+          !Object.prototype.hasOwnProperty.call(prefs, "quizNavigationPosition")
+        ) {
+          globalScope.state.prefs.quizNavigationPosition = "top";
+        }
+        if (
+          !Object.prototype.hasOwnProperty.call(
+            prefs,
+            "studySingleNavigationPosition",
+          ) &&
+          globalScope.state.prefs.reviewNavigationPosition
+        ) {
+          globalScope.state.prefs.studySingleNavigationPosition =
+            globalScope.state.prefs.reviewNavigationPosition;
+        }
+        if (
+          !Object.prototype.hasOwnProperty.call(
+            prefs,
+            "studyScrollNavigationPosition",
+          )
+        ) {
+          globalScope.state.prefs.studyScrollNavigationPosition =
+            globalScope.state.prefs.reviewNavigationPosition || "top";
+        }
+        if (!["wrap", "clip"].includes(globalScope.state.prefs.deckNameMode)) {
+          globalScope.state.prefs.deckNameMode = "wrap";
         }
       } catch (e) {
         console.error("Invalid preferences.", e);
@@ -156,13 +203,25 @@
         globalScope.state.prefs.quizNavigationPosition,
       )
     )
-      globalScope.state.prefs.quizNavigationPosition = "auto";
+      globalScope.state.prefs.quizNavigationPosition = "top";
     if (
       !["top", "bottom"].includes(
         globalScope.state.prefs.reviewNavigationPosition,
       )
     )
       globalScope.state.prefs.reviewNavigationPosition = "top";
+    if (
+      !["top", "bottom"].includes(
+        globalScope.state.prefs.studySingleNavigationPosition,
+      )
+    )
+      globalScope.state.prefs.studySingleNavigationPosition = "top";
+    if (
+      !["top", "bottom", "both"].includes(
+        globalScope.state.prefs.studyScrollNavigationPosition,
+      )
+    )
+      globalScope.state.prefs.studyScrollNavigationPosition = "both";
     if (globalScope.state.prefs.lastActivity?.mode) {
       globalScope.currentAppMode = globalScope.state.prefs.lastActivity.mode;
     }
@@ -174,7 +233,7 @@
         globalScope.state.prefs.databaseUpdateMode,
       )
     )
-      globalScope.state.prefs.databaseUpdateMode = "idle";
+      globalScope.state.prefs.databaseUpdateMode = "immediate";
     if (globalScope.state.prefs?.darkMode)
       document.documentElement.classList.add("dark");
 

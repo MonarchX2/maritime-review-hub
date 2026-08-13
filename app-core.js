@@ -89,22 +89,31 @@ if (!state?.prefs?.userId) {
   } catch (e) {}
 }
 
-function normalizeQuestionRecord(question) {
+function firstAvailableValue(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    if (typeof value === "string" && value.trim() === "") continue;
+    return value;
+  }
+  return "";
+}
+
+function normalizeQuestionRecord(question, subjectOverride = null) {
   if (!question || typeof question !== "object") return {};
 
   const source = { ...question };
   const normalized = {
-    Subject: source.Subject ?? source.s ?? "",
-    ID: source.ID ?? source.i ?? "",
-    Question: source.Question ?? source.q ?? "",
-    ChoiceA: source.ChoiceA ?? source.c?.[0] ?? "",
-    ChoiceB: source.ChoiceB ?? source.c?.[1] ?? "",
-    ChoiceC: source.ChoiceC ?? source.c?.[2] ?? "",
-    ChoiceD: source.ChoiceD ?? source.c?.[3] ?? "",
-    Answer: source.Answer ?? source.a ?? "",
-    Explanation: source.Explanation ?? source.e ?? "",
-    ImageURL: source.ImageURL ?? source.u ?? "",
-    Tags: source.Tags ?? source.t ?? "",
+    Subject: firstAvailableValue(subjectOverride, source.Subject, source.s),
+    ID: firstAvailableValue(source.ID, source.i),
+    Question: firstAvailableValue(source.Question, source.q),
+    ChoiceA: firstAvailableValue(source.ChoiceA, source.c?.[0]),
+    ChoiceB: firstAvailableValue(source.ChoiceB, source.c?.[1]),
+    ChoiceC: firstAvailableValue(source.ChoiceC, source.c?.[2]),
+    ChoiceD: firstAvailableValue(source.ChoiceD, source.c?.[3]),
+    Answer: firstAvailableValue(source.Answer, source.a),
+    Explanation: firstAvailableValue(source.Explanation, source.e),
+    ImageURL: firstAvailableValue(source.ImageURL, source.u),
+    Tags: firstAvailableValue(source.Tags, source.t),
   };
 
   if (typeof normalized.Answer === "number") {
@@ -197,9 +206,39 @@ function toggleFavoriteDeck(subject) {
       ? window.DiscoveryUtils.toggleDiscoveryEntry
       : null;
 
-  state.prefs.favoriteDecks = toggler
+  const nextFavorites = toggler
     ? toggler(state.prefs.favoriteDecks, safeSubject, 8)
     : [safeSubject];
+  const wasFavorite = Array.isArray(state.prefs.favoriteDecks)
+    ? state.prefs.favoriteDecks.includes(safeSubject)
+    : false;
+  state.prefs.favoriteDecks = nextFavorites;
+  saveState();
+  renderCategoryProgress();
+  showToast(wasFavorite ? "Removed from Favorites." : "Added to Favorites.");
+}
+
+function toggleStarredDeck(subject) {
+  const safeSubject = decodeHandlerValue(subject || "");
+  if (!safeSubject) return;
+
+  if (!Array.isArray(state.prefs.starredDecks)) {
+    state.prefs.starredDecks = [];
+  }
+
+  const wasStarred = state.prefs.starredDecks.includes(safeSubject);
+  if (wasStarred) {
+    state.prefs.starredDecks = state.prefs.starredDecks.filter(
+      (value) => value !== safeSubject,
+    );
+    showToast("Removed from Starred.");
+  } else {
+    state.prefs.starredDecks = [safeSubject, ...state.prefs.starredDecks].slice(
+      0,
+      8,
+    );
+    showToast("Added to Starred.");
+  }
   saveState();
   renderCategoryProgress();
 }
@@ -582,11 +621,14 @@ async function loadState() {
         ? state.prefs.recentDecks
         : [];
       state.prefs.discoverySearch = state.prefs.discoverySearch || "";
-      if (
-        !Object.prototype.hasOwnProperty.call(prefs, "quizNavigationMode") &&
-        prefs.quizNavigationPosition === "bottom"
-      ) {
-        state.prefs.quizNavigationPosition = "auto";
+      if (!Object.prototype.hasOwnProperty.call(prefs, "activeRecall")) {
+        state.prefs.activeRecall = false;
+      }
+      if (!Object.prototype.hasOwnProperty.call(prefs, "quizNavigationMode")) {
+        state.prefs.quizNavigationMode = "manual";
+      }
+      if (!Object.prototype.hasOwnProperty.call(prefs, "quizNavigationPosition")) {
+        state.prefs.quizNavigationPosition = "top";
       }
     } catch (e) {
       console.error("Invalid preferences.", e);
@@ -594,7 +636,7 @@ async function loadState() {
   }
 
   if (!["top", "bottom", "auto"].includes(state.prefs.quizNavigationPosition))
-    state.prefs.quizNavigationPosition = "auto";
+    state.prefs.quizNavigationPosition = "top";
   if (!["top", "bottom"].includes(state.prefs.reviewNavigationPosition))
     state.prefs.reviewNavigationPosition = "top";
   if (state.prefs.lastActivity?.mode) {
@@ -655,17 +697,22 @@ async function saveState() {
 
 function syncPreferenceControls() {
   const values = {
-    "toggle-active-recall": state.prefs.activeRecall !== false,
+    "toggle-active-recall": state.prefs.activeRecall === true,
     "toggle-shuffle-choices": state.prefs.shuffleChoices !== false,
     "toggle-modal-shuffle-choices": state.prefs.shuffleChoices !== false,
     "toggle-shuffle-questions": state.prefs.shuffleQuestions !== false,
     "toggle-hide-abcd": state.prefs.hideABCD === true,
     "toggle-quiz-hide-abcd": state.prefs.quizHideABCD === true,
-    "toggle-cloze-mode": state.prefs.clozeEnabled !== false,
-    "toggle-main-cloze-mode": state.prefs.clozeEnabled !== false,
+    "toggle-cloze-mode": state.prefs.clozeEnabled === true,
+    "toggle-main-cloze-mode": state.prefs.clozeEnabled === true,
     "toggle-srs-mode": state.prefs.srsEnabled === true,
     "toggle-main-srs-mode": state.prefs.srsEnabled === true,
     "toggle-wrong-choices": state.prefs.showWrongChoices !== false,
+    "toggle-main-navigation-quiz": state.prefs.quizNavigationPosition === "bottom",
+    "toggle-main-navigation-single": state.prefs.studySingleNavigationPosition === "bottom",
+    "toggle-main-navigation-scroll": state.prefs.studyScrollNavigationPosition === "bottom",
+    "toggle-session-navigation-bottom": state.prefs.quizNavigationPosition === "bottom",
+    "toggle-review-navigation-bottom": getStudyNavigationPosition(state.prefs.studyLayout || "scroll") === "bottom",
     globalModeToggle: state.prefs.lastActivity?.mode === "review",
   };
 
@@ -678,26 +725,26 @@ function syncPreferenceControls() {
   if (databaseUpdateMode)
     databaseUpdateMode.value = state.prefs.databaseUpdateMode || "idle";
 
+  const deckNameMode = document.getElementById("deck-name-mode");
+  if (deckNameMode) {
+    deckNameMode.value = ["wrap", "clip"].includes(state.prefs.deckNameMode)
+      ? state.prefs.deckNameMode
+      : "wrap";
+  }
+
   const modeLabel = document.getElementById("modeLabel");
   if (modeLabel)
     modeLabel.innerText = values.globalModeToggle ? "Study" : "Quiz";
   const navigationSelect = document.getElementById(
     "navigation-position-select",
   );
-  const activeNavigationPosition = document
-    .getElementById("view-deck-review")
-    ?.classList.contains("active")
-    ? state.prefs.reviewNavigationPosition
-    : getQuizNavigationPosition();
-  if (navigationSelect) navigationSelect.value = activeNavigationPosition;
-  [
-    "toggle-main-navigation-bottom",
-    "toggle-session-navigation-bottom",
-    "toggle-review-navigation-bottom",
-  ].forEach((id) => {
-    const control = document.getElementById(id);
-    if (control) control.checked = activeNavigationPosition === "bottom";
-  });
+  if (navigationSelect) {
+    navigationSelect.value = document
+      .getElementById("view-deck-review")
+      ?.classList.contains("active")
+      ? getStudyNavigationPosition(state.prefs.studyLayout || "scroll")
+      : getQuizNavigationPosition();
+  }
   const sortBy = state.prefs.deckSortBy || "letters";
   const sortDirection =
     state.prefs.deckSortDirection === "desc" ? "desc" : "asc";
@@ -1325,6 +1372,7 @@ function renderQuestion() {
   const shuffleChoicesToggle = document.getElementById(
     "toggle-shuffle-choices",
   );
+  const hideABCDToggle = document.getElementById("toggle-quiz-hide-abcd");
 
   if (activeRecallToggle) {
     activeRecallToggle.disabled = isPureIdent;
@@ -1350,6 +1398,19 @@ function renderQuestion() {
     );
     shuffleChoicesToggle.parentElement.classList.toggle(
       "cursor-not-allowed",
+      isPureIdent,
+    );
+  }
+
+  if (hideABCDToggle) {
+    hideABCDToggle.disabled = isPureIdent;
+    hideABCDToggle.parentElement.classList.toggle("opacity-50", isPureIdent);
+    hideABCDToggle.parentElement.classList.toggle(
+      "cursor-not-allowed",
+      isPureIdent,
+    );
+    hideABCDToggle.parentElement.classList.toggle(
+      "pointer-events-none",
       isPureIdent,
     );
   }
@@ -1422,6 +1483,11 @@ function getSubjectProgressStats(
     progressPercent,
     isCompleted,
   };
+}
+
+function getDeckLoaderId(subject) {
+  const normalized = String(subject || "").replace(/[^a-zA-Z0-9_-]+/g, "_");
+  return `loading-${normalized || "deck"}`;
 }
 
 function renderCategoryProgress() {
@@ -1517,16 +1583,20 @@ function renderCategoryProgress() {
       const leftCount = getFolderStats(leftNode);
       const rightCount = getFolderStats(rightNode);
       return (
-        (leftCount - rightCount) * sortDirection || left.localeCompare(right)
+        (leftCount - rightCount) * sortDirection ||
+        TextUtils.naturalSortStrings(left, right) * sortDirection
       );
     }
-    const result = left.localeCompare(right, undefined, {
-      sensitivity: "base",
-    });
-    return result * sortDirection;
+    return TextUtils.naturalSortStrings(left, right) * sortDirection;
   });
   const sourceFilter =
     document.getElementById("deck-source-filter")?.value || "all";
+  const favoriteDecks = Array.isArray(state.prefs.favoriteDecks)
+    ? state.prefs.favoriteDecks
+    : [];
+  const starredDecks = Array.isArray(state.prefs.starredDecks)
+    ? state.prefs.starredDecks
+    : [];
 
   function nodeMatchesDiscoveryQuery(node, query, currentKey = null) {
     const normalizedQuery = String(query || "")
@@ -1593,6 +1663,12 @@ function renderCategoryProgress() {
     if (isArchived) return false;
 
     if (filter === "all") return true;
+    if (filter === "favorites") {
+      return Boolean(node._data && favoriteDecks.includes(node._data.Subject));
+    }
+    if (filter === "starred") {
+      return Boolean(node._data && starredDecks.includes(node._data.Subject));
+    }
 
     if (
       node._data !== null &&
@@ -1641,6 +1717,9 @@ function renderCategoryProgress() {
     const safeSubj = escapeHTML(subj);
     const encodedSubj = encodeHandlerValue(subj);
     const safeName = escapeHTML(displayName);
+    const loaderId = getDeckLoaderId(subj);
+    const deckNameMode =
+      state.prefs.deckNameMode === "clip" ? "truncate" : "whitespace-normal";
     const totalQuestionsInDb = cat.QuestionCount;
     const databaseUnavailable = !syncConnected;
 
@@ -1740,7 +1819,7 @@ function renderCategoryProgress() {
 
     return `
         <div onclick="handleDeckClick('${encodedSubj}')" class="cursor-pointer animate-card-in ${cardClasses} ${availabilityClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;" title="${databaseUnavailable ? "Waiting for database connection" : ""}">
-                <div id="loading-${safeSubj}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
+                <div id="${loaderId}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
                     <i class="fa-solid fa-spinner fa-spin text-3xl ${loaderColor} mb-2"></i>
                     <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
                 </div>
@@ -1749,9 +1828,9 @@ function renderCategoryProgress() {
                 <div class="flex items-start justify-between mb-4 gap-2">
                     <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-2 mb-1 min-w-0">
-                            <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors truncate min-w-0">
+                            <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors min-w-0">
                                 <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm flex-shrink-0"></i>
-                                <span class="truncate">${safeName}</span> ${lockIcon}
+                                <span class="${deckNameMode} break-words">${safeName}</span> ${lockIcon}
                             </h3>
                             <div class="flex-shrink-0">
                                 ${statusBadge}
@@ -1842,7 +1921,7 @@ function renderCategoryProgress() {
                     <div class="p-4 flex-1 flex flex-col justify-between">
                         <div class="flex justify-between items-start w-full gap-2">
                             <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg flex items-center min-w-0">
-                                <span class="truncate">${escapeHTML(key)}</span> ${lockIcon}
+                                <span class="${state.prefs.deckNameMode === "clip" ? "truncate" : "whitespace-normal break-words"}">${escapeHTML(key)}</span> ${lockIcon}
                             </h3>
                             ${archiveBtnHtml}
                         </div>
@@ -1863,8 +1942,7 @@ function renderCategoryProgress() {
 }
 
 async function fetchAndStartCategory(subject, mode, pass = null) {
-  const loader = document.getElementById(`loading-${subject}`);
-
+  const loader = document.getElementById(getDeckLoaderId(subject));
   // Define strict MCQ filter condition conditionally based on user preference
   const isForcedMCQ = state.prefs.qTypeOverride === "mcq";
   const customFilter = isForcedMCQ
@@ -2019,6 +2097,9 @@ async function deleteSubjectData(subject) {
   ) {
     state.db = state.db.filter((q) => q.Subject !== subject);
     await safeIdbSet("mrh_db", state.db);
+    if (typeof renderCategoryProgress === "function") {
+      renderCategoryProgress();
+    }
 
     const saved = getStoredItem("saved_session");
     if (saved) {
@@ -2095,6 +2176,7 @@ async function fetchDeckQuestions(
   }
 
   if (cachedQuestions.length > 0 && !pass) {
+    if (loaderElement) loaderElement.classList.add("hidden");
     return cachedQuestions;
   }
 
@@ -2146,10 +2228,20 @@ async function fetchDeckQuestionsFromNetwork(
       return q;
     });
 
+    if (validQuestions.length === 0) {
+      const cachedForSubject = getQuestionsForSubject(subject);
+      if (cachedForSubject.length > 0) {
+        return cachedForSubject;
+      }
+    }
+
     const otherQuestions = state.db.filter((q) => q.Subject !== subject);
     state.db = [...otherQuestions, ...validQuestions];
     rebuildQuestionIndex();
     await safeIdbSet("mrh_db", state.db);
+    if (typeof renderCategoryProgress === "function") {
+      renderCategoryProgress();
+    }
 
     return validQuestions;
   } catch (err) {
@@ -2161,7 +2253,7 @@ async function fetchDeckQuestionsFromNetwork(
 }
 
 async function reviewDeck(subject, pass = null) {
-  const loader = document.getElementById(`loading-${subject}`);
+  const loader = document.getElementById(getDeckLoaderId(subject));
 
   // Check local cache first if no password is provided
   let validQuestions = [];
@@ -2210,6 +2302,7 @@ function renderDeckReview(subject, questions) {
   const hideABCD = state.prefs.hideABCD === true;
   let layout = state.prefs.studyLayout || "scroll";
   let pageSize = state.prefs.studyPageSize || 50;
+  const reviewNavigationPosition = getStudyNavigationPosition(layout);
 
   if (!state.prefs.studyProgress[subject]) {
     state.prefs.studyProgress[subject] = { page: 1, index: 0, scrollY: 0 };
@@ -2291,7 +2384,10 @@ function renderDeckReview(subject, questions) {
         `;
   }
 
-  if (state.prefs.reviewNavigationPosition === "top") html += navigationHTML;
+  const showTopNavigation = ["top", "both"].includes(reviewNavigationPosition);
+  const showBottomNavigation = ["bottom", "both"].includes(reviewNavigationPosition);
+
+  if (showTopNavigation) html += navigationHTML;
 
   const questionIndexById = new Map(
     questions.map((question, index) => [question.ID, index]),
@@ -2403,7 +2499,7 @@ function renderDeckReview(subject, questions) {
         `;
   });
 
-  if (state.prefs.reviewNavigationPosition !== "top") html += navigationHTML;
+  if (showBottomNavigation) html += navigationHTML;
 
   container.innerHTML = html;
   navigate("deck-review");
@@ -2430,7 +2526,10 @@ function toggleHideABCD() {
 }
 
 function toggleQuizHideABCD() {
-  const isHidden = document.getElementById("toggle-quiz-hide-abcd").checked;
+  const hideToggle = document.getElementById("toggle-quiz-hide-abcd");
+  if (!hideToggle || hideToggle.disabled) return;
+
+  const isHidden = hideToggle.checked;
 
   if (!state.prefs) state.prefs = {};
   state.prefs.quizHideABCD = isHidden;
@@ -2450,7 +2549,7 @@ function toggleShowWrongChoices() {
 
 function toggleClozeMode(source) {
   const element = source || document.getElementById("toggle-cloze-mode");
-  state.prefs.clozeEnabled = Boolean(element?.checked ?? true);
+  state.prefs.clozeEnabled = element ? Boolean(element.checked) : false;
   saveState();
 
   if (state.session.active) {
@@ -2460,7 +2559,7 @@ function toggleClozeMode(source) {
 
 function toggleSrsMode(source) {
   const element = source || document.getElementById("toggle-srs-mode");
-  state.prefs.srsEnabled = Boolean(element?.checked ?? false);
+  state.prefs.srsEnabled = element ? Boolean(element.checked) : false;
   saveState();
 
   if (state.session.active) {
@@ -2767,8 +2866,8 @@ function updateThemeButton() {
   const btn = document.getElementById("btn-theme-toggle");
   if (btn) {
     btn.innerHTML = state.prefs.darkMode
-      ? '<i class="fa-solid fa-sun mr-1 transition-transform transform hover:rotate-180 duration-500"></i> Light Mode'
-      : '<i class="fa-solid fa-moon mr-1 transition-transform transform hover:rotate-12 duration-300"></i> Dark Mode';
+      ? '<i class="fa-solid fa-sun transition-transform transform hover:rotate-180 duration-500"></i>'
+      : '<i class="fa-solid fa-moon transition-transform transform hover:rotate-12 duration-300"></i>';
   }
 }
 
@@ -2851,14 +2950,86 @@ async function clearAppData() {
     if (typeof idbKeyval !== "undefined") {
       await idbKeyval.clear();
     }
-    localStorage.clear();
-    sessionStorage.clear();
+
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key) localStorage.removeItem(key);
+    }
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const key = sessionStorage.key(i);
+      if (key) sessionStorage.removeItem(key);
+    }
 
     if ("caches" in window) {
-      await Promise.all(
-        [...(await caches.keys())].map((cacheName) => caches.delete(cacheName)),
-      );
+      const cacheNames = await caches.keys();
+      await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
     }
+
+    if ("indexedDB" in window && typeof indexedDB.databases === "function") {
+      try {
+        const dbs = await indexedDB.databases();
+        await Promise.all(
+          dbs.map((db) =>
+            new Promise((resolve) => {
+              const request = indexedDB.deleteDatabase(db.name);
+              request.onsuccess = () => resolve();
+              request.onerror = () => resolve();
+              request.onblocked = () => resolve();
+            }),
+          ),
+        );
+      } catch (error) {
+        console.warn("IndexedDB cleanup could not complete.", error);
+      }
+    }
+
+    state.db = [];
+    state.categorySummary = [];
+    state.stats = {
+      totalAnswered: 0,
+      correct: 0,
+      mistakes: [],
+      subjectAccuracy: {},
+      completedQs: [],
+      srsMap: {},
+    };
+    state.prefs = {
+      ...state.prefs,
+      darkMode: true,
+      activeRecall: false,
+      quizNavigationPosition: "top",
+      quizNavigationMode: "manual",
+      reviewNavigationPosition: "top",
+      studySingleNavigationPosition: "top",
+      studyScrollNavigationPosition: "top",
+      databaseUpdateMode: "immediate",
+      layoutMode: "grid",
+      shuffleChoices: true,
+      shuffleQuestions: true,
+      hideABCD: false,
+      quizHideABCD: false,
+      showWrongChoices: false,
+      clozeEnabled: false,
+      srsEnabled: false,
+      archivedDecks: [],
+      deckSortBy: "letters",
+      deckSortDirection: "asc",
+      deckNameMode: "wrap",
+      favoriteDecks: [],
+      starredDecks: [],
+      recentDecks: [],
+      discoverySearch: "",
+      lastActivity: null,
+    };
+    state.session = {
+      active: false,
+      questions: [],
+      currentIndex: 0,
+      userAnswers: {},
+      autoNextTimeout: null,
+      revealedCloze: false,
+    };
+    rebuildQuestionIndex();
     window.location.reload();
   } catch (error) {
     console.error("Unable to clear app data.", error);
@@ -3194,10 +3365,174 @@ function toggleLayout() {
   renderCategoryProgress();
 }
 
-function getQuizNavigationPosition() {
+function getQuizNavigationPosition(subject = currentReviewSubject) {
+  const deckKey = String(subject || "").trim();
+  const override = deckKey ? getDeckNavigationOverride(deckKey, "quiz") : null;
+  if (override) {
+    return ["top", "bottom"].includes(override) ? override : "top";
+  }
   if (state.prefs.quizNavigationPosition !== "auto")
     return state.prefs.quizNavigationPosition;
   return window.innerWidth <= QUIZ_NAVIGATION_BREAKPOINT ? "top" : "bottom";
+}
+
+function getDeckNavigationOverride(subject, type) {
+  const deckKey = String(subject || currentReviewSubject || "").trim();
+  if (!deckKey) return null;
+  const overrides = state.prefs.deckNavigationOverrides || {};
+  const deckOverrides = overrides[deckKey];
+  if (!deckOverrides || !deckOverrides[type]) return null;
+  return deckOverrides[type];
+}
+
+function setDeckNavigationOverride(subject, type, value) {
+  const deckKey = String(subject || currentReviewSubject || "").trim();
+  if (!deckKey) return;
+  state.prefs.deckNavigationOverrides = state.prefs.deckNavigationOverrides || {};
+  state.prefs.deckNavigationOverrides[deckKey] =
+    state.prefs.deckNavigationOverrides[deckKey] || {};
+  state.prefs.deckNavigationOverrides[deckKey][type] = value;
+  saveState();
+}
+
+function getStudyNavigationPosition(
+  layoutType = state.prefs.studyLayout || "scroll",
+  subject = currentReviewSubject,
+) {
+  const normalizedLayout = layoutType === "single" ? "single" : "scroll";
+  const overrideKey = normalizedLayout === "single" ? "studySingle" : "studyScroll";
+  const overrideValue = getDeckNavigationOverride(subject, overrideKey);
+  if (overrideValue) {
+    if (normalizedLayout === "single") {
+      return ["top", "bottom"].includes(overrideValue) ? overrideValue : "top";
+    }
+    return ["top", "bottom", "both"].includes(overrideValue)
+      ? overrideValue
+      : "both";
+  }
+
+  const value =
+    normalizedLayout === "single"
+      ? state.prefs.studySingleNavigationPosition
+      : state.prefs.studyScrollNavigationPosition;
+
+  if (normalizedLayout === "single") {
+    return ["top", "bottom"].includes(value) ? value : "top";
+  }
+
+  if (!["top", "bottom", "both"].includes(value)) {
+    return "both";
+  }
+
+  return value;
+}
+
+function setStudyNavigationPosition(layoutType, position, subject = currentReviewSubject) {
+  const normalized =
+    position === "bottom"
+      ? "bottom"
+      : position === "both"
+        ? "both"
+        : "top";
+  const effectiveLayout = layoutType === "single" ? "single" : "scroll";
+
+  if (effectiveLayout === "single") {
+    const nextValue = normalized === "both" ? "top" : normalized;
+    if (subject) {
+      setDeckNavigationOverride(subject, "studySingle", nextValue);
+    } else {
+      state.prefs.studySingleNavigationPosition = nextValue;
+    }
+  } else {
+    if (subject) {
+      setDeckNavigationOverride(subject, "studyScroll", normalized);
+    } else {
+      state.prefs.studyScrollNavigationPosition = normalized;
+    }
+  }
+
+  state.prefs.reviewNavigationPosition =
+    effectiveLayout === "single"
+      ? subject
+        ? getStudyNavigationPosition("single", subject)
+        : state.prefs.studySingleNavigationPosition
+      : subject
+        ? getStudyNavigationPosition("scroll", subject)
+        : state.prefs.studyScrollNavigationPosition;
+}
+
+function getScrollNavigationButtonLabel(position) {
+  const normalized = ["top", "bottom", "both"].includes(position)
+    ? position
+    : "top";
+  if (normalized === "both") return "TOP + BOTTOM";
+  if (normalized === "bottom") return "on Bottom";
+  return "on TOP";
+}
+
+function cycleNavigationModeButton(mode, button) {
+  const layoutType =
+    mode === "study"
+      ? state.prefs.studyLayout === "single"
+        ? "single"
+        : "scroll"
+      : mode;
+
+  const orderByMode = {
+    quiz: ["top", "bottom"],
+    single: ["top", "bottom"],
+    scroll: ["top", "both", "bottom"],
+  };
+  const order = orderByMode[layoutType] || ["top", "bottom"];
+
+  const subject =
+    currentReviewSubject ||
+    state.session?.questions?.[state.session.currentIndex]?.Subject ||
+    null;
+
+  let current = "top";
+  if (layoutType === "quiz") {
+    current = getQuizNavigationPosition(subject) || "top";
+  } else if (layoutType === "single") {
+    current = getStudyNavigationPosition("single", subject) || "top";
+  } else {
+    current = getStudyNavigationPosition("scroll", subject) || "top";
+  }
+
+  const next = order[(order.indexOf(current) + 1) % order.length];
+
+  if (layoutType === "quiz") {
+    if (subject) {
+      setDeckNavigationOverride(subject, "quiz", next);
+    } else {
+      state.prefs.quizNavigationPosition = next;
+      state.prefs.quizNavigationMode = "manual";
+    }
+  } else if (layoutType === "single") {
+    setStudyNavigationPosition("single", next, subject);
+  } else {
+    setStudyNavigationPosition("scroll", next, subject);
+  }
+
+  saveState();
+  applyNavigationPosition();
+  if (document.getElementById("view-deck-review")?.classList.contains("active")) {
+    reRenderDeckReview();
+  }
+
+  if (button) {
+    button.textContent = getScrollNavigationButtonLabel(next);
+  }
+}
+
+function cycleScrollNavigationPosition() {
+  cycleNavigationModeButton("scroll", document.getElementById("main-navigation-scroll-button"));
+}
+
+function changeDeckNameMode(mode) {
+  state.prefs.deckNameMode = mode === "clip" ? "clip" : "wrap";
+  saveState();
+  renderCategoryProgress();
 }
 
 function changeDeckSort(sortOrder) {
@@ -3236,8 +3571,26 @@ function applyNavigationPosition() {
 
   const savedPosition = state.session.active
     ? getQuizNavigationPosition()
-    : state.prefs.reviewNavigationPosition;
-  const position = savedPosition === "top" ? "top" : "bottom";
+    : getStudyNavigationPosition(state.prefs.studyLayout || "scroll");
+  const position = ["top", "bottom", "both"].includes(savedPosition)
+    ? savedPosition
+    : "top";
+
+  if (navigation.parentElement) navigation.parentElement.removeChild(navigation);
+  const existingBottomClone = bottomAnchor.querySelector(".quiz-navigation-clone");
+  if (existingBottomClone) existingBottomClone.remove();
+
+  if (position === "both") {
+    topAnchor.appendChild(navigation);
+    const bottomClone = navigation.cloneNode(true);
+    bottomClone.id = "quiz-navigation-bottom-clone";
+    bottomClone.classList.add("quiz-navigation-clone");
+    bottomAnchor.appendChild(bottomClone);
+    topAnchor.classList.remove("hidden");
+    bottomAnchor.classList.remove("hidden");
+    return;
+  }
+
   (position === "top" ? topAnchor : bottomAnchor).appendChild(navigation);
   topAnchor.classList.toggle("hidden", position !== "top");
   bottomAnchor.classList.toggle("hidden", position !== "bottom");
@@ -3248,7 +3601,8 @@ function changeNavigationPosition(position) {
   if (
     document.getElementById("view-deck-review")?.classList.contains("active")
   ) {
-    state.prefs.reviewNavigationPosition = normalized;
+    const layoutType = state.prefs.studyLayout === "single" ? "single" : "scroll";
+    setStudyNavigationPosition(layoutType, normalized);
   } else {
     state.prefs.quizNavigationPosition = normalized;
     state.prefs.quizNavigationMode = "manual";
@@ -3260,6 +3614,21 @@ function changeNavigationPosition(position) {
   sendTelemetry("change_navigation_position", {
     position: normalized,
   });
+}
+
+function toggleMainNavigationPosition(mode, source) {
+  const normalized = source.checked ? "bottom" : "top";
+  if (mode === "quiz") {
+    state.prefs.quizNavigationPosition = normalized;
+    state.prefs.quizNavigationMode = "manual";
+  } else {
+    setStudyNavigationPosition(mode, normalized);
+  }
+  saveState();
+  applyNavigationPosition();
+  if (document.getElementById("view-deck-review")?.classList.contains("active")) {
+    reRenderDeckReview();
+  }
 }
 
 function toggleNavigationPosition(source) {
@@ -3363,7 +3732,7 @@ function closeReportModal() {
 }
 function openSessionSettingsModal() {
   const recallToggle = document.getElementById("toggle-active-recall");
-  if (recallToggle) recallToggle.checked = state.prefs.activeRecall !== false;
+  if (recallToggle) recallToggle.checked = state.prefs.activeRecall === true;
 
   const choicesToggle = document.getElementById("toggle-shuffle-choices");
   if (choicesToggle)
@@ -3395,11 +3764,14 @@ function openSessionSettingsModal() {
     "navigation-position-select",
   );
   if (navigationSelect) navigationSelect.value = getQuizNavigationPosition();
-  const navigationToggle = document.getElementById(
+  const navigationButton = document.getElementById(
     "toggle-session-navigation-bottom",
   );
-  if (navigationToggle)
-    navigationToggle.checked = getQuizNavigationPosition() === "bottom";
+  if (navigationButton) {
+    navigationButton.textContent = getScrollNavigationButtonLabel(
+      state.prefs.quizNavigationPosition || "top",
+    );
+  }
 
   toggleModal("session-settings-modal", true);
 }
@@ -3411,12 +3783,14 @@ function closeSessionSettingsModal() {
 // Open Review Settings Modal
 function openReviewSettingsModal() {
   const modal = document.getElementById("review-settings-modal");
-  const navigationToggle = document.getElementById(
+  const navigationButton = document.getElementById(
     "toggle-review-navigation-bottom",
   );
-  if (navigationToggle)
-    navigationToggle.checked =
-      state.prefs.reviewNavigationPosition === "bottom";
+  if (navigationButton) {
+    navigationButton.textContent = getScrollNavigationButtonLabel(
+      getStudyNavigationPosition(state.prefs.studyLayout || "scroll"),
+    );
+  }
   modal.classList.remove("hidden");
   // Small delay allows the browser to render 'block' before applying opacity for the transition
   setTimeout(() => {
@@ -3439,15 +3813,20 @@ function closeReviewSettingsModal() {
 // Handle layout changes directly from the modal
 function handleReviewLayoutChange(layoutType) {
   const perPageContainer = document.getElementById("review-per-page-container");
+  const navigationToggle = document.getElementById("toggle-review-navigation-bottom");
 
-  // Hide "Per Page" if it's single flashcard, show if it's scroll list
   if (layoutType === "single") {
     perPageContainer.classList.add("hidden");
   } else {
     perPageContainer.classList.remove("hidden");
   }
 
-  // Call your original layout function
+  if (navigationToggle) {
+    navigationToggle.textContent = getScrollNavigationButtonLabel(
+      getStudyNavigationPosition(layoutType),
+    );
+  }
+
   changeStudyLayout(layoutType);
 }
 
@@ -3703,7 +4082,7 @@ function showToast(message, type = "success") {
 
 function toggleActiveRecall() {
   const isChecked = document.getElementById("toggle-active-recall").checked;
-  state.prefs.activeRecall = isChecked;
+  state.prefs.activeRecall = Boolean(isChecked);
   saveState();
   syncPreferenceControls();
 
@@ -3755,9 +4134,9 @@ function toggleAppMode() {
 }
 
 function changeDatabaseUpdateMode(mode) {
-  state.prefs.databaseUpdateMode = mode === "immediate" ? "immediate" : "idle";
+  state.prefs.databaseUpdateMode = "immediate";
   saveState();
-  if (state.prefs.databaseUpdateMode === "immediate" && pendingSummaryData) {
+  if (pendingSummaryData && !state.session.active) {
     applySummaryData(pendingSummaryData);
     pendingSummaryData = null;
     updateSyncStatus(
@@ -4537,7 +4916,7 @@ function formatQuestionText(text, options = {}) {
   const revealCloze = Boolean(options.revealCloze);
   const clozeEnabled =
     options.clozeEnabled ?? state.prefs.clozeEnabled !== false;
-  let formatted = escapeHTML(text);
+  let formatted = escapeHTML(TextUtils.stripQuestionNumberPrefix(text));
 
   if (clozeEnabled) {
     const clozeRegex = /\{\{c\d+::([^{}]+)\}\}/g;

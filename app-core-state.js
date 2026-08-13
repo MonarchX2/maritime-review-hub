@@ -17,22 +17,27 @@
     prefs: {
       darkMode: true,
       layoutMode: "grid",
-      activeRecall: true,
+      activeRecall: false,
       shuffleChoices: true,
       shuffleQuestions: true,
       hideABCD: false,
       quizHideABCD: false,
       showWrongChoices: false,
-      clozeEnabled: true,
-      srsEnabled: true,
+      clozeEnabled: false,
+      srsEnabled: false,
       archivedDecks: [],
-      databaseUpdateMode: "idle",
-      quizNavigationPosition: "bottom",
-      quizNavigationMode: "auto",
-      reviewNavigationPosition: "bottom",
+      databaseUpdateMode: "immediate",
+      quizNavigationPosition: "top",
+      quizNavigationMode: "manual",
+      reviewNavigationPosition: "top",
+      studySingleNavigationPosition: "top",
+      studyScrollNavigationPosition: "both",
+      deckNavigationOverrides: {},
       deckSortBy: "letters",
       deckSortDirection: "asc",
+      deckNameMode: "wrap",
       favoriteDecks: [],
+      starredDecks: [],
       recentDecks: [],
       discoverySearch: "",
       lastActivity: null,
@@ -119,22 +124,31 @@
     return StorageUtils.purgeOrphanedStorage(identityToKeep);
   }
 
-  function normalizeQuestionRecord(question) {
+  function firstAvailableValue(...values) {
+    for (const value of values) {
+      if (value === null || value === undefined) continue;
+      if (typeof value === "string" && value.trim() === "") continue;
+      return value;
+    }
+    return "";
+  }
+
+  function normalizeQuestionRecord(question, subjectOverride = null) {
     if (!question || typeof question !== "object") return {};
 
     const source = { ...question };
     const normalized = {
-      Subject: source.Subject ?? source.s ?? "",
-      ID: source.ID ?? source.i ?? "",
-      Question: source.Question ?? source.q ?? "",
-      ChoiceA: source.ChoiceA ?? source.c?.[0] ?? "",
-      ChoiceB: source.ChoiceB ?? source.c?.[1] ?? "",
-      ChoiceC: source.ChoiceC ?? source.c?.[2] ?? "",
-      ChoiceD: source.ChoiceD ?? source.c?.[3] ?? "",
-      Answer: source.Answer ?? source.a ?? "",
-      Explanation: source.Explanation ?? source.e ?? "",
-      ImageURL: source.ImageURL ?? source.u ?? "",
-      Tags: source.Tags ?? source.t ?? "",
+      Subject: firstAvailableValue(subjectOverride, source.Subject, source.s),
+      ID: firstAvailableValue(source.ID, source.i),
+      Question: firstAvailableValue(source.Question, source.q),
+      ChoiceA: firstAvailableValue(source.ChoiceA, source.c?.[0]),
+      ChoiceB: firstAvailableValue(source.ChoiceB, source.c?.[1]),
+      ChoiceC: firstAvailableValue(source.ChoiceC, source.c?.[2]),
+      ChoiceD: firstAvailableValue(source.ChoiceD, source.c?.[3]),
+      Answer: firstAvailableValue(source.Answer, source.a),
+      Explanation: firstAvailableValue(source.Explanation, source.e),
+      ImageURL: firstAvailableValue(source.ImageURL, source.u),
+      Tags: firstAvailableValue(source.Tags, source.t),
     };
 
     if (typeof normalized.Answer === "number") {

@@ -126,7 +126,7 @@
 
   function syncPreferenceControls() {
     const values = {
-      "toggle-active-recall": globalScope.state.prefs.activeRecall !== false,
+      "toggle-active-recall": globalScope.state.prefs.activeRecall === true,
       "toggle-shuffle-choices":
         globalScope.state.prefs.shuffleChoices !== false,
       "toggle-modal-shuffle-choices":
@@ -149,10 +149,53 @@
       if (control) control.checked = checked;
     });
 
+    const buttonLabel = (value) => {
+      if (value === "both") return "TOP + BOTTOM";
+      if (value === "bottom") return "on Bottom";
+      return "on TOP";
+    };
+
+    [
+      [
+        "toggle-main-navigation-quiz",
+        globalScope.state.prefs.quizNavigationPosition || "top",
+      ],
+      [
+        "toggle-main-navigation-single",
+        globalScope.state.prefs.studySingleNavigationPosition || "top",
+      ],
+      [
+        "toggle-main-navigation-scroll",
+        globalScope.state.prefs.studyScrollNavigationPosition || "top",
+      ],
+      [
+        "toggle-session-navigation-bottom",
+        globalScope.state.prefs.quizNavigationPosition || "top",
+      ],
+      [
+        "toggle-review-navigation-bottom",
+        globalScope.getStudyNavigationPosition(
+          globalScope.state.prefs.studyLayout || "scroll",
+        ),
+      ],
+    ].forEach(([id, value]) => {
+      const button = document.getElementById(id);
+      if (button) button.textContent = buttonLabel(value);
+    });
+
     const databaseUpdateMode = document.getElementById("database-update-mode");
     if (databaseUpdateMode)
       databaseUpdateMode.value =
         globalScope.state.prefs.databaseUpdateMode || "idle";
+
+    const deckNameMode = document.getElementById("deck-name-mode");
+    if (deckNameMode) {
+      deckNameMode.value = ["wrap", "clip"].includes(
+        globalScope.state.prefs.deckNameMode,
+      )
+        ? globalScope.state.prefs.deckNameMode
+        : "wrap";
+    }
 
     const modeLabel = document.getElementById("modeLabel");
     if (modeLabel)
@@ -167,12 +210,14 @@
       : globalScope.getQuizNavigationPosition();
     if (navigationSelect) navigationSelect.value = activeNavigationPosition;
     [
-      "toggle-main-navigation-bottom",
+      "toggle-main-navigation-quiz",
+      "toggle-main-navigation-single",
+      "toggle-main-navigation-scroll",
       "toggle-session-navigation-bottom",
       "toggle-review-navigation-bottom",
     ].forEach((id) => {
       const control = document.getElementById(id);
-      if (control) control.checked = activeNavigationPosition === "bottom";
+      if (control) control.checked = values[id] ?? false;
     });
     const sortBy = globalScope.state.prefs.deckSortBy || "letters";
     const sortDirection =
