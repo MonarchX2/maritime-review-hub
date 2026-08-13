@@ -145,12 +145,18 @@ async function loadAdminSubjects() {
 
 function renderAdminSubjectList() {
   const container = document.getElementById("admin-subject-list");
-  const tree = { subfolders: {}, decks: [], folderPass: "", folderHidden: false }; // Added folderPass and folderHidden state
+  const tree = {
+    subfolders: {},
+    decks: [],
+    folderPass: "",
+    folderHidden: false,
+  }; // Added folderPass and folderHidden state
 
   adminState.subjects.forEach((cat, index) => {
     const subjString = cat.Subject;
     const passString = String(cat.Password || cat.password || "").trim();
-    const hiddenStatus = cat.Hidden === true || String(cat.Hidden).toLowerCase() === "true";
+    const hiddenStatus =
+      cat.Hidden === true || String(cat.Hidden).toLowerCase() === "true";
     const parts = subjString.split("::").map((s) => s.trim());
     if (
       cat.IsFolder === true ||
@@ -337,7 +343,7 @@ async function saveAdminChanges() {
   btn.disabled = true;
 
   const updates = [];
-  
+
   // Handle folder password and hidden status
   document.querySelectorAll(".folder-pass-input").forEach((input) => {
     const path = input.getAttribute("data-path");
@@ -353,7 +359,8 @@ async function saveAdminChanges() {
   document.querySelectorAll(".folder-hidden-input").forEach((checkbox) => {
     const path = checkbox.getAttribute("data-path");
     const isHidden = checkbox.checked;
-    const origHidden = String(checkbox.getAttribute("data-orig") || "false") === "true";
+    const origHidden =
+      String(checkbox.getAttribute("data-orig") || "false") === "true";
 
     if (isHidden !== origHidden) {
       updates.push({ oldName: path, newName: path, hidden: isHidden });
@@ -366,7 +373,8 @@ async function saveAdminChanges() {
 
     const originalName = cat.Subject;
     const originalPass = cat.Password || cat.password || "";
-    const originalHidden = cat.Hidden === true || String(cat.Hidden).toLowerCase() === "true";
+    const originalHidden =
+      cat.Hidden === true || String(cat.Hidden).toLowerCase() === "true";
 
     const newNameInput = document.getElementById(`new-subj-${index}`);
     const deckPassInput = document.getElementById(`deck-pass-${index}`);
@@ -376,10 +384,16 @@ async function saveAdminChanges() {
 
     const newName = newNameInput.value.trim() || originalName;
     const deckPass = String(deckPassInput.value || "").trim();
-    const deckHidden = deckHiddenInput ? deckHiddenInput.checked : originalHidden;
+    const deckHidden = deckHiddenInput
+      ? deckHiddenInput.checked
+      : originalHidden;
     const originalPassword = String(originalPass || "").trim();
 
-    if (newName !== originalName || deckPass !== originalPassword || deckHidden !== originalHidden) {
+    if (
+      newName !== originalName ||
+      deckPass !== originalPassword ||
+      deckHidden !== originalHidden
+    ) {
       updates.push({
         oldName: originalName,
         newName: newName,
@@ -588,9 +602,16 @@ window.cascadeHidden = function (btn) {
       const deckCheckbox = document.getElementById(`deck-hidden-${index}`);
       if (deckCheckbox) {
         deckCheckbox.checked = isHidden;
-        deckCheckbox.parentElement.parentElement.classList.add("bg-purple-100", "dark:bg-purple-900/30");
+        deckCheckbox.parentElement.parentElement.classList.add(
+          "bg-purple-100",
+          "dark:bg-purple-900/30",
+        );
         setTimeout(
-          () => deckCheckbox.parentElement.parentElement.classList.remove("bg-purple-100", "dark:bg-purple-900/30"),
+          () =>
+            deckCheckbox.parentElement.parentElement.classList.remove(
+              "bg-purple-100",
+              "dark:bg-purple-900/30",
+            ),
           1000,
         );
         count++;

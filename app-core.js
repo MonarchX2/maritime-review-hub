@@ -1596,15 +1596,14 @@ function getVisibleCategorySummary() {
   const deletedDecks = new Set(
     (state.prefs?.deletedDecks || []).filter(Boolean),
   );
-  return (state.categorySummary || []).filter(
-    (deck) => {
-      if (!deck || !deck.Subject) return false;
-      if (deletedDecks.has(deck.Subject)) return false;
-      // Filter out decks marked as hidden
-      if (deck.Hidden === true || String(deck.Hidden).toLowerCase() === "true") return false;
-      return true;
-    }
-  );
+  return (state.categorySummary || []).filter((deck) => {
+    if (!deck || !deck.Subject) return false;
+    if (deletedDecks.has(deck.Subject)) return false;
+    // Filter out decks marked as hidden
+    if (deck.Hidden === true || String(deck.Hidden).toLowerCase() === "true")
+      return false;
+    return true;
+  });
 }
 
 function renderCategoryProgress() {
