@@ -142,11 +142,15 @@
         )
           ? globalScope.state.prefs.favoriteDecks
           : [];
-        globalScope.state.prefs.starredDecks = Array.isArray(
-          globalScope.state.prefs.starredDecks,
+        globalScope.state.prefs.favoriteQuestions = Array.isArray(
+          globalScope.state.prefs.favoriteQuestions,
         )
-          ? globalScope.state.prefs.starredDecks
+          ? globalScope.state.prefs.favoriteQuestions
           : [];
+        globalScope.state.prefs.studyFilterMode =
+          globalScope.state.prefs.studyFilterMode === "favorites"
+            ? "favorites"
+            : "all";
         globalScope.state.prefs.recentDecks = Array.isArray(
           globalScope.state.prefs.recentDecks,
         )

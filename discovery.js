@@ -87,6 +87,39 @@
     });
   }
 
+  function matchesFavoriteEntry(subject, folderKey, favoriteEntries) {
+    const targetSubject = String(subject || "").trim();
+    const normalizedFavorites = normalizeDiscoveryEntries(favoriteEntries, 32);
+    if (!targetSubject || normalizedFavorites.length === 0) return false;
+
+    const keyText = String(folderKey || "").trim();
+    const normalizedSubject = targetSubject.toLowerCase();
+
+    return normalizedFavorites.some((entry) => {
+      const favoriteText = String(entry || "").trim();
+      if (!favoriteText) return false;
+
+      const favoriteLower = favoriteText.toLowerCase();
+      if (favoriteLower === normalizedSubject) return true;
+      if (keyText && keyText.toLowerCase() === favoriteLower) return true;
+      return (
+        normalizedSubject.startsWith(favoriteLower + "::") ||
+        normalizedSubject.startsWith(favoriteLower + "/")
+      );
+    });
+  }
+
+  function filterQuestionsByStudyPreference(questions, favoriteQuestionSet, mode = "all") {
+    const sourceQuestions = Array.isArray(questions) ? questions : [];
+    if (mode !== "favorites") return sourceQuestions;
+    if (!favoriteQuestionSet || favoriteQuestionSet.size === 0) return [];
+
+    return sourceQuestions.filter((question) => {
+      const questionId = String(question?.ID || "").trim();
+      return Boolean(questionId) && favoriteQuestionSet.has(questionId);
+    });
+  }
+
   function buildDiscoveryViewModel(state, categorySummary) {
     const deletedDecks = new Set(
       (Array.isArray(state?.prefs?.deletedDecks)
@@ -137,6 +170,8 @@
     toggleDiscoveryEntry,
     normalizeQueryText,
     isDeckMatch,
+    matchesFavoriteEntry,
+    filterQuestionsByStudyPreference,
     buildDiscoveryViewModel,
   };
 

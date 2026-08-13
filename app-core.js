@@ -159,9 +159,6 @@ function sanitizeDeletedDeckReferences() {
   state.prefs.favoriteDecks = (state.prefs.favoriteDecks || []).filter(
     (item) => !deletedSet.has(String(item || "").trim()),
   );
-  state.prefs.starredDecks = (state.prefs.starredDecks || []).filter(
-    (item) => !deletedSet.has(String(item || "").trim()),
-  );
   state.prefs.recentDecks = (state.prefs.recentDecks || []).filter(
     (item) => !deletedSet.has(String(item || "").trim()),
   );
@@ -227,46 +224,24 @@ function toggleFavoriteDeck(subject) {
   if (!safeSubject) return;
   if ((state.prefs?.deletedDecks || []).includes(safeSubject)) return;
 
-  const toggler =
-    window.DiscoveryUtils &&
-    typeof window.DiscoveryUtils.toggleDiscoveryEntry === "function"
-      ? window.DiscoveryUtils.toggleDiscoveryEntry
-      : null;
-
-  const nextFavorites = toggler
-    ? toggler(state.prefs.favoriteDecks, safeSubject, 8)
-    : [safeSubject];
-  const wasFavorite = Array.isArray(state.prefs.favoriteDecks)
-    ? state.prefs.favoriteDecks.includes(safeSubject)
-    : false;
-  state.prefs.favoriteDecks = nextFavorites;
-  saveState();
-  renderCategoryProgress();
-  showToast(wasFavorite ? "Removed from Favorites." : "Added to Favorites.");
-}
-
-function toggleStarredDeck(subject) {
-  const safeSubject = decodeHandlerValue(subject || "");
-  if (!safeSubject) return;
-  if ((state.prefs?.deletedDecks || []).includes(safeSubject)) return;
-
-  if (!Array.isArray(state.prefs.starredDecks)) {
-    state.prefs.starredDecks = [];
+  if (!Array.isArray(state.prefs.favoriteDecks)) {
+    state.prefs.favoriteDecks = [];
   }
 
-  const wasStarred = state.prefs.starredDecks.includes(safeSubject);
-  if (wasStarred) {
-    state.prefs.starredDecks = state.prefs.starredDecks.filter(
+  const wasFavorite = state.prefs.favoriteDecks.includes(safeSubject);
+  if (wasFavorite) {
+    state.prefs.favoriteDecks = state.prefs.favoriteDecks.filter(
       (value) => value !== safeSubject,
     );
-    showToast("Removed from Starred.");
+    showToast("Removed from Favorites.");
   } else {
-    state.prefs.starredDecks = [safeSubject, ...state.prefs.starredDecks].slice(
+    state.prefs.favoriteDecks = [safeSubject, ...state.prefs.favoriteDecks].slice(
       0,
       8,
     );
-    showToast("Added to Starred.");
+    showToast("Added to Favorites.");
   }
+
   saveState();
   renderCategoryProgress();
 }
@@ -1701,7 +1676,7 @@ function renderCategoryProgress() {
         </div>`;
 
   const layoutClass = isGrid
-    ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6 lg:gap-8"
+    ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8"
     : "flex flex-col space-y-4";
 
   html += `<div class="${layoutClass}">`;
@@ -1732,9 +1707,33 @@ function renderCategoryProgress() {
   const favoriteDecks = Array.isArray(state.prefs.favoriteDecks)
     ? state.prefs.favoriteDecks
     : [];
-  const starredDecks = Array.isArray(state.prefs.starredDecks)
-    ? state.prefs.starredDecks
-    : [];
+
+  function matchesFavoriteDeck(node, currentKey) {
+    const subject = node?._data?.Subject || "";
+    const folderKey = String(currentKey || "").trim();
+    const childKeys = Object.keys(node?._children || {});
+
+    if (window.DiscoveryUtils && typeof window.DiscoveryUtils.matchesFavoriteEntry === "function") {
+      const matchesNode = window.DiscoveryUtils.matchesFavoriteEntry(subject, folderKey, favoriteDecks);
+      if (matchesNode) return true;
+    } else {
+      const matchesNode = favoriteDecks.some((entry) => {
+        const favoriteText = String(entry || "").trim();
+        if (!favoriteText) return false;
+        if (favoriteText === subject) return true;
+        if (folderKey && favoriteText === folderKey) return true;
+        return (
+          subject.startsWith(favoriteText + "::") ||
+          subject.startsWith(favoriteText + "/")
+        );
+      });
+      if (matchesNode) return true;
+    }
+
+    return childKeys.some((childKey) =>
+      matchesFavoriteDeck(node._children[childKey], childKey),
+    );
+  }
 
   function nodeMatchesDiscoveryQuery(node, query, currentKey = null) {
     const normalizedQuery = String(query || "")
@@ -1802,10 +1801,11 @@ function renderCategoryProgress() {
 
     if (filter === "all") return true;
     if (filter === "favorites") {
-      return Boolean(node._data && favoriteDecks.includes(node._data.Subject));
-    }
-    if (filter === "starred") {
-      return Boolean(node._data && starredDecks.includes(node._data.Subject));
+      if (matchesFavoriteDeck(node, currentKey)) return true;
+      const childKeys = Object.keys(node._children || {});
+      return childKeys.some((childKey) =>
+        nodeMatchesFilter(node._children[childKey], filter, childKey),
+      );
     }
 
     if (
@@ -1931,7 +1931,7 @@ function renderCategoryProgress() {
     if (!isReview) {
       // statsHTML = `<p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>`;
       countBadgeHTML = `
-                <div class="flex items-center gap-2 flex-shrink-0 pt-1">
+                <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
                     ${archiveBtnHTML}
                     ${isDownloaded ? `<button onclick="event.stopPropagation(); deleteSubjectData('${encodedSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>` : ``}
                     <span class="text-sm font-black ${themeColorText} transition-colors">${completedCount} / ${totalQuestionsInDb}</span>
@@ -1949,7 +1949,7 @@ function renderCategoryProgress() {
       }
     } else {
       countBadgeHTML = `
-                <div class="flex items-center gap-2 flex-shrink-0 pt-1">
+                <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
                     ${archiveBtnHTML}
                     ${isDownloaded ? `<button onclick="event.stopPropagation(); deleteSubjectData('${encodedSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>` : ``}
                 </div>`;
@@ -2035,18 +2035,29 @@ function renderCategoryProgress() {
       // CHANGED: Support Archiving Folders at the Root layer
       const isRoot = !state.currentPath || state.currentPath.length === 0;
       let archiveBtnHtml = "";
+      let favoriteBtnHtml = "";
 
       if (isRoot) {
         const isArchived = (state.prefs?.archivedDecks || []).includes(key);
-        // Changed colors since it is now placed on a white/gray background
+        const isFavorite = (state.prefs?.favoriteDecks || []).includes(key);
         const archiveIconColor = isArchived
           ? "text-amber-500 hover:text-amber-600"
+          : "text-gray-400 hover:text-brand-500";
+        const favoriteIconColor = isFavorite
+          ? "text-yellow-500 hover:text-yellow-600"
           : "text-gray-400 hover:text-brand-500";
         archiveBtnHtml = `
                     <button onclick="event.stopPropagation(); toggleArchiveDeck('${encodeHandlerValue(key)}')"
                             class="transition-all transform hover:scale-110 active:scale-90 ${archiveIconColor} p-1 z-10"
                             title="${isArchived ? "Unarchive Folder" : "Archive Folder"}">
                         <i class="fa-solid fa-box-archive text-lg"></i>
+                    </button>
+                `;
+        favoriteBtnHtml = `
+                    <button onclick="event.stopPropagation(); toggleFavoriteDeck('${encodeHandlerValue(key)}')"
+                            class="transition-all transform hover:scale-110 active:scale-90 ${favoriteIconColor} p-1 z-10"
+                            title="${isFavorite ? "Remove from Favorites" : "Add to Favorites"}">
+                        <i class="fa-solid fa-star text-lg"></i>
                     </button>
                 `;
       }
@@ -2061,11 +2072,13 @@ function renderCategoryProgress() {
                             <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg flex items-center min-w-0">
                                 <span class="${state.prefs.deckNameMode === "clip" ? "truncate" : "whitespace-normal break-words"}">${escapeHTML(key)}</span> ${lockIcon}
                             </h3>
-                            ${archiveBtnHtml}
+                            <div class="flex items-center gap-1.5">
+                                ${favoriteBtnHtml}
+                                ${archiveBtnHtml}
+                            </div>
                         </div>
                         <div class="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400 mt-2">
                             <span>${totalCards} cards</span>
-                            <span class="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full text-xs font-semibold">Deck</span>
                         </div>
                     </div>
                 </div>`;
@@ -2238,9 +2251,6 @@ async function deleteSubjectData(subject) {
       (deck) => deck && deck.Subject !== subject,
     );
     state.prefs.favoriteDecks = (state.prefs.favoriteDecks || []).filter(
-      (deck) => deck !== subject,
-    );
-    state.prefs.starredDecks = (state.prefs.starredDecks || []).filter(
       (deck) => deck !== subject,
     );
     state.prefs.recentDecks = (state.prefs.recentDecks || []).filter(
@@ -2477,6 +2487,38 @@ function renderDeckReview(subject, questions) {
   if (hideABCDToggle) hideABCDToggle.checked = hideABCD;
 
   let html = "";
+  const favoriteQuestions = new Set(
+    Array.isArray(state.prefs.favoriteQuestions)
+      ? state.prefs.favoriteQuestions.filter(Boolean)
+      : [],
+  );
+
+  const studyFilterMode = state.prefs.studyFilterMode || "all";
+  let filteredQuestions = questions;
+  if (window.DiscoveryUtils && typeof window.DiscoveryUtils.filterQuestionsByStudyPreference === "function") {
+    filteredQuestions = window.DiscoveryUtils.filterQuestionsByStudyPreference(
+      questions,
+      favoriteQuestions,
+      studyFilterMode,
+    );
+  } else {
+    filteredQuestions =
+      studyFilterMode === "favorites"
+        ? questions.filter((question) => favoriteQuestions.has(question.ID))
+        : questions;
+  }
+
+  if (filteredQuestions.length === 0) {
+    container.innerHTML = `
+      <div class="text-center p-8 text-gray-500 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+        <i class="fa-solid fa-star text-yellow-500 text-2xl mb-3"></i>
+        <p class="font-bold text-lg">No favorite questions in this deck.</p>
+        <p class="text-sm mt-1">Switch the study filter to All to see every question.</p>
+      </div>
+    `;
+    navigate("deck-review");
+    return;
+  }
 
   if (questions.length === 0) {
     container.innerHTML =
@@ -2489,23 +2531,30 @@ function renderDeckReview(subject, questions) {
   let displayQuestions = [];
   let totalPages = 1;
 
+  displayQuestions = [...filteredQuestions].sort((a, b) => {
+    const aFav = favoriteQuestions.has(a.ID) ? 1 : 0;
+    const bFav = favoriteQuestions.has(b.ID) ? 1 : 0;
+    if (aFav !== bFav) return bFav - aFav;
+    return 0;
+  });
+
   if (layout === "single") {
     if (currentIndex < 0) currentIndex = 0;
-    if (currentIndex >= questions.length) currentIndex = questions.length - 1;
+    if (currentIndex >= filteredQuestions.length) currentIndex = filteredQuestions.length - 1;
     progress.index = currentIndex;
 
-    displayQuestions = [questions[currentIndex]];
+    displayQuestions = [filteredQuestions[currentIndex]];
   } else {
     if (pageSize === "All") {
-      displayQuestions = questions;
+      displayQuestions = filteredQuestions;
     } else {
-      totalPages = Math.ceil(questions.length / pageSize);
+      totalPages = Math.ceil(filteredQuestions.length / pageSize);
       if (currentPage < 1) currentPage = 1;
       if (currentPage > totalPages) currentPage = totalPages;
       progress.page = currentPage;
 
       let start = (currentPage - 1) * pageSize;
-      displayQuestions = questions.slice(start, start + pageSize);
+      displayQuestions = filteredQuestions.slice(start, start + pageSize);
     }
   }
 
@@ -2552,11 +2601,12 @@ function renderDeckReview(subject, questions) {
   if (showTopNavigation) html += navigationHTML;
 
   const questionIndexById = new Map(
-    questions.map((question, index) => [question.ID, index]),
+    filteredQuestions.map((question, index) => [question.ID, index]),
   );
 
   displayQuestions.forEach((q, displayIndex) => {
     const originalIndex = questionIndexById.get(q.ID) ?? displayIndex;
+    const isQuestionFavorite = favoriteQuestions.has(q.ID);
 
     let rawQuestionText = q.Question ? String(q.Question) : "";
     let cleanQuestionText = rawQuestionText.replace(/^\s*\d+\.\s*/, "");
@@ -2627,7 +2677,10 @@ function renderDeckReview(subject, questions) {
                 <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 dark:border-gray-700">
                     <span class="bg-brand-50 text-brand-600 text-xs px-2 py-1 rounded font-bold dark:bg-brand-900/30 dark:text-brand-400">Question ${originalIndex + 1}</span>
                     
-                    <div class="flex gap-2">
+                    <div class="flex gap-2 items-center">
+                        <button onclick="event.stopPropagation(); toggleQuestionFavorite('${encodeHandlerValue(q.ID)}')" class="${isQuestionFavorite ? "text-yellow-500" : "text-gray-400 hover:text-yellow-500"} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95 transition-all" title="${isQuestionFavorite ? "Remove from Favorites" : "Add to Favorites"}">
+                            <i class="fa-solid fa-star"></i>
+                        </button>
                         <!-- Feature 16: Individual Toggle Button -->
                         ${
                           isMultipleChoice
@@ -2743,7 +2796,7 @@ async function toggleArchiveDeck(subjectId) {
 
   if (index > -1) {
     state.prefs.archivedDecks.splice(index, 1);
-    showToast("Deck unarchived");
+    showToast("Removed from Archive.");
   } else {
     if (
       !(await requestConfirmation(
@@ -2754,7 +2807,7 @@ async function toggleArchiveDeck(subjectId) {
       return;
     }
     state.prefs.archivedDecks.push(subjectId);
-    showToast("Deck archived");
+    showToast("Added to Archive.");
   }
 
   saveState();
@@ -3181,7 +3234,7 @@ async function clearAppData() {
       deckSortDirection: "asc",
       deckNameMode: "wrap",
       favoriteDecks: [],
-      starredDecks: [],
+      favoriteQuestions: [],
       recentDecks: [],
       discoverySearch: "",
       lastActivity: null,
@@ -3970,10 +4023,14 @@ function openReviewSettingsModal() {
   const navigationButton = document.getElementById(
     "toggle-review-navigation-bottom",
   );
+  const studyFilterSelect = document.getElementById("study-filter-select");
   if (navigationButton) {
     navigationButton.textContent = getScrollNavigationButtonLabel(
       getStudyNavigationPosition(state.prefs.studyLayout || "scroll"),
     );
+  }
+  if (studyFilterSelect) {
+    studyFilterSelect.value = state.prefs.studyFilterMode || "all";
   }
   modal.classList.remove("hidden");
   // Small delay allows the browser to render 'block' before applying opacity for the transition
@@ -4014,6 +4071,18 @@ function handleReviewLayoutChange(layoutType) {
   }
 
   changeStudyLayout(layoutType);
+}
+
+function changeStudyFilterMode(mode) {
+  const nextMode = mode === "favorites" ? "favorites" : "all";
+  state.prefs.studyFilterMode = nextMode;
+  saveState();
+  if (currentReviewSubject) {
+    const currentQuestions = getQuestionsForSubject(currentReviewSubject) || [];
+    if (currentQuestions.length > 0) {
+      renderDeckReview(currentReviewSubject, currentQuestions);
+    }
+  }
 }
 
 let pendingLockedFolderPath = null;
@@ -5167,6 +5236,8 @@ function changeStudyLayout(layout) {
   reRenderDeckReview();
 }
 
+if (!state.prefs.studyFilterMode) state.prefs.studyFilterMode = "all";
+
 function changeStudyPageSize(size) {
   const parsedSize = parseInt(size, 10);
   if (!Number.isFinite(parsedSize) || parsedSize < 1) return;
@@ -5204,6 +5275,31 @@ function toggleSpecificChoices(qId) {
   }
 
   state.prefs.qToggles[qId] = !currentState;
+  saveState();
+  reRenderDeckReview();
+}
+
+function toggleQuestionFavorite(qId) {
+  qId = decodeHandlerValue(qId || "");
+  if (!qId) return;
+  if (!Array.isArray(state.prefs.favoriteQuestions)) {
+    state.prefs.favoriteQuestions = [];
+  }
+
+  const isFavorite = state.prefs.favoriteQuestions.includes(qId);
+  if (isFavorite) {
+    state.prefs.favoriteQuestions = state.prefs.favoriteQuestions.filter(
+      (value) => value !== qId,
+    );
+    showToast("Removed from Favorites.");
+  } else {
+    state.prefs.favoriteQuestions = [qId, ...state.prefs.favoriteQuestions].slice(
+      0,
+      250,
+    );
+    showToast("Added to Favorites.");
+  }
+
   saveState();
   reRenderDeckReview();
 }

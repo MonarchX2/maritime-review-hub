@@ -1,5 +1,9 @@
 const assert = require("assert");
-const { buildDiscoveryViewModel } = require("../discovery.js");
+const {
+  buildDiscoveryViewModel,
+  matchesFavoriteEntry,
+  filterQuestionsByStudyPreference,
+} = require("../discovery.js");
 
 const state = {
   prefs: {
@@ -58,5 +62,31 @@ assert.deepStrictEqual(deletedViewModel.recentDecks, [
 assert.deepStrictEqual(
   deletedViewModel.visibleDecks.map((deck) => deck.Subject),
   ["Safety::Fire", "Construction::Stability"],
+);
+assert.strictEqual(
+  matchesFavoriteEntry("Navigation::Basic", "Navigation", ["Navigation"]),
+  true,
+);
+assert.strictEqual(
+  matchesFavoriteEntry("Navigation::Basic", "Navigation", ["Safety"]),
+  false,
+);
+assert.strictEqual(
+  matchesFavoriteEntry("Navigation::Basic", "Navigation", ["Navigation::Basic"]),
+  true,
+);
+
+const sampleQuestions = [
+  { ID: "q-1" },
+  { ID: "q-2" },
+  { ID: "q-3" },
+];
+assert.deepStrictEqual(
+  filterQuestionsByStudyPreference(sampleQuestions, new Set(["q-2"]), "all"),
+  sampleQuestions,
+);
+assert.deepStrictEqual(
+  filterQuestionsByStudyPreference(sampleQuestions, new Set(["q-2"]), "favorites"),
+  [{ ID: "q-2" }],
 );
 console.log("discovery tests passed");

@@ -23,9 +23,33 @@ body {
   scroll-behavior: smooth;
 }
 
+#session-settings-modal > div,
+#review-settings-modal > div {
+  width: min(100%, 28rem);
+  max-width: 28rem;
+  padding: 1.5rem;
+  border-radius: 1rem;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+}
+
+#session-settings-modal > div > div:first-child,
+#review-settings-modal > div > div:first-child {
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+}
+
+#session-settings-modal > div > div:first-child h3,
+#review-settings-modal > div > div:first-child h3 {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 700;
+}
+
 .app-content-shell {
-  max-width: none;
+  width: min(100%, 1120px);
+  max-width: 1120px;
   margin-inline: auto;
+  padding-inline: 1rem;
 }
 
 #view-dashboard {
@@ -93,11 +117,12 @@ input {
   }
 
   #resume-container {
-    width: min(18rem, 26vw);
-    float: left;
-    margin-right: 1.75rem;
-    position: sticky;
-    top: 1rem;
+    width: 100%;
+    max-width: 100%;
+    float: none;
+    margin-right: 0;
+    position: static;
+    top: auto;
   }
 
   #resume-container:not(.hidden) {

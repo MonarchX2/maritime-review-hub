@@ -285,7 +285,6 @@
             >
               <option value="all">All Decks</option>
               <option value="favorites">Favorites</option>
-              <option value="starred">Starred</option>
               <option value="downloaded">Downloaded</option>
               <option value="cloud">Cloud Only</option>
               <option value="archived">Archived</option>
@@ -808,14 +807,23 @@
             </h2>
           </div>
 
-          <!-- NEW SETTINGS BUTTON -->
-          <div>
+          <div class="flex items-center gap-2">
+            <select
+              id="study-filter-select"
+              onchange="changeStudyFilterMode(this.value)"
+              class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all active:scale-95 outline-none focus:border-brand-500 appearance-none"
+              aria-label="Study filter"
+            >
+              <option value="all">All</option>
+              <option value="favorites">Favorites</option>
+            </select>
+
             <button
               onclick="openReviewSettingsModal()"
-              class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm px-4 py-2 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all font-bold flex items-center gap-2 active:scale-95"
+              class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center gap-2"
               title="Study Settings"
             >
-              <i class="fa-solid fa-sliders text-brand-500"></i>
+              <i class="fa-solid fa-sliders"></i>
             </button>
           </div>
         </div>
@@ -1399,10 +1407,10 @@
         class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
       >
         <div
-          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300"
+          class="settings-modal-shell bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300"
         >
           <!-- Header -->
-          <div class="flex justify-between items-center mb-6 pb-3">
+          <div class="settings-modal-header flex justify-between items-center mb-6 pb-3">
             <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
               <i class="fa-solid fa-sliders text-brand-500 mr-2"></i> Quiz
               Settings
@@ -1843,12 +1851,10 @@
         class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
       >
         <div
-          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 border border-gray-200 dark:border-gray-700"
+          class="settings-modal-shell bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300"
         >
           <!-- Header -->
-          <div
-            class="flex justify-between items-center mb-6 border-b border-gray-100 dark:border-gray-700 pb-3"
-          >
+          <div class="settings-modal-header flex justify-between items-center mb-6 pb-3">
             <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
               <i class="fa-solid fa-sliders text-brand-500 mr-2"></i> Study
               Settings
@@ -1944,7 +1950,7 @@
 
             <!-- Layout Dropdown -->
             <div
-              class="flex flex-col gap-2 pt-4 border-t border-gray-100 dark:border-gray-700"
+              class="flex flex-col gap-2"
             >
               <label class="text-sm font-bold text-gray-800 dark:text-gray-200"
                 >Study Layout</label
