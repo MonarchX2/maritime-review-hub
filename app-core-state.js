@@ -39,6 +39,7 @@
       favoriteDecks: [],
       starredDecks: [],
       recentDecks: [],
+      deletedDecks: [],
       discoverySearch: "",
       lastActivity: null,
     },

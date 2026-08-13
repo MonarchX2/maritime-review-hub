@@ -15,6 +15,15 @@ const punctuationState = {
   },
 };
 
+const deletedState = {
+  prefs: {
+    favoriteDecks: ["Navigation::Basic", "Safety::Fire"],
+    recentDecks: ["Navigation::Basic", "Construction::Stability"],
+    discoverySearch: "",
+    deletedDecks: ["Navigation::Basic"],
+  },
+};
+
 const categorySummary = [
   { Subject: "Navigation::Basic", QuestionCount: 12 },
   { Subject: "Safety::Fire", QuestionCount: 4 },
@@ -26,6 +35,7 @@ const punctuationViewModel = buildDiscoveryViewModel(
   punctuationState,
   categorySummary,
 );
+const deletedViewModel = buildDiscoveryViewModel(deletedState, categorySummary);
 
 assert.deepStrictEqual(viewModel.favoriteDecks, ["Navigation::Basic"]);
 assert.deepStrictEqual(viewModel.recentDecks, [
@@ -40,5 +50,13 @@ assert.strictEqual(viewModel.hasQuickAccess, true);
 assert.deepStrictEqual(
   punctuationViewModel.visibleDecks.map((deck) => deck.Subject),
   ["Navigation::Basic"],
+);
+assert.deepStrictEqual(deletedViewModel.favoriteDecks, ["Safety::Fire"]);
+assert.deepStrictEqual(deletedViewModel.recentDecks, [
+  "Construction::Stability",
+]);
+assert.deepStrictEqual(
+  deletedViewModel.visibleDecks.map((deck) => deck.Subject),
+  ["Safety::Fire", "Construction::Stability"],
 );
 console.log("discovery tests passed");

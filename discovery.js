@@ -88,17 +88,34 @@
   }
 
   function buildDiscoveryViewModel(state, categorySummary) {
+    const deletedDecks = new Set(
+      (Array.isArray(state?.prefs?.deletedDecks)
+        ? state.prefs.deletedDecks
+        : []
+      )
+        .map((entry) => String(entry || "").trim())
+        .filter(Boolean),
+    );
+
     const favoriteDecks = normalizeDiscoveryEntries(
-      state?.prefs?.favoriteDecks,
+      (state?.prefs?.favoriteDecks || []).filter(
+        (entry) => !deletedDecks.has(String(entry || "").trim()),
+      ),
       8,
     );
-    const recentDecks = normalizeDiscoveryEntries(state?.prefs?.recentDecks, 8);
+    const recentDecks = normalizeDiscoveryEntries(
+      (state?.prefs?.recentDecks || []).filter(
+        (entry) => !deletedDecks.has(String(entry || "").trim()),
+      ),
+      8,
+    );
     const searchQuery = String(state?.prefs?.discoverySearch || "").trim();
     const visibleDecks = (
       Array.isArray(categorySummary) ? categorySummary : []
     ).filter((cat) => {
       const subject = String(cat?.Subject || "").trim();
-      return subject && isDeckMatch(subject, searchQuery);
+      if (!subject || deletedDecks.has(subject)) return false;
+      return isDeckMatch(subject, searchQuery);
     });
 
     return {

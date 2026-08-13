@@ -1,5 +1,76 @@
 (function (globalScope) {
+  function getSyncStatusVisualState(tone = "info") {
+    const byTone = {
+      info: {
+        panelClass:
+          "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300",
+        badgeClass: "fa-spinner fa-spin text-yellow-300",
+        title: "Checking database connection",
+        overlayTitle: "Syncing database",
+        overlayDetail: "Checking for the latest subjects and data updates.",
+      },
+      success: {
+        panelClass:
+          "bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-300",
+        badgeClass: "fa-check-circle text-green-300",
+        title: "Database connected",
+        overlayTitle: "Database ready",
+        overlayDetail: "The latest data is loaded and ready to use.",
+      },
+      warning: {
+        panelClass:
+          "bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300",
+        badgeClass: "fa-triangle-exclamation text-yellow-300",
+        title: "Database reconnecting",
+        overlayTitle: "Database reconnecting",
+        overlayDetail: "The app is retrying the connection and will resume shortly.",
+      },
+      error: {
+        panelClass:
+          "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-300",
+        badgeClass: "fa-xmark-circle text-red-300",
+        title: "Database unavailable",
+        overlayTitle: "Database unavailable",
+        overlayDetail: "The app is retrying the connection automatically.",
+      },
+    };
+    return byTone[tone] || byTone.info;
+  }
+
+  function setGlobalLoadingState(
+    isLoading,
+    title = "Loading...",
+    detail = "Preparing the latest data...",
+    tone = "info",
+  ) {
+    if (typeof document === "undefined") return false;
+    const overlay = document.getElementById("app-loading-overlay");
+    if (!overlay) return false;
+
+    const titleEl = document.getElementById("app-loading-title");
+    const detailEl = document.getElementById("app-loading-detail");
+    const iconEl = document.getElementById("app-loading-icon");
+    const toneState = getSyncStatusVisualState(tone);
+
+    if (titleEl) titleEl.textContent = title || "Loading...";
+    if (detailEl) detailEl.textContent = detail || "Preparing the latest data...";
+    if (iconEl) {
+      const iconClass =
+        tone === "success"
+          ? "fa-solid fa-check-circle text-green-300"
+          : tone === "warning" || tone === "error"
+            ? `fa-solid ${toneState.badgeClass}`
+            : "fa-solid fa-spinner fa-spin text-yellow-300";
+      iconEl.className = `text-3xl ${iconClass}`;
+    }
+
+    overlay.classList.toggle("hidden", !isLoading);
+    overlay.setAttribute("aria-hidden", String(!isLoading));
+    return isLoading;
+  }
+
   function updateSyncStatus(message, tone = "info", showOverlay = true) {
+    const visualState = getSyncStatusVisualState(tone);
     const shouldSuppressOverlay =
       globalScope.state.session.active &&
       showOverlay &&
@@ -8,34 +79,37 @@
     const statusElements = [document.getElementById("sync-status")].filter(
       Boolean,
     );
-    const classes = {
-      info: "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300",
-      success:
-        "bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-300",
-      warning:
-        "bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300",
-      error: "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-300",
-    };
 
     statusElements.forEach((element) => {
       element.classList.remove("hidden");
       element.innerHTML = message;
-      element.className = `text-xs font-medium px-3 py-1.5 rounded-lg transition-all duration-500 overflow-hidden ${classes[tone] || classes.info}`;
+      element.className = `text-xs font-medium px-3 py-1.5 rounded-lg transition-all duration-500 overflow-hidden ${visualState.panelClass}`;
+      element.dataset.syncTone = tone;
     });
 
     const icon = document.getElementById("database-connection-icon");
     if (icon) {
-      const iconByTone = {
-        info: "fa-spinner fa-spin text-yellow-300",
-        success: "fa-check-circle text-green-300",
-        warning: "fa-xmark-circle text-red-300",
-        error: "fa-xmark-circle text-red-300",
-      };
-      icon.className = `database-connection-icon fa-solid ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/10 p-1 text-xs transition-all duration-300 ${iconByTone[tone] || iconByTone.info}`;
-      icon.title =
-        tone === "success"
-          ? "Database connected"
-          : "Database connection unavailable";
+      icon.className = `database-connection-icon fa-solid ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/10 p-1 text-xs transition-all duration-300 ${visualState.badgeClass}`;
+      icon.title = visualState.title;
+      icon.dataset.syncTone = tone;
+    }
+
+    if (tone === "info") {
+      setGlobalLoadingState(
+        true,
+        visualState.overlayTitle,
+        visualState.overlayDetail,
+        tone,
+      );
+    } else if (tone === "warning" || tone === "error") {
+      setGlobalLoadingState(
+        true,
+        visualState.overlayTitle,
+        visualState.overlayDetail,
+        tone,
+      );
+    } else {
+      setGlobalLoadingState(false);
     }
 
     const connectionStatus = document.getElementById("connection-status");
@@ -43,7 +117,7 @@
       clearTimeout(globalScope.syncStatusHideTimer);
       connectionStatus.classList.remove("hidden", "opacity-0", "scale-95");
       connectionStatus.innerHTML = message;
-      connectionStatus.className = `fixed bottom-5 left-1/2 z-[60] w-max max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-lg px-4 py-2 text-center text-xs font-medium shadow-lg transition-all duration-500 ${classes[tone] || classes.info}`;
+      connectionStatus.className = `fixed bottom-5 left-1/2 z-[60] w-max max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-lg px-4 py-2 text-center text-xs font-medium shadow-lg transition-all duration-500 ${visualState.panelClass}`;
     }
   }
 
@@ -223,6 +297,8 @@
   }
 
   const SyncCore = {
+    getSyncStatusVisualState,
+    setGlobalLoadingState,
     updateSyncStatus,
     hideConnectionStatusAfterDelay,
     scheduleSyncPoll,
