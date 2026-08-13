@@ -109,7 +109,11 @@
     });
   }
 
-  function filterQuestionsByStudyPreference(questions, favoriteQuestionSet, mode = "all") {
+  function filterQuestionsByStudyPreference(
+    questions,
+    favoriteQuestionSet,
+    mode = "all",
+  ) {
     const sourceQuestions = Array.isArray(questions) ? questions : [];
     if (mode !== "favorites") return sourceQuestions;
     if (!favoriteQuestionSet || favoriteQuestionSet.size === 0) return [];

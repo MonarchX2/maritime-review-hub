@@ -72,21 +72,23 @@ assert.strictEqual(
   false,
 );
 assert.strictEqual(
-  matchesFavoriteEntry("Navigation::Basic", "Navigation", ["Navigation::Basic"]),
+  matchesFavoriteEntry("Navigation::Basic", "Navigation", [
+    "Navigation::Basic",
+  ]),
   true,
 );
 
-const sampleQuestions = [
-  { ID: "q-1" },
-  { ID: "q-2" },
-  { ID: "q-3" },
-];
+const sampleQuestions = [{ ID: "q-1" }, { ID: "q-2" }, { ID: "q-3" }];
 assert.deepStrictEqual(
   filterQuestionsByStudyPreference(sampleQuestions, new Set(["q-2"]), "all"),
   sampleQuestions,
 );
 assert.deepStrictEqual(
-  filterQuestionsByStudyPreference(sampleQuestions, new Set(["q-2"]), "favorites"),
+  filterQuestionsByStudyPreference(
+    sampleQuestions,
+    new Set(["q-2"]),
+    "favorites",
+  ),
   [{ ID: "q-2" }],
 );
 console.log("discovery tests passed");

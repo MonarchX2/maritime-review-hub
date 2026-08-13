@@ -235,10 +235,10 @@ function toggleFavoriteDeck(subject) {
     );
     showToast("Removed from Favorites.");
   } else {
-    state.prefs.favoriteDecks = [safeSubject, ...state.prefs.favoriteDecks].slice(
-      0,
-      8,
-    );
+    state.prefs.favoriteDecks = [
+      safeSubject,
+      ...state.prefs.favoriteDecks,
+    ].slice(0, 8);
     showToast("Added to Favorites.");
   }
 
@@ -1713,8 +1713,15 @@ function renderCategoryProgress() {
     const folderKey = String(currentKey || "").trim();
     const childKeys = Object.keys(node?._children || {});
 
-    if (window.DiscoveryUtils && typeof window.DiscoveryUtils.matchesFavoriteEntry === "function") {
-      const matchesNode = window.DiscoveryUtils.matchesFavoriteEntry(subject, folderKey, favoriteDecks);
+    if (
+      window.DiscoveryUtils &&
+      typeof window.DiscoveryUtils.matchesFavoriteEntry === "function"
+    ) {
+      const matchesNode = window.DiscoveryUtils.matchesFavoriteEntry(
+        subject,
+        folderKey,
+        favoriteDecks,
+      );
       if (matchesNode) return true;
     } else {
       const matchesNode = favoriteDecks.some((entry) => {
@@ -2495,7 +2502,10 @@ function renderDeckReview(subject, questions) {
 
   const studyFilterMode = state.prefs.studyFilterMode || "all";
   let filteredQuestions = questions;
-  if (window.DiscoveryUtils && typeof window.DiscoveryUtils.filterQuestionsByStudyPreference === "function") {
+  if (
+    window.DiscoveryUtils &&
+    typeof window.DiscoveryUtils.filterQuestionsByStudyPreference === "function"
+  ) {
     filteredQuestions = window.DiscoveryUtils.filterQuestionsByStudyPreference(
       questions,
       favoriteQuestions,
@@ -2540,7 +2550,8 @@ function renderDeckReview(subject, questions) {
 
   if (layout === "single") {
     if (currentIndex < 0) currentIndex = 0;
-    if (currentIndex >= filteredQuestions.length) currentIndex = filteredQuestions.length - 1;
+    if (currentIndex >= filteredQuestions.length)
+      currentIndex = filteredQuestions.length - 1;
     progress.index = currentIndex;
 
     displayQuestions = [filteredQuestions[currentIndex]];
@@ -5293,10 +5304,10 @@ function toggleQuestionFavorite(qId) {
     );
     showToast("Removed from Favorites.");
   } else {
-    state.prefs.favoriteQuestions = [qId, ...state.prefs.favoriteQuestions].slice(
-      0,
-      250,
-    );
+    state.prefs.favoriteQuestions = [
+      qId,
+      ...state.prefs.favoriteQuestions,
+    ].slice(0, 250);
     showToast("Added to Favorites.");
   }
 
