@@ -104,45 +104,6 @@
         ></i>
       </div>
       <div class="flex items-center gap-5 relative">
-        <!--
-        <button
-          id="header-discovery-toggle"
-          type="button"
-          onclick="
-            event.stopPropagation();
-            toggleDiscoverySearchPanel();
-          "
-          class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg"
-          aria-label="Search decks"
-          title="Search decks"
-        >
-          <i class="fa-solid fa-magnifying-glass"></i>
-        </button>
-        <div
-          id="header-search-panel"
-          onclick="event.stopPropagation()"
-          class="hidden absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 p-3 shadow-2xl backdrop-blur z-[60]"
-        >
-          <div
-            class="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 px-2.5 py-2"
-          >
-            <i class="fa-solid fa-magnifying-glass text-gray-400"></i>
-            <input
-              id="header-discovery-input"
-              type="text"
-              placeholder="Search decks"
-              class="w-full bg-transparent outline-none text-sm text-gray-700 dark:text-gray-200"
-              autocomplete="off"
-              spellcheck="false"
-              oninput="handleDiscoverySearchInput(event)"
-            />
-          </div>
-          <div
-            id="header-search-results"
-            class="mt-2 max-h-56 overflow-y-auto"
-          ></div>
-        </div>
-        -->
         <button
           id="btn-admin-nav"
           onclick="navigate('admin')"
@@ -184,25 +145,15 @@
           <i class="fa-solid fa-sun dark:hidden"></i>
           <i class="fa-solid fa-moon hidden dark:inline"></i>
         </button>
-        <!-- Profile -->
-        <!--
-        <button
-          type="button"
-          onclick="navigate('profile')"
-          class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg"
-          aria-label="User Profile"
-          title="User Profile"
-        >
-          <i class="fa-solid fa-user"></i>
-        </button>
-        -->
         <!-- Settings Button -->
         <button
           onclick="navigate('settings')"
           class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg hover:rotate-90"
           aria-label="Settings"
         >
-          <i class="fa-solid fa-gear"></i>
+          <i
+            class="fa-solid fa-gear group-hover:rotate-90 transition-transform"
+          ></i>
         </button>
       </div>
     </header>
@@ -270,15 +221,17 @@
 
         <!-- Subject Progress Header Row -->
         <div
-          class="dashboard-header-row flex flex-row justify-between items-center mb-4 gap-2 flex-nowrap"
+          class="dashboard-header-row flex justify-between items-center mb-4 gap-2 flex-nowrap"
         >
-          <h2
-            class="shrink-0 text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100 truncate"
-          >
-            Subjects
-          </h2>
+          <div class="min-w-0 overflow-hidden flex-1">
+            <h2
+              class="text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100 truncate min-w-0 overflow-hidden block"
+            >
+              Subjects
+            </h2>
+          </div>
 
-          <div class="dashboard-controls">
+          <div class="dashboard-controls flex-shrink-0">
             <!-- Deck Source Filter -->
             <select
               id="deck-source-filter"
@@ -398,22 +351,7 @@
           </div>
         </div>
 
-        <div id="category-list" class="transition-all duration-500">
-          <div
-            id="dashboard-loading"
-            class="flex flex-col items-center justify-center py-12 animate-pulse"
-          >
-            <i
-              class="fa-solid fa-spinner fa-spin text-4xl text-brand-500 mb-4"
-            ></i>
-            <h3 class="text-lg font-bold text-gray-700 dark:text-gray-200">
-              Loading Database...
-            </h3>
-            <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">
-              Fetching the latest subjects
-            </p>
-          </div>
-        </div>
+        <div id="category-list" class="transition-all duration-500"></div>
       </section>
 
       <!-- PRACTICE SECTION -->
@@ -450,21 +388,26 @@
 
         <div id="session-active" class="hidden transition-all duration-500">
           <div class="mb-6">
-            <div class="flex justify-between items-center w-full mb-4">
+            <div class="flex justify-between items-center w-full mb-4 gap-3">
               <button
                 onclick="navigate('dashboard')"
-                class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95 flex items-center group"
+                class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-10 h-10 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95 flex items-center justify-center group text-lg flex-shrink-0"
+                aria-label="Back to dashboard"
               >
-                <i
-                  class="fa-solid fa-arrow-left mr-2 group-hover:-translate-x-1 transition-transform"
-                ></i>
-                Pause & Return
+                <i class="fa-solid fa-arrow-left transition-transform"></i>
               </button>
+              <div class="min-w-0 overflow-hidden flex-1">
+                <span
+                  class="truncate font-bold min-w-0 max-w-full text-lg md:text-2xl text-black-400 dark:text-white-500 block"
+                  id="q-subject"
+                  >Subject</span
+                >
+              </div>
               <button
                 onclick="openSessionSettingsModal()"
                 id="btn-session-settings"
-                class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-10 h-10 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95 flex items-center justify-center group"
-                title="Session Settings"
+                class="flex-shrink-0 bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-10 h-10 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95 flex items-center justify-center group"
+                title="Quiz Settings"
               >
                 <i
                   class="fa-solid fa-gear group-hover:rotate-90 transition-transform"
@@ -498,11 +441,6 @@
             class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 transition-colors duration-300"
           >
             <div class="flex gap-2 mb-3 items-center w-full">
-              <span
-                class="truncate min-w-0 bg-brand-100 text-brand-800 text-xs px-2 py-1 rounded font-semibold dark:bg-brand-900 dark:text-brand-200 transition-colors"
-                id="q-subject"
-                >Subject</span
-              >
               <span
                 class="flex-shrink-0 bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded font-semibold dark:bg-gray-700 dark:text-gray-300 transition-colors"
                 id="q-id"
@@ -709,16 +647,16 @@
 
       <!-- DECK MODE SELECT SECTION -->
       <section id="view-mode-select" class="view-section hidden">
-        <div class="flex items-center justify-between mb-6 gap-4">
-          <div class="flex items-center gap-4">
+        <div class="flex items-center justify-between mb-6 gap-4 flex-wrap">
+          <div class="flex items-center gap-4 min-w-0 flex-wrap">
             <button
               onclick="navigate('dashboard')"
-              class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center"
+              class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center shrink-0"
             >
               <i class="fa-solid fa-arrow-left mr-2"></i> Back
             </button>
             <h2
-              class="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-100"
+              class="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-100 min-w-0 truncate"
               id="mode-select-deck-title"
             >
               Select Mode
@@ -793,39 +731,45 @@
 
       <!-- DECK REVIEW SECTION -->
       <section id="view-deck-review" class="view-section hidden">
-        <div class="flex items-center justify-between mb-6 gap-4 flex-wrap">
-          <div class="flex items-center gap-4">
-            <button
-              onclick="navigate('dashboard')"
-              class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center"
-            >
-              <i class="fa-solid fa-arrow-left mr-2"></i> Back
-            </button>
+        <div class="flex items-center justify-between mb-6 gap-3 flex-nowrap">
+          <button
+            onclick="navigate('dashboard')"
+            class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-10 h-10 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center text-lg flex-shrink-0"
+            aria-label="Back to dashboard"
+          >
+            <i class="fa-solid fa-arrow-left"></i>
+          </button>
+          <div class="min-w-0 overflow-hidden flex-1">
             <h2
-              class="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-100"
+              class="truncate font-bold min-w-0 overflow-hidden text-lg md:text-2xl text-gray-800 dark:text-gray-100 block"
               id="deck-review-title"
             >
               Review Deck
             </h2>
           </div>
 
-          <div class="flex items-center gap-2">
-            <select
-              id="study-filter-select"
-              onchange="changeStudyFilterMode(this.value)"
-              class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all active:scale-95 outline-none focus:border-brand-500 appearance-none"
-              aria-label="Study filter"
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <button
+              id="study-filter-toggle"
+              type="button"
+              onclick="toggleStudyFilterMode()"
+              class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-11 h-11 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center text-lg"
+              aria-label="Toggle favorites filter"
+              aria-pressed="false"
+              title="All items"
             >
-              <option value="all">All</option>
-              <option value="favorites">Favorites</option>
-            </select>
+              <i id="study-filter-icon" class="fa-solid fa-list"></i>
+            </button>
 
             <button
               onclick="openReviewSettingsModal()"
-              class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center gap-2"
+              class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-11 h-11 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center text-lg"
               title="Study Settings"
+              aria-label="Study settings"
             >
-              <i class="fa-solid fa-sliders"></i>
+              <i
+                class="fa-solid fa-gear group-hover:rotate-90 transition-transform"
+              ></i>
             </button>
           </div>
         </div>
@@ -857,9 +801,7 @@
           </p>
         </div>
 
-        <label
-          class="flex items-center justify-between cursor-pointer mb-2 mt-4"
-        >
+        <label class="flex items-center justify-between cursor-pointer mb-2">
           <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
             >Shuffle Choices</span
           >
@@ -1597,257 +1539,6 @@
           </a>
         </div>
       </div>
-
-      <!-- PROFILE SECTION -->
-      <section id="view-profile" class="view-section">
-        <h2 class="text-2xl font-bold mb-6">Profile</h2>
-        <div
-          class="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200"
-        >
-          <p class="font-semibold">⚠️ Sync is still experimental</p>
-          <p class="mt-1">
-            Cross-device progress syncing is heavily being implemented and may
-            not work reliably yet. Please treat this as a preview feature.
-          </p>
-        </div>
-        <div
-          class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 max-w-md mx-auto"
-        >
-          <div id="profile-login-state">
-            <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">
-              Login is optional and is only needed to access online profile
-              features.
-            </p>
-            <div
-              class="mb-4 rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-xs text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-200"
-            >
-              Use a unique password for this website only. Do not use your
-              personal email, banking, school, or other important password.
-            </div>
-            <label class="block text-sm font-semibold mb-1" for="user-username"
-              >Username</label
-            >
-            <input
-              id="user-username"
-              type="text"
-              autocomplete="username"
-              class="w-full p-3 mb-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
-              maxlength="100"
-            />
-            <label class="block text-sm font-semibold mb-1" for="user-password"
-              >Password</label
-            >
-            <div class="relative mb-4">
-              <input
-                id="user-password"
-                type="password"
-                autocomplete="current-password"
-                class="w-full p-3 pr-12 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
-                maxlength="200"
-              />
-              <button
-                type="button"
-                onclick="togglePasswordVisibility('user-password', this)"
-                class="absolute right-3 top-3 text-gray-500"
-                aria-label="Show password"
-                title="Show password"
-              >
-                <i class="fa-solid fa-eye"></i>
-              </button>
-            </div>
-            <button
-              id="btn-user-login"
-              type="button"
-              onclick="submitUserLogin()"
-              class="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 transition-colors"
-            >
-              Log In
-            </button>
-            <p
-              id="user-login-error"
-              class="hidden text-red-500 text-sm mt-3 text-center"
-            ></p>
-            <p
-              class="text-center text-sm text-gray-500 dark:text-gray-400 mt-4"
-            >
-              No account yet?
-              <button
-                type="button"
-                onclick="showSignupForm()"
-                class="font-bold text-brand-500 hover:text-brand-600 hover:underline"
-              >
-                Sign Up
-              </button>
-            </p>
-          </div>
-          <div id="profile-signup-state" class="auth-panel-hidden" hidden>
-            <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">
-              Create an account only if you want progress syncing between
-              devices.
-            </p>
-            <div
-              class="mb-4 rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-xs text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-200"
-            >
-              Choose a new password used only for this website. Never reuse a
-              personal or important password here.
-            </div>
-            <label
-              class="block text-sm font-semibold mb-1"
-              for="signup-username"
-              >Username</label
-            >
-            <input
-              id="signup-username"
-              type="text"
-              autocomplete="username"
-              class="w-full p-3 mb-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
-              maxlength="50"
-            />
-            <label
-              class="block text-sm font-semibold mb-1"
-              for="signup-password"
-              >Website-only password</label
-            >
-            <div class="relative mb-3">
-              <input
-                id="signup-password"
-                type="password"
-                autocomplete="new-password"
-                class="w-full p-3 pr-12 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
-                minlength="8"
-                maxlength="200"
-              />
-              <button
-                type="button"
-                onclick="togglePasswordVisibility('signup-password', this)"
-                class="absolute right-3 top-3 text-gray-500"
-                aria-label="Show password"
-                title="Show password"
-              >
-                <i class="fa-solid fa-eye"></i>
-              </button>
-            </div>
-            <label
-              class="block text-sm font-semibold mb-1"
-              for="signup-password-confirm"
-              >Confirm password</label
-            >
-            <div class="relative mb-4">
-              <input
-                id="signup-password-confirm"
-                type="password"
-                autocomplete="new-password"
-                class="w-full p-3 pr-12 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
-                minlength="8"
-                maxlength="200"
-              />
-              <button
-                type="button"
-                onclick="
-                  togglePasswordVisibility('signup-password-confirm', this)
-                "
-                class="absolute right-3 top-3 text-gray-500"
-                aria-label="Show password"
-                title="Show password"
-              >
-                <i class="fa-solid fa-eye"></i>
-              </button>
-            </div>
-            <button
-              id="btn-user-signup"
-              type="button"
-              onclick="submitUserSignup()"
-              class="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 transition-colors"
-            >
-              Create Account
-            </button>
-            <p
-              id="user-signup-error"
-              class="hidden text-red-500 text-sm mt-3 text-center"
-            ></p>
-            <p
-              class="text-center text-sm text-gray-500 dark:text-gray-400 mt-4"
-            >
-              Already have an account?
-              <button
-                type="button"
-                onclick="showLoginForm()"
-                class="font-bold text-brand-500 hover:text-brand-600 hover:underline"
-              >
-                Log In
-              </button>
-            </p>
-          </div>
-          <div
-            id="profile-logged-in-state"
-            class="auth-panel-hidden text-center"
-            hidden
-          >
-            <p class="text-sm text-gray-600 dark:text-gray-300">
-              Signed in as <strong id="profile-username"></strong>
-            </p>
-            <p
-              id="profile-session-mode"
-              class="text-xs text-gray-500 dark:text-gray-400 mt-1"
-            ></p>
-            <p
-              id="profile-login-notice"
-              class="mt-2 text-sm font-semibold text-brand-600 dark:text-brand-400"
-            ></p>
-            <p
-              id="user-sync-status"
-              class="mt-3 text-xs text-gray-500 dark:text-gray-400"
-              role="status"
-              aria-live="polite"
-            ></p>
-            <div
-              id="profile-sync-details"
-              class="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-left dark:border-gray-700 dark:bg-gray-900/60"
-            >
-              <div class="mb-2 flex items-center justify-between">
-                <span
-                  class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400"
-                >
-                  Sync details
-                </span>
-                <span
-                  id="profile-sync-badge"
-                  class="text-[11px] font-semibold text-green-600 dark:text-green-400"
-                ></span>
-              </div>
-              <div class="space-y-1 text-xs text-gray-600 dark:text-gray-300">
-                <div class="flex items-center justify-between gap-2">
-                  <span>Answered questions</span>
-                  <strong id="profile-stat-answered">0</strong>
-                </div>
-                <div class="flex items-center justify-between gap-2">
-                  <span>Correct answers</span>
-                  <strong id="profile-stat-correct">0</strong>
-                </div>
-                <div class="flex items-center justify-between gap-2">
-                  <span>Saved mistakes</span>
-                  <strong id="profile-stat-mistakes">0</strong>
-                </div>
-                <div class="flex items-center justify-between gap-2">
-                  <span>Offline queue</span>
-                  <strong id="profile-stat-queue">0</strong>
-                </div>
-                <div class="flex items-center justify-between gap-2">
-                  <span>Synced data</span>
-                  <strong id="profile-stat-data" class="text-right">-</strong>
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onclick="userLogout()"
-              class="mt-5 w-full bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-colors"
-            >
-              Log Out
-            </button>
-          </div>
-        </div>
-      </section>
 
       <!-- Review Settings Modal -->
       <div

@@ -41,7 +41,7 @@
       studyFilterMode: "all",
       recentDecks: [],
       deletedDecks: [],
-      discoverySearch: "",
+      localDownloadDeletedDecks: [],
       lastActivity: null,
     },
     session: {

@@ -27,6 +27,18 @@ assert.match(
   "session cleanup should remove the saved quiz state",
 );
 
+assert.match(
+  appCore,
+  /clearTimeout\(syncRetryTimer\);[\s\S]*?clearInterval\(syncCountdownTimer\);[\s\S]*?syncConnected\s*=\s*true;[\s\S]*?setGlobalLoadingState\(false\);/,
+  "deleteSubjectData should clear any retry state and keep the app connected while removing local downloaded data",
+);
+
+assert.match(
+  appCore,
+  /state\.db\s*=\s*state\.db\.filter\(\(q\)\s*=>\s*q\.Subject\s*!==\s*subject\);[\s\S]*?rebuildQuestionIndex\(\);/,
+  "deleteSubjectData should rebuild the subject index immediately so stale deck cache is not reused before refresh",
+);
+
 assert.doesNotMatch(
   backendMain,
   /if\s*\(\s*update\.newName\s*===\s*update\.oldName\s*\)\s*\{\s*renamedCount\+\+;\s*continue;\s*\}/s,

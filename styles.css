@@ -21,6 +21,59 @@
 body {
   -webkit-tap-highlight-color: transparent;
   scroll-behavior: smooth;
+  overflow-x: hidden;
+}
+
+body.title-mode-wrap {
+  overflow-x: hidden;
+}
+
+body.title-mode-wrap *,
+body.title-mode-wrap *::before,
+body.title-mode-wrap *::after {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+body.title-mode-wrap .app-content-shell,
+body.title-mode-wrap main,
+body.title-mode-wrap .view-section,
+body.title-mode-wrap [class*="header-row"],
+body.title-mode-wrap .dashboard-controls {
+  max-width: 100%;
+  min-width: 0;
+}
+
+body.title-mode-wrap .dashboard-controls {
+  flex-wrap: wrap;
+}
+
+body.title-mode-wrap [class*="header-row"] {
+  flex-wrap: nowrap;
+}
+
+body.title-mode-wrap .dashboard-header-row > *,
+body.title-mode-wrap .quiz-header-row > *,
+body.title-mode-wrap .review-header-row > *,
+body.title-mode-wrap .app-content-shell > *,
+body.title-mode-wrap .view-section > * {
+  min-width: 0;
+}
+
+body.title-mode-wrap .dashboard-header-row h2,
+body.title-mode-wrap #q-subject,
+body.title-mode-wrap #deck-review-title,
+body.title-mode-wrap .section-title,
+body.title-mode-wrap .card-title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+body.title-mode-clip {
+  overflow-x: hidden;
 }
 
 #session-settings-modal > div,
@@ -46,8 +99,8 @@ body {
 }
 
 .app-content-shell {
-  width: min(100%, 1120px);
-  max-width: 1120px;
+  width: min(100%, 860px);
+  max-width: 860px;
   margin-inline: auto;
   padding-inline: 1rem;
 }
@@ -173,12 +226,12 @@ input {
   display: grid;
   grid-template-columns: repeat(4, max-content);
   gap: 0.5rem;
-  width: fit-content;
+  width: auto;
   max-width: 100%;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   margin-left: auto;
-  overflow-x: auto;
+  overflow: hidden;
   justify-content: end;
   scrollbar-width: none;
 }
@@ -204,6 +257,21 @@ input {
 #deck-source-filter {
   min-width: 0;
   width: auto;
+}
+
+@media (min-width: 640px) {
+  .dashboard-controls {
+    grid-template-columns: repeat(4, max-content);
+    width: fit-content;
+    justify-content: end;
+  }
+
+  #deck-sort-menu,
+  #deck-sort-trigger,
+  #deck-source-filter,
+  .dashboard-control {
+    width: auto;
+  }
 }
 
 .deck-sort-option {

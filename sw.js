@@ -12,7 +12,6 @@ const APP_SHELL = [
   "/app-core-network.js",
   "/app-core.js",
   "/admin.js",
-  "/discovery.js",
   "/network-utils.js",
   "/question-compat.js",
   "/session-utils.js",

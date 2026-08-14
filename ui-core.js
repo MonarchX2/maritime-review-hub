@@ -53,17 +53,6 @@
       globalScope.checkSavedSession();
     if (typeof globalScope.renderCategoryProgress === "function")
       globalScope.renderCategoryProgress();
-
-    const discoveryPanel = document.getElementById("header-search-panel");
-    const shouldLoadDiscovery =
-      (discoveryPanel && !discoveryPanel.classList.contains("hidden")) ||
-      Boolean(globalScope.state.prefs.discoverySearch);
-
-    if (shouldLoadDiscovery) {
-      await globalScope.ensureDiscoveryLoaded();
-    }
-
-    globalScope.updateDiscoveryPanel();
   }
 
   async function navigate(viewId) {
@@ -120,8 +109,6 @@
         globalScope.loadAdminSubjects();
       }
     }
-
-    globalScope.sendTelemetry("navigate", { view: viewId });
   }
 
   function syncPreferenceControls() {

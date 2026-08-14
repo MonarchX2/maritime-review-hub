@@ -50,7 +50,7 @@ globalThis.window = globalThis;
 globalThis.document = {
   getElementById: (id) => elements[id] || null,
 };
-globalThis.state = { session: { active: false } };
+globalThis.state = { session: { active: false }, prefs: {} };
 globalThis.syncStatusHideTimer = null;
 
 eval(require("fs").readFileSync("./sync-core.js", "utf8"));
@@ -60,11 +60,13 @@ assert.strictEqual(
   globalThis.SyncCore.getSyncStatusVisualState("warning").title,
   "Database reconnecting",
 );
+assert.strictEqual("telemetryEnabled" in globalThis.state.prefs, false);
 
 const syncStatusEl = elements["sync-status"];
 const iconEl = elements["database-connection-icon"];
 const overlayEl = elements["app-loading-overlay"];
 
+globalThis.state.session.active = false;
 globalThis.SyncCore.updateSyncStatus(
   '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Connecting to database...',
   "info",
@@ -74,5 +76,13 @@ globalThis.SyncCore.updateSyncStatus(
 assert.match(syncStatusEl.className, /bg-blue-50/);
 assert.match(iconEl.className, /fa-spinner fa-spin/);
 assert.strictEqual(overlayEl.classList.contains("hidden"), false);
+
+globalThis.state.session.active = true;
+globalThis.SyncCore.updateSyncStatus(
+  '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Database reconnecting...',
+  "warning",
+  true,
+);
+assert.strictEqual(overlayEl.classList.contains("hidden"), true);
 
 console.log("sync visual status tests passed");

@@ -34,10 +34,17 @@ const afterDelete = state.categorySummary.filter(
 );
 assert.deepStrictEqual(afterDelete, []);
 
+const downloadedDb = state.db.filter((q) => q.Subject !== "Navigation::Basic");
+assert.deepStrictEqual(downloadedDb, []);
 assert.strictEqual(
   state.prefs.favoriteDecks.filter((deck) => deck !== "Navigation::Basic")
     .length,
   0,
 );
+
+const visibleAfterLocalDelete = state.categorySummary.filter(
+  (deck) => deck.Subject === "Navigation::Basic",
+);
+assert.strictEqual(visibleAfterLocalDelete.length, 1);
 
 console.log("deleted deck sync checks passed");

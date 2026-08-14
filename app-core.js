@@ -23,9 +23,6 @@ let authChannel = null;
 let authStateVersion = 0;
 let pendingProgressRequestKey = null;
 let pendingOfflineSyncTimer = null;
-let discoverySearchDebounceTimer = null;
-let discoveryUiBound = false;
-let discoveryActiveIndex = -1;
 let cacheInvalidationChannel = null;
 let localCacheVersion = 0;
 let remoteCacheVersion = 0;
@@ -177,363 +174,22 @@ function sanitizeDeletedDeckReferences() {
 
   if (deletedSet.size === 0) return;
 
-  // Remove deleted decks from favorites and recent lists
-  // (but keep them in categorySummary so they remain visible with 0 questions)
   state.prefs.favoriteDecks = (state.prefs.favoriteDecks || []).filter(
     (item) => !deletedSet.has(String(item || "").trim()),
   );
   state.prefs.recentDecks = (state.prefs.recentDecks || []).filter(
     (item) => !deletedSet.has(String(item || "").trim()),
   );
-}
-
-function getDiscoveryViewModel() {
-  const builder =
-    window.DiscoveryUtils &&
-    typeof window.DiscoveryUtils.buildDiscoveryViewModel === "function"
-      ? window.DiscoveryUtils.buildDiscoveryViewModel
-      : null;
-
-  if (!builder) {
-    return {
-      favoriteDecks: [],
-      recentDecks: [],
-      searchQuery: "",
-      visibleDecks: [],
-      hasQuickAccess: false,
-    };
-  }
-
-  return builder(state, getVisibleCategorySummary() || []);
-}
-
-function bindDiscoveryUi() {
-  if (discoveryUiBound) return;
-
-  document.addEventListener("click", (event) => {
-    const panel = document.getElementById("header-search-panel");
-    const toggle = document.getElementById("header-discovery-toggle");
-    if (!panel || panel.classList.contains("hidden")) return;
-    if (panel.contains(event.target) || toggle?.contains(event.target)) return;
-    closeDiscoverySearchPanel();
+  state.categorySummary = (state.categorySummary || []).filter((deck) => {
+    if (!deck || !deck.Subject) return true;
+    return !deletedSet.has(String(deck.Subject || "").trim());
   });
-
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      closeDiscoverySearchPanel();
-      return;
-    }
-
-    if (
-      event.key === "ArrowDown" ||
-      event.key === "ArrowUp" ||
-      event.key === "Enter"
-    ) {
-      handleDiscoveryKeyboard(event);
-    }
-  });
-
-  discoveryUiBound = true;
-}
-
-function toggleFavoriteDeck(subject) {
-  const safeSubject = decodeHandlerValue(subject || "");
-  if (!safeSubject) return;
-  if ((state.prefs?.deletedDecks || []).includes(safeSubject)) return;
-
-  if (!Array.isArray(state.prefs.favoriteDecks)) {
-    state.prefs.favoriteDecks = [];
-  }
-
-  const wasFavorite = state.prefs.favoriteDecks.includes(safeSubject);
-  if (wasFavorite) {
-    state.prefs.favoriteDecks = state.prefs.favoriteDecks.filter(
-      (value) => value !== safeSubject,
-    );
-    showToast("Removed from Favorites.");
-  } else {
-    state.prefs.favoriteDecks = [
-      safeSubject,
-      ...state.prefs.favoriteDecks,
-    ].slice(0, 8);
-    showToast("Added to Favorites.");
-  }
-
-  saveState();
-  renderCategoryProgress();
-}
-
-function updateRecentDecks(subject) {
-  const safeSubject = decodeHandlerValue(subject || "");
-  if (!safeSubject) return;
-  if ((state.prefs?.deletedDecks || []).includes(safeSubject)) return;
-
-  const adder =
-    window.DiscoveryUtils &&
-    typeof window.DiscoveryUtils.addDiscoveryEntry === "function"
-      ? window.DiscoveryUtils.addDiscoveryEntry
-      : null;
-
-  state.prefs.recentDecks = adder
-    ? adder(state.prefs.recentDecks, safeSubject, 8)
-    : [safeSubject];
-}
-
-function getDiscoveryQueryText() {
-  const builder =
-    window.DiscoveryUtils &&
-    typeof window.DiscoveryUtils.normalizeQueryText === "function"
-      ? window.DiscoveryUtils.normalizeQueryText
-      : null;
-
-  const rawQuery = String(state.prefs.discoverySearch || "").trim();
-  return builder ? builder(rawQuery) : rawQuery;
-}
-
-async function ensureDiscoveryLoaded() {
-  if (window.DiscoveryUtils) return;
-  if (typeof window.loadFeatureScript === "function") {
-    await window.loadFeatureScript("discovery.js");
-  }
 }
 
 async function ensureAdminLoaded() {
   if (window.adminState && typeof loadAdminSubjects === "function") return;
   if (typeof window.loadFeatureScript === "function") {
     await window.loadFeatureScript("admin.js");
-  }
-}
-
-function updateDiscoveryPanel() {
-  const panel = document.getElementById("header-search-panel");
-  const resultsContainer = document.getElementById("header-search-results");
-  const input = document.getElementById("header-discovery-input");
-  const toggle = document.getElementById("header-discovery-toggle");
-
-  if (!panel || !resultsContainer) return;
-
-  if (input) input.value = state.prefs.discoverySearch || "";
-  if (toggle) {
-    toggle.setAttribute(
-      "aria-expanded",
-      panel.classList.contains("hidden") ? "false" : "true",
-    );
-  }
-
-  const query = getDiscoveryQueryText();
-  const viewModel = getDiscoveryViewModel();
-  const favoriteDecks = Array.isArray(viewModel.favoriteDecks)
-    ? viewModel.favoriteDecks
-    : [];
-  const recentDecks = Array.isArray(viewModel.recentDecks)
-    ? viewModel.recentDecks
-    : [];
-
-  const deletedSet = new Set(
-    (state.prefs?.deletedDecks || [])
-      .map((entry) => String(entry || "").trim())
-      .filter(Boolean),
-  );
-
-  const dedupedQuickAccess = [];
-  [...favoriteDecks, ...recentDecks].forEach((subject) => {
-    const normalized = String(subject || "").trim();
-    if (!normalized || deletedSet.has(normalized)) return;
-    if (dedupedQuickAccess.includes(normalized)) return;
-    dedupedQuickAccess.push(normalized);
-  });
-
-  const suggestions = query
-    ? (viewModel.visibleDecks || []).slice(0, 6)
-    : dedupedQuickAccess.slice(0, 6);
-
-  if (suggestions.length === 0) {
-    resultsContainer.innerHTML = `
-      <div class="rounded-lg border border-dashed border-gray-200 px-3 py-4 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
-        ${query ? `No decks found for “${escapeHTML(state.prefs.discoverySearch || "")}”.` : "Search decks or open one to build shortcuts."}
-      </div>
-    `;
-    discoveryActiveIndex = -1;
-    return;
-  }
-
-  if (discoveryActiveIndex < 0 || discoveryActiveIndex >= suggestions.length) {
-    discoveryActiveIndex = 0;
-  }
-
-  resultsContainer.innerHTML = `
-    <div class="flex flex-col gap-1.5">
-      ${suggestions
-        .map((entry, index) => {
-          const subject =
-            typeof entry === "string" ? entry : entry.Subject || "";
-          const safeSubject = String(subject || "").trim();
-          if (!safeSubject) return "";
-
-          const isActive = index === discoveryActiveIndex;
-          const activeClass = isActive
-            ? "bg-brand-50 border-brand-500 dark:bg-brand-900/30 dark:border-brand-500"
-            : "";
-
-          return `
-            <div class="search-result-item flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-sm text-gray-700 dark:text-gray-200 ${activeClass}" data-discovery-index="${index}">
-              <button
-                type="button"
-                data-discovery-select="${index}"
-                onclick="handleDeckClick('${encodeHandlerValue(safeSubject)}')"
-                class="flex-1 min-w-0 text-left truncate"
-                title="${escapeHTML(safeSubject)}"
-              >
-                <i class="fa-solid fa-file-lines mr-2 text-gray-400"></i>
-                <span class="truncate">${escapeHTML(safeSubject)}</span>
-              </button>
-              <button
-                type="button"
-                onclick="event.stopPropagation(); toggleFavoriteDeck('${encodeHandlerValue(safeSubject)}')"
-                class="shrink-0 rounded-full p-1.5 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/30"
-                title="Toggle favorite"
-              >
-                <i class="fa-solid fa-star"></i>
-              </button>
-            </div>
-          `;
-        })
-        .join("")}
-    </div>
-  `;
-}
-
-async function toggleDiscoverySearchPanel() {
-  const panel = document.getElementById("header-search-panel");
-  const input = document.getElementById("header-discovery-input");
-  if (!panel) return;
-
-  const shouldOpen = panel.classList.contains("hidden");
-  panel.classList.toggle("hidden", !shouldOpen);
-  if (shouldOpen) {
-    bindDiscoveryUi();
-    await ensureDiscoveryLoaded();
-    updateDiscoveryPanel();
-    window.setTimeout(() => input?.focus(), 50);
-  }
-}
-
-function closeDiscoverySearchPanel() {
-  const panel = document.getElementById("header-search-panel");
-  if (!panel) return;
-  panel.classList.add("hidden");
-  const toggle = document.getElementById("header-discovery-toggle");
-  if (toggle) toggle.setAttribute("aria-expanded", "false");
-}
-
-function activateDiscoverySelection() {
-  const panel = document.getElementById("header-search-panel");
-  const resultsContainer = document.getElementById("header-search-results");
-  if (!panel || !resultsContainer || panel.classList.contains("hidden")) {
-    return;
-  }
-
-  const rows = Array.from(
-    resultsContainer?.querySelectorAll("[data-discovery-index]") || [],
-  );
-
-  if (rows.length === 0) return;
-
-  const safeIndex = Math.max(
-    0,
-    Math.min(discoveryActiveIndex, rows.length - 1),
-  );
-  const activeRow = rows[safeIndex] || rows[0];
-  const button = activeRow?.querySelector("[data-discovery-select]");
-  if (button) {
-    button.click();
-  }
-}
-
-function moveDiscoverySelection(delta) {
-  const resultsContainer = document.getElementById("header-search-results");
-  const rows = Array.from(
-    resultsContainer?.querySelectorAll("[data-discovery-index]") || [],
-  );
-
-  if (rows.length === 0) return;
-
-  const nextIndex = Math.max(
-    0,
-    Math.min(rows.length - 1, discoveryActiveIndex + delta),
-  );
-
-  discoveryActiveIndex = nextIndex;
-  updateDiscoveryPanel();
-}
-
-function handleDiscoverySearchInput(event) {
-  const nextValue = event?.target?.value || "";
-  clearTimeout(discoverySearchDebounceTimer);
-  state.prefs.discoverySearch = nextValue;
-  discoveryActiveIndex = -1;
-
-  discoverySearchDebounceTimer = window.setTimeout(() => {
-    saveState();
-    renderCategoryProgress();
-    updateDiscoveryPanel();
-  }, 120);
-}
-
-function clearDiscoverySearch() {
-  state.prefs.discoverySearch = "";
-  discoveryActiveIndex = -1;
-  clearTimeout(discoverySearchDebounceTimer);
-  saveState();
-  renderCategoryProgress();
-  updateDiscoveryPanel();
-  const input = document.getElementById("header-discovery-input");
-  if (input) input.focus();
-}
-
-function handleDiscoveryKeyboard(event) {
-  const input = document.getElementById("header-discovery-input");
-  if (event.target !== input) return;
-
-  if (event.key === "ArrowDown") {
-    event.preventDefault();
-    const rows = Array.from(
-      document
-        .getElementById("header-search-results")
-        ?.querySelectorAll("[data-discovery-index]") || [],
-    );
-
-    if (rows.length === 0) return;
-
-    discoveryActiveIndex = Math.min(
-      Math.max(discoveryActiveIndex + 1, 0),
-      rows.length - 1,
-    );
-    updateDiscoveryPanel();
-    return;
-  }
-
-  if (event.key === "ArrowUp") {
-    event.preventDefault();
-    const rows = Array.from(
-      document
-        .getElementById("header-search-results")
-        ?.querySelectorAll("[data-discovery-index]") || [],
-    );
-
-    if (rows.length === 0) return;
-
-    discoveryActiveIndex = Math.max(
-      Math.min(discoveryActiveIndex - 1, rows.length - 1),
-      0,
-    );
-    updateDiscoveryPanel();
-    return;
-  }
-
-  if (event.key === "Enter") {
-    event.preventDefault();
-    activateDiscoverySelection();
   }
 }
 
@@ -648,7 +304,15 @@ async function loadState() {
       state.prefs.recentDecks = Array.isArray(state.prefs.recentDecks)
         ? state.prefs.recentDecks
         : [];
-      state.prefs.discoverySearch = state.prefs.discoverySearch || "";
+      const canonicalDeckNameMode = ["wrap", "clip"].includes(
+        state.prefs.deckNameMode,
+      )
+        ? state.prefs.deckNameMode
+        : ["wrap", "clip"].includes(state.prefs.titleMode)
+          ? state.prefs.titleMode
+          : "wrap";
+      state.prefs.deckNameMode = canonicalDeckNameMode;
+      state.prefs.titleMode = canonicalDeckNameMode;
       if (!Object.prototype.hasOwnProperty.call(prefs, "activeRecall")) {
         state.prefs.activeRecall = false;
       }
@@ -685,7 +349,6 @@ async function loadState() {
   }
 
   populateFilters();
-  bindDiscoveryUi();
   updateDashboard();
   updateThemeButton();
   syncPreferenceControls();
@@ -838,17 +501,6 @@ async function updateDashboard() {
 
   if (typeof checkSavedSession === "function") checkSavedSession();
   if (typeof renderCategoryProgress === "function") renderCategoryProgress();
-
-  const discoveryPanel = document.getElementById("header-search-panel");
-  const shouldLoadDiscovery =
-    (discoveryPanel && !discoveryPanel.classList.contains("hidden")) ||
-    Boolean(state.prefs.discoverySearch);
-
-  if (shouldLoadDiscovery) {
-    await ensureDiscoveryLoaded();
-  }
-
-  updateDiscoveryPanel();
 }
 
 let settingsClickCount = 0;
@@ -904,8 +556,6 @@ async function navigate(viewId) {
       loadAdminSubjects();
     }
   }
-
-  sendTelemetry("navigate", { view: viewId });
 }
 
 function getSyncStatusVisualState(tone = "info") {
@@ -976,22 +626,17 @@ function setGlobalLoadingState(
   overlay.classList.toggle("hidden", !isLoading);
   overlay.setAttribute("aria-hidden", String(!isLoading));
 
-  // OPTIMIZATION: Hide dashboard-loading placeholder when overlay shows (prevent duplicate loaders)
-  const dashboardLoading = document.getElementById("dashboard-loading");
-  if (dashboardLoading && isLoading) {
-    dashboardLoading.classList.add("hidden");
-  }
-
   return isLoading;
 }
 
 function updateSyncStatus(message, tone = "info", showOverlay = true) {
   const visualState = getSyncStatusVisualState(tone);
+  const activeSessionBlocking = Boolean(state.session?.active);
   const shouldSuppressOverlay =
-    state.session.active &&
+    activeSessionBlocking &&
     showOverlay &&
     /database|reconnect|waiting until your session ends/i.test(message);
-  const effectiveShowOverlay = shouldSuppressOverlay ? false : showOverlay;
+  const effectiveShowOverlay = showOverlay && !shouldSuppressOverlay;
   const statusElements = [document.getElementById("sync-status")].filter(
     Boolean,
   );
@@ -1012,14 +657,14 @@ function updateSyncStatus(message, tone = "info", showOverlay = true) {
 
   if (tone === "info") {
     setGlobalLoadingState(
-      true,
+      effectiveShowOverlay,
       visualState.overlayTitle,
       visualState.overlayDetail,
       tone,
     );
   } else if (tone === "warning" || tone === "error") {
     setGlobalLoadingState(
-      true,
+      effectiveShowOverlay,
       visualState.overlayTitle,
       visualState.overlayDetail,
       tone,
@@ -1028,8 +673,13 @@ function updateSyncStatus(message, tone = "info", showOverlay = true) {
     setGlobalLoadingState(false);
   }
 
+  const shouldShowStatusToast =
+    !shouldSuppressOverlay &&
+    (showOverlay ||
+      tone === "info" ||
+      /database|reconnect|retry/i.test(message));
   const connectionStatus = document.getElementById("connection-status");
-  if (connectionStatus && effectiveShowOverlay) {
+  if (connectionStatus && shouldShowStatusToast) {
     clearTimeout(syncStatusHideTimer);
     connectionStatus.classList.remove("hidden", "opacity-0", "scale-95");
     connectionStatus.innerHTML = message;
@@ -1070,6 +720,7 @@ function scheduleSyncRetry(showOverlay = true) {
   const delay = SYNC_INTERVAL_MS;
   const retryAt = Date.now() + delay;
   const wasConnected = syncConnected;
+  const effectiveShowOverlay = showOverlay && !state.session?.active;
   syncConnected = false;
   if (wasConnected) renderCategoryProgress();
   const renderCountdown = () => {
@@ -1077,13 +728,16 @@ function scheduleSyncRetry(showOverlay = true) {
     updateSyncStatus(
       `<i class="fa-solid fa-xmark mr-1"></i> Database unavailable. Trying to reconnect (attempt ${syncAttempt}) in ${seconds}s...`,
       "warning",
-      showOverlay,
+      effectiveShowOverlay,
     );
     if (seconds === 0) clearInterval(syncCountdownTimer);
   };
   renderCountdown();
   syncCountdownTimer = setInterval(renderCountdown, 1000);
-  syncRetryTimer = setTimeout(() => syncDatabase(true, !showOverlay), delay);
+  syncRetryTimer = setTimeout(
+    () => syncDatabase(true, !effectiveShowOverlay),
+    delay,
+  );
 }
 
 async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
@@ -1094,6 +748,7 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
     syncAbortController.abort();
   }
 
+  const silentSync = isBackgroundCheck || Boolean(state.session?.active);
   if (!isRetry) syncAttempt = 0;
   syncAttempt++;
   syncAbortController = new AbortController();
@@ -1104,9 +759,8 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
   updateSyncStatus(
     `<i class="fa-solid fa-spinner fa-spin mr-1"></i> ${isRetry ? "Checking for database updates" : "Connecting to database"}...`,
     "info",
-    !isBackgroundCheck,
+    false,
   );
-  sendTelemetry("sync_attempt", { attempt: syncAttempt, retry: isRetry });
 
   try {
     const response = await fetch(url, {
@@ -1148,28 +802,20 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
         if (!wasConnected) renderCategoryProgress();
       }
 
-      sendTelemetry("sync_success", {
-        attempt: completedAttempt,
-        subjectCount: summaryData.length,
-        changed,
-        applied: canApplyNow,
-      });
-
       updateSyncStatus(
         `<i class="fa-solid fa-check mr-1"></i> Connected. ${changed && !canApplyNow ? "Update waiting until your session ends." : `Checked ${summaryData.length} subjects.`}`,
         "success",
-        !isBackgroundCheck && !initialSyncSuccessShown,
+        !silentSync && !initialSyncSuccessShown,
       );
       setGlobalLoadingState(false);
-      if (!isBackgroundCheck && !initialSyncSuccessShown) {
+      if (!silentSync && !initialSyncSuccessShown) {
         initialSyncSuccessShown = true;
         hideConnectionStatusAfterDelay();
       }
       scheduleSyncPoll();
     } else {
       clearTimeout(timeoutId);
-      sendTelemetry("sync_empty", { attempt: syncAttempt });
-      scheduleSyncRetry(!isBackgroundCheck);
+      scheduleSyncRetry(!silentSync);
       if (state.categorySummary.length && syncConnected)
         renderCategoryProgress();
     }
@@ -1177,14 +823,9 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
     clearTimeout(timeoutId);
     if (requestController !== syncAbortController) return;
     console.error(err);
-    sendTelemetry("sync_failure", {
-      attempt: syncAttempt,
-      error: err.name || "NetworkError",
-      message: err.message || "Unknown sync error",
-    });
-    scheduleSyncRetry(!isBackgroundCheck);
+    scheduleSyncRetry(!silentSync);
     setGlobalLoadingState(
-      true,
+      !silentSync,
       "Database reconnecting",
       "The app is retrying the connection automatically. This may take a moment.",
       "warning",
@@ -1347,7 +988,18 @@ function initSession() {
 
   renderQuestion();
   saveSessionProgress();
-  sendTelemetry("start_session", { subject: filterVal, poolSize: pool.length });
+}
+
+function getShortSubjectLabel(subject, fallback = "General") {
+  const raw = String(subject ?? "").trim();
+  if (!raw) return fallback;
+
+  const parts = raw
+    .split("::")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  return parts.length >= 2 ? parts.slice(-2).join(" :: ") : raw;
 }
 
 function renderQuestion() {
@@ -1364,9 +1016,10 @@ function renderQuestion() {
     `${((state.session.currentIndex + 1) / totalCards) * 100}%`;
 
   const fullSubject = q.Subject || "General";
-  const parts = String(fullSubject).split("::");
-  document.getElementById("q-subject").innerText =
-    parts.length >= 2 ? parts.slice(-2).join(" :: ") : fullSubject;
+  document.getElementById("q-subject").innerText = getShortSubjectLabel(
+    fullSubject,
+    "General",
+  );
 
   let displayId = q.ID ?? `Q-${state.session.currentIndex + 1}`;
   if (displayId.includes("::")) {
@@ -1553,6 +1206,8 @@ function renderQuestion() {
       imgPreload.src = nextQ.ImageURL;
     }
   });
+
+  applyTitleMode();
 }
 
 function enterFolder(folderName, isLockedFolder) {
@@ -1685,7 +1340,6 @@ function renderCategoryProgress() {
     }
     return total;
   }
-  const discoverySearchValue = state.prefs.discoverySearch || "";
   let html = `
         <div class="flex items-center gap-2 mb-6 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto pb-2 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
             <button onclick="goToPath(-1)" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2">
@@ -1739,58 +1393,20 @@ function renderCategoryProgress() {
     const folderKey = String(currentKey || "").trim();
     const childKeys = Object.keys(node?._children || {});
 
-    if (
-      window.DiscoveryUtils &&
-      typeof window.DiscoveryUtils.matchesFavoriteEntry === "function"
-    ) {
-      const matchesNode = window.DiscoveryUtils.matchesFavoriteEntry(
-        subject,
-        folderKey,
-        favoriteDecks,
+    const matchesNode = favoriteDecks.some((entry) => {
+      const favoriteText = String(entry || "").trim();
+      if (!favoriteText) return false;
+      if (favoriteText === subject) return true;
+      if (folderKey && favoriteText === folderKey) return true;
+      return (
+        subject.startsWith(favoriteText + "::") ||
+        subject.startsWith(favoriteText + "/")
       );
-      if (matchesNode) return true;
-    } else {
-      const matchesNode = favoriteDecks.some((entry) => {
-        const favoriteText = String(entry || "").trim();
-        if (!favoriteText) return false;
-        if (favoriteText === subject) return true;
-        if (folderKey && favoriteText === folderKey) return true;
-        return (
-          subject.startsWith(favoriteText + "::") ||
-          subject.startsWith(favoriteText + "/")
-        );
-      });
-      if (matchesNode) return true;
-    }
+    });
+    if (matchesNode) return true;
 
     return childKeys.some((childKey) =>
       matchesFavoriteDeck(node._children[childKey], childKey),
-    );
-  }
-
-  function nodeMatchesDiscoveryQuery(node, query, currentKey = null) {
-    const normalizedQuery = String(query || "")
-      .trim()
-      .toLowerCase();
-    if (!normalizedQuery) return true;
-
-    const subject = node?._data?.Subject || "";
-    const folderName = currentKey ? String(currentKey) : "";
-    const haystack = [subject, folderName]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-    if (haystack.includes(normalizedQuery)) return true;
-
-    const childKeys = Object.keys(node?._children || {});
-    if (childKeys.length === 0) return false;
-
-    return childKeys.some((childKey) =>
-      nodeMatchesDiscoveryQuery(
-        node._children[childKey],
-        normalizedQuery,
-        childKey,
-      ),
     );
   }
 
@@ -1873,14 +1489,11 @@ function renderCategoryProgress() {
     ) {
       return false;
     }
-    return (
-      nodeMatchesFilter(currentNode[key], sourceFilter, key) &&
-      nodeMatchesDiscoveryQuery(currentNode[key], discoverySearchValue, key)
-    );
+    return nodeMatchesFilter(currentNode[key], sourceFilter, key);
   });
 
   if (visibleKeys.length === 0) {
-    html += `<div class="col-span-full text-center py-10 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">${discoverySearchValue ? `No decks match “${escapeHTML(discoverySearchValue)}”.` : "No decks match your filter."}</div>`;
+    html += `<div class="col-span-full text-center py-10 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">No decks match your filter.</div>`;
   }
 
   function generateCardHTML(cat, displayName, delay = 0) {
@@ -2123,6 +1736,8 @@ function renderCategoryProgress() {
   html += `</div>`;
   container.className = "transition-all duration-500";
   container.innerHTML = html;
+
+  applyTitleMode();
 }
 
 async function fetchAndStartCategory(subject, mode, pass = null) {
@@ -2271,15 +1886,60 @@ async function resetCategory(subject) {
   }
 }
 
+function markLocalDownloadDeleted(subject) {
+  const normalized = String(subject || "").trim();
+  if (!normalized) return;
+  const set = new Set(
+    (state.prefs.localDownloadDeletedDecks || []).filter(Boolean),
+  );
+  set.add(normalized);
+  state.prefs.localDownloadDeletedDecks = [...set];
+}
+
+function clearLocalDownloadDeleted(subject) {
+  const normalized = String(subject || "").trim();
+  if (!normalized) return;
+  state.prefs.localDownloadDeletedDecks = (
+    state.prefs.localDownloadDeletedDecks || []
+  ).filter((deck) => deck !== normalized);
+}
+
 async function deleteSubjectData(subject) {
   subject = decodeHandlerValue(subject);
   if (
     await requestConfirmation(
-      `Are you sure you want to delete the downloaded questions for "${subject}"? Your accuracy and progress stats will remain, but the app will remove the local data to save space.`,
+      `Are you sure you want to delete the downloaded questions for "${subject}"? Your accuracy and progress stats will remain, but the app will remove the local data to save space. The deck will remain in your list until you download it again.`,
       "Delete Downloaded Data",
     )
   ) {
+    // Clear any pending sync timers - deletion is a local operation
+    clearTimeout(syncRetryTimer);
+    clearInterval(syncCountdownTimer);
+
+    // Reset sync state after local deletion succeeds
+    // (deletion doesn't depend on backend connectivity)
+    syncAttempt = 0;
+    syncConnected = true;
+    setGlobalLoadingState(false);
+
+    const beforeSummary = (state.categorySummary || []).find(
+      (deck) => deck && deck.Subject === subject,
+    );
+
     state.db = state.db.filter((q) => q.Subject !== subject);
+    rebuildQuestionIndex();
+    markLocalDownloadDeleted(subject);
+
+    if (beforeSummary) {
+      beforeSummary.Downloaded = false;
+      beforeSummary.IsDownloaded = false;
+      beforeSummary.LocalQuestionCount = 0;
+      beforeSummary.QuestionCount = Math.max(
+        0,
+        Number(beforeSummary.QuestionCount || 0),
+      );
+    }
+
     state.prefs.favoriteDecks = (state.prefs.favoriteDecks || []).filter(
       (deck) => deck !== subject,
     );
@@ -2289,12 +1949,17 @@ async function deleteSubjectData(subject) {
     if (state.prefs.lastActivity?.subject === subject) {
       state.prefs.lastActivity = null;
     }
+
     state.prefs.deletedDecks = Array.from(
-      new Set([...(state.prefs.deletedDecks || []), subject].filter(Boolean)),
-    );
-    sanitizeDeletedDeckReferences();
+      new Set((state.prefs.deletedDecks || []).filter(Boolean)),
+    ).filter((deck) => deck !== subject);
+
     saveState();
     await safeIdbSet("mrh_db", state.db);
+    const deckSourceFilter = document.getElementById("deck-source-filter");
+    if (deckSourceFilter && deckSourceFilter.value === "downloaded") {
+      renderCategoryProgress();
+    }
     if (typeof renderCategoryProgress === "function") {
       renderCategoryProgress();
     }
@@ -2457,6 +2122,7 @@ async function fetchDeckQuestionsFromNetwork(
 
     const otherQuestions = state.db.filter((q) => q.Subject !== subject);
     state.db = [...otherQuestions, ...validQuestions];
+    clearLocalDownloadDeleted(subject);
     rebuildQuestionIndex();
     await safeIdbSet("mrh_db", state.db);
     if (typeof renderCategoryProgress === "function") {
@@ -2516,7 +2182,10 @@ function renderDeckReview(subject, questions) {
   currentReviewQuestions = questions;
 
   const container = document.getElementById("deck-review-list");
-  document.getElementById("deck-review-title").innerText = subject;
+  document.getElementById("deck-review-title").innerText = getShortSubjectLabel(
+    subject,
+    "General",
+  );
 
   const globalShowWrong = state.prefs.showWrongChoices !== false;
   const hideABCD = state.prefs.hideABCD === true;
@@ -2544,22 +2213,10 @@ function renderDeckReview(subject, questions) {
   );
 
   const studyFilterMode = state.prefs.studyFilterMode || "all";
-  let filteredQuestions = questions;
-  if (
-    window.DiscoveryUtils &&
-    typeof window.DiscoveryUtils.filterQuestionsByStudyPreference === "function"
-  ) {
-    filteredQuestions = window.DiscoveryUtils.filterQuestionsByStudyPreference(
-      questions,
-      favoriteQuestions,
-      studyFilterMode,
-    );
-  } else {
-    filteredQuestions =
-      studyFilterMode === "favorites"
-        ? questions.filter((question) => favoriteQuestions.has(question.ID))
-        : questions;
-  }
+  const filteredQuestions =
+    studyFilterMode === "favorites"
+      ? questions.filter((question) => favoriteQuestions.has(question.ID))
+      : questions;
 
   if (filteredQuestions.length === 0) {
     container.innerHTML = `
@@ -2778,12 +2435,8 @@ function renderDeckReview(subject, questions) {
     if (scrollContainer && layout === "scroll") {
       scrollContainer.scrollTop = progress.scrollY || 0;
     }
+    applyTitleMode();
   }, 100);
-
-  sendTelemetry("start_review", {
-    subject: subject,
-    poolSize: questions.length,
-  });
 }
 
 function toggleHideABCD() {
@@ -2923,11 +2576,6 @@ function nextQuestion() {
     state.session.currentIndex++;
     renderQuestion();
     saveSessionProgress();
-    sendTelemetry(skipped ? "skip_question" : "next_question", {
-      questionIndex: state.session.currentIndex - 1,
-      nextQuestionIndex: state.session.currentIndex,
-      questionId: state.session.questions[state.session.currentIndex - 1]?.ID,
-    });
   } else {
     alert("Practice Session Complete! Great job.");
     clearSessionProgress();
@@ -3026,7 +2674,6 @@ function trackStats(q, isCorrect) {
 
   updateSrsForQuestion(q, isCorrect);
   saveState();
-  sendTelemetry("answer_question", { qId: q.ID, isCorrect });
 }
 
 function endSession(silent = false) {
@@ -3052,8 +2699,6 @@ function endSession(silent = false) {
     );
   }
   if (!silent) navigate("dashboard");
-
-  sendTelemetry("end_session", { totalAnswered: state.session.currentIndex });
 }
 
 let chartRetryCount = 0;
@@ -3278,6 +2923,7 @@ async function clearAppData() {
       layoutMode: "grid",
       shuffleChoices: true,
       shuffleQuestions: true,
+      titleMode: "wrap",
       hideABCD: false,
       quizHideABCD: false,
       showWrongChoices: false,
@@ -3290,7 +2936,6 @@ async function clearAppData() {
       favoriteDecks: [],
       favoriteQuestions: [],
       recentDecks: [],
-      discoverySearch: "",
       lastActivity: null,
     };
     state.session = {
@@ -3363,15 +3008,7 @@ async function fetchGlobalReports() {
 }
 
 window.onload = async () => {
-  setupTelemetry();
-  setGlobalLoadingState(
-    true,
-    "Loading app data",
-    "Checking saved progress and the latest database status...",
-    "info",
-  );
   await loadState();
-  await restoreUserSession();
 
   if ("serviceWorker" in navigator) {
     try {
@@ -3390,7 +3027,6 @@ window.onload = async () => {
   }
 
   syncDatabase();
-  await syncUserProgress();
   fetchGlobalReports();
 };
 
@@ -3481,10 +3117,6 @@ async function resumeSession(password = null) {
       return;
     }
     await reviewDeck(activity.subject, password);
-    sendTelemetry("resume_session", {
-      mode: "review",
-      subject: activity.subject,
-    });
     return;
   }
 
@@ -3561,11 +3193,6 @@ async function resumeSession(password = null) {
   document.getElementById("session-active").classList.remove("hidden");
 
   renderQuestion();
-  sendTelemetry("resume_session", {
-    mode: "quiz",
-    subject: currentSubject,
-    questionIndex: state.session.currentIndex,
-  });
 }
 
 function clearSessionProgress() {
@@ -3815,8 +3442,11 @@ function cycleScrollNavigationPosition() {
 }
 
 function changeDeckNameMode(mode) {
-  state.prefs.deckNameMode = mode === "clip" ? "clip" : "wrap";
+  const normalizedMode = ["clip", "wrap"].includes(mode) ? mode : "wrap";
+  state.prefs.deckNameMode = normalizedMode;
+  state.prefs.titleMode = normalizedMode;
   saveState();
+  applyTitleMode();
   renderCategoryProgress();
 }
 
@@ -3826,10 +3456,6 @@ function changeDeckSort(sortOrder) {
     : "letters";
   saveState();
   renderCategoryProgress();
-  sendTelemetry("change_deck_sort", {
-    sortBy: state.prefs.deckSortBy,
-    direction: state.prefs.deckSortDirection,
-  });
 }
 
 function toggleDeckSortDirection() {
@@ -3842,10 +3468,6 @@ function setDeckSortDirection(direction) {
   state.prefs.deckSortDirection = direction === "desc" ? "desc" : "asc";
   saveState();
   renderCategoryProgress();
-  sendTelemetry("change_deck_sort", {
-    sortBy: state.prefs.deckSortBy,
-    direction: state.prefs.deckSortDirection,
-  });
 }
 
 function applyNavigationPosition() {
@@ -3900,9 +3522,6 @@ function changeNavigationPosition(position) {
   applyNavigationPosition();
   const select = document.getElementById("navigation-position-select");
   if (select) select.value = normalized;
-  sendTelemetry("change_navigation_position", {
-    position: normalized,
-  });
 }
 
 function toggleMainNavigationPosition(mode, source) {
@@ -4077,15 +3696,12 @@ function openReviewSettingsModal() {
   const navigationButton = document.getElementById(
     "toggle-review-navigation-bottom",
   );
-  const studyFilterSelect = document.getElementById("study-filter-select");
   if (navigationButton) {
     navigationButton.textContent = getScrollNavigationButtonLabel(
       getStudyNavigationPosition(state.prefs.studyLayout || "scroll"),
     );
   }
-  if (studyFilterSelect) {
-    studyFilterSelect.value = state.prefs.studyFilterMode || "all";
-  }
+  updateStudyFilterToggle();
   modal.classList.remove("hidden");
   // Small delay allows the browser to render 'block' before applying opacity for the transition
   setTimeout(() => {
@@ -4127,10 +3743,44 @@ function handleReviewLayoutChange(layoutType) {
   changeStudyLayout(layoutType);
 }
 
+function updateStudyFilterToggle() {
+  const toggle = document.getElementById("study-filter-toggle");
+  const icon = document.getElementById("study-filter-icon");
+  if (!toggle || !icon) return;
+
+  const isFavorites = (state.prefs.studyFilterMode || "all") === "favorites";
+  toggle.setAttribute("aria-pressed", String(isFavorites));
+  toggle.setAttribute(
+    "aria-label",
+    isFavorites ? "Favorites mode enabled" : "All items mode enabled",
+  );
+  toggle.title = isFavorites ? "Favorites only" : "All items";
+  icon.className = isFavorites ? "fa-solid fa-star" : "fa-solid fa-list";
+
+  toggle.classList.toggle("bg-yellow-100", isFavorites);
+  toggle.classList.toggle("text-yellow-600", isFavorites);
+  toggle.classList.toggle("dark:bg-yellow-900/30", isFavorites);
+  toggle.classList.toggle("dark:text-yellow-300", isFavorites);
+
+  toggle.classList.toggle("bg-gray-200", !isFavorites);
+  toggle.classList.toggle("text-gray-700", !isFavorites);
+  toggle.classList.toggle("dark:bg-gray-700", !isFavorites);
+  toggle.classList.toggle("dark:text-gray-200", !isFavorites);
+}
+
+function toggleStudyFilterMode() {
+  const nextMode =
+    (state.prefs.studyFilterMode || "all") === "favorites"
+      ? "all"
+      : "favorites";
+  changeStudyFilterMode(nextMode);
+}
+
 function changeStudyFilterMode(mode) {
   const nextMode = mode === "favorites" ? "favorites" : "all";
   state.prefs.studyFilterMode = nextMode;
   saveState();
+  updateStudyFilterToggle();
   if (currentReviewSubject) {
     const currentQuestions = getQuestionsForSubject(currentReviewSubject) || [];
     if (currentQuestions.length > 0) {
@@ -4439,7 +4089,6 @@ function toggleAppMode() {
   }
 
   renderCategoryProgress();
-  sendTelemetry("toggle_mode", { mode: currentAppMode });
 }
 
 function changeDatabaseUpdateMode(mode) {
@@ -4453,17 +4102,29 @@ function changeDatabaseUpdateMode(mode) {
       "success",
     );
   }
-  sendTelemetry("change_database_update_mode", {
-    mode: state.prefs.databaseUpdateMode,
-  });
 }
 
 let pendingDeckSubject = null;
 let pendingDeckAction = null;
 
+function updateRecentDecks(subj) {
+  if (!subj) return;
+  if (!state.prefs.recentDecks) state.prefs.recentDecks = [];
+  const recentDecks = state.prefs.recentDecks || [];
+  const filtered = recentDecks.filter((d) => d !== subj);
+  filtered.unshift(subj);
+  state.prefs.recentDecks = filtered.slice(0, 10);
+}
+
 function handleDeckClick(subj, action = "continue") {
   subj = decodeHandlerValue(subj);
   if (!subj) return;
+
+  // If deck was locally deleted, clear it from deleted list so we fetch fresh
+  if ((state.prefs.localDownloadDeletedDecks || []).includes(subj)) {
+    clearLocalDownloadDeleted(subj);
+    saveState();
+  }
 
   if (!syncConnected) {
     updateSyncStatus(
@@ -4519,6 +4180,102 @@ function toggleShuffleQuestions() {
   syncPreferenceControls();
 }
 
+function setTitleMode(mode) {
+  if (!["clip", "wrap"].includes(mode)) return;
+
+  const normalizedMode = mode === "clip" ? "clip" : "wrap";
+  state.prefs.deckNameMode = normalizedMode;
+  state.prefs.titleMode = normalizedMode;
+  saveState();
+  applyTitleMode();
+  updateTitleModeButtons();
+}
+
+function applyTitleMode() {
+  const mode = state.prefs.titleMode || "wrap";
+  const body = document.body;
+
+  if (body) {
+    body.classList.toggle("title-mode-wrap", mode === "wrap");
+    body.classList.toggle("title-mode-clip", mode === "clip");
+  }
+
+  document
+    .querySelectorAll(
+      ".dashboard-header-row, .quiz-header-row, .review-header-row, .app-content-shell, main, .view-section, #view-dashboard, #view-practice, #view-deck-review",
+    )
+    .forEach((el) => {
+      el.classList.add("min-w-0", "max-w-full");
+      if (mode === "wrap") {
+        el.classList.add("flex-wrap");
+        el.style.maxWidth = "100%";
+        el.style.minWidth = "0";
+      } else {
+        el.classList.remove("flex-wrap");
+        el.style.maxWidth = "100%";
+        el.style.minWidth = "0";
+      }
+    });
+
+  const dashboardH2 = document.querySelector(".dashboard-header-row h2");
+  const quizSubject = document.getElementById("q-subject");
+  const reviewTitle = document.getElementById("deck-review-title");
+
+  [dashboardH2, quizSubject, reviewTitle].forEach((elem) => {
+    if (!elem) return;
+
+    const parent = elem.parentElement;
+
+    if (mode === "clip") {
+      elem.classList.add("truncate", "overflow-hidden");
+      elem.classList.remove("whitespace-normal", "break-words");
+      elem.style.whiteSpace = "nowrap";
+      elem.style.overflow = "hidden";
+      elem.style.textOverflow = "ellipsis";
+      elem.style.overflowWrap = "normal";
+      elem.style.wordBreak = "normal";
+
+      if (parent) {
+        parent.classList.add("min-w-0", "overflow-hidden");
+        parent.classList.remove("flex-wrap");
+      }
+    } else if (mode === "wrap") {
+      elem.classList.remove("truncate", "overflow-hidden");
+      elem.classList.add("whitespace-normal", "break-words");
+      elem.style.whiteSpace = "normal";
+      elem.style.overflow = "hidden";
+      elem.style.textOverflow = "clip";
+      elem.style.overflowWrap = "anywhere";
+      elem.style.wordBreak = "break-word";
+
+      if (parent) {
+        parent.classList.add("min-w-0");
+        parent.classList.add("overflow-hidden");
+        parent.classList.remove("flex-wrap");
+      }
+    }
+  });
+}
+
+function toggleTitleMode() {
+  const currentMode = state.prefs.titleMode || "wrap";
+  const newMode = currentMode === "wrap" ? "clip" : "wrap";
+  setTitleMode(newMode);
+  updateTitleModeButton();
+}
+
+function updateTitleModeButton() {
+  const mode = state.prefs.titleMode || "wrap";
+  const btn = document.getElementById("title-mode-toggle-btn");
+  if (btn) {
+    btn.textContent = mode === "clip" ? "Clip" : "Wrap";
+  }
+}
+
+function updateTitleModeButtons() {
+  updateTitleModeButton();
+}
+
 async function autoSaveDeckPassword(deckPath, newPassword) {
   const safeToken = typeof getAdminToken === "function" ? getAdminToken() : "";
   const password = String(newPassword || "").trim();
@@ -4539,310 +4296,6 @@ async function autoSaveDeckPassword(deckPath, newPassword) {
   } catch (e) {
     alert("Network error while auto-saving password.");
     console.error(e);
-  }
-}
-
-let userState = {
-  username: "",
-  isLoggedIn: false,
-  sessionToken: "",
-  sessionMode: "active",
-  sessionExpiresAt: null,
-  authVersion: 0,
-};
-
-function getAuthStateSnapshot() {
-  return {
-    username: userState.username || "",
-    isLoggedIn: userState.isLoggedIn === true,
-    sessionMode: userState.sessionMode || "active",
-    sessionExpiresAt: userState.sessionExpiresAt || null,
-    authVersion: (userState.authVersion || 0) + 1,
-    identity: getSafeStorageIdentity(),
-  };
-}
-
-function resetClientSession(reason = "auth") {
-  userState = {
-    username: "",
-    isLoggedIn: false,
-    sessionToken: "",
-    sessionMode: "active",
-    sessionExpiresAt: null,
-    authVersion: (userState.authVersion || 0) + 1,
-  };
-  removeSessionStoredItem("user_session");
-  updateProfileUI();
-  if (reason !== "bootstrap") {
-    showToast("Your session was cleared on this device.", "error");
-  }
-}
-
-function applyAuthStateSnapshot(snapshot, source = "broadcast") {
-  if (!snapshot) return false;
-  const snapshotIdentity = snapshot.identity || "";
-  if (snapshotIdentity && snapshotIdentity !== getSafeStorageIdentity()) {
-    if (userState.isLoggedIn || snapshot.isLoggedIn) {
-      resetClientSession("identity");
-      showToast(
-        "An account switch was detected. This tab is now in guest mode.",
-        "error",
-      );
-    }
-    return true;
-  }
-  if (!snapshot.isLoggedIn) {
-    if (userState.isLoggedIn) {
-      resetClientSession("logout");
-    }
-    return true;
-  }
-  const isConflict =
-    userState.isLoggedIn &&
-    snapshot.username &&
-    snapshot.username !== userState.username;
-  if (isConflict) {
-    resetClientSession("conflict");
-    showToast(
-      "Another account is active in another tab. This tab was switched to guest mode.",
-      "error",
-    );
-    return true;
-  }
-  return false;
-}
-
-function getAuthBroadcastChannelName() {
-  return `mrh_auth_${getSafeStorageIdentity()}`;
-}
-
-function broadcastAuthState(reason = "state") {
-  const snapshot = getAuthStateSnapshot();
-  const authStateKey = getStorageKey("auth_state");
-  if (typeof BroadcastChannel !== "undefined") {
-    if (!authChannel || authChannel.name !== getAuthBroadcastChannelName()) {
-      if (authChannel) {
-        try {
-          authChannel.close();
-        } catch (e) {}
-      }
-      authChannel = new BroadcastChannel(getAuthBroadcastChannelName());
-      authChannel.onmessage = (event) => {
-        const payload = event.data || {};
-        if (payload.identity && payload.identity === getSafeStorageIdentity())
-          return;
-        applyAuthStateSnapshot(payload, "broadcast");
-      };
-    }
-    authChannel.postMessage({ ...snapshot, reason });
-  }
-  try {
-    localStorage.setItem(authStateKey, JSON.stringify({ ...snapshot, reason }));
-  } catch (e) {}
-}
-
-function setupAuthBroadcast() {
-  if (typeof BroadcastChannel === "undefined") return;
-  if (authChannel && authChannel.name === getAuthBroadcastChannelName()) return;
-  if (authChannel) {
-    try {
-      authChannel.close();
-    } catch (e) {}
-    authChannel = null;
-  }
-  authChannel = new BroadcastChannel(getAuthBroadcastChannelName());
-  authChannel.onmessage = (event) => {
-    const payload = event.data || {};
-    if (payload.identity && payload.identity === getSafeStorageIdentity())
-      return;
-    applyAuthStateSnapshot(payload, "broadcast");
-  };
-  if (!window.__mrhAuthStorageHandler) {
-    window.__mrhAuthStorageHandler = (event) => {
-      if (event.key !== getStorageKey("auth_state") || !event.newValue) return;
-      try {
-        const payload = JSON.parse(event.newValue);
-        if (payload.identity && payload.identity === getSafeStorageIdentity())
-          return;
-        applyAuthStateSnapshot(payload, "storage");
-      } catch (e) {}
-    };
-    window.addEventListener("storage", window.__mrhAuthStorageHandler);
-  }
-}
-
-function scheduleOfflineSync() {
-  clearTimeout(pendingOfflineSyncTimer);
-  pendingOfflineSyncTimer = setTimeout(() => {
-    flushPendingOfflineProgress().catch(() => {});
-  }, 2000);
-}
-
-async function restoreUserSession() {
-  try {
-    const saved = JSON.parse(getSessionStoredItem("user_session", "null"));
-    if (saved?.username && saved?.sessionToken) {
-      const result = await callBackend({
-        type: "verify_session",
-        sessionToken: saved.sessionToken,
-      });
-      const isExpiredSession =
-        result?.status === "error" &&
-        /session expired|log in again|unauthorized/i.test(
-          result?.message || "",
-        );
-      if (result.status === "success") {
-        userState = {
-          username: result.username || saved.username || "",
-          isLoggedIn: true,
-          sessionToken: saved.sessionToken || "",
-          sessionMode: result.sessionMode || saved.sessionMode || "active",
-          sessionExpiresAt:
-            result.sessionExpiresAt || saved.sessionExpiresAt || null,
-          authVersion: (saved.authVersion || 0) + 1,
-        };
-      } else if (isExpiredSession) {
-        userState = {
-          username: "",
-          isLoggedIn: false,
-          sessionToken: "",
-          sessionMode: "active",
-          sessionExpiresAt: null,
-          authVersion: 0,
-        };
-        removeSessionStoredItem("user_session");
-      } else {
-        userState = {
-          username: result.username || saved.username || "",
-          isLoggedIn: true,
-          sessionToken: saved.sessionToken || "",
-          sessionMode: saved.sessionMode || "active",
-          sessionExpiresAt: saved.sessionExpiresAt || null,
-          authVersion: (saved.authVersion || 0) + 1,
-        };
-      }
-    }
-  } catch (e) {
-    const savedFallback = JSON.parse(
-      getSessionStoredItem("user_session", "null"),
-    );
-    if (savedFallback?.username && savedFallback?.sessionToken) {
-      userState = {
-        ...savedFallback,
-        isLoggedIn: true,
-        sessionToken: savedFallback.sessionToken || "",
-        sessionMode: savedFallback.sessionMode || "active",
-        sessionExpiresAt: savedFallback.sessionExpiresAt || null,
-        authVersion: (savedFallback.authVersion || 0) + 1,
-      };
-    }
-  }
-  setupAuthBroadcast();
-  updateProfileUI();
-}
-
-function getProfileSyncSummary() {
-  const stats = state.stats || {};
-  const answered = Number(stats.totalAnswered || 0);
-  const correct = Number(stats.correct || 0);
-  const mistakes = Array.isArray(stats.mistakes) ? stats.mistakes.length : 0;
-  const pendingQueue = getPendingOfflineQueue().length;
-  const syncedItems = [
-    getStoredItem("stats") !== null ? "progress" : null,
-    getStoredItem("prefs") !== null ? "preferences" : null,
-    getStoredItem("saved_session") !== null ? "saved session" : null,
-  ].filter(Boolean);
-
-  return {
-    answered,
-    correct,
-    mistakes,
-    pendingQueue,
-    syncedItems,
-    storageIdentity: getSafeStorageIdentity(),
-  };
-}
-
-function updateProfileUI() {
-  const loggedIn = userState.isLoggedIn === true;
-  const loginPanel = document.getElementById("profile-login-state");
-  const signupPanel = document.getElementById("profile-signup-state");
-  const loggedInPanel = document.getElementById("profile-logged-in-state");
-  if (loginPanel) {
-    loginPanel.hidden = loggedIn;
-    loginPanel.classList.toggle("auth-panel-hidden", loggedIn);
-  }
-  if (signupPanel) {
-    signupPanel.hidden = true;
-    signupPanel.classList.add("auth-panel-hidden");
-  }
-  if (loggedInPanel) {
-    loggedInPanel.hidden = !loggedIn;
-    loggedInPanel.classList.toggle("auth-panel-hidden", !loggedIn);
-  }
-  const username = document.getElementById("profile-username");
-  if (username) username.textContent = userState.username || "";
-
-  const modeLabel = document.getElementById("profile-session-mode");
-  if (modeLabel) {
-    if (!loggedIn) {
-      modeLabel.textContent = "Not signed in";
-    } else if (userState.sessionMode === "guest") {
-      modeLabel.textContent = "Guest mode · read-only";
-    } else {
-      modeLabel.textContent = "Active session";
-    }
-  }
-
-  const noticeLabel = document.getElementById("profile-login-notice");
-  if (noticeLabel) {
-    noticeLabel.textContent = loggedIn
-      ? `Logged in as ${userState.username || "your account"}`
-      : "Login to access your profile.";
-  }
-
-  const syncStatusEl = document.getElementById("user-sync-status");
-  if (syncStatusEl) {
-    if (!loggedIn) {
-      syncStatusEl.textContent = "Login to access online features.";
-    } else if (userState.sessionMode === "guest") {
-      syncStatusEl.textContent = "Guest mode · your changes stay local.";
-    } else {
-      const summary = getProfileSyncSummary();
-      syncStatusEl.textContent = `Connected. Checked ${summary.answered} answered questions and ${summary.pendingQueue} pending offline change${summary.pendingQueue === 1 ? "" : "s"}.`;
-    }
-  }
-
-  const detailsPanel = document.getElementById("profile-sync-details");
-  const badgeEl = document.getElementById("profile-sync-badge");
-  if (detailsPanel) {
-    detailsPanel.hidden = !loggedIn;
-  }
-  if (badgeEl) {
-    badgeEl.textContent = loggedIn
-      ? userState.sessionMode === "guest"
-        ? "Guest"
-        : "Ready"
-      : "Offline";
-  }
-
-  if (loggedIn) {
-    const summary = getProfileSyncSummary();
-    const answeredEl = document.getElementById("profile-stat-answered");
-    const correctEl = document.getElementById("profile-stat-correct");
-    const mistakesEl = document.getElementById("profile-stat-mistakes");
-    const queueEl = document.getElementById("profile-stat-queue");
-    const dataEl = document.getElementById("profile-stat-data");
-
-    if (answeredEl) answeredEl.textContent = summary.answered;
-    if (correctEl) correctEl.textContent = summary.correct;
-    if (mistakesEl) mistakesEl.textContent = summary.mistakes;
-    if (queueEl) queueEl.textContent = summary.pendingQueue;
-    if (dataEl) {
-      dataEl.textContent = summary.syncedItems.length
-        ? summary.syncedItems.join(", ")
-        : "none yet";
-    }
   }
 }
 
@@ -4937,198 +4390,6 @@ function queueProgressSync() {
 
 async function syncUserProgress() {
   return SessionUtils.syncUserProgress();
-}
-
-function showLoginForm() {
-  const loginPanel = document.getElementById("profile-login-state");
-  const signupPanel = document.getElementById("profile-signup-state");
-  if (loginPanel) {
-    loginPanel.hidden = false;
-    loginPanel.classList.remove("auth-panel-hidden");
-  }
-  if (signupPanel) {
-    signupPanel.hidden = true;
-    signupPanel.classList.add("auth-panel-hidden");
-  }
-}
-
-function showSignupForm() {
-  const loginPanel = document.getElementById("profile-login-state");
-  const signupPanel = document.getElementById("profile-signup-state");
-  if (loginPanel) {
-    loginPanel.hidden = true;
-    loginPanel.classList.add("auth-panel-hidden");
-  }
-  if (signupPanel) {
-    signupPanel.hidden = false;
-    signupPanel.classList.remove("auth-panel-hidden");
-  }
-  document.getElementById("user-signup-error")?.classList.add("hidden");
-}
-
-async function submitUserLogin() {
-  const username = document.getElementById("user-username")?.value.trim();
-  const password = document.getElementById("user-password")?.value;
-  const errorEl = document.getElementById("user-login-error");
-  if (!username || !password) {
-    if (errorEl) {
-      errorEl.textContent = "Username and password are required.";
-      errorEl.classList.remove("hidden");
-    }
-    return;
-  }
-  await userLogin(username, password);
-}
-
-async function submitUserSignup() {
-  const username = document.getElementById("signup-username")?.value.trim();
-  const password = document.getElementById("signup-password")?.value;
-  const confirmation = document.getElementById(
-    "signup-password-confirm",
-  )?.value;
-  const errorEl = document.getElementById("user-signup-error");
-  const usernamePattern = /^[A-Za-z0-9_.-]{3,50}$/;
-
-  let error = "";
-  if (!usernamePattern.test(username || ""))
-    error = "Use 3-50 letters, numbers, periods, underscores, or hyphens.";
-  else if (!password || password.length < 8)
-    error = "Use a website-only password with at least 8 characters.";
-  else if (password !== confirmation) error = "Passwords do not match.";
-
-  if (error) {
-    if (errorEl) {
-      errorEl.textContent = error;
-      errorEl.classList.remove("hidden");
-    }
-    return;
-  }
-  await userSignup(username, password);
-}
-
-async function userLogin(username, password) {
-  const btn = document.getElementById("btn-user-login");
-  const errorEl = document.getElementById("user-login-error");
-
-  return runWithActionLock("user-login", async () => {
-    await runWithBusyButton(btn, "Verifying...", async () => {
-      try {
-        const result = await callBackend({
-          type: "verify_user",
-          username,
-          password,
-        });
-
-        if (result.status === "success") {
-          userState = {
-            username,
-            isLoggedIn: true,
-            sessionToken: result.sessionToken || "",
-            sessionMode: result.sessionMode || "active",
-            sessionExpiresAt: result.sessionExpiresAt || null,
-            authVersion: (userState.authVersion || 0) + 1,
-          };
-          setSessionStoredJSON("user_session", userState);
-          broadcastAuthState("login");
-          document.getElementById("user-password").value = "";
-          setInlineError(errorEl, "");
-          updateProfileUI();
-          hideLoginSuggestion();
-          sendTelemetry("user_login", { username });
-          syncUserProgress().catch((error) =>
-            console.error("Background progress sync failed.", error),
-          );
-        } else {
-          setInlineError(
-            errorEl,
-            result.message || "Incorrect username or password.",
-          );
-        }
-      } catch (e) {
-        console.error(e);
-        setInlineError(errorEl, "Network error while verifying user.");
-      }
-    });
-  });
-}
-
-async function userSignup(username, password) {
-  const btn = document.getElementById("btn-user-signup");
-  const errorEl = document.getElementById("user-signup-error");
-
-  return runWithActionLock("user-signup", async () => {
-    await runWithBusyButton(btn, "Creating...", async () => {
-      try {
-        const result = await callBackend({
-          type: "signup_user",
-          username,
-          password,
-        });
-        if (result.status === "success") {
-          userState = {
-            username,
-            isLoggedIn: true,
-            sessionToken: result.sessionToken || "",
-            sessionMode: result.sessionMode || "active",
-            sessionExpiresAt: result.sessionExpiresAt || null,
-            authVersion: (userState.authVersion || 0) + 1,
-          };
-          setSessionStoredJSON("user_session", userState);
-          broadcastAuthState("signup");
-          document.getElementById("signup-password").value = "";
-          document.getElementById("signup-password-confirm").value = "";
-          setInlineError(errorEl, "");
-          updateProfileUI();
-          hideLoginSuggestion();
-          sendTelemetry("user_signup", { username });
-          syncUserProgress().catch((error) =>
-            console.error("Background progress sync failed.", error),
-          );
-        } else {
-          setInlineError(
-            errorEl,
-            result.message || "Unable to create account.",
-          );
-        }
-      } catch (e) {
-        console.error(e);
-        setInlineError(errorEl, "Network error while creating account.");
-      }
-    });
-  });
-}
-
-async function userLogout() {
-  if (
-    !(await requestConfirmation(
-      "Log out of this device? Your saved account progress will remain available when you log in again.",
-      "Log Out",
-    ))
-  )
-    return;
-  clearTimeout(progressSyncTimer);
-  try {
-    if (userState.isLoggedIn && userState.sessionToken) {
-      await callBackend({
-        type: "logout_user",
-        sessionToken: userState.sessionToken,
-      });
-    }
-  } catch (e) {
-    console.warn("Logout request failed silently.", e);
-  }
-  if (userState.isLoggedIn) await saveUserProgress();
-  userState = {
-    username: "",
-    isLoggedIn: false,
-    sessionToken: "",
-    sessionMode: "active",
-    sessionExpiresAt: null,
-    authVersion: 0,
-  };
-  removeSessionStoredItem("user_session");
-  broadcastAuthState("logout");
-  updateProfileUI();
 }
 
 const folderPasswordButton = document.getElementById(
@@ -5279,10 +4540,6 @@ if (!state.prefs.qToggles) state.prefs.qToggles = {};
 function changeStudyLayout(layout) {
   state.prefs.studyLayout = layout;
   saveState();
-  sendTelemetry("change_study_layout", {
-    layout,
-    subject: currentReviewSubject,
-  });
   reRenderDeckReview();
 }
 
@@ -5892,4 +5149,10 @@ window.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
+
+  // Apply title display mode preference
+  setTimeout(() => {
+    applyTitleMode();
+    updateTitleModeButtons();
+  }, 100);
 });

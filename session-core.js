@@ -111,10 +111,6 @@
 
     globalScope.renderQuestion();
     globalScope.saveSessionProgress();
-    globalScope.sendTelemetry("start_session", {
-      subject: filterVal,
-      poolSize: pool.length,
-    });
   }
 
   function renderQuestion() {
@@ -147,6 +143,27 @@
       displayId = match ? match[1] : displayId.split("::").pop();
     }
     document.getElementById("q-id").innerText = "Question " + displayId;
+
+    const lessonIdValue =
+      q.Lesson ||
+      q.LessonID ||
+      q.lesson ||
+      q.lessonId ||
+      q.Unit ||
+      q.Topic ||
+      "";
+    const lessonEl = document.getElementById("q-lesson");
+    if (lessonEl) {
+      const normalizedLesson = String(lessonIdValue || "").trim();
+      if (normalizedLesson) {
+        lessonEl.textContent = `Lesson ${normalizedLesson}`;
+        lessonEl.classList.remove("hidden");
+      } else {
+        lessonEl.textContent = "";
+        lessonEl.classList.add("hidden");
+      }
+    }
+
     const clozeEnabled = globalScope.state.prefs.clozeEnabled !== false;
     const shouldRevealCloze =
       Boolean(userAnswer) || Boolean(globalScope.state.session.revealedCloze);
@@ -383,14 +400,6 @@
       globalScope.state.session.currentIndex++;
       globalScope.renderQuestion();
       globalScope.saveSessionProgress();
-      globalScope.sendTelemetry(skipped ? "skip_question" : "next_question", {
-        questionIndex: globalScope.state.session.currentIndex - 1,
-        nextQuestionIndex: globalScope.state.session.currentIndex,
-        questionId:
-          globalScope.state.session.questions[
-            globalScope.state.session.currentIndex - 1
-          ]?.ID,
-      });
     } else {
       alert("Practice Session Complete! Great job.");
       globalScope.clearSessionProgress();
@@ -493,7 +502,6 @@
 
     updateSrsForQuestion(q, isCorrect);
     globalScope.saveState();
-    globalScope.sendTelemetry("answer_question", { qId: q.ID, isCorrect });
   }
 
   function endSession(silent = false) {
@@ -522,10 +530,6 @@
       );
     }
     if (!silent) globalScope.navigate("dashboard");
-
-    globalScope.sendTelemetry("end_session", {
-      totalAnswered: globalScope.state.session.currentIndex,
-    });
   }
 
   function saveSessionProgress() {
@@ -691,9 +695,6 @@
     globalScope.applyNavigationPosition();
     const select = document.getElementById("navigation-position-select");
     if (select) select.value = normalized;
-    globalScope.sendTelemetry("change_navigation_position", {
-      position: normalized,
-    });
   }
 
   function toggleNavigationPosition(source) {

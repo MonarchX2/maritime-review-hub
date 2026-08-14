@@ -3,14 +3,6 @@
     return NetworkUtils.callBackend(payload, options);
   }
 
-  function sendTelemetry(action, details) {
-    return NetworkUtils.sendTelemetry(action, details);
-  }
-
-  function setupTelemetry() {
-    return NetworkUtils.setupTelemetry();
-  }
-
   function getActiveIdentity() {
     const authenticatedUsername =
       typeof userState !== "undefined" && userState.isLoggedIn
@@ -21,8 +13,6 @@
 
   const AppNetwork = {
     callBackend,
-    sendTelemetry,
-    setupTelemetry,
     getActiveIdentity,
   };
 
@@ -31,8 +21,6 @@
   }
 
   globalScope.callBackend = callBackend;
-  globalScope.sendTelemetry = sendTelemetry;
-  globalScope.setupTelemetry = setupTelemetry;
   globalScope.getActiveIdentity = getActiveIdentity;
   globalScope.AppNetwork = AppNetwork;
 })(typeof window !== "undefined" ? window : globalThis);

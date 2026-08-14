@@ -40,7 +40,6 @@
     await loadScript("app-core.js");
     await Promise.all([
       loadFeatureScript("state-core.js"),
-      loadFeatureScript("sync-core.js"),
       loadFeatureScript("ui-core.js"),
       loadFeatureScript("session-core.js"),
     ]);

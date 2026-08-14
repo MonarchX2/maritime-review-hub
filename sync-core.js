@@ -68,13 +68,14 @@
 
     overlay.classList.toggle("hidden", !isLoading);
     overlay.setAttribute("aria-hidden", String(!isLoading));
+
     return isLoading;
   }
 
   function updateSyncStatus(message, tone = "info", showOverlay = true) {
     const visualState = getSyncStatusVisualState(tone);
     const shouldSuppressOverlay =
-      globalScope.state.session.active &&
+      Boolean(globalScope.state?.session?.active) &&
       showOverlay &&
       /database|reconnect|waiting until your session ends/i.test(message);
     const effectiveShowOverlay = shouldSuppressOverlay ? false : showOverlay;
@@ -98,14 +99,14 @@
 
     if (tone === "info") {
       setGlobalLoadingState(
-        true,
+        effectiveShowOverlay,
         visualState.overlayTitle,
         visualState.overlayDetail,
         tone,
       );
     } else if (tone === "warning" || tone === "error") {
       setGlobalLoadingState(
-        true,
+        effectiveShowOverlay,
         visualState.overlayTitle,
         visualState.overlayDetail,
         tone,
@@ -203,10 +204,6 @@
       "info",
       !isBackgroundCheck,
     );
-    globalScope.sendTelemetry("sync_attempt", {
-      attempt: globalScope.syncAttempt,
-      retry: isRetry,
-    });
 
     try {
       const response = await fetch(url, {
@@ -246,13 +243,6 @@
           if (!wasConnected) globalScope.renderCategoryProgress();
         }
 
-        globalScope.sendTelemetry("sync_success", {
-          attempt: completedAttempt,
-          subjectCount: summaryData.length,
-          changed,
-          applied: canApplyNow,
-        });
-
         updateSyncStatus(
           `<i class="fa-solid fa-check mr-1"></i> Connected. ${changed && !canApplyNow ? "Update waiting until your session ends." : `Checked ${summaryData.length} subjects.`}`,
           "success",
@@ -265,9 +255,6 @@
         scheduleSyncPoll();
       } else {
         clearTimeout(timeoutId);
-        globalScope.sendTelemetry("sync_empty", {
-          attempt: globalScope.syncAttempt,
-        });
         scheduleSyncRetry(!isBackgroundCheck);
         if (
           globalScope.state.categorySummary.length &&
@@ -279,11 +266,6 @@
       clearTimeout(timeoutId);
       if (requestController !== globalScope.syncAbortController) return;
       console.error(err);
-      globalScope.sendTelemetry("sync_failure", {
-        attempt: globalScope.syncAttempt,
-        error: err.name || "NetworkError",
-        message: err.message || "Unknown sync error",
-      });
       scheduleSyncRetry(!isBackgroundCheck);
 
       const catList = document.getElementById("category-list");

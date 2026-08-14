@@ -362,8 +362,6 @@
       return false;
     }
     progressSyncInFlight = true;
-    const syncStatus = document.getElementById("user-sync-status");
-    if (syncStatus) syncStatus.textContent = "Saving progress securely...";
     try {
       const meta = getProgressMeta();
       const idempotencyKey =
@@ -380,8 +378,6 @@
       if (result.status === "success") {
         setProgressMeta(result.updatedAt || result.serverUpdatedAt || "");
         scheduleOfflineSync();
-        if (syncStatus)
-          syncStatus.textContent = "Progress synced across devices.";
         updateProfileUI();
         return true;
       }
@@ -404,18 +400,12 @@
       }
       return false;
     } catch (e) {
-      if (syncStatus)
-        syncStatus.textContent =
-          "Progress sync is unavailable; local progress is saved.";
       updateProfileUI();
       queueOfflineProgress(
         payload,
         options.idempotencyKey || createIdempotencyKey(payload),
       );
       scheduleOfflineSync();
-      sendTelemetry("progress_sync_failure", {
-        message: e.message || "Network error",
-      });
       return false;
     } finally {
       progressSyncInFlight = false;
@@ -443,18 +433,11 @@
         "Account Switch",
       );
       if (!useRemote) {
-        const syncStatus = document.getElementById("user-sync-status");
-        if (syncStatus) {
-          syncStatus.textContent =
-            "Local progress for the previous account was preserved.";
-        }
         updateProfileUI();
         return;
       }
       clearLocalUserProgress();
     }
-    const syncStatus = document.getElementById("user-sync-status");
-    if (syncStatus) syncStatus.textContent = "Checking for newer progress...";
     try {
       const result = await callBackend({
         type: "get_progress",
@@ -464,8 +447,6 @@
 
       if (!result.exists) {
         if (hasLocalProgress()) await saveUserProgress();
-        else if (syncStatus)
-          syncStatus.textContent = "Progress syncing is ready.";
         updateProfileUI();
         return;
       }
@@ -481,10 +462,6 @@
 
       if (areProgressPayloadsEquivalent(getProgressPayload(), result.payload)) {
         applyRemoteProgress(result.payload, result.updatedAt);
-        if (syncStatus)
-          syncStatus.textContent = "Progress is already up to date.";
-        updateProfileUI();
-        return;
       }
 
       const remoteTime = Date.parse(
@@ -530,11 +507,7 @@
           result.updatedAt,
         );
       }
-    } catch (e) {
-      sendTelemetry("progress_sync_failure", {
-        message: e.message || "Network error",
-      });
-    }
+    } catch (e) {}
   }
 
   const SessionUtils = {

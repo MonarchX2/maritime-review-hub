@@ -156,8 +156,6 @@
         )
           ? globalScope.state.prefs.recentDecks
           : [];
-        globalScope.state.prefs.discoverySearch =
-          globalScope.state.prefs.discoverySearch || "";
         globalScope.state.prefs.clozeEnabled =
           globalScope.state.prefs.clozeEnabled === true;
         globalScope.state.prefs.srsEnabled =
