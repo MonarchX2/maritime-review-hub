@@ -1641,7 +1641,7 @@ function renderCategoryProgress() {
       ? "bg-green-50 dark:bg-green-900/30 border-green-300"
       : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700";
     const availabilityClasses = databaseUnavailable
-      ? "opacity-50 grayscale cursor-not-allowed pointer-events-none"
+      ? "opacity-40 cursor-not-allowed pointer-events-none"
       : "";
     const isDownloaded = state.db.some((q) => q.Subject === subj);
     const statusBadge = isDownloaded
@@ -1679,8 +1679,8 @@ function renderCategoryProgress() {
       // statsHTML = `<p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>`;
       countBadgeHTML = `
                 <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
-                    ${archiveBtnHTML}
-                    ${isDownloaded ? `<button onclick="event.stopPropagation(); deleteSubjectData('${encodedSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>` : ``}
+                    ${databaseUnavailable ? "" : archiveBtnHTML}
+                    ${databaseUnavailable || !isDownloaded ? "" : `<button onclick="event.stopPropagation(); deleteSubjectData('${encodedSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>`}
                     <span class="text-sm font-black ${themeColorText} transition-colors">${completedCount} / ${totalQuestionsInDb}</span>
                 </div>`;
       progressBarHTML = `
@@ -1688,7 +1688,7 @@ function renderCategoryProgress() {
                     <div class="${themeColorBg} h-full rounded-full transition-all duration-700 ease-out" style="width: ${progressPercent}%"></div>
                 </div>`;
 
-      if (completedCount > 0 || mistakesCount > 0) {
+      if (!databaseUnavailable && (completedCount > 0 || mistakesCount > 0)) {
         resetBtnHTML = `
                     <button onclick="resetCategory('${encodedSubj}')" class="w-10 sm:w-12 shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
                         <i class="fa-solid fa-rotate-left"></i>
@@ -1697,8 +1697,8 @@ function renderCategoryProgress() {
     } else {
       countBadgeHTML = `
                 <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
-                    ${archiveBtnHTML}
-                    ${isDownloaded ? `<button onclick="event.stopPropagation(); deleteSubjectData('${encodedSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>` : ``}
+                    ${databaseUnavailable ? "" : archiveBtnHTML}
+                    ${databaseUnavailable || !isDownloaded ? "" : `<button onclick="event.stopPropagation(); deleteSubjectData('${encodedSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>`}
                 </div>`;
     }
 

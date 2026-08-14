@@ -63,4 +63,16 @@ assert.match(
   "admin save should only include changed password values, so hidden-only toggles do not clobber the hidden update",
 );
 
+assert.match(
+  backendMain,
+  /if\s*\(\s*isDeckHidden\(key\)\s*\)\s*continue\s*;|if\s*\(\s*isDeckHidden\(passKey\)\s*\)\s*continue\s*;/s,
+  "hidden decks should be filtered out of MRH_Summary.json generation before it is returned to users",
+);
+
+assert.doesNotMatch(
+  backendMain,
+  /uuidSheet\.clearContents\s*\(\);/,
+  "admin_update should update the affected UUID row without clearing the entire sheet",
+);
+
 console.log("hidden/deck cleanup regression checks passed");

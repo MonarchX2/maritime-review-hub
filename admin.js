@@ -56,6 +56,28 @@ async function parseJsonResponse(response) {
   }
 }
 
+// CRITICAL: Listen for cache invalidation broadcasts from other tabs/admin changes
+if (typeof BroadcastChannel !== "undefined") {
+  try {
+    const cacheChannel = new BroadcastChannel("mrh_cache_invalidation");
+    cacheChannel.onmessage = (event) => {
+      if (
+        event.data &&
+        event.data.type === "cache_invalidated" &&
+        getAdminToken()
+      ) {
+        console.log(
+          "[ADMIN] Cache invalidated, reloading subjects:",
+          event.data.timestamp,
+        );
+        loadAdminSubjects();
+      }
+    };
+  } catch (e) {
+    console.warn("BroadcastChannel not available for cache invalidation:", e);
+  }
+}
+
 async function adminLogin() {
   const pass = document.getElementById("admin-password").value;
   if (!pass) return;
@@ -230,6 +252,7 @@ function renderAdminSubjectList() {
       index: index,
       password: passString,
       hidden: hiddenStatus,
+      UUID: cat.UUID || "",
     });
 
     console.log(`[Add Deck] ${deckName}, hidden=${hiddenStatus}`);
@@ -316,13 +339,26 @@ function renderAdminSubjectList() {
 
       node.decks.forEach((subj) => {
         innerHtml += `
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-md transition-all">
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-md transition-all" data-uuid="${escapeHTML(subj.UUID || "")}">
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         <!-- Left Column: Deck Info -->
                         <div>
                             <span class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">📖 Deck Name</span>
                             <div class="font-semibold text-gray-800 dark:text-gray-100 text-sm break-words" title="${escapeHTML(subj.originalFull)}">${escapeHTML(subj.deckName)}</div>
                             <div class="text-xs text-gray-500 dark:text-gray-400 mt-2 font-mono">Full path: ${escapeHTML(subj.originalFull)}</div>
+                            
+                            <!-- UUID Box -->
+                            ${subj.UUID ? `
+                            <div class="mt-3 inline-flex max-w-full items-center gap-2 rounded border border-blue-200 bg-blue-50 px-2 py-1 dark:border-blue-700 dark:bg-blue-900/20">
+                                <span class="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">🔑</span>
+                                <span class="max-w-full truncate font-mono text-[11px] text-blue-800 dark:text-blue-300 select-all cursor-pointer" title="Click to select UUID">${escapeHTML(subj.UUID)}</span>
+                            </div>
+                            ` : `
+                            <div class="mt-3 inline-flex max-w-full items-center gap-2 rounded border border-dashed border-gray-300 bg-gray-100 px-2 py-1 dark:border-gray-600 dark:bg-gray-700">
+                                <span class="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">🔑</span>
+                                <span class="text-[10px] text-gray-400 dark:text-gray-500">Will be assigned</span>
+                            </div>
+                            `}
                         </div>
                         
                         <!-- Right Column: Controls -->
@@ -337,6 +373,8 @@ function renderAdminSubjectList() {
                                         id="new-subj-${subj.index}" 
                                         value="${escapeHTML(subj.originalFull)}" 
                                         maxlength="100"
+                                        data-uuid="${escapeHTML(subj.UUID || "")}"
+                                        data-original-name="${escapeHTML(subj.originalFull)}"
                                         oninput="const countEl = document.getElementById('char-count-${subj.index}');
                                         countEl.innerText = this.value.length + '/100';
                                         this.value.length >= 90 ? countEl.classList.add('text-red-500') : countEl.classList.remove('text-red-500');"
@@ -353,6 +391,7 @@ function renderAdminSubjectList() {
                                             id="deck-pass-${subj.index}" 
                                             value="${escapeHTML(subj.password)}" 
                                             placeholder="Public"
+                                            data-uuid="${escapeHTML(subj.UUID || "")}"
                                             class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-sm focus:border-red-500 focus:ring-2 outline-none transition-all">
                                 </div>
                                 <div class="flex items-end">
@@ -360,6 +399,7 @@ function renderAdminSubjectList() {
                                         <input type="checkbox" 
                                             id="deck-hidden-${subj.index}"
                                             class="deck-hidden-input w-4 h-4 cursor-pointer"
+                                            data-uuid="${escapeHTML(subj.UUID || "")}"
                                             data-index="${subj.index}"
                                             data-path="${escapeHTML(subj.originalFull)}"
                                             data-orig="${String(subj.hidden || false)}"
@@ -532,21 +572,7 @@ async function saveAdminChanges() {
           result.admin_last_modified_timestamp;
       }
 
-      // CRITICAL FIX: Broadcast cache invalidation to all connected clients
-      try {
-        if (typeof BroadcastChannel !== "undefined") {
-          const cacheChannel = new BroadcastChannel("mrh_cache_invalidation");
-          cacheChannel.postMessage({
-            type: "cache_invalidated",
-            timestamp: new Date().toISOString(),
-            cacheVersion: result.cacheVersion,
-          });
-          cacheChannel.close();
-        }
-      } catch (e) {
-        console.error("Failed to broadcast cache invalidation:", e);
-      }
-
+      // Keep the admin UI responsive without forcing a full backend resync across all clients.
       setTimeout(() => {
         loadAdminSubjects();
         btn.innerHTML = originalHTML;
