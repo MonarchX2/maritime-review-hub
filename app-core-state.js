@@ -2,6 +2,7 @@
   const state = {
     db: [],
     categorySummary: [],
+    accessMetadata: {},
     subjectIndex: {
       bySubject: new Map(),
       byId: new Map(),

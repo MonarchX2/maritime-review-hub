@@ -9,10 +9,16 @@ const backendMain = fs.readFileSync(
   "utf8",
 );
 
+assert.doesNotMatch(
+  backendMain,
+  /Subject:\s*key,\s*QuestionCount:\s*state\.summaryMap\[key\],\s*(Locked|Hidden):|Subject:\s*passKey,\s*QuestionCount:\s*0,\s*(Locked|Hidden):/s,
+  "summary cache should no longer embed lock/hidden flags in the core deck summary",
+);
+
 assert.match(
   backendMain,
-  /Hidden:\s*hiddenMap\[/,
-  "summary cache should preserve hidden status for deck filtering",
+  /MRH_Access\.json|ACCESS_SHEET_ID|getDeckAccess/,
+  "backend access metadata should be generated in a separate MRH_Access control file",
 );
 
 assert.match(

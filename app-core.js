@@ -268,7 +268,9 @@ async function loadState() {
 
   if (savedSummary) {
     try {
-      state.categorySummary = JSON.parse(savedSummary);
+      state.categorySummary = stripAccessMetadataFromSummary(
+        JSON.parse(savedSummary),
+      );
     } catch (e) {
       console.error("Summary corrupted, resetting.", e);
       state.categorySummary = [];
@@ -366,7 +368,10 @@ async function saveState() {
     });
     setStoredJSON("stats", state.stats);
     setStoredJSON("prefs", state.prefs);
-    setStoredJSON("summary", state.categorySummary);
+    setStoredJSON(
+      "summary",
+      stripAccessMetadataFromSummary(state.categorySummary || []),
+    );
     if (
       !suppressProgressSync &&
       typeof userState !== "undefined" &&
@@ -702,6 +707,97 @@ function scheduleSyncPoll() {
   syncPollTimer = setTimeout(() => syncDatabase(true, true), SYNC_INTERVAL_MS);
 }
 
+function stripAccessMetadataFromSummary(summaryData) {
+  if (!Array.isArray(summaryData)) return summaryData;
+
+  return summaryData.map((deck) => {
+    if (!deck || typeof deck !== "object") return deck;
+    const { Password, password, Hidden, Locked, ...rest } = deck;
+    return rest;
+  });
+}
+
+function buildAccessMetadataMap(accessData) {
+  const map = {};
+  const rows = Array.isArray(accessData) ? accessData : [];
+
+  rows.forEach((entry) => {
+    if (!entry || !entry.Subject) return;
+    const subject = String(entry.Subject).trim();
+    if (!subject) return;
+
+    const normalizedLocked =
+      entry.Locked === true ||
+      String(entry.Locked || "").toLowerCase() === "true";
+    const normalizedHidden =
+      entry.Hidden === true ||
+      String(entry.Hidden || "").toLowerCase() === "true";
+    const password = entry.Password || entry.password || "";
+
+    map[subject] = {
+      Subject: subject,
+      Password: String(password || "").trim(),
+      Hidden: normalizedHidden,
+      Locked: normalizedLocked || String(password || "").trim() !== "",
+    };
+  });
+
+  return map;
+}
+
+function mergeAccessMetadataIntoSummary(summaryData, accessData) {
+  const accessMap = buildAccessMetadataMap(accessData);
+  if (!Array.isArray(summaryData)) return summaryData;
+
+  return summaryData.map((deck) => {
+    if (!deck || typeof deck !== "object") return deck;
+    const subject = String(deck.Subject || "").trim();
+    if (!subject) return deck;
+
+    const access = accessMap[subject] || {};
+    const password = String(
+      access.Password || deck.Password || deck.password || "",
+    ).trim();
+    const hidden =
+      access.Hidden === true ||
+      deck.Hidden === true ||
+      String(deck.Hidden || "").toLowerCase() === "true" ||
+      String(access.Hidden || "").toLowerCase() === "true";
+    const locked =
+      access.Locked === true ||
+      deck.Locked === true ||
+      String(deck.Locked || "").toLowerCase() === "true" ||
+      password !== "";
+
+    return {
+      ...deck,
+      Password: password,
+      password,
+      Hidden: hidden,
+      Locked: locked,
+    };
+  });
+}
+
+async function fetchAccessMetadata() {
+  const url = `${DB_URL}?access=1&_t=${Date.now()}`;
+  try {
+    const response = await fetch(url, {
+      cache: "no-store",
+      redirect: "follow",
+    });
+    if (!response.ok) return {};
+    const data = await response.json();
+    state.accessMetadata = buildAccessMetadataMap(
+      Array.isArray(data) ? data : [],
+    );
+    return state.accessMetadata;
+  } catch (err) {
+    console.warn("Access metadata unavailable.", err);
+    return {};
+  }
+}
+
 function applySummaryData(summaryData) {
   const previousSummary = JSON.stringify(state.categorySummary || []);
   const nextSummary = JSON.stringify(summaryData);
@@ -788,17 +884,22 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
       syncAttempt = 0;
       syncConnected = true;
       sanitizeDeletedDeckReferences();
+      const accessMap = await fetchAccessMetadata();
+      const mergedSummary = mergeAccessMetadataIntoSummary(
+        summaryData,
+        accessMap,
+      );
       const changed =
         JSON.stringify(state.categorySummary || []) !==
-        JSON.stringify(summaryData);
+        JSON.stringify(mergedSummary);
       const canApplyNow =
         state.prefs.databaseUpdateMode === "immediate" || !state.session.active;
 
       if (canApplyNow && (changed || !wasConnected)) {
         pendingSummaryData = null;
-        applySummaryData(summaryData);
+        applySummaryData(mergedSummary);
       } else if (!canApplyNow) {
-        if (changed) pendingSummaryData = summaryData;
+        if (changed) pendingSummaryData = mergedSummary;
         if (!wasConnected) renderCategoryProgress();
       }
 

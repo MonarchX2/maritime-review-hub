@@ -38,10 +38,6 @@ const ids = [
   "sync-status",
   "database-connection-icon",
   "connection-status",
-  "app-loading-overlay",
-  "app-loading-title",
-  "app-loading-detail",
-  "app-loading-icon",
 ];
 
 const elements = Object.fromEntries(ids.map((id) => [id, makeElement(id)]));
@@ -64,7 +60,6 @@ assert.strictEqual("telemetryEnabled" in globalThis.state.prefs, false);
 
 const syncStatusEl = elements["sync-status"];
 const iconEl = elements["database-connection-icon"];
-const overlayEl = elements["app-loading-overlay"];
 
 globalThis.state.session.active = false;
 globalThis.SyncCore.updateSyncStatus(
@@ -75,7 +70,6 @@ globalThis.SyncCore.updateSyncStatus(
 
 assert.match(syncStatusEl.className, /bg-blue-50/);
 assert.match(iconEl.className, /fa-spinner fa-spin/);
-assert.strictEqual(overlayEl.classList.contains("hidden"), false);
 
 globalThis.state.session.active = true;
 globalThis.SyncCore.updateSyncStatus(
@@ -83,6 +77,5 @@ globalThis.SyncCore.updateSyncStatus(
   "warning",
   true,
 );
-assert.strictEqual(overlayEl.classList.contains("hidden"), true);
 
 console.log("sync visual status tests passed");

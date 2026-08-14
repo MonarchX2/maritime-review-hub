@@ -44,6 +44,15 @@
     return "";
   }
 
+  function stripAccessMetadataFromSummary(summaryData) {
+    if (!Array.isArray(summaryData)) return summaryData;
+    return summaryData.map((deck) => {
+      if (!deck || typeof deck !== "object") return deck;
+      const { Password, password, Hidden, Locked, ...rest } = deck;
+      return rest;
+    });
+  }
+
   function normalizeQuestionRecord(question, subjectOverride = null) {
     if (!question || typeof question !== "object") return {};
 
@@ -107,7 +116,9 @@
 
     if (savedSummary) {
       try {
-        globalScope.state.categorySummary = JSON.parse(savedSummary);
+        globalScope.state.categorySummary = stripAccessMetadataFromSummary(
+          JSON.parse(savedSummary),
+        );
       } catch (e) {
         console.error("Summary corrupted, resetting.", e);
         globalScope.state.categorySummary = [];
@@ -265,7 +276,10 @@
       });
       globalScope.setStoredJSON("stats", globalScope.state.stats);
       globalScope.setStoredJSON("prefs", globalScope.state.prefs);
-      globalScope.setStoredJSON("summary", globalScope.state.categorySummary);
+      globalScope.setStoredJSON(
+        "summary",
+        stripAccessMetadataFromSummary(globalScope.state.categorySummary || []),
+      );
       if (
         !globalScope.suppressProgressSync &&
         typeof userState !== "undefined" &&
