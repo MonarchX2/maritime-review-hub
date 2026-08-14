@@ -12,16 +12,6 @@
     return {};
   }
 
-  function getRuntimeUserState() {
-    if (typeof globalThis !== "undefined" && globalThis.userState) {
-      return globalThis.userState;
-    }
-    if (typeof userState !== "undefined" && userState) {
-      return userState;
-    }
-    return {};
-  }
-
   function safeReadStorage(key, fallback = null) {
     if (typeof getStoredItem === "function")
       return getStoredItem(key, fallback);
@@ -145,7 +135,6 @@
     const runtimeState = getRuntimeState();
     runtimeState.progressServerUpdatedAt = serverUpdatedAt || updatedAt || "";
     safeWriteJSON("progress_meta", {
-      username: getRuntimeUserState().username,
       updatedAt: runtimeState.progressServerUpdatedAt,
       localUpdatedAt: runtimeState.progressServerUpdatedAt,
       serverUpdatedAt: runtimeState.progressServerUpdatedAt,
@@ -263,8 +252,7 @@
   }
 
   function createIdempotencyKey(payload) {
-    const currentUserState = getRuntimeUserState();
-    const keySeed = `${currentUserState.username || "guest"}:${JSON.stringify(payload)}:${Date.now()}`;
+    const keySeed = `${JSON.stringify(payload)}:${Date.now()}`;
     return safeBtoa(unescape(encodeURIComponent(keySeed))).replace(/=+$/g, "");
   }
 
@@ -286,13 +274,11 @@
       idempotencyKey,
       payload,
       createdAt: new Date().toISOString(),
-      username: userState.username || "guest",
     });
     savePendingOfflineQueue(queue);
   }
 
   async function flushPendingOfflineProgress() {
-    if (!userState.isLoggedIn || userState.sessionMode === "guest") return;
     const queue = getPendingOfflineQueue();
     if (!queue.length) return;
     const remaining = [];
@@ -352,155 +338,15 @@
     force = false,
     options = {},
   ) {
-    if (
-      !userState.isLoggedIn ||
-      !userState.sessionToken ||
-      progressSyncInFlight
-    )
-      return false;
-    if (userState.sessionMode === "guest") {
-      return false;
-    }
-    progressSyncInFlight = true;
-    try {
-      const meta = getProgressMeta();
-      const idempotencyKey =
-        options.idempotencyKey || createIdempotencyKey(payload);
-      const result = await callBackend({
-        type: "save_progress",
-        sessionToken: userState.sessionToken,
-        progress: payload,
-        baseUpdatedAt: meta.updatedAt || meta.serverUpdatedAt || "",
-        deviceUpdatedAt: meta.serverUpdatedAt || new Date().toISOString(),
-        force,
-        idempotencyKey,
-      });
-      if (result.status === "success") {
-        setProgressMeta(result.updatedAt || result.serverUpdatedAt || "");
-        scheduleOfflineSync();
-        return true;
-      }
-      if (result.status === "guest") {
-        userState.sessionMode = "guest";
-        showToast(
-          "This account is already active on another device. This device is now read-only.",
-          "error",
-        );
-        return false;
-      }
-      if (result.status === "conflict") {
-        progressSyncInFlight = false;
-        return chooseProgressConflict(
-          payload,
-          result.payload,
-          result.updatedAt,
-        );
-      }
-      return false;
-    } catch (e) {
-      queueOfflineProgress(
-        payload,
-        options.idempotencyKey || createIdempotencyKey(payload),
-      );
-      scheduleOfflineSync();
-      return false;
-    } finally {
-      progressSyncInFlight = false;
-    }
+    return false;
   }
 
   function queueProgressSync() {
-    if (!userState?.isLoggedIn || suppressProgressSync) return;
-    clearTimeout(progressSyncTimer);
-    progressSyncTimer = setTimeout(() => saveUserProgress(), 1200);
+    return false;
   }
 
   async function syncUserProgress() {
-    if (!userState.isLoggedIn || !userState.sessionToken) return;
-    const existingMeta = getProgressMeta();
-    if (existingMeta.username && existingMeta.username !== userState.username) {
-      const snapshot = {
-        timestamp: new Date().toISOString(),
-        payload: getProgressPayload(),
-        source: "account-switch",
-      };
-      setStoredJSON("recovery_snapshot", snapshot);
-      const useRemote = await requestConfirmation(
-        "This device already has local progress for a different account. Choose OK to keep the server copy for the current account and preserve the old local progress as a recovery snapshot. Choose Cancel to keep the current local progress and avoid replacing it.",
-        "Account Switch",
-      );
-      if (!useRemote) {
-        return;
-      }
-      clearLocalUserProgress();
-    }
-    try {
-      const result = await callBackend({
-        type: "get_progress",
-        sessionToken: userState.sessionToken,
-      });
-      if (result.status !== "success") return;
-
-      if (!result.exists) {
-        if (hasLocalProgress()) await saveUserProgress();
-        return;
-      }
-
-      const localMeta = getProgressMeta();
-      if (!hasLocalProgress() || !localMeta.updatedAt) {
-        applyRemoteProgress(result.payload, result.updatedAt);
-        if (syncStatus)
-          syncStatus.textContent = "Database progress loaded on this device.";
-        return;
-      }
-
-      if (areProgressPayloadsEquivalent(getProgressPayload(), result.payload)) {
-        applyRemoteProgress(result.payload, result.updatedAt);
-      }
-
-      const remoteTime = Date.parse(
-        result.updatedAt || result.deviceUpdatedAt || "",
-      );
-      const localTime = Date.parse(
-        localMeta.serverUpdatedAt ||
-          localMeta.updatedAt ||
-          localMeta.localUpdatedAt ||
-          "",
-      );
-      if (Number.isFinite(localTime) && Number.isFinite(remoteTime)) {
-        if (localTime > remoteTime) {
-          await chooseProgressConflict(
-            getProgressPayload(),
-            result.payload,
-            result.updatedAt,
-          );
-        } else if (remoteTime > localTime) {
-          const useRemote = state.session.active
-            ? true
-            : await requestConfirmation(
-                "A newer progress version is available in the database. Choose OK to use the database copy and keep a recovery snapshot if you want to restore local changes later. Choose Cancel to keep your current device progress and upload it.",
-                "Sync Conflict",
-              );
-          if (useRemote) {
-            const snapshot = {
-              timestamp: new Date().toISOString(),
-              payload: getProgressPayload(),
-              source: "recovery",
-            };
-            setStoredJSON("recovery_snapshot", snapshot);
-            applyRemoteProgress(result.payload, result.updatedAt);
-          } else {
-            await saveUserProgress(getProgressPayload(), true);
-          }
-        }
-      } else {
-        await chooseProgressConflict(
-          getProgressPayload(),
-          result.payload,
-          result.updatedAt,
-        );
-      }
-    } catch (e) {}
+    return false;
   }
 
   const SessionUtils = {

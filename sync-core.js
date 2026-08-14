@@ -115,12 +115,36 @@
       setGlobalLoadingState(false);
     }
 
+    const isStartupVisibleSuccess =
+      effectiveShowOverlay &&
+      !globalScope.state?.session?.active &&
+      tone === "success" &&
+      /Connected\./i.test(message);
+    const shouldShowStatusToast =
+      !shouldSuppressOverlay &&
+      effectiveShowOverlay &&
+      (isStartupVisibleSuccess ||
+        tone === "info" ||
+        tone === "warning" ||
+        tone === "error" ||
+        /database|reconnect|retry/i.test(message));
     const connectionStatus = document.getElementById("connection-status");
-    if (connectionStatus && effectiveShowOverlay) {
-      clearTimeout(globalScope.syncStatusHideTimer);
-      connectionStatus.classList.remove("hidden", "opacity-0", "scale-95");
-      connectionStatus.innerHTML = message;
-      connectionStatus.className = `fixed bottom-5 left-1/2 z-[60] w-max max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-lg px-4 py-2 text-center text-xs font-medium shadow-lg transition-all duration-500 ${visualState.panelClass}`;
+    if (connectionStatus) {
+      if (shouldShowStatusToast) {
+        clearTimeout(globalScope.syncStatusHideTimer);
+        connectionStatus.classList.remove("hidden", "opacity-0", "scale-95");
+        connectionStatus.innerHTML = message;
+        connectionStatus.className = `fixed bottom-5 left-1/2 z-[60] w-max max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-lg px-4 py-2 text-center text-xs font-medium shadow-lg transition-all duration-500 ${visualState.panelClass}`;
+      } else {
+        clearTimeout(globalScope.syncStatusHideTimer);
+        connectionStatus.classList.add("opacity-0", "scale-95");
+        setTimeout(() => {
+          if (connectionStatus) {
+            connectionStatus.classList.add("hidden");
+            connectionStatus.classList.remove("opacity-0", "scale-95");
+          }
+        }, 250);
+      }
     }
   }
 

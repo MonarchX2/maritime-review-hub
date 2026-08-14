@@ -69,6 +69,18 @@ assert.match(
   "hidden decks should be filtered out of MRH_Summary.json generation before it is returned to users",
 );
 
+assert.match(
+  appCore,
+  /CACHE_VERSION_STORAGE_KEY|readStoredCacheVersion\(|persistLocalCacheVersion\(|localCacheVersion\s*=\s*readStoredCacheVersion\(|setStoredItem\?\.\(CACHE_VERSION_STORAGE_KEY/,
+  "stale local cache versions should be persisted and restored so old cached deck data can be refreshed against the latest server version",
+);
+
+assert.match(
+  appCore,
+  /Password.*report|Locked.*report|report.*Locked|report.*Password|do not allow.*report.*password|password.*protected.*report/i,
+  "password-protected decks must block question reports before they reach the public community reports feed",
+);
+
 assert.doesNotMatch(
   backendMain,
   /uuidSheet\.clearContents\s*\(\);/,

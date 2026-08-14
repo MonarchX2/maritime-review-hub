@@ -280,16 +280,6 @@
         "summary",
         stripAccessMetadataFromSummary(globalScope.state.categorySummary || []),
       );
-      if (
-        !globalScope.suppressProgressSync &&
-        typeof userState !== "undefined" &&
-        userState.isLoggedIn
-      ) {
-        const meta = globalScope.getProgressMeta();
-        meta.localUpdatedAt = new Date().toISOString();
-        globalScope.setStoredJSON("progress_meta", meta);
-        globalScope.queueProgressSync();
-      }
     } catch (e) {
       console.error(e);
     }

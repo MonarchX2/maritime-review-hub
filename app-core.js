@@ -16,17 +16,28 @@ let pendingSummaryData = null;
 let syncConnected = false;
 let lastSyncAt = 0;
 let progressSyncTimer = null;
-let progressSyncInFlight = false;
 let suppressProgressSync = false;
 let progressServerUpdatedAt = "";
-let authChannel = null;
-let authStateVersion = 0;
-let pendingProgressRequestKey = null;
-let pendingOfflineSyncTimer = null;
 let cacheInvalidationChannel = null;
 let localCacheVersion = 0;
 let remoteCacheVersion = 0;
 let cacheVersionCheckTimer = null;
+const CACHE_VERSION_STORAGE_KEY = "mrh_cache_version";
+
+function readStoredCacheVersion() {
+  const stored = Number(getStoredItem?.(CACHE_VERSION_STORAGE_KEY, "0") || "0");
+  return Number.isFinite(stored) ? Math.max(0, stored) : 0;
+}
+
+function persistLocalCacheVersion(version) {
+  const nextVersion = Number(version) || 0;
+  localCacheVersion = Math.max(0, nextVersion);
+  try {
+    setStoredItem?.(CACHE_VERSION_STORAGE_KEY, String(localCacheVersion));
+  } catch (e) {
+    console.warn("Unable to persist cache version locally.", e);
+  }
+}
 
 // OPTIMIZATION: Leader election pattern - only one tab polls
 let isLeaderTab = false;
@@ -35,15 +46,10 @@ let leaderElectionChannel = null;
 
 // OPTIMIZATION: ETag/Hash headers for 304 responses
 let lastCacheVersionHash = null;
-let lastSyncHeaders = {};
 
-// OPTIMIZATION: Jitter polling with exponential backoff
-let pollingIntervalMs = 30000; // Base 30 seconds
+// OPTIMIZATION: Exponential backoff retry tracking
 let failureRetryCount = 0;
 let maxRetryAttempts = 5;
-
-// OPTIMIZATION: Toast notifications
-let toastQueue = [];
 
 const debugLogger =
   typeof DebugUtils !== "undefined" && DebugUtils.createDebugLogger
@@ -83,28 +89,6 @@ if (typeof window !== "undefined") {
     emit: emitDebugState,
     inspect: createDebugSnapshot,
   };
-}
-
-function generateUserId() {
-  if (window.crypto && window.crypto.randomUUID) {
-    return "user_" + crypto.randomUUID();
-  }
-
-  if (window.crypto && window.crypto.getRandomValues) {
-    const bytes = new Uint8Array(16);
-    crypto.getRandomValues(bytes);
-    return (
-      "user_" + [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("")
-    );
-  }
-  return "user_" + Math.random().toString(36).substring(2, 15);
-}
-
-if (!state?.prefs?.userId) {
-  state.prefs.userId = generateUserId();
-  try {
-    localStorage.setItem("mrh_user_id", state.prefs.userId);
-  } catch (e) {}
 }
 
 function firstAvailableValue(...values) {
@@ -151,10 +135,6 @@ function escapeHTML(value) {
 
 function renderMathExpression(rawExpression, displayMode) {
   return TextUtils.renderMathExpression(rawExpression, displayMode);
-}
-
-function formatQuestionText(text, options = {}) {
-  return TextUtils.formatQuestionText(text, options);
 }
 
 function encodeHandlerValue(value) {
@@ -237,6 +217,7 @@ function setInlineError(element, message) {
 async function loadState() {
   emitDebugState("load_state:start");
   migrateLegacyStorageKeys();
+  localCacheVersion = readStoredCacheVersion();
   const savedStats = getStoredItem("stats");
   const savedPrefs = getStoredItem("prefs");
   const savedSummary =
@@ -372,16 +353,6 @@ async function saveState() {
       "summary",
       stripAccessMetadataFromSummary(state.categorySummary || []),
     );
-    if (
-      !suppressProgressSync &&
-      typeof userState !== "undefined" &&
-      userState.isLoggedIn
-    ) {
-      const meta = getProgressMeta();
-      meta.localUpdatedAt = new Date().toISOString();
-      setStoredJSON("progress_meta", meta);
-      queueProgressSync();
-    }
   } catch (e) {
     console.error(e);
   }
@@ -678,17 +649,36 @@ function updateSyncStatus(message, tone = "info", showOverlay = true) {
     setGlobalLoadingState(false);
   }
 
+  const isStartupVisibleSuccess =
+    showOverlay &&
+    !state.session?.active &&
+    tone === "success" &&
+    /Connected\./i.test(message);
   const shouldShowStatusToast =
     !shouldSuppressOverlay &&
-    (showOverlay ||
+    showOverlay &&
+    (isStartupVisibleSuccess ||
       tone === "info" ||
+      tone === "warning" ||
+      tone === "error" ||
       /database|reconnect|retry/i.test(message));
   const connectionStatus = document.getElementById("connection-status");
-  if (connectionStatus && shouldShowStatusToast) {
-    clearTimeout(syncStatusHideTimer);
-    connectionStatus.classList.remove("hidden", "opacity-0", "scale-95");
-    connectionStatus.innerHTML = message;
-    connectionStatus.className = `fixed bottom-5 left-1/2 z-[60] w-max max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-lg px-4 py-2 text-center text-xs font-medium shadow-lg transition-all duration-500 ${visualState.panelClass}`;
+  if (connectionStatus) {
+    if (shouldShowStatusToast) {
+      clearTimeout(syncStatusHideTimer);
+      connectionStatus.classList.remove("hidden", "opacity-0", "scale-95");
+      connectionStatus.innerHTML = message;
+      connectionStatus.className = `fixed bottom-5 left-1/2 z-[60] w-max max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-lg px-4 py-2 text-center text-xs font-medium shadow-lg transition-all duration-500 ${visualState.panelClass}`;
+    } else {
+      clearTimeout(syncStatusHideTimer);
+      connectionStatus.classList.add("opacity-0", "scale-95");
+      setTimeout(() => {
+        if (connectionStatus) {
+          connectionStatus.classList.add("hidden");
+          connectionStatus.classList.remove("opacity-0", "scale-95");
+        }
+      }, 250);
+    }
   }
 }
 
@@ -798,6 +788,54 @@ async function fetchAccessMetadata() {
   }
 }
 
+function isDeckPasswordProtected(subject) {
+  const rawSubject = String(subject || "").trim();
+  if (!rawSubject) return false;
+
+  const subjectParts = rawSubject.split("::");
+  const checkNames = [];
+  for (let index = subjectParts.length; index > 0; index--) {
+    checkNames.push(subjectParts.slice(0, index).join("::"));
+  }
+
+  const accessEntry =
+    (state.accessMetadata && state.accessMetadata[rawSubject]) || {};
+  if (String(accessEntry.Password || "").trim()) {
+    return true;
+  }
+
+  const summaryDeck = (state.categorySummary || []).find(
+    (deck) => String(deck?.Subject || "") === rawSubject,
+  );
+  if (
+    summaryDeck &&
+    (String(summaryDeck.Password || summaryDeck.password || "").trim() ||
+      summaryDeck.Locked === true ||
+      String(summaryDeck.Locked || "").toLowerCase() === "true")
+  ) {
+    return true;
+  }
+
+  for (const checkName of checkNames) {
+    const accessMatch = state.accessMetadata?.[checkName];
+    if (String(accessMatch?.Password || "").trim()) return true;
+
+    const ancestorDeck = (state.categorySummary || []).find(
+      (deck) => String(deck?.Subject || "") === checkName,
+    );
+    if (
+      ancestorDeck &&
+      (String(ancestorDeck.Password || ancestorDeck.password || "").trim() ||
+        ancestorDeck.Locked === true ||
+        String(ancestorDeck.Locked || "").toLowerCase() === "true")
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function applySummaryData(summaryData) {
   const previousSummary = JSON.stringify(state.categorySummary || []);
   const nextSummary = JSON.stringify(summaryData);
@@ -807,6 +845,7 @@ function applySummaryData(summaryData) {
   syncConnected = true;
   saveState();
   populateFilters();
+  renderCategoryProgress();
   return changed;
 }
 
@@ -855,7 +894,7 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
   updateSyncStatus(
     `<i class="fa-solid fa-spinner fa-spin mr-1"></i> ${isRetry ? "Checking for database updates" : "Connecting to database"}...`,
     "info",
-    false,
+    !isBackgroundCheck,
   );
 
   try {
@@ -1676,7 +1715,6 @@ function renderCategoryProgress() {
     let resetBtnHTML = "";
 
     if (!isReview) {
-      // statsHTML = `<p class="text-xs text-gray-500 dark:text-gray-400 transition-colors">Accuracy: ${data.total > 0 ? Math.round((data.correct/data.total)*100) : 0}%</p>`;
       countBadgeHTML = `
                 <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
                     ${databaseUnavailable ? "" : archiveBtnHTML}
@@ -2480,9 +2518,12 @@ function renderDeckReview(subject, questions) {
                 </div>`;
     }
 
+    const isProtectedDeck = isDeckPasswordProtected(q.Subject);
     let reportClass = globallyReportedQs.has(q.ID)
       ? "text-red-500 bg-red-50 dark:bg-red-900/30"
-      : "text-gray-400 bg-white dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-500";
+      : isProtectedDeck
+        ? "text-gray-300 bg-gray-100 dark:bg-gray-700/40 cursor-not-allowed opacity-60"
+        : "text-gray-400 bg-white dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-500";
 
     html += `
             <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 animate-card-in">
@@ -2502,9 +2543,15 @@ function renderDeckReview(subject, questions) {
                             : ""
                         }
 
-                        <button onclick="openReportModalFromStudy('${encodeHandlerValue(q.ID)}')" class="${reportClass} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95 transition-all" title="${globallyReportedQs.has(q.ID) ? "Active Community Report" : "Report Issue"}">
-                            <i class="fa-solid fa-triangle-exclamation"></i>
-                        </button>
+                        ${
+                          isProtectedDeck
+                            ? `<button type="button" class="${reportClass} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm transition-all" title="Reporting disabled for password-protected decks" disabled>
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                            </button>`
+                            : `<button onclick="openReportModalFromStudy('${encodeHandlerValue(q.ID)}')" class="${reportClass} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95 transition-all" title="${globallyReportedQs.has(q.ID) ? "Active Community Report" : "Report Issue"}">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                            </button>`
+                        }
                     </div>
                 </div>
                 
@@ -3983,6 +4030,13 @@ async function submitReport() {
     return;
   }
 
+  if (isDeckPasswordProtected(q.Subject)) {
+    alert("Reporting is disabled for password-protected decks.");
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+    return;
+  }
+
   try {
     const result = await callBackend({
       type: "submit_report",
@@ -4279,7 +4333,7 @@ function setTitleMode(mode) {
   state.prefs.titleMode = normalizedMode;
   saveState();
   applyTitleMode();
-  updateTitleModeButtons();
+  updateTitleModeButton();
 }
 
 function applyTitleMode() {
@@ -4363,10 +4417,6 @@ function updateTitleModeButton() {
   }
 }
 
-function updateTitleModeButtons() {
-  updateTitleModeButton();
-}
-
 async function autoSaveDeckPassword(deckPath, newPassword) {
   const safeToken = typeof getAdminToken === "function" ? getAdminToken() : "";
   const password = String(newPassword || "").trim();
@@ -4388,99 +4438,6 @@ async function autoSaveDeckPassword(deckPath, newPassword) {
     alert("Network error while auto-saving password.");
     console.error(e);
   }
-}
-
-function normalizeProgressPayloadForComparison(value) {
-  if (value === null || value === undefined) return null;
-  if (Array.isArray(value)) {
-    return value.map((item) => normalizeProgressPayloadForComparison(item));
-  }
-  if (typeof value === "object") {
-    const normalized = {};
-    Object.keys(value)
-      .sort()
-      .forEach((key) => {
-        normalized[key] = normalizeProgressPayloadForComparison(value[key]);
-      });
-    return normalized;
-  }
-  return value;
-}
-
-function areProgressPayloadsEquivalent(localPayload, remotePayload) {
-  if (!localPayload || !remotePayload) return false;
-  return (
-    JSON.stringify(normalizeProgressPayloadForComparison(localPayload)) ===
-    JSON.stringify(normalizeProgressPayloadForComparison(remotePayload))
-  );
-}
-
-function getProgressMeta() {
-  return SessionUtils.getProgressMeta();
-}
-
-function setProgressMeta(updatedAt, serverUpdatedAt = updatedAt || "") {
-  return SessionUtils.setProgressMeta(updatedAt, serverUpdatedAt);
-}
-
-function clearLocalUserProgress() {
-  return SessionUtils.clearLocalUserProgress();
-}
-
-function hasLocalProgress() {
-  return SessionUtils.hasLocalProgress();
-}
-
-function applyRemoteProgress(payload, updatedAt) {
-  return SessionUtils.applyRemoteProgress(payload, updatedAt);
-}
-
-function createIdempotencyKey(payload) {
-  return SessionUtils.createIdempotencyKey(payload);
-}
-
-function getPendingOfflineQueue() {
-  return SessionUtils.getPendingOfflineQueue();
-}
-
-function savePendingOfflineQueue(queue) {
-  return SessionUtils.savePendingOfflineQueue(queue);
-}
-
-function queueOfflineProgress(payload, idempotencyKey) {
-  return SessionUtils.queueOfflineProgress(payload, idempotencyKey);
-}
-
-async function flushPendingOfflineProgress() {
-  return SessionUtils.flushPendingOfflineProgress();
-}
-
-async function chooseProgressConflict(
-  localPayload,
-  remotePayload,
-  remoteUpdatedAt,
-) {
-  return SessionUtils.chooseProgressConflict(
-    localPayload,
-    remotePayload,
-    remoteUpdatedAt,
-  );
-}
-
-async function saveUserProgress(
-  payload = getProgressPayload(),
-  force = false,
-  options = {},
-) {
-  return SessionUtils.saveUserProgress(payload, force, options);
-}
-
-function queueProgressSync() {
-  return SessionUtils.queueProgressSync();
-}
-
-async function syncUserProgress() {
-  return SessionUtils.syncUserProgress();
 }
 
 const folderPasswordButton = document.getElementById(
@@ -4799,36 +4756,6 @@ function handleCacheInvalidation() {
   syncDatabase(false, true); // isRetry=false, isBackgroundCheck=true (silent)
 }
 
-async function checkCacheVersion() {
-  try {
-    const response = await fetch(DB_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ type: "get_cache_version" }),
-    });
-
-    if (!response.ok) return;
-
-    const data = await response.json();
-    if (data && typeof data.version === "number") {
-      remoteCacheVersion = data.version;
-
-      // If cache version changed, silently sync database (IMPROVED: non-disruptive)
-      if (localCacheVersion > 0 && remoteCacheVersion > localCacheVersion) {
-        console.log(
-          `[CACHE] Version changed: ${localCacheVersion} -> ${remoteCacheVersion}, syncing silently...`,
-        );
-        // Silent background sync - no page reload, no disruption
-        syncDatabase(false, true); // isRetry=false, isBackgroundCheck=true
-      }
-
-      localCacheVersion = remoteCacheVersion;
-    }
-  } catch (e) {
-    console.error("[CACHE] Failed to check version:", e);
-  }
-}
-
 // ============================================
 // OPTIMIZATION: Toast Notification System
 // ============================================
@@ -5051,6 +4978,10 @@ async function checkCacheVersionWithETag() {
 
     if (data && typeof data.version === "number") {
       remoteCacheVersion = data.version;
+      const storedLocalCacheVersion = readStoredCacheVersion();
+      if (localCacheVersion === 0 && storedLocalCacheVersion > 0) {
+        localCacheVersion = storedLocalCacheVersion;
+      }
 
       // If version changed, leader broadcasts to all tabs
       if (localCacheVersion > 0 && remoteCacheVersion > localCacheVersion) {
@@ -5073,7 +5004,7 @@ async function checkCacheVersionWithETag() {
         await reloadAppStateInMemory();
       }
 
-      localCacheVersion = remoteCacheVersion;
+      persistLocalCacheVersion(remoteCacheVersion);
       failureRetryCount = 0;
     }
   } catch (e) {
@@ -5208,6 +5139,6 @@ window.addEventListener("DOMContentLoaded", () => {
   // Apply title display mode preference
   setTimeout(() => {
     applyTitleMode();
-    updateTitleModeButtons();
+    updateTitleModeButton();
   }, 100);
 });

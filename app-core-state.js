@@ -57,24 +57,6 @@
     reportQuestion: null,
   };
 
-  function generateUserId() {
-    const cryptoApi = StorageUtils.getCrypto();
-    if (cryptoApi && cryptoApi.randomUUID) {
-      return "user_" + cryptoApi.randomUUID();
-    }
-
-    if (cryptoApi && cryptoApi.getRandomValues) {
-      const bytes = new Uint8Array(16);
-      cryptoApi.getRandomValues(bytes);
-      return (
-        "user_" +
-        [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("")
-      );
-    }
-
-    return "user_" + Math.random().toString(36).substring(2, 15);
-  }
-
   function getStoredItem(key, fallback = null) {
     return StorageUtils.getStoredItem(key, fallback);
   }
@@ -213,15 +195,6 @@
     }
 
     return questions;
-  }
-
-  if (!state.prefs.userId) {
-    state.prefs.userId = generateUserId();
-    try {
-      localStorage.setItem("mrh_user_id", state.prefs.userId);
-    } catch (e) {
-      // ignore storage errors
-    }
   }
 
   globalScope.state = state;

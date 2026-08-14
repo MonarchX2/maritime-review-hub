@@ -34,11 +34,7 @@ const makeElement = (id) => {
   };
 };
 
-const ids = [
-  "sync-status",
-  "database-connection-icon",
-  "connection-status",
-];
+const ids = ["sync-status", "database-connection-icon", "connection-status"];
 
 const elements = Object.fromEntries(ids.map((id) => [id, makeElement(id)]));
 
@@ -60,6 +56,7 @@ assert.strictEqual("telemetryEnabled" in globalThis.state.prefs, false);
 
 const syncStatusEl = elements["sync-status"];
 const iconEl = elements["database-connection-icon"];
+const connectionStatusEl = elements["connection-status"];
 
 globalThis.state.session.active = false;
 globalThis.SyncCore.updateSyncStatus(
@@ -70,6 +67,19 @@ globalThis.SyncCore.updateSyncStatus(
 
 assert.match(syncStatusEl.className, /bg-blue-50/);
 assert.match(iconEl.className, /fa-spinner fa-spin/);
+assert.match(connectionStatusEl.innerHTML, /Connecting to database/i);
+
+globalThis.SyncCore.updateSyncStatus(
+  '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Checking for database updates...',
+  "info",
+  false,
+);
+
+assert.strictEqual(
+  connectionStatusEl.innerHTML,
+  '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Connecting to database...',
+  "background sync should not overwrite the visible connection-status toast",
+);
 
 globalThis.state.session.active = true;
 globalThis.SyncCore.updateSyncStatus(

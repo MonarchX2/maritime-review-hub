@@ -14,16 +14,6 @@
     return {};
   }
 
-  function getRuntimeUserState() {
-    if (typeof globalThis !== "undefined" && globalThis.userState) {
-      return globalThis.userState;
-    }
-    if (typeof userState !== "undefined" && userState) {
-      return userState;
-    }
-    return {};
-  }
-
   function getLocalStorage() {
     if (typeof localStorage !== "undefined") return localStorage;
     return {
@@ -94,11 +84,6 @@
 
   function getSafeStorageIdentity() {
     const runtimeState = getRuntimeState();
-    const runtimeUserState = getRuntimeUserState();
-    const username = runtimeUserState?.username || "";
-    if (username) {
-      return String(username).replace(/[^a-zA-Z0-9_-]/g, "_") || "guest";
-    }
 
     if (!runtimeState.prefs) runtimeState.prefs = {};
     if (!runtimeState.prefs.storageIdentity) {
