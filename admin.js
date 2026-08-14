@@ -348,17 +348,21 @@ function renderAdminSubjectList() {
                             <div class="text-xs text-gray-500 dark:text-gray-400 mt-2 font-mono">Full path: ${escapeHTML(subj.originalFull)}</div>
                             
                             <!-- UUID Box -->
-                            ${subj.UUID ? `
+                            ${
+                              subj.UUID
+                                ? `
                             <div class="mt-3 inline-flex max-w-full items-center gap-2 rounded border border-blue-200 bg-blue-50 px-2 py-1 dark:border-blue-700 dark:bg-blue-900/20">
                                 <span class="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">🔑</span>
                                 <span class="max-w-full truncate font-mono text-[11px] text-blue-800 dark:text-blue-300 select-all cursor-pointer" title="Click to select UUID">${escapeHTML(subj.UUID)}</span>
                             </div>
-                            ` : `
+                            `
+                                : `
                             <div class="mt-3 inline-flex max-w-full items-center gap-2 rounded border border-dashed border-gray-300 bg-gray-100 px-2 py-1 dark:border-gray-600 dark:bg-gray-700">
                                 <span class="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">🔑</span>
                                 <span class="text-[10px] text-gray-400 dark:text-gray-500">Will be assigned</span>
                             </div>
-                            `}
+                            `
+                            }
                         </div>
                         
                         <!-- Right Column: Controls -->
