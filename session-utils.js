@@ -378,12 +378,10 @@
       if (result.status === "success") {
         setProgressMeta(result.updatedAt || result.serverUpdatedAt || "");
         scheduleOfflineSync();
-        updateProfileUI();
         return true;
       }
       if (result.status === "guest") {
         userState.sessionMode = "guest";
-        updateProfileUI();
         showToast(
           "This account is already active on another device. This device is now read-only.",
           "error",
@@ -400,7 +398,6 @@
       }
       return false;
     } catch (e) {
-      updateProfileUI();
       queueOfflineProgress(
         payload,
         options.idempotencyKey || createIdempotencyKey(payload),
@@ -433,7 +430,6 @@
         "Account Switch",
       );
       if (!useRemote) {
-        updateProfileUI();
         return;
       }
       clearLocalUserProgress();
@@ -447,7 +443,6 @@
 
       if (!result.exists) {
         if (hasLocalProgress()) await saveUserProgress();
-        updateProfileUI();
         return;
       }
 
@@ -456,7 +451,6 @@
         applyRemoteProgress(result.payload, result.updatedAt);
         if (syncStatus)
           syncStatus.textContent = "Database progress loaded on this device.";
-        updateProfileUI();
         return;
       }
 
@@ -495,7 +489,6 @@
             };
             setStoredJSON("recovery_snapshot", snapshot);
             applyRemoteProgress(result.payload, result.updatedAt);
-            updateProfileUI();
           } else {
             await saveUserProgress(getProgressPayload(), true);
           }

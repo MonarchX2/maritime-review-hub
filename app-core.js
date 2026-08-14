@@ -3857,16 +3857,6 @@ function openReportModalFromStudy(questionId) {
   toggleModal("report-modal", true);
 }
 
-function openGeneralFeedbackModal() {
-  const feedbackComments = document.getElementById("feedback-comments");
-  if (feedbackComments) feedbackComments.value = "";
-  toggleModal("feedback-modal", true);
-}
-
-function closeGeneralFeedbackModal() {
-  toggleModal("feedback-modal", false);
-}
-
 async function submitReport() {
   const typeEl = document.getElementById("report-type");
   const lesson = document.getElementById("report-lesson").value.trim();
@@ -4676,42 +4666,6 @@ async function changeQuestionTypeMode(mode) {
   state.prefs.qTypeOverride = mode;
   saveState();
   if (state.session.active) renderQuestion();
-}
-
-async function submitGeneralFeedback() {
-  const comments = document.getElementById("feedback-comments").value.trim();
-  if (!comments) return alert("Please enter your feedback.");
-  const btn = document.getElementById("btn-submit-feedback");
-  const originalText = btn.innerHTML;
-  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Sending...';
-  btn.disabled = true;
-
-  try {
-    const result = await callBackend({
-      type: "submit_feedback",
-      comments: comments,
-      userId: getActiveIdentity(),
-    });
-    if (result.status !== "success") {
-      throw new Error(result.message || "Feedback submission failed.");
-    }
-    btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Sent!';
-    btn.classList.remove("bg-brand-500", "hover:bg-brand-600");
-    btn.classList.add("bg-green-500", "hover:bg-green-600");
-    setTimeout(() => {
-      closeGeneralFeedbackModal();
-      setTimeout(() => {
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-        btn.classList.remove("bg-green-500", "hover:bg-green-600");
-        btn.classList.add("bg-brand-500", "hover:bg-brand-600");
-      }, 500);
-    }, 1500);
-  } catch (err) {
-    alert("Network error.");
-    btn.innerHTML = originalText;
-    btn.disabled = false;
-  }
 }
 
 let lastScrollTop = 0;

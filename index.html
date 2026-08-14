@@ -112,16 +112,6 @@
         >
           <i class="fa-solid fa-lock"></i>
         </button>
-        <!--
-        <button
-          onclick="openGeneralFeedbackModal()"
-          class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg"
-          aria-label="Submit Feedback"
-          title="Submit App Feedback/Bug"
-        >
-          <i class="fa-solid fa-bug"></i>
-        </button>
-        -->
         <!-- View Reports Button -->
         <button
           onclick="
@@ -1294,50 +1284,6 @@
               id="btn-submit-report"
               onclick="submitReport()"
               class="px-5 py-2.5 rounded-xl font-bold text-white bg-red-500 hover:bg-red-600 transition-colors shadow-md"
-            >
-              Submit
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Feature 10: General App Bug Report Modal -->
-      <div
-        id="feedback-modal"
-        class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden opacity-0 transition-opacity duration-300 flex items-center justify-center p-4"
-      >
-        <div
-          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300"
-        >
-          <div class="flex justify-between items-center mb-4">
-            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
-              <i class="fa-solid fa-bug text-brand-500 mr-2"></i> Report App Bug
-              / Feedback
-            </h3>
-            <button
-              onclick="closeGeneralFeedbackModal()"
-              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-            >
-              <i class="fa-solid fa-xmark text-xl"></i>
-            </button>
-          </div>
-          <textarea
-            id="feedback-comments"
-            rows="4"
-            class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-200 outline-none resize-none mb-4"
-            placeholder="Describe the issue or feature request..."
-          ></textarea>
-          <div class="flex justify-end gap-3">
-            <button
-              onclick="closeGeneralFeedbackModal()"
-              class="px-5 py-2.5 rounded-xl font-bold bg-gray-100 hover:bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              id="btn-submit-feedback"
-              onclick="submitGeneralFeedback()"
-              class="px-5 py-2.5 rounded-xl font-bold text-white bg-brand-500 hover:bg-brand-600 transition-colors"
             >
               Submit
             </button>
