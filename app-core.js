@@ -376,6 +376,18 @@ async function saveState() {
   });
 }
 
+function updateShuffleWarning() {
+  const warning = document.getElementById("shuffle-warning");
+  if (!warning) return;
+
+  const shouldShowWarning =
+    state.prefs.shuffleChoices === false ||
+    state.prefs.shuffleQuestions === false;
+
+  warning.classList.toggle("hidden", !shouldShowWarning);
+  warning.setAttribute("aria-hidden", String(!shouldShowWarning));
+}
+
 function syncPreferenceControls() {
   const values = {
     "toggle-active-recall": state.prefs.activeRecall === true,
@@ -407,6 +419,8 @@ function syncPreferenceControls() {
     const control = document.getElementById(id);
     if (control) control.checked = checked;
   });
+
+  updateShuffleWarning();
 
   const databaseUpdateMode = document.getElementById("database-update-mode");
   if (databaseUpdateMode)
@@ -770,6 +784,25 @@ function stripAccessMetadataFromSummary(summaryData) {
   });
 }
 
+function filterHiddenAndProtectedDecks(summaryData) {
+  if (!Array.isArray(summaryData)) return summaryData;
+
+  return summaryData.filter((deck) => {
+    if (!deck || typeof deck !== "object") return false;
+    const subject = String(deck.Subject || "").trim();
+    if (!subject) return false;
+
+    const accessEntry = state.accessMetadata?.[subject] || {};
+    const hidden =
+      accessEntry.Hidden === true ||
+      deck.Hidden === true ||
+      String(deck.Hidden || "").toLowerCase() === "true" ||
+      String(accessEntry.Hidden || "").toLowerCase() === "true";
+
+    return !hidden;
+  });
+}
+
 function buildAccessMetadataMap(accessData) {
   const map = {};
   const rows = Array.isArray(accessData) ? accessData : [];
@@ -899,12 +932,115 @@ function isDeckPasswordProtected(subject) {
   return false;
 }
 
+function isDeckHidden(subject) {
+  const rawSubject = String(subject || "").trim();
+  if (!rawSubject) return false;
+
+  const accessEntry =
+    (state.accessMetadata && state.accessMetadata[rawSubject]) || {};
+  if (
+    accessEntry.Hidden === true ||
+    String(accessEntry.Hidden || "").toLowerCase() === "true"
+  ) {
+    return true;
+  }
+
+  const summaryDeck = (state.categorySummary || []).find(
+    (deck) => String(deck?.Subject || "") === rawSubject,
+  );
+  if (
+    summaryDeck &&
+    (summaryDeck.Hidden === true ||
+      String(summaryDeck.Hidden || "").toLowerCase() === "true")
+  ) {
+    return true;
+  }
+
+  const subjectParts = rawSubject.split("::");
+  for (let index = subjectParts.length; index > 0; index--) {
+    const checkName = subjectParts.slice(0, index).join("::");
+    const ancestorAccess = state.accessMetadata?.[checkName] || {};
+    if (
+      ancestorAccess.Hidden === true ||
+      String(ancestorAccess.Hidden || "").toLowerCase() === "true"
+    ) {
+      return true;
+    }
+
+    const ancestorDeck = (state.categorySummary || []).find(
+      (deck) => String(deck?.Subject || "") === checkName,
+    );
+    if (
+      ancestorDeck &&
+      (ancestorDeck.Hidden === true ||
+        String(ancestorDeck.Hidden || "").toLowerCase() === "true")
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isDeckLocked(subject) {
+  const rawSubject = String(subject || "").trim();
+  if (!rawSubject) return false;
+
+  const accessEntry =
+    (state.accessMetadata && state.accessMetadata[rawSubject]) || {};
+  const passwordValue = String(
+    accessEntry.Password || accessEntry.password || "",
+  ).trim();
+  if (accessEntry.Locked === true || passwordValue) {
+    return true;
+  }
+
+  const summaryDeck = (state.categorySummary || []).find(
+    (deck) => String(deck?.Subject || "") === rawSubject,
+  );
+  if (
+    summaryDeck &&
+    (summaryDeck.Locked === true ||
+      String(summaryDeck.Locked || "").toLowerCase() === "true" ||
+      String(summaryDeck.Password || summaryDeck.password || "").trim())
+  ) {
+    return true;
+  }
+
+  const subjectParts = rawSubject.split("::");
+  for (let index = subjectParts.length; index > 0; index--) {
+    const checkName = subjectParts.slice(0, index).join("::");
+    const ancestorAccess = state.accessMetadata?.[checkName] || {};
+    if (
+      ancestorAccess.Locked === true ||
+      String(ancestorAccess.Password || ancestorAccess.password || "").trim()
+    ) {
+      return true;
+    }
+
+    const ancestorDeck = (state.categorySummary || []).find(
+      (deck) => String(deck?.Subject || "") === checkName,
+    );
+    if (
+      ancestorDeck &&
+      (ancestorDeck.Locked === true ||
+        String(ancestorDeck.Locked || "").toLowerCase() === "true" ||
+        String(ancestorDeck.Password || ancestorDeck.password || "").trim())
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function applySummaryData(summaryData) {
+  const safeSummary = filterHiddenAndProtectedDecks(summaryData || []);
   const previousSummary = JSON.stringify(state.categorySummary || []);
-  const nextSummary = JSON.stringify(summaryData);
+  const nextSummary = JSON.stringify(safeSummary);
   const changed = previousSummary !== nextSummary;
 
-  state.categorySummary = summaryData;
+  state.categorySummary = safeSummary;
   syncConnected = true;
   saveState();
   populateFilters();
@@ -1063,26 +1199,28 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
       isColdStart = false;
       sanitizeDeletedDeckReferences();
       const accessMap = await fetchAccessMetadata();
+      state.accessMetadata = accessMap;
       const mergedSummary = mergeAccessMetadataIntoSummary(
         summaryData,
         accessMap,
       );
+      const filteredSummary = filterHiddenAndProtectedDecks(mergedSummary);
       const changed =
         JSON.stringify(state.categorySummary || []) !==
-        JSON.stringify(mergedSummary);
+        JSON.stringify(filteredSummary);
       const canApplyNow =
         state.prefs.databaseUpdateMode === "immediate" || !state.session.active;
 
       if (canApplyNow && (changed || !wasConnected)) {
         pendingSummaryData = null;
-        applySummaryData(mergedSummary);
+        applySummaryData(filteredSummary);
       } else if (!canApplyNow) {
-        if (changed) pendingSummaryData = mergedSummary;
+        if (changed) pendingSummaryData = filteredSummary;
         if (!wasConnected) renderCategoryProgress();
       }
 
       updateSyncStatus(
-        `<i class="fa-solid fa-check mr-1"></i> Connected. ${changed && !canApplyNow ? "Update waiting until your session ends." : `Checked ${summaryData.length} subjects.`}`,
+        `<i class="fa-solid fa-check mr-1"></i> Connected. ${changed && !canApplyNow ? "Update waiting until your session ends." : `Checked ${filteredSummary.length} subjects.`}`,
         "success",
         !silentSync && !initialSyncSuccessShown,
       );
@@ -1589,10 +1727,15 @@ function getDeckLoaderId(subject) {
 function getVisibleCategorySummary() {
   return (state.categorySummary || []).filter((deck) => {
     if (!deck || !deck.Subject) return false;
-    // Filter out decks marked as hidden (admin-controlled)
-    if (deck.Hidden === true || String(deck.Hidden).toLowerCase() === "true")
-      return false;
-    // Deleted decks remain visible (just with 0 questions downloaded)
+    const subject = String(deck.Subject || "").trim();
+    if (!subject) return false;
+    const accessEntry = state.accessMetadata?.[subject] || {};
+    const hidden =
+      accessEntry.Hidden === true ||
+      deck.Hidden === true ||
+      String(deck.Hidden || "").toLowerCase() === "true" ||
+      String(accessEntry.Hidden || "").toLowerCase() === "true";
+    if (hidden) return false;
     return true;
   });
 }
@@ -1879,7 +2022,7 @@ function renderCategoryProgress() {
       ? "hover:shadow-purple-500/10"
       : "hover:shadow-brand-500/10";
     const loaderColor = isReview ? "text-purple-500" : "text-brand-500";
-    const isLocked = cat.Locked === true;
+    const isLocked = isDeckLocked(subj) || Boolean(cat?.Locked);
     const lockIcon = isLocked
       ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected"></i>`
       : "";
@@ -1987,7 +2130,7 @@ function renderCategoryProgress() {
         ? "group-hover:text-purple-600 dark:group-hover:text-purple-400"
         : "group-hover:text-brand-600 dark:group-hover:text-brand-400";
 
-      const isLocked = hasData && item._data.Locked === true;
+      const isLocked = isDeckLocked(key) || Boolean(item?._data?.Locked);
       const lockIcon = isLocked
         ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected Folder"></i>`
         : "";
@@ -2056,6 +2199,16 @@ function renderCategoryProgress() {
 
 async function fetchAndStartCategory(subject, mode, pass = null) {
   const loader = document.getElementById(getDeckLoaderId(subject));
+  if (isDeckHidden(subject)) {
+    showToast("This deck is hidden and not available.", "warning");
+    return;
+  }
+  if (isDeckLocked(subject) && !pass) {
+    pendingDeckSubject = subject;
+    pendingDeckAction = mode;
+    openDeckPasswordModal(subject, mode);
+    return;
+  }
   // Define strict MCQ filter condition conditionally based on user preference
   const isForcedMCQ = state.prefs.qTypeOverride === "mcq";
   const customFilter = isForcedMCQ
@@ -2076,6 +2229,12 @@ async function fetchAndStartCategory(subject, mode, pass = null) {
 
   // Fallback check if offline and fetch returned empty
   if (validQuestions.length === 0) {
+    if (isDeckLocked(subject)) {
+      pendingDeckSubject = subject;
+      pendingDeckAction = mode;
+      openDeckPasswordModal(subject, mode);
+      return;
+    }
     alert(
       `Cannot start session. You are offline and "${subject}" has not been downloaded to your device yet.`,
     );
@@ -2394,6 +2553,15 @@ async function fetchDeckQuestionsFromNetwork(
   loaderElement = null,
 ) {
   if (loaderElement) loaderElement.classList.remove("hidden");
+
+  if (isDeckLocked(subject) && !pass) {
+    pendingDeckSubject = subject;
+    pendingDeckAction = pendingDeckAction || "continue";
+    openDeckPasswordModal(subject, pendingDeckAction || "continue");
+    if (loaderElement) loaderElement.classList.add("hidden");
+    return [];
+  }
+
   try {
     let fetchUrl = `${DB_URL}?subject=${encodeURIComponent(subject)}&_t=${Date.now()}`;
     if (pass) fetchUrl += `&password=${encodeURIComponent(pass)}`;
@@ -2408,7 +2576,22 @@ async function fetchDeckQuestionsFromNetwork(
         `Invalid backend response while loading deck: ${text.slice(0, 200)}`,
       );
     }
-    if (newQuestions && newQuestions.error) throw new Error(newQuestions.error);
+    if (newQuestions && newQuestions.error) {
+      const errorText = String(newQuestions.error || "").toLowerCase();
+      if (
+        errorText.includes("incorrect password") ||
+        errorText.includes("requires a password") ||
+        errorText.includes("not available")
+      ) {
+        if (!pass) {
+          pendingDeckSubject = subject;
+          pendingDeckAction = pendingDeckAction || "continue";
+          openDeckPasswordModal(subject, pendingDeckAction || "continue");
+        }
+        return [];
+      }
+      throw new Error(newQuestions.error);
+    }
     if (!Array.isArray(newQuestions)) {
       throw new Error("Unexpected backend response format while loading deck.");
     }
@@ -2455,6 +2638,18 @@ async function fetchDeckQuestionsFromNetwork(
 async function reviewDeck(subject, pass = null) {
   const loader = document.getElementById(getDeckLoaderId(subject));
 
+  if (isDeckHidden(subject)) {
+    showToast("This deck is hidden and not available.", "warning");
+    return;
+  }
+
+  if (isDeckLocked(subject) && !pass) {
+    pendingDeckSubject = subject;
+    pendingDeckAction = "resume-review";
+    openDeckPasswordModal(subject, "resume-review");
+    return;
+  }
+
   // Check local cache first if no password is provided
   let validQuestions = [];
   if (!pass) {
@@ -2467,6 +2662,13 @@ async function reviewDeck(subject, pass = null) {
   }
 
   if (validQuestions.length === 0) {
+    if (isDeckLocked(subject)) {
+      pendingDeckSubject = subject;
+      pendingDeckAction = "resume-review";
+      openDeckPasswordModal(subject, "resume-review");
+      if (loader) loader.classList.add("hidden");
+      return;
+    }
     alert(
       `Cannot review deck. You are offline and "${subject}" has not been downloaded yet.`,
     );
@@ -2814,6 +3016,26 @@ function toggleSrsMode(source) {
       renderQuestion();
     }
   }
+}
+
+function toggleFavoriteDeck(subjectId) {
+  subjectId = decodeHandlerValue(subjectId);
+  if (!subjectId) return;
+
+  if (!Array.isArray(state.prefs.favoriteDecks)) {
+    state.prefs.favoriteDecks = [];
+  }
+
+  const existing = state.prefs.favoriteDecks.filter(Boolean);
+  const isFavorite = existing.includes(subjectId);
+
+  state.prefs.favoriteDecks = isFavorite
+    ? existing.filter((deck) => deck !== subjectId)
+    : [...existing, subjectId];
+
+  saveState();
+  renderCategoryProgress();
+  showToast(isFavorite ? "Removed from Favorites." : "Added to Favorites.");
 }
 
 async function toggleArchiveDeck(subjectId) {
@@ -3430,10 +3652,10 @@ async function resumeSession(password = null) {
   ) {
     currentAppMode = "review";
     syncPreferenceControls();
-    const deckInfo = state.categorySummary.find(
-      (category) => category.Subject === activity.subject,
-    );
-    if (deckInfo?.Locked && !password) {
+    if (
+      (isDeckHidden(activity.subject) || isDeckLocked(activity.subject)) &&
+      !password
+    ) {
       pendingDeckSubject = activity.subject;
       pendingDeckAction = "resume-review";
       openDeckPasswordModal(activity.subject, "resume-review");
@@ -3449,11 +3671,11 @@ async function resumeSession(password = null) {
   const savedSession = pendingResumeSession || JSON.parse(saved);
   const currentQuestion = savedSession.questions?.[savedSession.currentIndex];
   const currentSubject = currentQuestion?.Subject;
-  const deckInfo = state.categorySummary.find(
-    (category) => category.Subject === currentSubject,
-  );
 
-  if (deckInfo?.Locked && !password) {
+  if (
+    (isDeckHidden(currentSubject) || isDeckLocked(currentSubject)) &&
+    !password
+  ) {
     pendingResumeSession = savedSession;
     pendingDeckSubject = currentSubject;
     pendingDeckAction = "resume";
@@ -3461,7 +3683,7 @@ async function resumeSession(password = null) {
     return;
   }
 
-  if (currentSubject && (password || deckInfo?.Locked)) {
+  if (currentSubject && (password || isDeckLocked(currentSubject))) {
     await fetchDeckQuestions(currentSubject, password);
   }
 
@@ -4468,7 +4690,13 @@ function handleDeckClick(subj, action = "continue") {
   saveState();
 
   const deckInfo = state.categorySummary.find((c) => c.Subject === subj);
-  if (deckInfo && deckInfo.Locked) {
+  if (isDeckHidden(subj) || (deckInfo && deckInfo.Hidden)) {
+    showToast("This deck is hidden and not available.", "warning");
+    return;
+  }
+  if (isDeckLocked(subj) || (deckInfo && deckInfo.Locked)) {
+    pendingDeckSubject = subj;
+    pendingDeckAction = action;
     openDeckPasswordModal(subj, action);
     return;
   }
@@ -4484,7 +4712,7 @@ function toggleShuffleChoices(source) {
     source ||
     document.getElementById("toggle-shuffle-choices") ||
     document.getElementById("toggle-modal-shuffle-choices");
-  const isChecked = source.checked;
+  const isChecked = source ? source.checked : true;
   state.prefs.shuffleChoices = isChecked;
   saveState();
   syncPreferenceControls();
@@ -4503,8 +4731,9 @@ function toggleShuffleChoices(source) {
   }
 }
 
-function toggleShuffleQuestions() {
-  const isChecked = document.getElementById("toggle-shuffle-questions").checked;
+function toggleShuffleQuestions(source) {
+  const element = source || document.getElementById("toggle-shuffle-questions");
+  const isChecked = element ? element.checked : true;
   state.prefs.shuffleQuestions = isChecked;
   saveState();
   syncPreferenceControls();
@@ -5109,10 +5338,9 @@ async function fetchWithExponentialBackoff(url, options = {}, maxRetries = 3) {
 // OPTIMIZATION: Jittered Polling Interval
 // ============================================
 function getJitteredPollingInterval() {
-  // Base 30 seconds, jitter between 25-40 seconds
-  // Prevents all clients from polling simultaneously
-  const jitter = (Math.random() - 0.5) * 10000; // ±5 seconds
-  return Math.max(25000, Math.min(40000, 30000 + jitter));
+  // Poll frequently enough to feel realtime while still staggering clients.
+  const jitter = (Math.random() - 0.5) * 6000; // ±3 seconds
+  return Math.max(8000, Math.min(18000, 12000 + jitter));
 }
 
 // ============================================

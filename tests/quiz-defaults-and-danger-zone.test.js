@@ -10,6 +10,7 @@ const appCore = fs.readFileSync(
   path.join(__dirname, "..", "app-core.js"),
   "utf8",
 );
+const adminJs = fs.readFileSync(path.join(__dirname, "..", "admin.js"), "utf8");
 const indexHtml = fs.readFileSync(
   path.join(__dirname, "..", "index.html"),
   "utf8",
@@ -41,6 +42,16 @@ assert.match(
   appCore,
   /setTimeout\(\(\) => syncAbortController\.abort\(\), 10000\)/,
 );
+assert.doesNotMatch(
+  adminJs,
+  /btn\.classList\.remove\(\s*"bg-green-600"\s*,\s*"hover:bg-green-700"\s*\)/,
+  "save button should keep its default green styling while adding only temporary success-state styling",
+);
+assert.match(
+  appCore,
+  /isDeckLocked\s*\(|if\s*\(\s*isDeckLocked\(subject\)\s*&&\s*!pass\s*\)/,
+  "locked decks should trigger a password prompt before gameplay starts",
+);
 assert.match(
   indexHtml,
   /Shuffle Choices[\s\S]*?Default to ON[\s\S]*?toggle-shuffle-choices/,
@@ -49,6 +60,8 @@ assert.match(
   indexHtml,
   /Shuffle Questions[\s\S]*?Default to ON[\s\S]*?toggle-shuffle-questions/,
 );
+assert.match(indexHtml, /id="shuffle-warning"/);
+assert.match(appCore, /function\s+toggleFavoriteDeck\s*\(/);
 assert.match(appCore, /cycleScrollNavigationPosition\s*\(/);
 assert.doesNotMatch(resetProgressBlock, /state\.db\s*=\s*\[]/);
 assert.doesNotMatch(clearDatabaseBlock, /state\.stats\s*=/);

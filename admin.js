@@ -566,9 +566,53 @@ async function saveAdminChanges() {
     console.log("Backend response:", result);
 
     if (result.status === "success") {
-      // OPTIMIZATION: Show success feedback
+      // OPTIMIZATION: Show success feedback without stripping the default save-button styling.
       btn.innerHTML = '<i class="fa-solid fa-check-circle mr-2"></i> Saved ✓';
-      btn.classList.add("bg-green-600", "hover:bg-green-700");
+      btn.classList.add("ring-2", "ring-green-300");
+
+      if (typeof BroadcastChannel !== "undefined") {
+        try {
+          const invalidationChannel = new BroadcastChannel(
+            "mrh_cache_invalidation",
+          );
+          invalidationChannel.postMessage({
+            type: "cache_invalidated",
+            source: "admin",
+            timestamp: Date.now(),
+          });
+          invalidationChannel.close();
+        } catch (e) {
+          console.warn(
+            "Could not broadcast cache invalidation after admin save:",
+            e,
+          );
+        }
+      }
+
+      if (typeof fetchAccessMetadata === "function") {
+        try {
+          await fetchAccessMetadata();
+        } catch (e) {
+          console.warn(
+            "Could not refresh access metadata after admin save:",
+            e,
+          );
+        }
+      }
+
+      if (typeof syncDatabase === "function") {
+        try {
+          await syncDatabase(false, true);
+        } catch (e) {
+          console.warn("Could not refresh app state after admin save:", e);
+        }
+      } else if (typeof reloadAppStateInMemory === "function") {
+        try {
+          await reloadAppStateInMemory();
+        } catch (e) {
+          console.warn("Could not refresh app state after admin save:", e);
+        }
+      }
 
       // Update timestamp for next save
       if (result.admin_last_modified_timestamp) {
@@ -580,7 +624,7 @@ async function saveAdminChanges() {
       setTimeout(() => {
         loadAdminSubjects();
         btn.innerHTML = originalHTML;
-        btn.classList.remove("bg-green-600", "hover:bg-green-700");
+        btn.classList.remove("ring-2", "ring-green-300");
       }, 1500);
     } else if (result.status === "conflict") {
       // OPTIMIZATION: Handle conflict from concurrent admin edits

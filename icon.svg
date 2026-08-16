@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Maritime Review Hub icon">
+  <defs>
+    <linearGradient id="bg" x1="0%" x2="100%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <path d="M34 82c9-18 22-28 30-33 11-7 27-9 30 2 2 7-1 12-10 16-7 3-14 8-19 15l-24 29-7-29zm43-52c7 8 17 20 17 33 0 12-8 22-19 27 7-8 12-17 12-28 0-11-4-20-10-32z" fill="#f8fafc" opacity="0.96"/>
+  <path d="M64 22c-14 0-26 11-26 25 0 13 9 22 17 30 8-8 17-17 17-30 0-14-8-25-8-25zm0 11c-8 0-14 6-14 14s6 14 14 14 14-6 14-14-6-14-14-14z" fill="#facc15"/>
+  <path d="M66 59c11 0 20 9 20 20 0 11-9 19-20 19-11 0-20-8-20-19 0-11 9-20 20-20zm0 9c-6 0-11 5-11 11s5 11 11 11 11-5 11-11-5-11-11-11z" fill="#f8fafc"/>
+</svg>

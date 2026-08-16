@@ -3,6 +3,10 @@ const path = require("path");
 const assert = require("assert");
 
 const appCore = fs.readFileSync(path.join(__dirname, "../app-core.js"), "utf8");
+const indexHtml = fs.readFileSync(
+  path.join(__dirname, "../index.html"),
+  "utf8",
+);
 const adminJs = fs.readFileSync(path.join(__dirname, "../admin.js"), "utf8");
 const backendMain = fs.readFileSync(
   path.join(__dirname, "../backend/main.js"),
@@ -62,6 +66,11 @@ assert.match(
   /const\s+hasPasswordChange\s*=\s*deckPass\s*!==\s*originalPassword;[\s\S]*?if\s*\(\s*hasPasswordChange\s*\)\s*deckUpdate\.password\s*=\s*deckPass;[\s\S]*?if\s*\(\s*hasHiddenChange\s*\)\s*deckUpdate\.hidden\s*=\s*deckHidden;/s,
   "admin save should only include changed password values, so hidden-only toggles do not clobber the hidden update",
 );
+assert.match(
+  adminJs,
+  /reloadAppStateInMemory\s*\(|syncDatabase\s*\(false,\s*true\)/,
+  "successful admin saves should refresh the in-memory deck state immediately so password and hidden changes are live across the app",
+);
 
 assert.match(
   backendMain,
@@ -69,6 +78,51 @@ assert.match(
   "hidden decks should be filtered out of MRH_Summary.json generation before it is returned to users",
 );
 
+assert.match(
+  appCore,
+  /filterHiddenAndProtectedDecks\s*\(|return\s*!hidden;/,
+  "hidden decks should be filtered from display, while password-protected decks remain visible with a lock icon",
+);
+assert.match(
+  appCore,
+  /function\s+isDeckHidden\s*\(subject\)|isDeckHidden\(subj\)\s*\|\|\s*\(deckInfo\s*&&\s*deckInfo\.Hidden\)/,
+  "hidden decks must be blocked before a session starts and must not be rendered as available",
+);
+assert.match(
+  appCore,
+  /resumeSession\s*\(password\s*=\s*null\)|isDeckLocked\(activity\.subject\)|isDeckLocked\(currentSubject\)/,
+  "resume flows must prompt for password whenever a locked deck is resumed",
+);
+assert.match(
+  appCore,
+  /if \(isDeckLocked\(subject\) && !pass\) \{[\s\S]*?openDeckPasswordModal\(subject, pendingDeckAction \|\| "continue"\)/,
+  "locked decks must open the password modal before any offline fallback can trigger",
+);
+assert.match(
+  backendMain,
+  /getDeckPassword\s*\(subject\)\s*\{[\s\S]*?ancestorPassword\s*=\s*passwordMap\[ancestorSubject\]|subjectParts\.slice\(0,\s*depth\)\.join\("::"\)/,
+  "password checks must inherit from ancestor folder paths so nested locked decks remain protected",
+);
+assert.match(
+  backendMain,
+  /if\s*\(\s*requestedSubject\s*\)\s*\{[\s\S]*?var\s+requiredPassword\s*=\s*getDeckPassword\(requestedSubject\)[\s\S]*?return\s+ContentService\.createTextOutput\([\s\S]*?Incorrect Password\./,
+  "protected decks must reject access before cached content is served",
+);
+assert.match(
+  backendMain,
+  /deckMetadataCache\s*=\s*null;[\s\S]*?deckMetadataCacheTime\s*=\s*0;/,
+  "admin updates must clear the cached metadata immediately so password removals and hidden toggles are reflected in real time",
+);
+assert.match(
+  backendMain,
+  /for \(var passKey in passMap\) \{[\s\S]*?accessEntries\.push\(\{[\s\S]*?Hidden:\s*!!hiddenMap\[passKey\][\s\S]*?Locked:\s*true/,
+  "hidden decks must remain present in the access metadata so the dashboard can hide them immediately after admin updates",
+);
+assert.match(
+  indexHtml,
+  /rel="icon"[^>]*href="icon\.svg"/i,
+  "site should include an anchor favicon",
+);
 assert.match(
   appCore,
   /CACHE_VERSION_STORAGE_KEY|readStoredCacheVersion\(|persistLocalCacheVersion\(|localCacheVersion\s*=\s*readStoredCacheVersion\(|setStoredItem\?\.\(CACHE_VERSION_STORAGE_KEY/,

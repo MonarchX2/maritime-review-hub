@@ -2,6 +2,8 @@ const assert = require("assert");
 const {
   normalizeQuestionRecord,
   compactQuestionRecord,
+  normalizeDeckRecord,
+  normalizeCategorySummary,
 } = require("../question-compat.js");
 
 const compactQuestion = {
@@ -76,5 +78,53 @@ assert.strictEqual(
   normalizedWithOverride.Question,
   "Which organelle makes proteins?",
 );
+
+const hierarchicalDeck = {
+  id: "deck-101",
+  name: "Basic Fire Fighting",
+  subject: "Safety::Fire::Basic",
+  category: "Safety",
+  subCategory: "Fire",
+  module: "Basic Fire Fighting",
+  version: "2024.1",
+  questionCount: 42,
+  hidden: false,
+};
+const normalizedDeck = normalizeDeckRecord(hierarchicalDeck);
+assert.strictEqual(normalizedDeck.id, "deck-101");
+assert.strictEqual(normalizedDeck.Subject, "Safety::Fire::Basic");
+assert.strictEqual(normalizedDeck.category, "Safety");
+assert.strictEqual(normalizedDeck.subCategory, "Fire");
+assert.strictEqual(normalizedDeck.module, "Basic Fire Fighting");
+assert.strictEqual(normalizedDeck.version, "2024.1");
+assert.strictEqual(normalizedDeck.QuestionCount, 42);
+
+const nestedSummary = {
+  id: "root",
+  name: "Root",
+  children: [
+    {
+      id: "safety",
+      name: "Safety",
+      children: [
+        {
+          id: "fire",
+          name: "Fire",
+          deck: {
+            id: "deck-201",
+            name: "Basic Fire Fighting",
+            questionCount: 12,
+          },
+        },
+      ],
+    },
+  ],
+};
+const flattened = normalizeCategorySummary(nestedSummary);
+assert.strictEqual(flattened.length, 1);
+assert.strictEqual(flattened[0].Subject, "Safety::Fire");
+assert.strictEqual(flattened[0].name, "Basic Fire Fighting");
+assert.strictEqual(flattened[0].module, "Basic Fire Fighting");
+assert.strictEqual(flattened[0].id, "deck-201");
 
 console.log("question compatibility tests passed");
