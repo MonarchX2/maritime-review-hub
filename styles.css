@@ -72,6 +72,16 @@ body.title-mode-wrap .card-title {
   word-break: break-word;
 }
 
+body.title-mode-wrap .choice-btn,
+body.title-mode-wrap .choice-btn .choice-letter {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+body.title-mode-wrap .choice-btn .choice-letter {
+  white-space: nowrap;
+}
+
 body.title-mode-clip {
   overflow-x: hidden;
 }

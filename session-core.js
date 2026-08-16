@@ -221,7 +221,7 @@
         if (hideABCD) {
           btn.innerHTML = safeDisplayText;
         } else {
-          btn.innerHTML = `<span class="font-bold mr-2">${ch})</span> ${safeDisplayText}`;
+          btn.innerHTML = `<span class="choice-letter font-bold mr-2 whitespace-nowrap">${ch})</span> ${safeDisplayText}`;
         }
 
         if (!userAnswer) {

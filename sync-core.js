@@ -166,6 +166,8 @@
     );
   }
 
+  globalScope.SYNC_INTERVAL_MS = globalScope.SYNC_INTERVAL_MS || 3000;
+
   function applySummaryData(summaryData) {
     const previousSummary = JSON.stringify(
       globalScope.state.categorySummary || [],
@@ -219,7 +221,7 @@
     const requestController = globalScope.syncAbortController;
     const timeoutId = setTimeout(
       () => globalScope.syncAbortController.abort(),
-      20000,
+      10000,
     );
 
     const url = `${globalScope.DB_URL}?_t=${Date.now()}`;
@@ -247,6 +249,25 @@
         );
       }
 
+      // ROBUSTNESS: Handle cold start response from backend
+      if (
+        summaryData &&
+        summaryData.isColdStart &&
+        !Array.isArray(summaryData)
+      ) {
+        clearTimeout(timeoutId);
+        // Cold start detected: backend triggered rebuild
+        console.warn("Cold start detected! Backend is rebuilding cache...");
+        globalScope.isColdStart = true;
+
+        // Show cold start notification and force refresh
+        showColdStartNotification();
+
+        // Still retry but don't apply empty data
+        scheduleSyncRetry(!isBackgroundCheck);
+        return;
+      }
+
       if (Array.isArray(summaryData) && summaryData.length > 0) {
         clearTimeout(timeoutId);
         globalScope.lastSyncAt = Date.now();
@@ -254,6 +275,7 @@
         const wasConnected = globalScope.syncConnected;
         globalScope.syncAttempt = 0;
         globalScope.syncConnected = true;
+        globalScope.isColdStart = false;
         const changed =
           JSON.stringify(globalScope.state.categorySummary || []) !==
           JSON.stringify(summaryData);
@@ -279,17 +301,50 @@
         scheduleSyncPoll();
       } else {
         clearTimeout(timeoutId);
-        scheduleSyncRetry(!isBackgroundCheck);
+        // ROBUSTNESS: Even if sync fails, allow users to access cached decks if available
         if (
-          globalScope.state.categorySummary.length &&
-          globalScope.syncConnected
-        )
-          globalScope.renderCategoryProgress();
+          globalScope.state.categorySummary &&
+          globalScope.state.categorySummary.length > 0 &&
+          isBackgroundCheck
+        ) {
+          // Background check failed but we have cached data - silently continue
+          updateSyncStatus(
+            `<i class="fa-solid fa-exclamation-triangle mr-1"></i> Using locally cached deck list. Background sync unavailable.`,
+            "warning",
+            false,
+          );
+          scheduleSyncPoll();
+        } else {
+          scheduleSyncRetry(!isBackgroundCheck);
+          if (
+            globalScope.state.categorySummary.length &&
+            globalScope.syncConnected
+          )
+            globalScope.renderCategoryProgress();
+        }
       }
     } catch (err) {
       clearTimeout(timeoutId);
       if (requestController !== globalScope.syncAbortController) return;
       console.error(err);
+
+      // ROBUSTNESS: If background sync fails but we have cached data, don't block user
+      if (
+        isBackgroundCheck &&
+        globalScope.state.categorySummary &&
+        globalScope.state.categorySummary.length > 0
+      ) {
+        // Silently continue with cached data
+        globalScope.syncConnected = false;
+        updateSyncStatus(
+          `<i class="fa-solid fa-exclamation-triangle mr-1"></i> Database unavailable. Using cached deck list.`,
+          "warning",
+          false,
+        );
+        scheduleSyncPoll();
+        return;
+      }
+
       scheduleSyncRetry(!isBackgroundCheck);
 
       const catList = document.getElementById("category-list");
@@ -304,6 +359,23 @@
     }
   }
 
+  function showColdStartNotification() {
+    const overlay = document.getElementById("app-loading-overlay");
+    if (!overlay) return;
+
+    setGlobalLoadingState(
+      true,
+      "Cold Start Detected",
+      "The database is being rebuilt. Refreshing the website...",
+      "warning",
+    );
+
+    // Force refresh after 3 seconds
+    setTimeout(() => {
+      window.location.reload();
+    }, 3000);
+  }
+
   const SyncCore = {
     getSyncStatusVisualState,
     setGlobalLoadingState,
@@ -313,6 +385,7 @@
     applySummaryData,
     scheduleSyncRetry,
     syncDatabase,
+    showColdStartNotification,
   };
 
   if (typeof module !== "undefined" && module.exports) {

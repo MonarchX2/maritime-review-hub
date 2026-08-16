@@ -36,6 +36,19 @@ assert.match(indexHtml, /Deck Navigation Buttons/);
 assert.match(indexHtml, /Quiz Mode/);
 assert.match(indexHtml, /id="main-navigation-scroll-button"/);
 assert.match(indexHtml, /on TOP|on Bottom|TOP \+ BOTTOM/);
+assert.match(appCore, /const SYNC_INTERVAL_MS = 3 \* 1000/);
+assert.match(
+  appCore,
+  /setTimeout\(\(\) => syncAbortController\.abort\(\), 10000\)/,
+);
+assert.match(
+  indexHtml,
+  /Shuffle Choices[\s\S]*?Default to ON[\s\S]*?toggle-shuffle-choices/,
+);
+assert.match(
+  indexHtml,
+  /Shuffle Questions[\s\S]*?Default to ON[\s\S]*?toggle-shuffle-questions/,
+);
 assert.match(appCore, /cycleScrollNavigationPosition\s*\(/);
 assert.doesNotMatch(resetProgressBlock, /state\.db\s*=\s*\[]/);
 assert.doesNotMatch(clearDatabaseBlock, /state\.stats\s*=/);
