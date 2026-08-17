@@ -250,6 +250,10 @@ function setInlineError(element, message) {
 }
 
 async function loadState() {
+  if (typeof AppState !== "undefined" && typeof AppState.loadState === "function") {
+    return AppState.loadState();
+  }
+
   emitDebugState("load_state:start");
   migrateLegacyStorageKeys();
   localCacheVersion = readStoredCacheVersion();
@@ -384,6 +388,10 @@ async function loadState() {
 }
 
 async function saveState() {
+  if (typeof AppState !== "undefined" && typeof AppState.saveState === "function") {
+    return AppState.saveState();
+  }
+
   try {
     emitDebugState("save_state:begin", {
       dbCount: state.db.length,
@@ -538,6 +546,9 @@ let settingsClickCount = 0;
 let settingsClickTimeout = null;
 
 async function navigate(viewId) {
+  if (typeof DeckNav !== "undefined" && typeof DeckNav.navigate === "function") {
+    return DeckNav.navigate(viewId);
+  }
   if (viewId === "settings") {
     settingsClickCount++;
     clearTimeout(settingsClickTimeout);
@@ -590,6 +601,10 @@ async function navigate(viewId) {
 }
 
 function getSyncStatusVisualState(tone = "info") {
+  if (typeof AppSync !== "undefined" && typeof AppSync.getSyncStatusVisualState === "function") {
+    return AppSync.getSyncStatusVisualState(tone);
+  }
+
   const byTone = {
     info: {
       panelClass:
@@ -633,6 +648,10 @@ function setGlobalLoadingState(
   detail = "Preparing the latest data...",
   tone = "info",
 ) {
+  if (typeof AppSync !== "undefined" && typeof AppSync.setGlobalLoadingState === "function") {
+    return AppSync.setGlobalLoadingState(isLoading, title, detail, tone);
+  }
+
   if (typeof document === "undefined") return false;
   const overlay = document.getElementById("app-loading-overlay");
   if (!overlay) return false;
@@ -661,6 +680,9 @@ function setGlobalLoadingState(
 }
 
 function updateSyncStatus(message, tone = "info", showOverlay = true) {
+  if (typeof AppSync !== "undefined" && typeof AppSync.updateSyncStatus === "function") {
+    return AppSync.updateSyncStatus(message, tone, showOverlay);
+  }
   const visualState = getSyncStatusVisualState(tone);
   const activeSessionBlocking = Boolean(state.session?.active);
   const shouldSuppressOverlay =
@@ -748,6 +770,10 @@ function hideConnectionStatusAfterDelay(delay = 3000) {
 }
 
 async function optimizedBackgroundSync() {
+  if (typeof AppSync !== "undefined" && typeof AppSync.optimizedBackgroundSync === "function") {
+    return AppSync.optimizedBackgroundSync();
+  }
+
   // FIX 4: LIGHTWEIGHT BACKGROUND SYNC POLLING
   // First check sync status via lightweight endpoint
   // Only fetch full summary if timestamp changed
@@ -797,6 +823,10 @@ async function optimizedBackgroundSync() {
 }
 
 function scheduleSyncPoll() {
+  if (typeof AppSync !== "undefined" && typeof AppSync.scheduleSyncPoll === "function") {
+    return AppSync.scheduleSyncPoll();
+  }
+
   clearTimeout(syncPollTimer);
   syncPollTimer = setTimeout(() => {
     optimizedBackgroundSync();
@@ -809,9 +839,84 @@ function stripAccessMetadataFromSummary(summaryData) {
 
   return summaryData.map((deck) => {
     if (!deck || typeof deck !== "object") return deck;
-    const { Password, password, Hidden, Locked, ...rest } = deck;
+    const { Password, password, Hidden, hidden, Locked, locked, ...rest } =
+      deck;
     return rest;
   });
+}
+
+function normalizeAccessFlag(value) {
+  if (value === true) return true;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return ["true", "1", "yes", "y", "on"].includes(normalized);
+  }
+  return Boolean(value);
+}
+
+function resolveSubjectAccess(subject, accessMap = {}, summaryEntries = []) {
+  const subjectName = String(subject || "").trim();
+  if (!subjectName) {
+    return { Hidden: false, Password: "", Locked: false };
+  }
+
+  const directEntry = accessMap[subjectName] || {};
+  const summaryEntry =
+    (Array.isArray(summaryEntries) &&
+      summaryEntries.find(
+        (item) => String(item?.Subject || "") === subjectName,
+      )) ||
+    {};
+
+  let hidden =
+    normalizeAccessFlag(directEntry.Hidden) ||
+    normalizeAccessFlag(summaryEntry.Hidden);
+  let password = String(
+    directEntry.Password ||
+      summaryEntry.Password ||
+      summaryEntry.password ||
+      "",
+  ).trim();
+  let locked =
+    normalizeAccessFlag(directEntry.Locked) ||
+    normalizeAccessFlag(summaryEntry.Locked) ||
+    password !== "";
+
+  const subjectParts = subjectName.split("::");
+  for (let depth = subjectParts.length - 1; depth > 0; depth--) {
+    const parentName = subjectParts.slice(0, depth).join("::");
+    const parentEntry = accessMap[parentName] || {};
+    const parentSummary =
+      (Array.isArray(summaryEntries) &&
+        summaryEntries.find(
+          (item) => String(item?.Subject || "") === parentName,
+        )) ||
+      {};
+
+    if (!hidden && normalizeAccessFlag(parentEntry.Hidden)) hidden = true;
+    if (!hidden && normalizeAccessFlag(parentSummary.Hidden)) hidden = true;
+    if (!password) {
+      const parentPassword = String(
+        parentEntry.Password ||
+          parentSummary.Password ||
+          parentSummary.password ||
+          "",
+      ).trim();
+      if (parentPassword) password = parentPassword;
+    }
+    if (!locked) {
+      locked =
+        normalizeAccessFlag(parentEntry.Locked) ||
+        normalizeAccessFlag(parentSummary.Locked) ||
+        password !== "";
+    }
+  }
+
+  return {
+    Hidden: hidden,
+    Password: password,
+    Locked: locked,
+  };
 }
 
 function filterHiddenAndProtectedDecks(summaryData) {
@@ -822,14 +927,12 @@ function filterHiddenAndProtectedDecks(summaryData) {
     const subject = String(deck.Subject || "").trim();
     if (!subject) return false;
 
-    const accessEntry = state.accessMetadata?.[subject] || {};
-    const hidden =
-      accessEntry.Hidden === true ||
-      deck.Hidden === true ||
-      String(deck.Hidden || "").toLowerCase() === "true" ||
-      String(accessEntry.Hidden || "").toLowerCase() === "true";
-
-    return !hidden;
+    const access = resolveSubjectAccess(
+      subject,
+      state.accessMetadata || {},
+      state.categorySummary || [],
+    );
+    return !access.Hidden;
   });
 }
 
@@ -848,13 +951,24 @@ function buildAccessMetadataMap(accessData) {
     const normalizedHidden =
       entry.Hidden === true ||
       String(entry.Hidden || "").toLowerCase() === "true";
-    const password = entry.Password || entry.password || "";
+    const password = String(entry.Password || entry.password || "").trim();
 
     map[subject] = {
       Subject: subject,
-      Password: String(password || "").trim(),
+      Password: password,
       Hidden: normalizedHidden,
-      Locked: normalizedLocked || String(password || "").trim() !== "",
+      Locked: normalizedLocked || password !== "",
+    };
+  });
+
+  const allSubjects = Object.keys(map);
+  allSubjects.forEach((subject) => {
+    const inherited = resolveSubjectAccess(subject, map, []);
+    map[subject] = {
+      ...map[subject],
+      Password: inherited.Password,
+      Hidden: inherited.Hidden,
+      Locked: inherited.Locked,
     };
   });
 
@@ -918,153 +1032,43 @@ function isDeckPasswordProtected(subject) {
   const rawSubject = String(subject || "").trim();
   if (!rawSubject) return false;
 
-  const subjectParts = rawSubject.split("::");
-  const checkNames = [];
-  for (let index = subjectParts.length; index > 0; index--) {
-    checkNames.push(subjectParts.slice(0, index).join("::"));
-  }
-
-  const accessEntry =
-    (state.accessMetadata && state.accessMetadata[rawSubject]) || {};
-  if (String(accessEntry.Password || "").trim()) {
-    return true;
-  }
-
-  const summaryDeck = (state.categorySummary || []).find(
-    (deck) => String(deck?.Subject || "") === rawSubject,
+  const access = resolveSubjectAccess(
+    rawSubject,
+    state.accessMetadata || {},
+    state.categorySummary || [],
   );
-  if (
-    summaryDeck &&
-    (String(summaryDeck.Password || summaryDeck.password || "").trim() ||
-      summaryDeck.Locked === true ||
-      String(summaryDeck.Locked || "").toLowerCase() === "true")
-  ) {
-    return true;
-  }
-
-  for (const checkName of checkNames) {
-    const accessMatch = state.accessMetadata?.[checkName];
-    if (String(accessMatch?.Password || "").trim()) return true;
-
-    const ancestorDeck = (state.categorySummary || []).find(
-      (deck) => String(deck?.Subject || "") === checkName,
-    );
-    if (
-      ancestorDeck &&
-      (String(ancestorDeck.Password || ancestorDeck.password || "").trim() ||
-        ancestorDeck.Locked === true ||
-        String(ancestorDeck.Locked || "").toLowerCase() === "true")
-    ) {
-      return true;
-    }
-  }
-
-  return false;
+  return Boolean(access.Password) || Boolean(access.Locked);
 }
 
 function isDeckHidden(subject) {
   const rawSubject = String(subject || "").trim();
   if (!rawSubject) return false;
 
-  const accessEntry =
-    (state.accessMetadata && state.accessMetadata[rawSubject]) || {};
-  if (
-    accessEntry.Hidden === true ||
-    String(accessEntry.Hidden || "").toLowerCase() === "true"
-  ) {
-    return true;
-  }
-
-  const summaryDeck = (state.categorySummary || []).find(
-    (deck) => String(deck?.Subject || "") === rawSubject,
+  const access = resolveSubjectAccess(
+    rawSubject,
+    state.accessMetadata || {},
+    state.categorySummary || [],
   );
-  if (
-    summaryDeck &&
-    (summaryDeck.Hidden === true ||
-      String(summaryDeck.Hidden || "").toLowerCase() === "true")
-  ) {
-    return true;
-  }
-
-  const subjectParts = rawSubject.split("::");
-  for (let index = subjectParts.length; index > 0; index--) {
-    const checkName = subjectParts.slice(0, index).join("::");
-    const ancestorAccess = state.accessMetadata?.[checkName] || {};
-    if (
-      ancestorAccess.Hidden === true ||
-      String(ancestorAccess.Hidden || "").toLowerCase() === "true"
-    ) {
-      return true;
-    }
-
-    const ancestorDeck = (state.categorySummary || []).find(
-      (deck) => String(deck?.Subject || "") === checkName,
-    );
-    if (
-      ancestorDeck &&
-      (ancestorDeck.Hidden === true ||
-        String(ancestorDeck.Hidden || "").toLowerCase() === "true")
-    ) {
-      return true;
-    }
-  }
-
-  return false;
+  return Boolean(access.Hidden);
 }
 
 function isDeckLocked(subject) {
   const rawSubject = String(subject || "").trim();
   if (!rawSubject) return false;
 
-  const accessEntry =
-    (state.accessMetadata && state.accessMetadata[rawSubject]) || {};
-  const passwordValue = String(
-    accessEntry.Password || accessEntry.password || "",
-  ).trim();
-  if (accessEntry.Locked === true || passwordValue) {
-    return true;
-  }
-
-  const summaryDeck = (state.categorySummary || []).find(
-    (deck) => String(deck?.Subject || "") === rawSubject,
+  const access = resolveSubjectAccess(
+    rawSubject,
+    state.accessMetadata || {},
+    state.categorySummary || [],
   );
-  if (
-    summaryDeck &&
-    (summaryDeck.Locked === true ||
-      String(summaryDeck.Locked || "").toLowerCase() === "true" ||
-      String(summaryDeck.Password || summaryDeck.password || "").trim())
-  ) {
-    return true;
-  }
-
-  const subjectParts = rawSubject.split("::");
-  for (let index = subjectParts.length; index > 0; index--) {
-    const checkName = subjectParts.slice(0, index).join("::");
-    const ancestorAccess = state.accessMetadata?.[checkName] || {};
-    if (
-      ancestorAccess.Locked === true ||
-      String(ancestorAccess.Password || ancestorAccess.password || "").trim()
-    ) {
-      return true;
-    }
-
-    const ancestorDeck = (state.categorySummary || []).find(
-      (deck) => String(deck?.Subject || "") === checkName,
-    );
-    if (
-      ancestorDeck &&
-      (ancestorDeck.Locked === true ||
-        String(ancestorDeck.Locked || "").toLowerCase() === "true" ||
-        String(ancestorDeck.Password || ancestorDeck.password || "").trim())
-    ) {
-      return true;
-    }
-  }
-
-  return false;
+  return Boolean(access.Locked) || Boolean(access.Password);
 }
 
 function applySummaryData(summaryData) {
+  if (typeof AppSync !== "undefined" && typeof AppSync.applySummaryData === "function") {
+    return AppSync.applySummaryData(summaryData);
+  }
+
   const safeSummary = filterHiddenAndProtectedDecks(summaryData || []);
   const previousSummary = JSON.stringify(state.categorySummary || []);
   const nextSummary = JSON.stringify(safeSummary);
@@ -1083,6 +1087,10 @@ function applySummaryData(summaryData) {
 }
 
 function scheduleSyncRetry(showOverlay = true) {
+  if (typeof AppSync !== "undefined" && typeof AppSync.scheduleSyncRetry === "function") {
+    return AppSync.scheduleSyncRetry(showOverlay);
+  }
+
   clearTimeout(syncRetryTimer);
   clearInterval(syncCountdownTimer);
   const delay = SYNC_INTERVAL_MS;
@@ -1165,6 +1173,10 @@ async function checkSyncStatusLightweight() {
 // ENHANCED SYNC DATABASE WITH ALL FIXES
 // ============================================
 async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
+  if (typeof AppSync !== "undefined" && typeof AppSync.syncDatabase === "function") {
+    return AppSync.syncDatabase(isRetry, isBackgroundCheck);
+  }
+
   clearTimeout(syncRetryTimer);
   clearInterval(syncCountdownTimer);
   clearTimeout(syncPollTimer);
@@ -1232,10 +1244,12 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
       syncConnected = true;
       isColdStart = false;
       sanitizeDeletedDeckReferences();
+
+      const sanitizedSummary = stripAccessMetadataFromSummary(summaryData);
       const accessMap = await fetchAccessMetadata();
       state.accessMetadata = accessMap;
       const mergedSummary = mergeAccessMetadataIntoSummary(
-        summaryData,
+        sanitizedSummary,
         accessMap,
       );
       const filteredSummary = filterHiddenAndProtectedDecks(mergedSummary);
@@ -1540,6 +1554,10 @@ function changeQuizFilter(filterValue) {
 }
 
 function initSession() {
+  if (typeof SessionCore !== "undefined" && typeof SessionCore.initSession === "function") {
+    return SessionCore.initSession();
+  }
+
   let filterVal = document.getElementById("filter-subject")?.value || "ALL";
   let pool = [];
 
@@ -1596,6 +1614,10 @@ function getShortSubjectLabel(subject, fallback = "General") {
 }
 
 function renderQuestion() {
+  if (typeof SessionCore !== "undefined" && typeof SessionCore.renderQuestion === "function") {
+    return SessionCore.renderQuestion();
+  }
+
   stopVisualTimer();
   applyNavigationPosition();
   const q = state.session.questions[state.session.currentIndex];
@@ -1815,6 +1837,9 @@ function renderQuestion() {
 }
 
 function enterFolder(folderName, isLockedFolder) {
+  if (typeof DeckNav !== "undefined" && typeof DeckNav.enterFolder === "function") {
+    return DeckNav.enterFolder(folderName, isLockedFolder);
+  }
   const fullPath =
     state.currentPath && state.currentPath.length > 0
       ? state.currentPath.join("::") + "::" + folderName
@@ -1832,6 +1857,9 @@ function enterFolder(folderName, isLockedFolder) {
 }
 
 function goToPath(index) {
+  if (typeof DeckNav !== "undefined" && typeof DeckNav.goToPath === "function") {
+    return DeckNav.goToPath(index);
+  }
   if (!state.currentPath) state.currentPath = [];
   if (index === -1) {
     state.currentPath = [];
@@ -1878,6 +1906,9 @@ function getDeckLoaderId(subject) {
 }
 
 function getVisibleCategorySummary() {
+  if (typeof DeckNav !== "undefined" && typeof DeckNav.getVisibleCategorySummary === "function") {
+    return DeckNav.getVisibleCategorySummary();
+  }
   return (state.categorySummary || []).filter((deck) => {
     if (!deck || !deck.Subject) return false;
     const subject = String(deck.Subject || "").trim();
@@ -1894,6 +1925,9 @@ function getVisibleCategorySummary() {
 }
 
 function closeAllDropdownMenus(exceptElement = null) {
+  if (typeof UIModal !== "undefined" && typeof UIModal.closeAllDropdownMenus === "function") {
+    return UIModal.closeAllDropdownMenus(exceptElement);
+  }
   document
     .querySelectorAll("#deck-source-menu, #deck-sort-menu, #quiz-filter-menu")
     .forEach((menu) => {
@@ -1902,6 +1936,9 @@ function closeAllDropdownMenus(exceptElement = null) {
 }
 
 function initDetailsExclusivity() {
+  if (typeof UIModal !== "undefined" && typeof UIModal.initDetailsExclusivity === "function") {
+    return UIModal.initDetailsExclusivity();
+  }
   const detailsElements = document.querySelectorAll(
     "#deck-source-menu, #deck-sort-menu, #quiz-filter-menu",
   );
@@ -2428,16 +2465,21 @@ function renderCategoryProgress() {
 }
 
 async function fetchAndStartCategory(subject, mode, pass = null) {
+  if (typeof DeckNav !== "undefined" && typeof DeckNav.fetchAndStartCategory === "function") {
+    return DeckNav.fetchAndStartCategory(subject, mode, pass);
+  }
   const loader = document.getElementById(getDeckLoaderId(subject));
   if (isDeckHidden(subject)) {
     showToast("This deck is hidden and not available.", "warning");
     return;
   }
-  if (isDeckLocked(subject) && !pass) {
-    pendingDeckSubject = subject;
-    pendingDeckAction = mode;
-    openDeckPasswordModal(subject, mode);
-    return;
+  if (isDeckLocked(subject)) {
+    if (!pass) {
+      pendingDeckSubject = subject;
+      pendingDeckAction = mode;
+      openDeckPasswordModal(subject, mode);
+      return;
+    }
   }
   // Define strict MCQ filter condition conditionally based on user preference
   const isForcedMCQ = state.prefs.qTypeOverride === "mcq";
@@ -2530,6 +2572,9 @@ async function fetchAndStartCategory(subject, mode, pass = null) {
 }
 
 function startCustomSession(pool) {
+  if (typeof DeckNav !== "undefined" && typeof DeckNav.startCustomSession === "function") {
+    return DeckNav.startCustomSession(pool);
+  }
   navigate("practice");
   document.getElementById("session-setup").classList.add("hidden");
   document.getElementById("session-active").classList.remove("hidden");
@@ -2550,6 +2595,9 @@ function startCustomSession(pool) {
 }
 
 async function resetCategory(subject) {
+  if (typeof DeckNav !== "undefined" && typeof DeckNav.resetCategory === "function") {
+    return DeckNav.resetCategory(subject);
+  }
   subject = decodeHandlerValue(subject);
   if (
     await requestConfirmation(
@@ -3317,6 +3365,10 @@ async function toggleArchiveDeck(subjectId) {
 }
 
 function submitPracticeAnswer(selected, correct) {
+  if (typeof SessionCore !== "undefined" && typeof SessionCore.submitPracticeAnswer === "function") {
+    return SessionCore.submitPracticeAnswer(selected, correct);
+  }
+
   const q = state.session.questions[state.session.currentIndex];
   state.session.userAnswers[state.session.currentIndex] = selected;
 
@@ -3348,6 +3400,10 @@ function submitPracticeAnswer(selected, correct) {
 }
 
 function showExplanation(q) {
+  if (typeof SessionCore !== "undefined" && typeof SessionCore.showExplanation === "function") {
+    return SessionCore.showExplanation(q);
+  }
+
   const expBox = document.getElementById("q-explanation-box");
 
   if (q.Explanation && q.Explanation.trim() !== "") {
@@ -3360,6 +3416,10 @@ function showExplanation(q) {
 }
 
 function nextQuestion() {
+  if (typeof SessionCore !== "undefined" && typeof SessionCore.nextQuestion === "function") {
+    return SessionCore.nextQuestion();
+  }
+
   if (state.session.autoNextTimeout)
     clearTimeout(state.session.autoNextTimeout);
   stopVisualTimer();
@@ -3377,6 +3437,10 @@ function nextQuestion() {
 }
 
 function prevQuestion() {
+  if (typeof SessionCore !== "undefined" && typeof SessionCore.prevQuestion === "function") {
+    return SessionCore.prevQuestion();
+  }
+
   if (state.session.autoNextTimeout)
     clearTimeout(state.session.autoNextTimeout);
   stopVisualTimer();
@@ -3470,6 +3534,10 @@ function trackStats(q, isCorrect) {
 }
 
 function endSession(silent = false) {
+  if (typeof SessionCore !== "undefined" && typeof SessionCore.endSession === "function") {
+    return SessionCore.endSession(silent);
+  }
+
   const isLastQuestion =
     state.session.currentIndex >= state.session.questions.length - 1;
   const isAnswered =
@@ -3829,6 +3897,10 @@ window.addEventListener("resize", () => {
 });
 
 function saveSessionProgress() {
+  if (typeof SessionCore !== "undefined" && typeof SessionCore.saveSessionProgress === "function") {
+    return SessionCore.saveSessionProgress();
+  }
+
   if (!state.session.active) return;
 
   try {
@@ -3847,6 +3919,10 @@ function saveSessionProgress() {
 }
 
 function checkSavedSession() {
+  if (typeof SessionCore !== "undefined" && typeof SessionCore.checkSavedSession === "function") {
+    return SessionCore.checkSavedSession();
+  }
+
   const saved = getStoredItem("saved_session");
   const resumeContainer = document.getElementById("resume-container");
   const activity = state.prefs.lastActivity;
@@ -4381,6 +4457,10 @@ function toggleNavigationPosition(source) {
 }
 
 function toggleModal(modalId, isVisible) {
+  if (typeof UIModal !== "undefined" && typeof UIModal.toggleModal === "function") {
+    return UIModal.toggleModal(modalId, isVisible);
+  }
+
   const modal = document.getElementById(modalId);
   if (!modal) return;
   const inner = modal.querySelector("div");
@@ -4401,10 +4481,16 @@ function toggleModal(modalId, isVisible) {
 }
 
 function openAboutModal() {
+  if (typeof UIModal !== "undefined" && typeof UIModal.openAboutModal === "function") {
+    return UIModal.openAboutModal();
+  }
   toggleModal("about-modal", true);
 }
 
 function closeAboutModal() {
+  if (typeof UIModal !== "undefined" && typeof UIModal.closeAboutModal === "function") {
+    return UIModal.closeAboutModal();
+  }
   toggleModal("about-modal", false);
 }
 
@@ -4427,6 +4513,9 @@ function requestConfirmation(message, title = "Confirm Action") {
 }
 
 function closeConfirmModal(confirmed) {
+  if (typeof UIModal !== "undefined" && typeof UIModal.closeConfirmModal === "function") {
+    return UIModal.closeConfirmModal(confirmed);
+  }
   toggleModal("confirm-modal", false);
   if (confirmResolver) {
     const resolve = confirmResolver;
@@ -4436,6 +4525,9 @@ function closeConfirmModal(confirmed) {
 }
 
 function openReportModal() {
+  if (typeof UIModal !== "undefined" && typeof UIModal.openReportModal === "function") {
+    return UIModal.openReportModal();
+  }
   const q = state.session?.questions?.[state.session?.currentIndex];
   if (!q) return;
 
@@ -4467,10 +4559,16 @@ function openReportModal() {
 }
 
 function closeReportModal() {
+  if (typeof UIModal !== "undefined" && typeof UIModal.closeReportModal === "function") {
+    return UIModal.closeReportModal();
+  }
   state.reportQuestion = null;
   toggleModal("report-modal", false);
 }
 function openSessionSettingsModal() {
+  if (typeof UIModal !== "undefined" && typeof UIModal.openSessionSettingsModal === "function") {
+    return UIModal.openSessionSettingsModal();
+  }
   const recallToggle = document.getElementById("toggle-active-recall");
   if (recallToggle) recallToggle.checked = state.prefs.activeRecall === true;
 
@@ -4517,11 +4615,17 @@ function openSessionSettingsModal() {
 }
 
 function closeSessionSettingsModal() {
+  if (typeof UIModal !== "undefined" && typeof UIModal.closeSessionSettingsModal === "function") {
+    return UIModal.closeSessionSettingsModal();
+  }
   toggleModal("session-settings-modal", false);
 }
 
 // Open Review Settings Modal
 function openReviewSettingsModal() {
+  if (typeof UIModal !== "undefined" && typeof UIModal.openReviewSettingsModal === "function") {
+    return UIModal.openReviewSettingsModal();
+  }
   const modal = document.getElementById("review-settings-modal");
   const navigationButton = document.getElementById(
     "toggle-review-navigation-bottom",
@@ -4542,6 +4646,9 @@ function openReviewSettingsModal() {
 
 // Close Review Settings Modal
 function closeReviewSettingsModal() {
+  if (typeof UIModal !== "undefined" && typeof UIModal.closeReviewSettingsModal === "function") {
+    return UIModal.closeReviewSettingsModal();
+  }
   const modal = document.getElementById("review-settings-modal");
   modal.classList.add("opacity-0");
   modal.querySelector("div").classList.add("scale-95");
@@ -4607,6 +4714,9 @@ function toggleStudyFilterMode() {
 }
 
 function changeStudyFilterMode(mode) {
+  if (typeof UIModal !== "undefined" && typeof UIModal.changeStudyFilterMode === "function") {
+    return UIModal.changeStudyFilterMode(mode);
+  }
   const nextMode = mode === "favorites" ? "favorites" : "all";
   state.prefs.studyFilterMode = nextMode;
   saveState();
@@ -4623,6 +4733,9 @@ let pendingLockedFolderPath = null;
 let pendingLockedFolderName = null;
 
 function openFolderPasswordModal(fullPath, folderName) {
+  if (typeof UIModal !== "undefined" && typeof UIModal.openFolderPasswordModal === "function") {
+    return UIModal.openFolderPasswordModal(fullPath, folderName);
+  }
   pendingLockedFolderPath = fullPath;
   pendingLockedFolderName = folderName;
 
@@ -4633,12 +4746,18 @@ function openFolderPasswordModal(fullPath, folderName) {
 }
 
 function closeFolderPasswordModal() {
+  if (typeof UIModal !== "undefined" && typeof UIModal.closeFolderPasswordModal === "function") {
+    return UIModal.closeFolderPasswordModal();
+  }
   toggleModal("folder-password-modal", false);
   const inputEl = document.getElementById("folder-password-input");
   if (inputEl) inputEl.value = "";
 }
 
 function openDeckPasswordModal(subject, action) {
+  if (typeof UIModal !== "undefined" && typeof UIModal.openDeckPasswordModal === "function") {
+    return UIModal.openDeckPasswordModal(subject, action);
+  }
   pendingDeckSubject = subject;
   pendingDeckAction = action;
 
@@ -4652,12 +4771,18 @@ function openDeckPasswordModal(subject, action) {
 }
 
 function closeDeckPasswordModal() {
+  if (typeof UIModal !== "undefined" && typeof UIModal.closeDeckPasswordModal === "function") {
+    return UIModal.closeDeckPasswordModal();
+  }
   toggleModal("deck-password-modal", false);
   const inputEl = document.getElementById("deck-password-input");
   if (inputEl) inputEl.value = "";
 }
 
 function openReportModalFromStudy(questionId) {
+  if (typeof UIModal !== "undefined" && typeof UIModal.openReportModalFromStudy === "function") {
+    return UIModal.openReportModalFromStudy(questionId);
+  }
   questionId = decodeHandlerValue(questionId);
   const q = (state.db || []).find((item) => item.ID === questionId);
   if (!q) return;
@@ -4688,6 +4813,9 @@ function openReportModalFromStudy(questionId) {
 }
 
 async function submitReport() {
+  if (typeof UIModal !== "undefined" && typeof UIModal.submitReport === "function") {
+    return UIModal.submitReport();
+  }
   const typeEl = document.getElementById("report-type");
   const lesson = document.getElementById("report-lesson").value.trim();
   const comments = document.getElementById("report-comments").value.trim();

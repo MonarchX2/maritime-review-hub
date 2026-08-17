@@ -197,6 +197,241 @@
     return questions;
   }
 
+  function syncPreferenceControls() {
+    const controls = {
+      "toggle-active-recall": state.prefs.activeRecall === true,
+      "toggle-shuffle-choices": state.prefs.shuffleChoices !== false,
+      "toggle-modal-shuffle-choices": state.prefs.shuffleChoices !== false,
+      "toggle-shuffle-questions": state.prefs.shuffleQuestions !== false,
+      "toggle-hide-abcd": state.prefs.hideABCD === true,
+      "toggle-quiz-hide-abcd": state.prefs.quizHideABCD === true,
+      "toggle-cloze-mode": state.prefs.clozeEnabled === true,
+      "toggle-main-cloze-mode": state.prefs.clozeEnabled === true,
+      "toggle-srs-mode": state.prefs.srsEnabled === true,
+      "toggle-main-srs-mode": state.prefs.srsEnabled === true,
+      "toggle-wrong-choices": state.prefs.showWrongChoices !== false,
+      "toggle-main-navigation-quiz":
+        state.prefs.quizNavigationPosition === "bottom",
+      "toggle-main-navigation-single":
+        state.prefs.studySingleNavigationPosition === "bottom",
+      "toggle-main-navigation-scroll":
+        state.prefs.studyScrollNavigationPosition === "bottom",
+      "toggle-session-navigation-bottom":
+        state.prefs.quizNavigationPosition === "bottom",
+      globalModeToggle: state.prefs.lastActivity?.mode === "review",
+    };
+
+    Object.entries(controls).forEach(([id, checked]) => {
+      const control = document.getElementById(id);
+      if (control) control.checked = checked;
+    });
+
+    const databaseUpdateMode = document.getElementById("database-update-mode");
+    if (databaseUpdateMode) {
+      databaseUpdateMode.value = state.prefs.databaseUpdateMode || "idle";
+    }
+
+    const deckNameMode = document.getElementById("deck-name-mode");
+    if (deckNameMode) {
+      deckNameMode.value = ["wrap", "clip"].includes(state.prefs.deckNameMode)
+        ? state.prefs.deckNameMode
+        : "wrap";
+    }
+
+    const modeLabel = document.getElementById("modeLabel");
+    if (modeLabel) {
+      modeLabel.innerText = controls.globalModeToggle ? "Study" : "Quiz";
+    }
+
+    const warning = document.getElementById("shuffle-warning");
+    if (warning) {
+      const shouldShowWarning =
+        state.prefs.shuffleChoices === false ||
+        state.prefs.shuffleQuestions === false;
+      warning.classList.toggle("hidden", !shouldShowWarning);
+      warning.setAttribute("aria-hidden", String(!shouldShowWarning));
+    }
+  }
+
+  function updateDashboard() {
+    const statTotal = document.getElementById("stat-total");
+    if (statTotal) statTotal.innerText = state.stats.totalAnswered;
+
+    const statCorrect = document.getElementById("stat-correct");
+    if (statCorrect) statCorrect.innerText = state.stats.correct;
+
+    const dbSize = document.getElementById("db-size-display");
+    if (dbSize) dbSize.innerText = state.db.length;
+
+    if (typeof globalScope.checkSavedSession === "function") {
+      globalScope.checkSavedSession();
+    }
+    if (typeof globalScope.renderCategoryProgress === "function") {
+      globalScope.renderCategoryProgress();
+    }
+  }
+
+  async function loadState() {
+    if (typeof globalScope.emitDebugState === "function") {
+      globalScope.emitDebugState("load_state:start");
+    }
+    globalScope.migrateLegacyStorageKeys?.();
+    const savedStats = getStoredItem("stats");
+    const savedPrefs = getStoredItem("prefs");
+    const savedSummary =
+      getStoredItem("summary") || getAnyNamespaceStoredItem("summary");
+
+    try {
+      if (typeof idbKeyval !== "undefined") {
+        const savedDb = await idbKeyval.get("mrh_db");
+        if (savedDb) {
+          state.db = savedDb.map((q) => {
+            const normalized = normalizeQuestionRecord(q);
+            if (normalized.ID && !normalized.ID.toString().includes("::")) {
+              const cleanId = normalized.ID.toString().replace(
+                /^[a-zA-Z]+[-\s]?/,
+                "",
+              );
+              normalized.ID = `${normalized.Subject}::${cleanId}`;
+            }
+            return normalized;
+          });
+          rebuildQuestionIndex();
+        }
+      }
+    } catch (err) {
+      console.error("Error loading DB from IndexedDB", err);
+    }
+
+    if (savedSummary) {
+      try {
+        state.categorySummary = JSON.parse(savedSummary);
+      } catch (e) {
+        console.error("Summary corrupted, resetting.", e);
+        state.categorySummary = [];
+      }
+    }
+
+    ensureQuestionIndex();
+
+    if (savedStats) {
+      try {
+        state.stats = JSON.parse(savedStats);
+      } catch (e) {
+        console.error("Stats corrupted, resetting to default.", e);
+        state.stats = {
+          totalAnswered: 0,
+          correct: 0,
+          mistakes: [],
+          subjectAccuracy: {},
+        };
+      }
+    }
+
+    if (savedPrefs) {
+      try {
+        const prefs = JSON.parse(savedPrefs);
+        state.prefs = {
+          ...state.prefs,
+          ...prefs,
+        };
+        state.prefs.favoriteDecks = Array.isArray(state.prefs.favoriteDecks)
+          ? state.prefs.favoriteDecks
+          : [];
+        state.prefs.recentDecks = Array.isArray(state.prefs.recentDecks)
+          ? state.prefs.recentDecks
+          : [];
+        const canonicalDeckNameMode = ["wrap", "clip"].includes(
+          state.prefs.deckNameMode,
+        )
+          ? state.prefs.deckNameMode
+          : ["wrap", "clip"].includes(state.prefs.titleMode)
+            ? state.prefs.titleMode
+            : "wrap";
+        state.prefs.deckNameMode = canonicalDeckNameMode;
+        state.prefs.titleMode = canonicalDeckNameMode;
+        if (!Object.prototype.hasOwnProperty.call(prefs, "activeRecall")) {
+          state.prefs.activeRecall = false;
+        }
+        if (!Object.prototype.hasOwnProperty.call(prefs, "quizNavigationMode")) {
+          state.prefs.quizNavigationMode = "manual";
+        }
+        if (
+          !Object.prototype.hasOwnProperty.call(prefs, "quizNavigationPosition")
+        ) {
+          state.prefs.quizNavigationPosition = "top";
+        }
+      } catch (e) {
+        console.error("Invalid preferences.", e);
+      }
+    }
+
+    if (!["top", "bottom", "auto"].includes(state.prefs.quizNavigationPosition)) {
+      state.prefs.quizNavigationPosition = "top";
+    }
+    if (!["top", "bottom"].includes(state.prefs.reviewNavigationPosition)) {
+      state.prefs.reviewNavigationPosition = "top";
+    }
+    if (state.prefs.lastActivity?.mode) {
+      globalScope.currentAppMode = state.prefs.lastActivity.mode;
+    }
+
+    if (!state.stats.subjectAccuracy) state.stats.subjectAccuracy = {};
+    if (!(["idle", "immediate"].includes(state.prefs.databaseUpdateMode))) {
+      state.prefs.databaseUpdateMode = "idle";
+    }
+    if (state.prefs?.darkMode) document.documentElement.classList.add("dark");
+
+    const dbSizeEl = document.getElementById("db-size-display");
+    if (dbSizeEl) {
+      dbSizeEl.innerText = state.db ? state.db.length : 0;
+    }
+
+    if (typeof globalScope.populateFilters === "function") {
+      globalScope.populateFilters();
+    }
+    if (typeof globalScope.updateDashboard === "function") {
+      globalScope.updateDashboard();
+    }
+    if (typeof globalScope.updateThemeButton === "function") {
+      globalScope.updateThemeButton();
+    }
+    syncPreferenceControls();
+    if (typeof globalScope.emitDebugState === "function") {
+      globalScope.emitDebugState("load_state:complete", {
+        dbCount: state.db.length,
+        summaryCount: state.categorySummary.length,
+      });
+    }
+  }
+
+  async function saveState() {
+    try {
+      if (typeof globalScope.emitDebugState === "function") {
+        globalScope.emitDebugState("save_state:begin", {
+          dbCount: state.db.length,
+          summaryCount: state.categorySummary.length,
+        });
+      }
+      setStoredJSON("stats", state.stats);
+      setStoredJSON("prefs", state.prefs);
+      setStoredJSON("summary", state.categorySummary || []);
+    } catch (e) {
+      console.error(e);
+    }
+
+    syncPreferenceControls();
+    if (typeof globalScope.updateDashboard === "function") {
+      globalScope.updateDashboard();
+    }
+    if (typeof globalScope.emitDebugState === "function") {
+      globalScope.emitDebugState("save_state:complete", {
+        dbCount: state.db.length,
+        summaryCount: state.categorySummary.length,
+      });
+    }
+  }
+
   globalScope.state = state;
   globalScope.getStoredItem = getStoredItem;
   globalScope.getAnyNamespaceStoredItem = getAnyNamespaceStoredItem;
@@ -215,6 +450,8 @@
   globalScope.rebuildQuestionIndex = rebuildQuestionIndex;
   globalScope.ensureQuestionIndex = ensureQuestionIndex;
   globalScope.getQuestionsForSubject = getQuestionsForSubject;
+  globalScope.syncPreferenceControls = syncPreferenceControls;
+  globalScope.updateDashboard = updateDashboard;
 
   const AppState = {
     state,
@@ -235,6 +472,18 @@
     rebuildQuestionIndex,
     ensureQuestionIndex,
     getQuestionsForSubject,
+    syncPreferenceControls: function syncPreferenceControlsAlias() {
+      return syncPreferenceControls();
+    },
+    updateDashboard: function updateDashboardAlias() {
+      return updateDashboard();
+    },
+    loadState: async function loadStateAlias() {
+      return loadState();
+    },
+    saveState: async function saveStateAlias() {
+      return saveState();
+    },
   };
 
   if (typeof module !== "undefined" && module.exports) {

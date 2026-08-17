@@ -141,4 +141,36 @@ assert.doesNotMatch(
   "admin_update should update the affected UUID row without clearing the entire sheet",
 );
 
+assert.match(
+  backendMain,
+  /subjectIsFolderLike|isFolderLike|indexOf\(.*"::"\).*summaryLookup|startsWith\(.*"::"\)/s,
+  "admin_get_subjects must treat parent folder paths as folders even when they only exist in hidden/password metadata",
+);
+
+assert.match(
+  backendMain,
+  /var\s+summaryEntries\s*=\s*\{\};[\s\S]*?summaryEntries\[normalizedSubject\]\s*=\s*normalizeDeckRecord/s,
+  "MRH_Summary generation should collapse duplicate subject entries into a single canonical record while preserving important metadata",
+);
+assert.match(
+  backendMain,
+  /Locked\s*:\s*subjectIsLocked|Locked\s*:\s*isLocked/s,
+  "MRH_Summary should include a single Locked flag for the frontend lock icon metadata",
+);
+assert.doesNotMatch(
+  backendMain,
+  /hidden:\s*hiddenValue|locked:\s*lockedValue|Subject:\s*subjectValue,[\s\S]*?hidden:[\s\S]*?locked:/s,
+  "MRH_Summary should not embed hidden/locked flags in the generated cache",
+);
+assert.match(
+  appCore,
+  /removeStoredItem\("saved_session"\)|clearSessionProgress\(\)/,
+  "session cleanup should explicitly remove saved deck progress when a secure session ends",
+);
+assert.match(
+  backendMain,
+  /admin_clear_all[\s\S]*?uuidSheet\.getRange\(.*?\"C:C\"|uuidSheet\.getRange\(.*?\"D:D\"|setValues\(\[\[.*?,.*?,\s*\"\",\s*\"\"/s,
+  "admin clear-all should clear only the Hidden and Password columns while leaving UUID rows intact",
+);
+
 console.log("hidden/deck cleanup regression checks passed");

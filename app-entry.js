@@ -42,6 +42,8 @@
       loadFeatureScript("state-core.js"),
       loadFeatureScript("ui-core.js"),
       loadFeatureScript("session-core.js"),
+      loadFeatureScript("ui-modal-core.js"),
+      loadFeatureScript("deck-nav-core.js"),
     ]);
   } catch (error) {
     console.error("App bootstrap failed:", error);

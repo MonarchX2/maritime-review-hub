@@ -753,4 +753,18 @@
   }
 
   globalScope.SessionCore = SessionCore;
+  globalScope.AppSession = SessionCore;
+  globalScope.initSession = initSession;
+  globalScope.renderQuestion = renderQuestion;
+  globalScope.submitPracticeAnswer = submitPracticeAnswer;
+  globalScope.showExplanation = showExplanation;
+  globalScope.nextQuestion = nextQuestion;
+  globalScope.prevQuestion = prevQuestion;
+  globalScope.endSession = endSession;
+  globalScope.saveSessionProgress = saveSessionProgress;
+  globalScope.checkSavedSession = checkSavedSession;
+  globalScope.clearSessionProgress = clearSessionProgress;
+  globalScope.revealAnswer = revealAnswer;
+  globalScope.startVisualTimer = startVisualTimer;
+  globalScope.stopVisualTimer = stopVisualTimer;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -388,6 +388,18 @@
     showColdStartNotification,
   };
 
+  globalScope.SyncCore = SyncCore;
+  globalScope.AppSync = SyncCore;
+  globalScope.getSyncStatusVisualState = getSyncStatusVisualState;
+  globalScope.setGlobalLoadingState = setGlobalLoadingState;
+  globalScope.updateSyncStatus = updateSyncStatus;
+  globalScope.hideConnectionStatusAfterDelay = hideConnectionStatusAfterDelay;
+  globalScope.scheduleSyncPoll = scheduleSyncPoll;
+  globalScope.applySummaryData = applySummaryData;
+  globalScope.scheduleSyncRetry = scheduleSyncRetry;
+  globalScope.syncDatabase = syncDatabase;
+  globalScope.showColdStartNotification = showColdStartNotification;
+
   if (typeof module !== "undefined" && module.exports) {
     module.exports = SyncCore;
   }

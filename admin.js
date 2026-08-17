@@ -452,6 +452,76 @@ function renderAdminSubjectList() {
     '<p class="text-center text-gray-500 py-6">No subjects found.</p>';
 }
 
+async function adminClearAllSubjects() {
+  const confirmed = window.confirm(
+    "Clear every subject and folder from the hierarchy editor? This resets the admin layout and starts from scratch.",
+  );
+  if (!confirmed) return;
+
+  const btn = document.getElementById("btn-admin-clear-all");
+  const originalHTML = btn.innerHTML;
+
+  btn.innerHTML =
+    '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Clearing...';
+  btn.disabled = true;
+
+  try {
+    const response = await fetch(DB_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        type: "admin_clear_all",
+        token: getAdminToken(),
+      }),
+    });
+
+    const result = await parseJsonResponse(response);
+
+    if (result.status === "success") {
+      adminState.subjects = [];
+      renderAdminSubjectList();
+
+      if (typeof BroadcastChannel !== "undefined") {
+        try {
+          const invalidationChannel = new BroadcastChannel(
+            "mrh_cache_invalidation",
+          );
+          invalidationChannel.postMessage({
+            type: "cache_invalidated",
+            source: "admin-clear-all",
+            timestamp: Date.now(),
+          });
+          invalidationChannel.close();
+        } catch (e) {
+          console.warn(
+            "Could not broadcast cache invalidation after clear-all:",
+            e,
+          );
+        }
+      }
+
+      if (typeof fetchAccessMetadata === "function") {
+        try {
+          await fetchAccessMetadata();
+        } catch (e) {
+          console.warn("Could not refresh access metadata after clear-all:", e);
+        }
+      }
+
+      alert(result.message || "Hierarchy cleared successfully.");
+      return;
+    }
+
+    alert("Failed: " + (result.message || "Could not clear the hierarchy."));
+  } catch (e) {
+    alert("Network error: " + (e.message || "Could not clear the hierarchy."));
+    console.error(e);
+  } finally {
+    btn.innerHTML = originalHTML;
+    btn.disabled = false;
+  }
+}
+
 async function saveAdminChanges() {
   const btn = document.getElementById("btn-admin-save");
   const originalHTML = btn.innerHTML;
