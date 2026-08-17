@@ -250,7 +250,10 @@ function setInlineError(element, message) {
 }
 
 async function loadState() {
-  if (typeof AppState !== "undefined" && typeof AppState.loadState === "function") {
+  if (
+    typeof AppState !== "undefined" &&
+    typeof AppState.loadState === "function"
+  ) {
     return AppState.loadState();
   }
 
@@ -388,7 +391,10 @@ async function loadState() {
 }
 
 async function saveState() {
-  if (typeof AppState !== "undefined" && typeof AppState.saveState === "function") {
+  if (
+    typeof AppState !== "undefined" &&
+    typeof AppState.saveState === "function"
+  ) {
     return AppState.saveState();
   }
 
@@ -546,7 +552,10 @@ let settingsClickCount = 0;
 let settingsClickTimeout = null;
 
 async function navigate(viewId) {
-  if (typeof DeckNav !== "undefined" && typeof DeckNav.navigate === "function") {
+  if (
+    typeof DeckNav !== "undefined" &&
+    typeof DeckNav.navigate === "function"
+  ) {
     return DeckNav.navigate(viewId);
   }
   if (viewId === "settings") {
@@ -601,7 +610,10 @@ async function navigate(viewId) {
 }
 
 function getSyncStatusVisualState(tone = "info") {
-  if (typeof AppSync !== "undefined" && typeof AppSync.getSyncStatusVisualState === "function") {
+  if (
+    typeof AppSync !== "undefined" &&
+    typeof AppSync.getSyncStatusVisualState === "function"
+  ) {
     return AppSync.getSyncStatusVisualState(tone);
   }
 
@@ -648,7 +660,10 @@ function setGlobalLoadingState(
   detail = "Preparing the latest data...",
   tone = "info",
 ) {
-  if (typeof AppSync !== "undefined" && typeof AppSync.setGlobalLoadingState === "function") {
+  if (
+    typeof AppSync !== "undefined" &&
+    typeof AppSync.setGlobalLoadingState === "function"
+  ) {
     return AppSync.setGlobalLoadingState(isLoading, title, detail, tone);
   }
 
@@ -680,7 +695,10 @@ function setGlobalLoadingState(
 }
 
 function updateSyncStatus(message, tone = "info", showOverlay = true) {
-  if (typeof AppSync !== "undefined" && typeof AppSync.updateSyncStatus === "function") {
+  if (
+    typeof AppSync !== "undefined" &&
+    typeof AppSync.updateSyncStatus === "function"
+  ) {
     return AppSync.updateSyncStatus(message, tone, showOverlay);
   }
   const visualState = getSyncStatusVisualState(tone);
@@ -770,7 +788,10 @@ function hideConnectionStatusAfterDelay(delay = 3000) {
 }
 
 async function optimizedBackgroundSync() {
-  if (typeof AppSync !== "undefined" && typeof AppSync.optimizedBackgroundSync === "function") {
+  if (
+    typeof AppSync !== "undefined" &&
+    typeof AppSync.optimizedBackgroundSync === "function"
+  ) {
     return AppSync.optimizedBackgroundSync();
   }
 
@@ -823,7 +844,10 @@ async function optimizedBackgroundSync() {
 }
 
 function scheduleSyncPoll() {
-  if (typeof AppSync !== "undefined" && typeof AppSync.scheduleSyncPoll === "function") {
+  if (
+    typeof AppSync !== "undefined" &&
+    typeof AppSync.scheduleSyncPoll === "function"
+  ) {
     return AppSync.scheduleSyncPoll();
   }
 
@@ -1065,7 +1089,10 @@ function isDeckLocked(subject) {
 }
 
 function applySummaryData(summaryData) {
-  if (typeof AppSync !== "undefined" && typeof AppSync.applySummaryData === "function") {
+  if (
+    typeof AppSync !== "undefined" &&
+    typeof AppSync.applySummaryData === "function"
+  ) {
     return AppSync.applySummaryData(summaryData);
   }
 
@@ -1087,7 +1114,10 @@ function applySummaryData(summaryData) {
 }
 
 function scheduleSyncRetry(showOverlay = true) {
-  if (typeof AppSync !== "undefined" && typeof AppSync.scheduleSyncRetry === "function") {
+  if (
+    typeof AppSync !== "undefined" &&
+    typeof AppSync.scheduleSyncRetry === "function"
+  ) {
     return AppSync.scheduleSyncRetry(showOverlay);
   }
 
@@ -1173,7 +1203,10 @@ async function checkSyncStatusLightweight() {
 // ENHANCED SYNC DATABASE WITH ALL FIXES
 // ============================================
 async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
-  if (typeof AppSync !== "undefined" && typeof AppSync.syncDatabase === "function") {
+  if (
+    typeof AppSync !== "undefined" &&
+    typeof AppSync.syncDatabase === "function"
+  ) {
     return AppSync.syncDatabase(isRetry, isBackgroundCheck);
   }
 
@@ -1554,7 +1587,10 @@ function changeQuizFilter(filterValue) {
 }
 
 function initSession() {
-  if (typeof SessionCore !== "undefined" && typeof SessionCore.initSession === "function") {
+  if (
+    typeof SessionCore !== "undefined" &&
+    typeof SessionCore.initSession === "function"
+  ) {
     return SessionCore.initSession();
   }
 
@@ -1614,7 +1650,10 @@ function getShortSubjectLabel(subject, fallback = "General") {
 }
 
 function renderQuestion() {
-  if (typeof SessionCore !== "undefined" && typeof SessionCore.renderQuestion === "function") {
+  if (
+    typeof SessionCore !== "undefined" &&
+    typeof SessionCore.renderQuestion === "function"
+  ) {
     return SessionCore.renderQuestion();
   }
 
@@ -1837,7 +1876,10 @@ function renderQuestion() {
 }
 
 function enterFolder(folderName, isLockedFolder) {
-  if (typeof DeckNav !== "undefined" && typeof DeckNav.enterFolder === "function") {
+  if (
+    typeof DeckNav !== "undefined" &&
+    typeof DeckNav.enterFolder === "function"
+  ) {
     return DeckNav.enterFolder(folderName, isLockedFolder);
   }
   const fullPath =
@@ -1857,7 +1899,10 @@ function enterFolder(folderName, isLockedFolder) {
 }
 
 function goToPath(index) {
-  if (typeof DeckNav !== "undefined" && typeof DeckNav.goToPath === "function") {
+  if (
+    typeof DeckNav !== "undefined" &&
+    typeof DeckNav.goToPath === "function"
+  ) {
     return DeckNav.goToPath(index);
   }
   if (!state.currentPath) state.currentPath = [];
@@ -1906,7 +1951,10 @@ function getDeckLoaderId(subject) {
 }
 
 function getVisibleCategorySummary() {
-  if (typeof DeckNav !== "undefined" && typeof DeckNav.getVisibleCategorySummary === "function") {
+  if (
+    typeof DeckNav !== "undefined" &&
+    typeof DeckNav.getVisibleCategorySummary === "function"
+  ) {
     return DeckNav.getVisibleCategorySummary();
   }
   return (state.categorySummary || []).filter((deck) => {
@@ -1925,7 +1973,10 @@ function getVisibleCategorySummary() {
 }
 
 function closeAllDropdownMenus(exceptElement = null) {
-  if (typeof UIModal !== "undefined" && typeof UIModal.closeAllDropdownMenus === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.closeAllDropdownMenus === "function"
+  ) {
     return UIModal.closeAllDropdownMenus(exceptElement);
   }
   document
@@ -1936,7 +1987,10 @@ function closeAllDropdownMenus(exceptElement = null) {
 }
 
 function initDetailsExclusivity() {
-  if (typeof UIModal !== "undefined" && typeof UIModal.initDetailsExclusivity === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.initDetailsExclusivity === "function"
+  ) {
     return UIModal.initDetailsExclusivity();
   }
   const detailsElements = document.querySelectorAll(
@@ -2465,7 +2519,10 @@ function renderCategoryProgress() {
 }
 
 async function fetchAndStartCategory(subject, mode, pass = null) {
-  if (typeof DeckNav !== "undefined" && typeof DeckNav.fetchAndStartCategory === "function") {
+  if (
+    typeof DeckNav !== "undefined" &&
+    typeof DeckNav.fetchAndStartCategory === "function"
+  ) {
     return DeckNav.fetchAndStartCategory(subject, mode, pass);
   }
   const loader = document.getElementById(getDeckLoaderId(subject));
@@ -2572,7 +2629,10 @@ async function fetchAndStartCategory(subject, mode, pass = null) {
 }
 
 function startCustomSession(pool) {
-  if (typeof DeckNav !== "undefined" && typeof DeckNav.startCustomSession === "function") {
+  if (
+    typeof DeckNav !== "undefined" &&
+    typeof DeckNav.startCustomSession === "function"
+  ) {
     return DeckNav.startCustomSession(pool);
   }
   navigate("practice");
@@ -2595,7 +2655,10 @@ function startCustomSession(pool) {
 }
 
 async function resetCategory(subject) {
-  if (typeof DeckNav !== "undefined" && typeof DeckNav.resetCategory === "function") {
+  if (
+    typeof DeckNav !== "undefined" &&
+    typeof DeckNav.resetCategory === "function"
+  ) {
     return DeckNav.resetCategory(subject);
   }
   subject = decodeHandlerValue(subject);
@@ -2968,10 +3031,16 @@ let currentReviewSubject = "";
 let currentReviewQuestions = [];
 
 function reRenderDeckReview() {
+  if (typeof DeckReview !== "undefined" && typeof DeckReview.reRenderDeckReview === "function") {
+    return DeckReview.reRenderDeckReview();
+  }
   renderDeckReview(currentReviewSubject, currentReviewQuestions);
 }
 
 function renderDeckReview(subject, questions) {
+  if (typeof DeckReview !== "undefined" && typeof DeckReview.renderDeckReview === "function") {
+    return DeckReview.renderDeckReview(subject, questions);
+  }
   currentReviewSubject = subject;
   currentReviewQuestions = questions;
 
@@ -3365,7 +3434,10 @@ async function toggleArchiveDeck(subjectId) {
 }
 
 function submitPracticeAnswer(selected, correct) {
-  if (typeof SessionCore !== "undefined" && typeof SessionCore.submitPracticeAnswer === "function") {
+  if (
+    typeof SessionCore !== "undefined" &&
+    typeof SessionCore.submitPracticeAnswer === "function"
+  ) {
     return SessionCore.submitPracticeAnswer(selected, correct);
   }
 
@@ -3400,7 +3472,10 @@ function submitPracticeAnswer(selected, correct) {
 }
 
 function showExplanation(q) {
-  if (typeof SessionCore !== "undefined" && typeof SessionCore.showExplanation === "function") {
+  if (
+    typeof SessionCore !== "undefined" &&
+    typeof SessionCore.showExplanation === "function"
+  ) {
     return SessionCore.showExplanation(q);
   }
 
@@ -3416,7 +3491,10 @@ function showExplanation(q) {
 }
 
 function nextQuestion() {
-  if (typeof SessionCore !== "undefined" && typeof SessionCore.nextQuestion === "function") {
+  if (
+    typeof SessionCore !== "undefined" &&
+    typeof SessionCore.nextQuestion === "function"
+  ) {
     return SessionCore.nextQuestion();
   }
 
@@ -3437,7 +3515,10 @@ function nextQuestion() {
 }
 
 function prevQuestion() {
-  if (typeof SessionCore !== "undefined" && typeof SessionCore.prevQuestion === "function") {
+  if (
+    typeof SessionCore !== "undefined" &&
+    typeof SessionCore.prevQuestion === "function"
+  ) {
     return SessionCore.prevQuestion();
   }
 
@@ -3534,7 +3615,10 @@ function trackStats(q, isCorrect) {
 }
 
 function endSession(silent = false) {
-  if (typeof SessionCore !== "undefined" && typeof SessionCore.endSession === "function") {
+  if (
+    typeof SessionCore !== "undefined" &&
+    typeof SessionCore.endSession === "function"
+  ) {
     return SessionCore.endSession(silent);
   }
 
@@ -3565,6 +3649,9 @@ function endSession(silent = false) {
 let chartRetryCount = 0;
 
 function renderCharts() {
+  if (typeof Analytics !== "undefined" && typeof Analytics.renderCharts === "function") {
+    return Analytics.renderCharts();
+  }
   if (typeof Chart === "undefined") {
     console.warn("Chart.js is still loading...");
     if (chartRetryCount < 10) {
@@ -3631,6 +3718,9 @@ function renderCharts() {
 }
 
 function toggleTheme() {
+  if (typeof Analytics !== "undefined" && typeof Analytics.toggleTheme === "function") {
+    return Analytics.toggleTheme();
+  }
   state.prefs.darkMode = !state.prefs.darkMode;
   document.documentElement.classList.toggle("dark", state.prefs.darkMode);
   saveState();
@@ -3638,6 +3728,9 @@ function toggleTheme() {
 }
 
 function updateThemeButton() {
+  if (typeof Analytics !== "undefined" && typeof Analytics.updateThemeButton === "function") {
+    return Analytics.updateThemeButton();
+  }
   const btn = document.getElementById("btn-theme-toggle");
   if (btn) {
     btn.innerHTML = state.prefs.darkMode
@@ -3897,7 +3990,10 @@ window.addEventListener("resize", () => {
 });
 
 function saveSessionProgress() {
-  if (typeof SessionCore !== "undefined" && typeof SessionCore.saveSessionProgress === "function") {
+  if (
+    typeof SessionCore !== "undefined" &&
+    typeof SessionCore.saveSessionProgress === "function"
+  ) {
     return SessionCore.saveSessionProgress();
   }
 
@@ -3919,7 +4015,10 @@ function saveSessionProgress() {
 }
 
 function checkSavedSession() {
-  if (typeof SessionCore !== "undefined" && typeof SessionCore.checkSavedSession === "function") {
+  if (
+    typeof SessionCore !== "undefined" &&
+    typeof SessionCore.checkSavedSession === "function"
+  ) {
     return SessionCore.checkSavedSession();
   }
 
@@ -4457,7 +4556,10 @@ function toggleNavigationPosition(source) {
 }
 
 function toggleModal(modalId, isVisible) {
-  if (typeof UIModal !== "undefined" && typeof UIModal.toggleModal === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.toggleModal === "function"
+  ) {
     return UIModal.toggleModal(modalId, isVisible);
   }
 
@@ -4481,14 +4583,20 @@ function toggleModal(modalId, isVisible) {
 }
 
 function openAboutModal() {
-  if (typeof UIModal !== "undefined" && typeof UIModal.openAboutModal === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.openAboutModal === "function"
+  ) {
     return UIModal.openAboutModal();
   }
   toggleModal("about-modal", true);
 }
 
 function closeAboutModal() {
-  if (typeof UIModal !== "undefined" && typeof UIModal.closeAboutModal === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.closeAboutModal === "function"
+  ) {
     return UIModal.closeAboutModal();
   }
   toggleModal("about-modal", false);
@@ -4513,7 +4621,10 @@ function requestConfirmation(message, title = "Confirm Action") {
 }
 
 function closeConfirmModal(confirmed) {
-  if (typeof UIModal !== "undefined" && typeof UIModal.closeConfirmModal === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.closeConfirmModal === "function"
+  ) {
     return UIModal.closeConfirmModal(confirmed);
   }
   toggleModal("confirm-modal", false);
@@ -4525,7 +4636,10 @@ function closeConfirmModal(confirmed) {
 }
 
 function openReportModal() {
-  if (typeof UIModal !== "undefined" && typeof UIModal.openReportModal === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.openReportModal === "function"
+  ) {
     return UIModal.openReportModal();
   }
   const q = state.session?.questions?.[state.session?.currentIndex];
@@ -4559,14 +4673,20 @@ function openReportModal() {
 }
 
 function closeReportModal() {
-  if (typeof UIModal !== "undefined" && typeof UIModal.closeReportModal === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.closeReportModal === "function"
+  ) {
     return UIModal.closeReportModal();
   }
   state.reportQuestion = null;
   toggleModal("report-modal", false);
 }
 function openSessionSettingsModal() {
-  if (typeof UIModal !== "undefined" && typeof UIModal.openSessionSettingsModal === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.openSessionSettingsModal === "function"
+  ) {
     return UIModal.openSessionSettingsModal();
   }
   const recallToggle = document.getElementById("toggle-active-recall");
@@ -4615,7 +4735,10 @@ function openSessionSettingsModal() {
 }
 
 function closeSessionSettingsModal() {
-  if (typeof UIModal !== "undefined" && typeof UIModal.closeSessionSettingsModal === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.closeSessionSettingsModal === "function"
+  ) {
     return UIModal.closeSessionSettingsModal();
   }
   toggleModal("session-settings-modal", false);
@@ -4623,7 +4746,10 @@ function closeSessionSettingsModal() {
 
 // Open Review Settings Modal
 function openReviewSettingsModal() {
-  if (typeof UIModal !== "undefined" && typeof UIModal.openReviewSettingsModal === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.openReviewSettingsModal === "function"
+  ) {
     return UIModal.openReviewSettingsModal();
   }
   const modal = document.getElementById("review-settings-modal");
@@ -4646,7 +4772,10 @@ function openReviewSettingsModal() {
 
 // Close Review Settings Modal
 function closeReviewSettingsModal() {
-  if (typeof UIModal !== "undefined" && typeof UIModal.closeReviewSettingsModal === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.closeReviewSettingsModal === "function"
+  ) {
     return UIModal.closeReviewSettingsModal();
   }
   const modal = document.getElementById("review-settings-modal");
@@ -4714,7 +4843,10 @@ function toggleStudyFilterMode() {
 }
 
 function changeStudyFilterMode(mode) {
-  if (typeof UIModal !== "undefined" && typeof UIModal.changeStudyFilterMode === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.changeStudyFilterMode === "function"
+  ) {
     return UIModal.changeStudyFilterMode(mode);
   }
   const nextMode = mode === "favorites" ? "favorites" : "all";
@@ -4733,7 +4865,10 @@ let pendingLockedFolderPath = null;
 let pendingLockedFolderName = null;
 
 function openFolderPasswordModal(fullPath, folderName) {
-  if (typeof UIModal !== "undefined" && typeof UIModal.openFolderPasswordModal === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.openFolderPasswordModal === "function"
+  ) {
     return UIModal.openFolderPasswordModal(fullPath, folderName);
   }
   pendingLockedFolderPath = fullPath;
@@ -4746,7 +4881,10 @@ function openFolderPasswordModal(fullPath, folderName) {
 }
 
 function closeFolderPasswordModal() {
-  if (typeof UIModal !== "undefined" && typeof UIModal.closeFolderPasswordModal === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.closeFolderPasswordModal === "function"
+  ) {
     return UIModal.closeFolderPasswordModal();
   }
   toggleModal("folder-password-modal", false);
@@ -4755,7 +4893,10 @@ function closeFolderPasswordModal() {
 }
 
 function openDeckPasswordModal(subject, action) {
-  if (typeof UIModal !== "undefined" && typeof UIModal.openDeckPasswordModal === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.openDeckPasswordModal === "function"
+  ) {
     return UIModal.openDeckPasswordModal(subject, action);
   }
   pendingDeckSubject = subject;
@@ -4771,7 +4912,10 @@ function openDeckPasswordModal(subject, action) {
 }
 
 function closeDeckPasswordModal() {
-  if (typeof UIModal !== "undefined" && typeof UIModal.closeDeckPasswordModal === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.closeDeckPasswordModal === "function"
+  ) {
     return UIModal.closeDeckPasswordModal();
   }
   toggleModal("deck-password-modal", false);
@@ -4780,7 +4924,10 @@ function closeDeckPasswordModal() {
 }
 
 function openReportModalFromStudy(questionId) {
-  if (typeof UIModal !== "undefined" && typeof UIModal.openReportModalFromStudy === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.openReportModalFromStudy === "function"
+  ) {
     return UIModal.openReportModalFromStudy(questionId);
   }
   questionId = decodeHandlerValue(questionId);
@@ -4813,7 +4960,10 @@ function openReportModalFromStudy(questionId) {
 }
 
 async function submitReport() {
-  if (typeof UIModal !== "undefined" && typeof UIModal.submitReport === "function") {
+  if (
+    typeof UIModal !== "undefined" &&
+    typeof UIModal.submitReport === "function"
+  ) {
     return UIModal.submitReport();
   }
   const typeEl = document.getElementById("report-type");
@@ -5413,6 +5563,9 @@ if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
 if (!state.prefs.qToggles) state.prefs.qToggles = {};
 
 function changeStudyLayout(layout) {
+  if (typeof DeckReview !== "undefined" && typeof DeckReview.changeStudyLayout === "function") {
+    return DeckReview.changeStudyLayout(layout);
+  }
   state.prefs.studyLayout = layout;
   saveState();
   reRenderDeckReview();
@@ -5421,6 +5574,9 @@ function changeStudyLayout(layout) {
 if (!state.prefs.studyFilterMode) state.prefs.studyFilterMode = "all";
 
 function changeStudyPageSize(size) {
+  if (typeof DeckReview !== "undefined" && typeof DeckReview.changeStudyPageSize === "function") {
+    return DeckReview.changeStudyPageSize(size);
+  }
   const parsedSize = parseInt(size, 10);
   if (!Number.isFinite(parsedSize) || parsedSize < 1) return;
 
@@ -5446,6 +5602,9 @@ function changeStudyPageSize(size) {
 }
 
 function changeStudyPage(delta) {
+  if (typeof DeckReview !== "undefined" && typeof DeckReview.changeStudyPage === "function") {
+    return DeckReview.changeStudyPage(delta);
+  }
   let subject = currentReviewSubject;
   state.prefs.studyProgress[subject].page += delta;
   saveState();
@@ -5455,6 +5614,9 @@ function changeStudyPage(delta) {
 }
 
 function jumpToStudyPage(pageNumber) {
+  if (typeof DeckReview !== "undefined" && typeof DeckReview.jumpToStudyPage === "function") {
+    return DeckReview.jumpToStudyPage(pageNumber);
+  }
   const subject = currentReviewSubject;
   if (!subject || !state.prefs.studyProgress[subject]) return;
 

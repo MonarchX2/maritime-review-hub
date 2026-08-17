@@ -66,15 +66,54 @@ assert.match(appCore, /cycleScrollNavigationPosition\s*\(/);
 assert.match(appCoreState, /loadState\s*:\s*async\s*function/);
 assert.match(appCoreState, /saveState\s*:\s*async\s*function/);
 assert.match(appCoreState, /syncPreferenceControls\s*:\s*function/);
-assert.match(appCore, /typeof\s+AppSync\s*!==\s*"undefined"\s*&&\s*typeof\s+AppSync\.syncDatabase\s*===\s*"function"/);
-assert.match(appCore, /typeof\s+AppSync\s*!==\s*"undefined"\s*&&\s*typeof\s+AppSync\.updateSyncStatus\s*===\s*"function"/);
-assert.match(appCore, /typeof\s+SessionCore\s*!==\s*"undefined"\s*&&\s*typeof\s+SessionCore\.renderQuestion\s*===\s*"function"/);
-assert.match(appCore, /typeof\s+SessionCore\s*!==\s*"undefined"\s*&&\s*typeof\s+SessionCore\.initSession\s*===\s*"function"/);
-assert.match(appCore, /typeof\s+UIModal\s*!==\s*"undefined"\s*&&\s*typeof\s+UIModal\.toggleModal\s*===\s*"function"/);
-assert.match(appCore, /typeof\s+UIModal\s*!==\s*"undefined"\s*&&\s*typeof\s+UIModal\.openReportModal\s*===\s*"function"/);
-assert.match(appCore, /typeof\s+DeckNav\s*!==\s*"undefined"\s*&&\s*typeof\s+DeckNav\.navigate\s*===\s*"function"/);
-assert.match(appCore, /typeof\s+DeckNav\s*!==\s*"undefined"\s*&&\s*typeof\s+DeckNav\.enterFolder\s*===\s*"function"/);
-assert.doesNotMatch(resetProgressBlock, /state\.db\s*=\s*\[]/);
+assert.match(
+  appCore,
+  /typeof\s+AppSync\s*!==\s*"undefined"\s*&&\s*typeof\s+AppSync\.syncDatabase\s*===\s*"function"/,
+);
+assert.match(
+  appCore,
+  /typeof\s+AppSync\s*!==\s*"undefined"\s*&&\s*typeof\s+AppSync\.updateSyncStatus\s*===\s*"function"/,
+);
+assert.match(
+  appCore,
+  /typeof\s+SessionCore\s*!==\s*"undefined"\s*&&\s*typeof\s+SessionCore\.renderQuestion\s*===\s*"function"/,
+);
+assert.match(
+  appCore,
+  /typeof\s+SessionCore\s*!==\s*"undefined"\s*&&\s*typeof\s+SessionCore\.initSession\s*===\s*"function"/,
+);
+assert.match(
+  appCore,
+  /typeof\s+UIModal\s*!==\s*"undefined"\s*&&\s*typeof\s+UIModal\.toggleModal\s*===\s*"function"/,
+);
+assert.match(
+  appCore,
+  /typeof\s+UIModal\s*!==\s*"undefined"\s*&&\s*typeof\s+UIModal\.openReportModal\s*===\s*"function"/,
+);
+assert.match(
+  appCore,
+  /typeof\s+DeckNav\s*!==\s*"undefined"\s*&&\s*typeof\s+DeckNav\.navigate\s*===\s*"function"/,
+);
+assert.match(
+  appCore,
+  /typeof\s+DeckNav\s*!==\s*"undefined"\s*&&\s*typeof\s+DeckNav\.enterFolder\s*===\s*"function"/,
+);assert.match(
+  appCore,
+  /typeof\s+DeckReview\s*!==\s*"undefined"\s*&&\s*typeof\s+DeckReview\.renderDeckReview\s*===\s*"function"/,
+);
+assert.match(
+  appCore,
+  /typeof\s+DeckReview\s*!==\s*"undefined"\s*&&\s*typeof\s+DeckReview\.changeStudyPage\s*===\s*"function"/,
+);
+assert.match(
+  appCore,
+  /typeof\s+Analytics\s*!==\s*"undefined"\s*&&\s*typeof\s+Analytics\.renderCharts\s*===\s*"function"/,
+);
+assert.match(
+  appCore,
+  /typeof\s+Analytics\s*!==\s*"undefined"\s*&&\s*typeof\s+Analytics\.toggleTheme\s*===\s*"function"/,
+);
+assert.doesNotMatch(resetProgressBlock, /state\.db\s*=\s*\[/);
 assert.doesNotMatch(clearDatabaseBlock, /state\.stats\s*=/);
 assert.doesNotMatch(clearDatabaseBlock, /state\.prefs\s*=\s*\{/);
 assert.match(clearAppDataBlock, /state\.db\s*=\s*\[]/);

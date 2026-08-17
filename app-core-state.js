@@ -353,7 +353,9 @@
         if (!Object.prototype.hasOwnProperty.call(prefs, "activeRecall")) {
           state.prefs.activeRecall = false;
         }
-        if (!Object.prototype.hasOwnProperty.call(prefs, "quizNavigationMode")) {
+        if (
+          !Object.prototype.hasOwnProperty.call(prefs, "quizNavigationMode")
+        ) {
           state.prefs.quizNavigationMode = "manual";
         }
         if (
@@ -366,7 +368,9 @@
       }
     }
 
-    if (!["top", "bottom", "auto"].includes(state.prefs.quizNavigationPosition)) {
+    if (
+      !["top", "bottom", "auto"].includes(state.prefs.quizNavigationPosition)
+    ) {
       state.prefs.quizNavigationPosition = "top";
     }
     if (!["top", "bottom"].includes(state.prefs.reviewNavigationPosition)) {
@@ -377,7 +381,7 @@
     }
 
     if (!state.stats.subjectAccuracy) state.stats.subjectAccuracy = {};
-    if (!(["idle", "immediate"].includes(state.prefs.databaseUpdateMode))) {
+    if (!["idle", "immediate"].includes(state.prefs.databaseUpdateMode)) {
       state.prefs.databaseUpdateMode = "idle";
     }
     if (state.prefs?.darkMode) document.documentElement.classList.add("dark");

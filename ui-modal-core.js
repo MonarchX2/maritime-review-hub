@@ -48,7 +48,8 @@
         resolve(window.confirm(message));
         return;
       }
-      if (modal.parentElement !== document.body) document.body.appendChild(modal);
+      if (modal.parentElement !== document.body)
+        document.body.appendChild(modal);
       document.getElementById("confirm-title").innerHTML =
         `<i class="fa-solid fa-circle-question text-brand-500 mr-2"></i>${globalScope.escapeHTML(title)}`;
       document.getElementById("confirm-message").innerText = message;
@@ -148,11 +149,13 @@
 
     const btn = document.getElementById("btn-submit-report");
     const originalText = btn.innerHTML;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Sending...';
+    btn.innerHTML =
+      '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Sending...';
     btn.disabled = true;
 
     const q =
-      state.reportQuestion || state.session.questions[state.session.currentIndex];
+      state.reportQuestion ||
+      state.session.questions[state.session.currentIndex];
 
     if (!q) {
       alert("Error: No question found to report.");
@@ -254,7 +257,8 @@
     const navigationSelect = document.getElementById(
       "navigation-position-select",
     );
-    if (navigationSelect) navigationSelect.value = globalScope.getQuizNavigationPosition();
+    if (navigationSelect)
+      navigationSelect.value = globalScope.getQuizNavigationPosition();
     const navigationButton = document.getElementById(
       "toggle-session-navigation-bottom",
     );
@@ -279,7 +283,9 @@
     );
     if (navigationButton) {
       navigationButton.textContent = globalScope.getScrollNavigationButtonLabel(
-        globalScope.getStudyNavigationPosition(globalScope.state.prefs.studyLayout || "scroll"),
+        globalScope.getStudyNavigationPosition(
+          globalScope.state.prefs.studyLayout || "scroll",
+        ),
       );
     }
     updateStudyFilterToggle();
@@ -302,7 +308,9 @@
   }
 
   function handleReviewLayoutChange(layoutType) {
-    const perPageContainer = document.getElementById("review-per-page-container");
+    const perPageContainer = document.getElementById(
+      "review-per-page-container",
+    );
     const navigationToggle = document.getElementById(
       "toggle-review-navigation-bottom",
     );
@@ -328,7 +336,8 @@
     const icon = document.getElementById("study-filter-icon");
     if (!toggle || !icon) return;
 
-    const isFavorites = (globalScope.state.prefs.studyFilterMode || "all") === "favorites";
+    const isFavorites =
+      (globalScope.state.prefs.studyFilterMode || "all") === "favorites";
     toggle.setAttribute("aria-pressed", String(isFavorites));
     toggle.setAttribute(
       "aria-label",
@@ -363,9 +372,14 @@
     globalScope.saveState();
     updateStudyFilterToggle();
     if (globalScope.currentReviewSubject) {
-      const currentQuestions = globalScope.getQuestionsForSubject(globalScope.currentReviewSubject) || [];
+      const currentQuestions =
+        globalScope.getQuestionsForSubject(globalScope.currentReviewSubject) ||
+        [];
       if (currentQuestions.length > 0) {
-        globalScope.renderDeckReview(globalScope.currentReviewSubject, currentQuestions);
+        globalScope.renderDeckReview(
+          globalScope.currentReviewSubject,
+          currentQuestions,
+        );
       }
     }
   }
