@@ -250,16 +250,19 @@ input {
   display: none;
 }
 
-.dashboard-controls:has(#deck-sort-menu[open]) {
+.dashboard-controls:has(#deck-sort-menu[open]),
+.dashboard-controls:has(#deck-source-menu[open]) {
   overflow: visible;
 }
 
-#deck-sort-menu {
+#deck-sort-menu,
+#deck-source-menu {
   width: auto;
   min-width: 0;
 }
 
-#deck-sort-trigger {
+#deck-sort-trigger,
+#deck-source-trigger {
   width: auto;
   min-width: 0;
 }
@@ -277,14 +280,17 @@ input {
   }
 
   #deck-sort-menu,
+  #deck-source-menu,
   #deck-sort-trigger,
+  #deck-source-trigger,
   #deck-source-filter,
   .dashboard-control {
     width: auto;
   }
 }
 
-.deck-sort-option {
+.deck-sort-option,
+.deck-source-option {
   display: flex;
   width: 100%;
   align-items: center;
@@ -297,22 +303,65 @@ input {
   text-align: left;
 }
 
-.deck-sort-option:hover {
+.deck-sort-option:hover,
+.deck-source-option:hover {
   background-color: rgb(243 244 246);
 }
 
-.dark .deck-sort-option:hover {
+.dark .deck-sort-option:hover,
+.dark .deck-source-option:hover {
+  background-color: rgb(55 65 81);
+}
+
+.quiz-filter-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 0.375rem;
+  padding: 0.45rem 0.5rem;
+  color: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.quiz-filter-option:hover {
+  background-color: rgb(243 244 246);
+}
+
+.dark .quiz-filter-option:hover {
   background-color: rgb(55 65 81);
 }
 
 .sort-check,
-.sort-direction-check {
-  display: none;
+.sort-direction-check,
+.source-check {
+  display: inline;
   color: rgb(37 99 235);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.filter-check {
+  display: inline;
+  color: rgb(37 99 235);
+  opacity: 0;
+  transition: opacity 0.2s ease;
 }
 
 button:active:not(:disabled) {
   transform: scale(0.94);
+}
+
+#study-page-input::-webkit-outer-spin-button,
+#study-page-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+#study-page-input {
+  -moz-appearance: textfield;
 }
 
 .view-section {
@@ -403,7 +452,7 @@ details[open] summary ~ div {
 }
 
 .animate-timer-bar {
-  animation: expandTimerCenter 3s linear forwards;
+  animation: expandTimerCenter 2s linear forwards;
 }
 
 .session-progress,

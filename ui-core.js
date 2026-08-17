@@ -217,19 +217,18 @@
       .querySelectorAll(".deck-sort-option[data-sort-value]")
       .forEach((option) => {
         const check = option.querySelector(".sort-check");
-        if (check)
-          check.style.display =
-            option.dataset.sortValue === sortBy ? "inline-block" : "none";
+        if (check) {
+          check.style.opacity = option.dataset.sortValue === sortBy ? "1" : "0";
+        }
       });
     document
       .querySelectorAll(".deck-sort-option[data-sort-direction]")
       .forEach((option) => {
         const check = option.querySelector(".sort-direction-check");
-        if (check)
-          check.style.display =
-            option.dataset.sortDirection === sortDirection
-              ? "inline-block"
-              : "none";
+        if (check) {
+          check.style.opacity =
+            option.dataset.sortDirection === sortDirection ? "1" : "0";
+        }
       });
   }
 

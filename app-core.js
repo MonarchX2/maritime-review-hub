@@ -17,8 +17,10 @@ let syncConnected = false;
 let isColdStart = false;
 let lastSyncStatusTimestamp = "";
 let localCacheVersion = 0;
+let isInitialSyncComplete = false; // Track if the first sync from startup has completed
 const SYNC_STATUS_STORAGE_KEY = "mrh_last_sync_status_timestamp";
 const CACHE_VERSION_STORAGE_KEY = "mrh_cache_version";
+const NAVIGATION_PATH_STORAGE_KEY = "mrh_navigation_path"; // Persist user's navigation position
 
 function readStoredSyncStatusTimestamp() {
   const stored = getStoredItem?.(SYNC_STATUS_STORAGE_KEY, "") || "";
@@ -46,6 +48,29 @@ function persistLocalCacheVersion(version) {
     setStoredItem?.(CACHE_VERSION_STORAGE_KEY, String(localCacheVersion));
   } catch (e) {
     console.warn("Unable to persist cache version locally.", e);
+  }
+}
+
+function persistNavigationPath(pathArray) {
+  try {
+    const pathStr = Array.isArray(pathArray)
+      ? JSON.stringify(pathArray)
+      : JSON.stringify([]);
+    setStoredItem?.(NAVIGATION_PATH_STORAGE_KEY, pathStr);
+  } catch (e) {
+    console.warn("Unable to persist navigation path.", e);
+  }
+}
+
+function readStoredNavigationPath() {
+  try {
+    const stored = getStoredItem?.(NAVIGATION_PATH_STORAGE_KEY, "") || "";
+    if (!stored) return [];
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    console.warn("Unable to read navigation path from storage.", e);
+    return [];
   }
 }
 
@@ -342,6 +367,12 @@ async function loadState() {
     dbSizeEl.innerText = state.db ? state.db.length : 0;
   }
 
+  // FEATURE: Restore user's navigation position from previous visit
+  const savedPath = readStoredNavigationPath();
+  if (Array.isArray(savedPath) && savedPath.length > 0) {
+    state.currentPath = savedPath;
+  }
+
   populateFilters();
   updateDashboard();
   updateThemeButton();
@@ -457,19 +488,18 @@ function syncPreferenceControls() {
     .querySelectorAll(".deck-sort-option[data-sort-value]")
     .forEach((option) => {
       const check = option.querySelector(".sort-check");
-      if (check)
-        check.style.display =
-          option.dataset.sortValue === sortBy ? "inline-block" : "none";
+      if (check) {
+        check.style.opacity = option.dataset.sortValue === sortBy ? "1" : "0";
+      }
     });
   document
     .querySelectorAll(".deck-sort-option[data-sort-direction]")
     .forEach((option) => {
       const check = option.querySelector(".sort-direction-check");
-      if (check)
-        check.style.display =
-          option.dataset.sortDirection === sortDirection
-            ? "inline-block"
-            : "none";
+      if (check) {
+        check.style.opacity =
+          option.dataset.sortDirection === sortDirection ? "1" : "0";
+      }
     });
 }
 
@@ -1042,6 +1072,10 @@ function applySummaryData(summaryData) {
 
   state.categorySummary = safeSummary;
   syncConnected = true;
+  // FEATURE: Mark initial sync as complete after first successful sync
+  if (!isInitialSyncComplete) {
+    isInitialSyncComplete = true;
+  }
   saveState();
   populateFilters();
   renderCategoryProgress();
@@ -1297,42 +1331,95 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
 }
 
 function populateFilters() {
+  // Update old select element if it exists (for backward compatibility)
   const select = document.getElementById("filter-subject");
-  const subjectIndex = ensureQuestionIndex();
-  const subjects = [...subjectIndex.bySubject.keys()];
+  if (select) {
+    const subjectIndex = ensureQuestionIndex();
+    const subjects = [...subjectIndex.bySubject.keys()];
 
-  let tags = new Set();
-  (state.db || []).forEach((q) => {
-    if (q && q.Tags) {
-      q.Tags.split(",")
-        .map((t) => t.trim())
-        .forEach((t) => tags.add(t));
+    let tags = new Set();
+    (state.db || []).forEach((q) => {
+      if (q && q.Tags) {
+        q.Tags.split(",")
+          .map((t) => t.trim())
+          .forEach((t) => tags.add(t));
+      }
+    });
+    tags = [...tags];
+
+    let html = '<option value="ALL">All Subjects (Randomized)</option>';
+    if (subjects.length > 0) {
+      html += '<optgroup label="Subjects">';
+      html += subjects
+        .map(
+          (s) =>
+            `<option value="SUBJ:${escapeHTML(s)}">${escapeHTML(s)}</option>`,
+        )
+        .join("");
+      html += "</optgroup>";
     }
-  });
-  tags = [...tags];
+    if (tags.length > 0) {
+      html += '<optgroup label="Tags">';
+      html += tags
+        .map(
+          (t) =>
+            `<option value="TAG:${escapeHTML(t)}">${escapeHTML(t)}</option>`,
+        )
+        .join("");
+      html += "</optgroup>";
+    }
 
-  let html = '<option value="ALL">All Subjects (Randomized)</option>';
-  if (subjects.length > 0) {
-    html += '<optgroup label="Subjects">';
-    html += subjects
-      .map(
-        (s) =>
-          `<option value="SUBJ:${escapeHTML(s)}">${escapeHTML(s)}</option>`,
-      )
-      .join("");
-    html += "</optgroup>";
-  }
-  if (tags.length > 0) {
-    html += '<optgroup label="Tags">';
-    html += tags
-      .map(
-        (t) => `<option value="TAG:${escapeHTML(t)}">${escapeHTML(t)}</option>`,
-      )
-      .join("");
-    html += "</optgroup>";
+    select.innerHTML = html;
   }
 
-  select.innerHTML = html;
+  // Populate new dropdown filter menu
+  const filterListContainer = document.getElementById("quiz-filter-list");
+  if (filterListContainer) {
+    const subjectIndex = ensureQuestionIndex();
+    const subjects = [...subjectIndex.bySubject.keys()];
+
+    let tags = new Set();
+    (state.db || []).forEach((q) => {
+      if (q && q.Tags) {
+        q.Tags.split(",")
+          .map((t) => t.trim())
+          .forEach((t) => tags.add(t));
+      }
+    });
+    tags = [...tags];
+
+    let html = "";
+
+    // Add subjects
+    if (subjects.length > 0) {
+      html +=
+        '<div class="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-gray-400">Subjects</div>';
+      html += subjects
+        .map(
+          (s) =>
+            `<button type="button" data-filter-value="SUBJ:${escapeHTML(s)}" onclick="changeQuizFilter('SUBJ:${escapeHTML(s)}')" class="quiz-filter-option">${escapeHTML(s)} <i class="fa-solid fa-check filter-check"></i></button>`,
+        )
+        .join("");
+    }
+
+    // Add tags
+    if (tags.length > 0) {
+      if (subjects.length > 0) {
+        html +=
+          '<div class="my-1 border-t border-gray-200 dark:border-gray-700"></div>';
+      }
+      html +=
+        '<div class="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-gray-400">Tags</div>';
+      html += tags
+        .map(
+          (t) =>
+            `<button type="button" data-filter-value="TAG:${escapeHTML(t)}" onclick="changeQuizFilter('TAG:${escapeHTML(t)}')" class="quiz-filter-option">${escapeHTML(t)} <i class="fa-solid fa-check filter-check"></i></button>`,
+        )
+        .join("");
+    }
+
+    filterListContainer.innerHTML = html;
+  }
 }
 
 function prepareSessionPool(pool) {
@@ -1399,8 +1486,61 @@ function prepareSessionPool(pool) {
   });
 }
 
+function changeQuizFilter(filterValue) {
+  // Update the display text
+  const displayEl = document.getElementById("filter-subject-display");
+  const trigger = document.getElementById("quiz-filter-trigger");
+
+  if (filterValue === "ALL") {
+    if (displayEl) displayEl.textContent = "All Subjects";
+  } else if (filterValue.startsWith("SUBJ:")) {
+    const subj = filterValue.substring(5);
+    if (displayEl) displayEl.textContent = subj;
+  } else if (filterValue.startsWith("TAG:")) {
+    const tag = filterValue.substring(4);
+    if (displayEl) displayEl.textContent = `Tag: ${tag}`;
+  }
+
+  // Update check marks
+  document.querySelectorAll(".quiz-filter-option").forEach((btn) => {
+    const btnValue = btn.getAttribute("data-filter-value");
+    const checkIcon = btn.querySelector(".filter-check");
+    if (btnValue === filterValue) {
+      if (checkIcon) checkIcon.style.opacity = "1";
+    } else {
+      if (checkIcon) checkIcon.style.opacity = "0";
+    }
+  });
+
+  // Update check mark for All Subjects button
+  const allSubjectsBtn = document.querySelector("[data-filter-value='ALL']");
+  if (allSubjectsBtn) {
+    const checkIcon = allSubjectsBtn.querySelector(".filter-check");
+    if (filterValue === "ALL") {
+      if (checkIcon) checkIcon.style.opacity = "1";
+    } else {
+      if (checkIcon) checkIcon.style.opacity = "0";
+    }
+  }
+
+  // Store the value for initSession to use
+  let hiddenSelect = document.getElementById("filter-subject");
+  if (!hiddenSelect) {
+    // Create a hidden select element if it doesn't exist
+    hiddenSelect = document.createElement("select");
+    hiddenSelect.id = "filter-subject";
+    hiddenSelect.style.display = "none";
+    document.body.appendChild(hiddenSelect);
+  }
+  hiddenSelect.value = filterValue;
+
+  // Close the dropdown
+  const menu = document.getElementById("quiz-filter-menu");
+  if (menu) menu.open = false;
+}
+
 function initSession() {
-  const filterVal = document.getElementById("filter-subject").value;
+  let filterVal = document.getElementById("filter-subject")?.value || "ALL";
   let pool = [];
 
   if (filterVal === "MISTAKES") {
@@ -1600,6 +1740,17 @@ function renderQuestion() {
     }
   }
 
+  const favBtn = document.getElementById("btn-favorite-question");
+  if (favBtn) {
+    const isFavorite = Array.isArray(state.prefs.favoriteQuestions)
+      ? state.prefs.favoriteQuestions.includes(q.ID)
+      : false;
+
+    favBtn.classList.toggle("text-yellow-500", isFavorite);
+    favBtn.classList.toggle("text-gray-400", !isFavorite);
+    favBtn.title = isFavorite ? "Remove from Favorites" : "Add to Favorites";
+  }
+
   const activeRecallToggle = document.getElementById("toggle-active-recall");
   const shuffleChoicesToggle = document.getElementById(
     "toggle-shuffle-choices",
@@ -1676,6 +1827,7 @@ function enterFolder(folderName, isLockedFolder) {
 
   if (!state.currentPath) state.currentPath = [];
   state.currentPath.push(folderName);
+  persistNavigationPath(state.currentPath); // FEATURE: Save navigation position
   renderCategoryProgress();
 }
 
@@ -1686,6 +1838,7 @@ function goToPath(index) {
   } else {
     state.currentPath = state.currentPath.slice(0, index + 1);
   }
+  persistNavigationPath(state.currentPath); // FEATURE: Save navigation position
   renderCategoryProgress();
 }
 
@@ -1740,7 +1893,74 @@ function getVisibleCategorySummary() {
   });
 }
 
+function closeAllDropdownMenus(exceptElement = null) {
+  document
+    .querySelectorAll("#deck-source-menu, #deck-sort-menu, #quiz-filter-menu")
+    .forEach((menu) => {
+      if (menu !== exceptElement) menu.open = false;
+    });
+}
+
+function initDetailsExclusivity() {
+  const detailsElements = document.querySelectorAll(
+    "#deck-source-menu, #deck-sort-menu, #quiz-filter-menu",
+  );
+
+  detailsElements.forEach((details) => {
+    details.addEventListener("toggle", (e) => {
+      if (e.target.open) {
+        detailsElements.forEach((other) => {
+          if (other !== e.target && other.open) {
+            other.open = false;
+          }
+        });
+      }
+    });
+  });
+
+  document.addEventListener("click", (event) => {
+    const clickedInsideDetails = event.target.closest("details");
+    if (!clickedInsideDetails) {
+      closeAllDropdownMenus();
+    }
+  });
+}
+
 function renderCategoryProgress() {
+  // Initialize dropdown exclusivity once
+  if (typeof initDetailsExclusivity !== "undefined") {
+    setTimeout(initDetailsExclusivity, 100);
+  }
+
+  // Initialize deck source filter if not set
+  if (!state.prefs.deckSourceFilter) {
+    state.prefs.deckSourceFilter = "all";
+  }
+
+  // Update UI for deck source filter
+  const sourceLabel = document.getElementById("deck-source-label");
+  if (sourceLabel) {
+    const sourceLabels = {
+      all: "All Decks",
+      favorites: "Favorites",
+      downloaded: "Downloaded",
+      cloud: "Cloud Only",
+      archived: "Archived",
+    };
+    sourceLabel.innerText =
+      sourceLabels[state.prefs.deckSourceFilter] || "All Decks";
+  }
+
+  // Update check marks
+  document.querySelectorAll(".deck-source-option").forEach((btn) => {
+    const check = btn.querySelector(".source-check");
+    if (btn.dataset.sourceValue === state.prefs.deckSourceFilter) {
+      check.style.opacity = "1";
+    } else {
+      check.style.opacity = "0";
+    }
+  });
+
   const container = document.getElementById("category-list");
   const isGrid = state.prefs.layoutMode === "grid";
   const layoutIcon = document.getElementById("layout-icon");
@@ -1799,15 +2019,15 @@ function renderCategoryProgress() {
     return total;
   }
   let html = `
-        <div class="flex items-center gap-2 mb-6 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto pb-2 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
-            <button onclick="goToPath(-1)" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2">
+        <div class="flex flex-nowrap items-center gap-2 mb-6 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto pb-2 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
+            <button onclick="goToPath(-1)" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2 flex-shrink-0">
                 <i class="fa-solid fa-folder-open text-brand-500"></i> HOME
             </button>
             ${state.currentPath
               .map(
                 (dir, i) => `
-                <i class="fa-solid fa-chevron-right text-xs text-gray-400"></i>
-                <button onclick="goToPath(${i})" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors whitespace-nowrap">${escapeHTML(dir.toUpperCase())}</button>
+                <i class="fa-solid fa-chevron-right text-xs text-gray-400 flex-shrink-0"></i>
+                <button onclick="goToPath(${i})" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors whitespace-nowrap flex-shrink-0">${escapeHTML(dir.toUpperCase())}</button>
             `,
               )
               .join("")}
@@ -1840,8 +2060,7 @@ function renderCategoryProgress() {
     }
     return TextUtils.naturalSortStrings(left, right) * sortDirection;
   });
-  const sourceFilter =
-    document.getElementById("deck-source-filter")?.value || "all";
+  const sourceFilter = state.prefs.deckSourceFilter || "all";
   const favoriteDecks = Array.isArray(state.prefs.favoriteDecks)
     ? state.prefs.favoriteDecks
     : [];
@@ -1963,7 +2182,9 @@ function renderCategoryProgress() {
     const deckNameMode =
       state.prefs.deckNameMode === "clip" ? "truncate" : "whitespace-normal";
     const totalQuestionsInDb = cat.QuestionCount;
-    const databaseUnavailable = !syncConnected;
+    // FEATURE: Dim decks during initial sync only (not background sync)
+    // Decks are dimmed ONLY during the startup phase before isInitialSyncComplete becomes true
+    const databaseUnavailable = !isInitialSyncComplete;
 
     // CHANGED: Restrict Archive Icon to Root Path only
     const isRoot = !state.currentPath || state.currentPath.length === 0;
@@ -2055,11 +2276,20 @@ function renderCategoryProgress() {
                 <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
                     ${databaseUnavailable ? "" : archiveBtnHTML}
                     ${databaseUnavailable || !isDownloaded ? "" : `<button onclick="event.stopPropagation(); deleteSubjectData('${encodedSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>`}
+                    <span class="text-sm font-black ${themeColorText} transition-colors">${totalQuestionsInDb} cards</span>
                 </div>`;
     }
 
     return `
         <div onclick="handleDeckClick('${encodedSubj}')" class="cursor-pointer animate-card-in ${cardClasses} ${availabilityClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;" title="${databaseUnavailable ? "Waiting for database connection" : ""}">
+                ${
+                  databaseUnavailable
+                    ? `<div class="absolute inset-0 bg-gray-500/30 dark:bg-gray-900/60 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
+                        <i class="fa-solid fa-lock text-4xl text-gray-600 dark:text-gray-400 mb-2"></i>
+                        <span class="text-sm font-bold text-gray-700 dark:text-gray-300 text-center px-2">Syncing Database...</span>
+                    </div>`
+                    : ""
+                }
                 <div id="${loaderId}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
                     <i class="fa-solid fa-spinner fa-spin text-3xl ${loaderColor} mb-2"></i>
                     <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
@@ -2812,7 +3042,24 @@ function renderDeckReview(subject, questions) {
                 <button onclick="changeStudyPage(-1)" ${currentPage === 1 ? "disabled" : ""} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
                     <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Prev</span>
                 </button>
-                <span class="text-sm font-bold text-gray-600 dark:text-gray-300 flex-1 text-center">Page ${currentPage} / ${totalPages}</span>
+                <div class="flex-1 flex items-center justify-center gap-1 text-sm font-bold text-gray-600 dark:text-gray-300">
+                    <span>Page</span>
+                    <label class="sr-only" for="study-page-input">Go to page</label>
+                    <input
+                        id="study-page-input"
+                        type="text"
+                        inputmode="numeric"
+                        pattern="[0-9]*"
+                        min="1"
+                        max="${totalPages}"
+                        value="${currentPage}"
+                        onchange="jumpToStudyPage(this.value)"
+                        oninput="this.style.width = Math.max(1.8, (this.value.length || String(${currentPage}).length) + 1.2) + 'ch';"
+                        class="border-0 border-b border-gray-300 dark:border-gray-600 bg-transparent px-0 py-0 text-center text-sm font-bold text-gray-800 dark:text-gray-100 outline-none focus:border-brand-500 focus:ring-0 [-moz-appearance:textfield]"
+                        style="width: ${Math.max(1.8, String(currentPage).length + 1.2)}ch;"
+                    />
+                    <span>of ${totalPages}</span>
+                </div>
                 <button onclick="changeStudyPage(1)" ${currentPage === totalPages ? "disabled" : ""} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
                     <span class="hidden sm:inline mr-1">Next</span> <i class="fa-solid fa-arrow-right"></i>
                 </button>
@@ -2867,14 +3114,14 @@ function renderDeckReview(subject, questions) {
             choicesHTML += `
                             <div class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 p-3 rounded-r-lg">
                                 <p class="text-sm font-bold text-green-700 dark:text-green-400">
-                                    <i class="fa-solid fa-check-circle mr-2"></i> ${prefix}${escapeHTML(choiceText)}
+                                    ${prefix}${escapeHTML(choiceText)}
                                 </p>
                             </div>`;
           } else {
             choicesHTML += `
                             <div class="bg-gray-50 dark:bg-gray-800/50 border-l-4 border-gray-300 dark:border-gray-600 p-3 rounded-r-lg opacity-70">
                                 <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                    <i class="fa-solid fa-times mr-2 opacity-50"></i> ${prefix}${escapeHTML(choiceText)}
+                                    ${prefix}${escapeHTML(choiceText)}
                                 </p>
                             </div>`;
           }
@@ -2908,9 +3155,6 @@ function renderDeckReview(subject, questions) {
                     <span class="bg-brand-50 text-brand-600 text-xs px-2 py-1 rounded font-bold dark:bg-brand-900/30 dark:text-brand-400">Question ${originalIndex + 1}</span>
                     
                     <div class="flex gap-2 items-center">
-                        <button onclick="event.stopPropagation(); toggleQuestionFavorite('${encodeHandlerValue(q.ID)}')" class="${isQuestionFavorite ? "text-yellow-500" : "text-gray-400 hover:text-yellow-500"} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95 transition-all" title="${isQuestionFavorite ? "Remove from Favorites" : "Add to Favorites"}">
-                            <i class="fa-solid fa-star"></i>
-                        </button>
                         <!-- Feature 16: Individual Toggle Button -->
                         ${
                           isMultipleChoice
@@ -2919,6 +3163,10 @@ function renderDeckReview(subject, questions) {
                         </button>`
                             : ""
                         }
+
+                        <button onclick="event.stopPropagation(); toggleQuestionFavorite('${encodeHandlerValue(q.ID)}')" class="${isQuestionFavorite ? "text-yellow-500" : "text-gray-400 hover:text-yellow-500"} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95 transition-all" title="${isQuestionFavorite ? "Remove from Favorites" : "Add to Favorites"}">
+                            <i class="fa-solid fa-star"></i>
+                        </button>
 
                         ${
                           isProtectedDeck
@@ -3096,7 +3344,7 @@ function submitPracticeAnswer(selected, correct) {
     clearTimeout(state.session.autoNextTimeout);
   state.session.autoNextTimeout = setTimeout(() => {
     nextQuestion();
-  }, 3000);
+  }, 2000);
 }
 
 function showExplanation(q) {
@@ -3787,7 +4035,7 @@ function revealAnswer() {
     clearTimeout(state.session.autoNextTimeout);
   state.session.autoNextTimeout = setTimeout(() => {
     nextQuestion();
-  }, 3000);
+  }, 2000);
 }
 
 function startVisualTimer() {
@@ -3999,6 +4247,43 @@ function changeDeckSort(sortOrder) {
   state.prefs.deckSortBy = ["letters", "questions"].includes(sortOrder)
     ? sortOrder
     : "letters";
+
+  const menu = document.getElementById("deck-sort-menu");
+  if (menu) menu.open = false;
+
+  saveState();
+  renderCategoryProgress();
+}
+
+function changeDeckSource(sourceValue) {
+  const validSources = ["all", "favorites", "downloaded", "cloud", "archived"];
+  state.prefs.deckSourceFilter = validSources.includes(sourceValue)
+    ? sourceValue
+    : "all";
+
+  const sourceLabels = {
+    all: "All Decks",
+    favorites: "Favorites",
+    downloaded: "Downloaded",
+    cloud: "Cloud Only",
+    archived: "Archived",
+  };
+
+  const label = document.getElementById("deck-source-label");
+  if (label) label.innerText = sourceLabels[state.prefs.deckSourceFilter];
+
+  document.querySelectorAll(".deck-source-option").forEach((btn) => {
+    const check = btn.querySelector(".source-check");
+    const isSelected = btn.dataset.sourceValue === state.prefs.deckSourceFilter;
+    if (check) check.style.opacity = isSelected ? "1" : "0";
+  });
+
+  const menu = document.getElementById("deck-source-menu");
+  if (menu) menu.open = false;
+
+  const select = document.getElementById("deck-source-filter");
+  if (select) select.value = state.prefs.deckSourceFilter;
+
   saveState();
   renderCategoryProgress();
 }
@@ -4995,7 +5280,7 @@ function revealClozeAnswer(trigger) {
 }
 
 if (!state.prefs.studyLayout) state.prefs.studyLayout = "scroll";
-if (!state.prefs.studyPageSize) state.prefs.studyPageSize = 50;
+if (!state.prefs.studyPageSize) state.prefs.studyPageSize = 10;
 if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
 if (!state.prefs.qToggles) state.prefs.qToggles = {};
 
@@ -5010,6 +5295,19 @@ if (!state.prefs.studyFilterMode) state.prefs.studyFilterMode = "all";
 function changeStudyPageSize(size) {
   const parsedSize = parseInt(size, 10);
   if (!Number.isFinite(parsedSize) || parsedSize < 1) return;
+
+  // Auto-switch to Single Flashcard layout if user enters 1 in Scroll List mode
+  const currentLayout = state.prefs.studyLayout || "scroll";
+  if (currentLayout === "scroll" && parsedSize === 1) {
+    state.prefs.studyLayout = "single";
+    const layoutSelect = document.getElementById("review-layout-select");
+    if (layoutSelect) layoutSelect.value = "single";
+    const perPageContainer = document.getElementById(
+      "review-per-page-container",
+    );
+    if (perPageContainer) perPageContainer.classList.add("hidden");
+  }
+
   state.prefs.studyPageSize = parsedSize;
   let subject = currentReviewSubject;
   if (!state.prefs.studyProgress[subject])
@@ -5022,6 +5320,38 @@ function changeStudyPageSize(size) {
 function changeStudyPage(delta) {
   let subject = currentReviewSubject;
   state.prefs.studyProgress[subject].page += delta;
+  saveState();
+  reRenderDeckReview();
+  const scrollContainer = document.querySelector("main");
+  if (scrollContainer) scrollContainer.scrollTop = 0;
+}
+
+function jumpToStudyPage(pageNumber) {
+  const subject = currentReviewSubject;
+  if (!subject || !state.prefs.studyProgress[subject]) return;
+
+  const parsed = Number.parseInt(pageNumber, 10);
+  if (!Number.isFinite(parsed)) return;
+
+  const favoriteSet = new Set(
+    Array.isArray(state.prefs.favoriteQuestions)
+      ? state.prefs.favoriteQuestions.filter(Boolean)
+      : [],
+  );
+  const studyFilterMode = state.prefs.studyFilterMode || "all";
+  const visibleQuestions =
+    studyFilterMode === "favorites"
+      ? (currentReviewQuestions || []).filter((q) => favoriteSet.has(q.ID))
+      : currentReviewQuestions || [];
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(visibleQuestions.length / (state.prefs.studyPageSize || 50)),
+  );
+
+  const safePage = Math.min(Math.max(parsed, 1), totalPages);
+
+  state.prefs.studyProgress[subject].page = safePage;
   saveState();
   reRenderDeckReview();
   const scrollContainer = document.querySelector("main");
@@ -5070,7 +5400,23 @@ function toggleQuestionFavorite(qId) {
   }
 
   saveState();
-  reRenderDeckReview();
+
+  // Only re-render review mode if we're actually in review mode
+  if (
+    document.getElementById("view-deck-review")?.classList.contains("active")
+  ) {
+    reRenderDeckReview();
+  }
+}
+
+function toggleCurrentQuestionFavorite() {
+  if (!state.session.active) return;
+
+  const q = state.session.questions[state.session.currentIndex];
+  if (!q) return;
+
+  toggleQuestionFavorite(q.ID);
+  renderQuestion();
 }
 
 function toggleStudyFullscreen() {
@@ -5503,6 +5849,7 @@ window.addEventListener("DOMContentLoaded", () => {
   // CRITICAL FIX: Setup cache invalidation listener and version checking
   setupCacheInvalidationListener();
   startCacheVersionChecking();
+  initDetailsExclusivity();
 
   const mainEl = document.querySelector("main");
   const headerEl = document.querySelector("header");

@@ -21,7 +21,7 @@
       activeRecall: false,
       shuffleChoices: true,
       shuffleQuestions: true,
-      hideABCD: false,
+      hideABCD: true,
       quizHideABCD: false,
       showWrongChoices: false,
       clozeEnabled: false,

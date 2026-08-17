@@ -144,6 +144,23 @@
     }
     document.getElementById("q-id").innerText = "Question " + displayId;
 
+    // Update favorite button status
+    const favBtn = document.getElementById("btn-favorite-question");
+    if (favBtn) {
+      const isFavorite =
+        Array.isArray(globalScope.state.prefs.favoriteQuestions) &&
+        globalScope.state.prefs.favoriteQuestions.includes(q.ID);
+      if (isFavorite) {
+        favBtn.classList.add("text-yellow-500");
+        favBtn.classList.remove("text-gray-400");
+        favBtn.title = "Remove from Favorites";
+      } else {
+        favBtn.classList.remove("text-yellow-500");
+        favBtn.classList.add("text-gray-400");
+        favBtn.title = "Add to Favorites";
+      }
+    }
+
     const lessonIdValue =
       q.Lesson ||
       q.LessonID ||
@@ -369,7 +386,7 @@
       clearTimeout(globalScope.state.session.autoNextTimeout);
     globalScope.state.session.autoNextTimeout = setTimeout(() => {
       globalScope.nextQuestion();
-    }, 3000);
+    }, 2000);
   }
 
   function showExplanation(q) {
@@ -636,7 +653,7 @@
       clearTimeout(globalScope.state.session.autoNextTimeout);
     globalScope.state.session.autoNextTimeout = setTimeout(() => {
       globalScope.nextQuestion();
-    }, 3000);
+    }, 2000);
   }
 
   function startVisualTimer() {
