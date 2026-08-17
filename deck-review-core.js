@@ -34,10 +34,8 @@
     currentReviewQuestions = questions;
 
     const container = document.getElementById("deck-review-list");
-    document.getElementById("deck-review-title").innerText = getShortSubjectLabel(
-      subject,
-      "General",
-    );
+    document.getElementById("deck-review-title").innerText =
+      getShortSubjectLabel(subject, "General");
 
     const globalShowWrong = state.prefs.showWrongChoices !== false;
     const hideABCD = state.prefs.hideABCD === true;
@@ -171,8 +169,12 @@
       `;
     }
 
-    const showTopNavigation = ["top", "both"].includes(reviewNavigationPosition);
-    const showBottomNavigation = ["bottom", "both"].includes(reviewNavigationPosition);
+    const showTopNavigation = ["top", "both"].includes(
+      reviewNavigationPosition,
+    );
+    const showBottomNavigation = ["bottom", "both"].includes(
+      reviewNavigationPosition,
+    );
 
     if (showTopNavigation) html += navigationHTML;
 
@@ -198,7 +200,10 @@
     if (!validLayouts.includes(layout)) return;
 
     state.prefs.studyLayout = layout;
-    if (layout === "single" && !state.prefs.studyProgress[currentReviewSubject]) {
+    if (
+      layout === "single" &&
+      !state.prefs.studyProgress[currentReviewSubject]
+    ) {
       state.prefs.studyProgress[currentReviewSubject] = {
         page: 1,
         index: 0,
@@ -236,7 +241,10 @@
 
     let progress = state.prefs.studyProgress[currentReviewSubject];
     const maxIndex = (currentReviewQuestions || []).length - 1;
-    progress.index = Math.max(0, Math.min(maxIndex, (progress.index || 0) + delta));
+    progress.index = Math.max(
+      0,
+      Math.min(maxIndex, (progress.index || 0) + delta),
+    );
 
     saveState();
     reRenderDeckReview();

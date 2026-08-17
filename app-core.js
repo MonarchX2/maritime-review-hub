@@ -3031,14 +3031,20 @@ let currentReviewSubject = "";
 let currentReviewQuestions = [];
 
 function reRenderDeckReview() {
-  if (typeof DeckReview !== "undefined" && typeof DeckReview.reRenderDeckReview === "function") {
+  if (
+    typeof DeckReview !== "undefined" &&
+    typeof DeckReview.reRenderDeckReview === "function"
+  ) {
     return DeckReview.reRenderDeckReview();
   }
   renderDeckReview(currentReviewSubject, currentReviewQuestions);
 }
 
 function renderDeckReview(subject, questions) {
-  if (typeof DeckReview !== "undefined" && typeof DeckReview.renderDeckReview === "function") {
+  if (
+    typeof DeckReview !== "undefined" &&
+    typeof DeckReview.renderDeckReview === "function"
+  ) {
     return DeckReview.renderDeckReview(subject, questions);
   }
   currentReviewSubject = subject;
@@ -3649,7 +3655,10 @@ function endSession(silent = false) {
 let chartRetryCount = 0;
 
 function renderCharts() {
-  if (typeof Analytics !== "undefined" && typeof Analytics.renderCharts === "function") {
+  if (
+    typeof Analytics !== "undefined" &&
+    typeof Analytics.renderCharts === "function"
+  ) {
     return Analytics.renderCharts();
   }
   if (typeof Chart === "undefined") {
@@ -3718,7 +3727,10 @@ function renderCharts() {
 }
 
 function toggleTheme() {
-  if (typeof Analytics !== "undefined" && typeof Analytics.toggleTheme === "function") {
+  if (
+    typeof Analytics !== "undefined" &&
+    typeof Analytics.toggleTheme === "function"
+  ) {
     return Analytics.toggleTheme();
   }
   state.prefs.darkMode = !state.prefs.darkMode;
@@ -3728,7 +3740,10 @@ function toggleTheme() {
 }
 
 function updateThemeButton() {
-  if (typeof Analytics !== "undefined" && typeof Analytics.updateThemeButton === "function") {
+  if (
+    typeof Analytics !== "undefined" &&
+    typeof Analytics.updateThemeButton === "function"
+  ) {
     return Analytics.updateThemeButton();
   }
   const btn = document.getElementById("btn-theme-toggle");
@@ -5563,7 +5578,10 @@ if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
 if (!state.prefs.qToggles) state.prefs.qToggles = {};
 
 function changeStudyLayout(layout) {
-  if (typeof DeckReview !== "undefined" && typeof DeckReview.changeStudyLayout === "function") {
+  if (
+    typeof DeckReview !== "undefined" &&
+    typeof DeckReview.changeStudyLayout === "function"
+  ) {
     return DeckReview.changeStudyLayout(layout);
   }
   state.prefs.studyLayout = layout;
@@ -5574,7 +5592,10 @@ function changeStudyLayout(layout) {
 if (!state.prefs.studyFilterMode) state.prefs.studyFilterMode = "all";
 
 function changeStudyPageSize(size) {
-  if (typeof DeckReview !== "undefined" && typeof DeckReview.changeStudyPageSize === "function") {
+  if (
+    typeof DeckReview !== "undefined" &&
+    typeof DeckReview.changeStudyPageSize === "function"
+  ) {
     return DeckReview.changeStudyPageSize(size);
   }
   const parsedSize = parseInt(size, 10);
@@ -5602,7 +5623,10 @@ function changeStudyPageSize(size) {
 }
 
 function changeStudyPage(delta) {
-  if (typeof DeckReview !== "undefined" && typeof DeckReview.changeStudyPage === "function") {
+  if (
+    typeof DeckReview !== "undefined" &&
+    typeof DeckReview.changeStudyPage === "function"
+  ) {
     return DeckReview.changeStudyPage(delta);
   }
   let subject = currentReviewSubject;
@@ -5614,7 +5638,10 @@ function changeStudyPage(delta) {
 }
 
 function jumpToStudyPage(pageNumber) {
-  if (typeof DeckReview !== "undefined" && typeof DeckReview.jumpToStudyPage === "function") {
+  if (
+    typeof DeckReview !== "undefined" &&
+    typeof DeckReview.jumpToStudyPage === "function"
+  ) {
     return DeckReview.jumpToStudyPage(pageNumber);
   }
   const subject = currentReviewSubject;

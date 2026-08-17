@@ -97,7 +97,8 @@ assert.match(
 assert.match(
   appCore,
   /typeof\s+DeckNav\s*!==\s*"undefined"\s*&&\s*typeof\s+DeckNav\.enterFolder\s*===\s*"function"/,
-);assert.match(
+);
+assert.match(
   appCore,
   /typeof\s+DeckReview\s*!==\s*"undefined"\s*&&\s*typeof\s+DeckReview\.renderDeckReview\s*===\s*"function"/,
 );
