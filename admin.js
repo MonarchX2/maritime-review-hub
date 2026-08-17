@@ -659,30 +659,50 @@ async function saveAdminChanges() {
         }
       }
 
-      if (typeof fetchAccessMetadata === "function") {
-        try {
-          await fetchAccessMetadata();
-        } catch (e) {
-          console.warn(
-            "Could not refresh access metadata after admin save:",
-            e,
-          );
-        }
-      }
+      // OPTIMIZATION: Add delay before syncing to allow backend cache rebuild to start
+      // Then retry sync a few times to ensure we get the updated data
+      const syncWithRetry = async () => {
+        let retryCount = 0;
+        const maxRetries = 3;
+        const retryDelay = 2000; // 2 seconds between retries
 
-      if (typeof syncDatabase === "function") {
-        try {
-          await syncDatabase(false, true);
-        } catch (e) {
-          console.warn("Could not refresh app state after admin save:", e);
-        }
-      } else if (typeof reloadAppStateInMemory === "function") {
-        try {
-          await reloadAppStateInMemory();
-        } catch (e) {
-          console.warn("Could not refresh app state after admin save:", e);
-        }
-      }
+        const attempt = async () => {
+          try {
+            console.log(
+              `[Admin] Attempting to sync database (attempt ${retryCount + 1}/${maxRetries})`,
+            );
+            if (typeof fetchAccessMetadata === "function") {
+              try {
+                await fetchAccessMetadata();
+              } catch (e) {
+                console.warn(
+                  "Could not refresh access metadata after admin save:",
+                  e,
+                );
+              }
+            }
+
+            if (typeof syncDatabase === "function") {
+              await syncDatabase(false, true);
+            } else if (typeof reloadAppStateInMemory === "function") {
+              await reloadAppStateInMemory();
+            }
+          } catch (e) {
+            console.error(`[Admin] Sync attempt ${retryCount + 1} failed:`, e);
+            if (retryCount < maxRetries - 1) {
+              retryCount++;
+              console.log(`[Admin] Retrying sync in ${retryDelay}ms...`);
+              setTimeout(attempt, retryDelay);
+            }
+          }
+        };
+
+        // Initial delay to let backend start processing
+        console.log("[Admin] Waiting 1.5s for backend cache processing...");
+        setTimeout(attempt, 1500);
+      };
+
+      syncWithRetry();
 
       // Update timestamp for next save
       if (result.admin_last_modified_timestamp) {
