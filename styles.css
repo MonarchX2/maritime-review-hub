@@ -362,6 +362,7 @@ button:active:not(:disabled) {
 
 #study-page-input {
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 .view-section {
