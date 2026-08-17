@@ -859,22 +859,28 @@ function scheduleSyncPoll() {
 }
 
 function stripAccessMetadataFromSummary(summaryData) {
+  // Backend response already only includes: Subject, QuestionCount, Locked
+  // This function ensures no Password/Hidden fields are in stored data
   if (!Array.isArray(summaryData)) return summaryData;
-
   return summaryData.map((deck) => {
     if (!deck || typeof deck !== "object") return deck;
-    const { Password, password, Hidden, hidden, Locked, locked, ...rest } =
-      deck;
-    return rest;
+    const { Subject, QuestionCount, Locked } = deck;
+    return { Subject, QuestionCount, Locked };
   });
 }
 
-function normalizeAccessFlag(value) {
-  if (value === true) return true;
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    return ["true", "1", "yes", "y", "on"].includes(normalized);
+function normalizeAccessFlag(value, fallback = false) {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
   }
+
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+
+  const normalized = String(value).trim().toLowerCase();
+  if (["true", "1", "yes", "y", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "n", "off"].includes(normalized)) return false;
+
   return Boolean(value);
 }
 
@@ -943,22 +949,8 @@ function resolveSubjectAccess(subject, accessMap = {}, summaryEntries = []) {
   };
 }
 
-function filterHiddenAndProtectedDecks(summaryData) {
-  if (!Array.isArray(summaryData)) return summaryData;
-
-  return summaryData.filter((deck) => {
-    if (!deck || typeof deck !== "object") return false;
-    const subject = String(deck.Subject || "").trim();
-    if (!subject) return false;
-
-    const access = resolveSubjectAccess(
-      subject,
-      state.accessMetadata || {},
-      state.categorySummary || [],
-    );
-    return !access.Hidden;
-  });
-}
+// REMOVED: filterHiddenAndProtectedDecks - Backend already filters all hidden decks
+// via filterSummaryDataByAccess(). Frontend should NEVER filter again.
 
 function buildAccessMetadataMap(accessData) {
   const map = {};
@@ -999,39 +991,9 @@ function buildAccessMetadataMap(accessData) {
   return map;
 }
 
-function mergeAccessMetadataIntoSummary(summaryData, accessData) {
-  const accessMap = buildAccessMetadataMap(accessData);
-  if (!Array.isArray(summaryData)) return summaryData;
-
-  return summaryData.map((deck) => {
-    if (!deck || typeof deck !== "object") return deck;
-    const subject = String(deck.Subject || "").trim();
-    if (!subject) return deck;
-
-    const access = accessMap[subject] || {};
-    const password = String(
-      access.Password || deck.Password || deck.password || "",
-    ).trim();
-    const hidden =
-      access.Hidden === true ||
-      deck.Hidden === true ||
-      String(deck.Hidden || "").toLowerCase() === "true" ||
-      String(access.Hidden || "").toLowerCase() === "true";
-    const locked =
-      access.Locked === true ||
-      deck.Locked === true ||
-      String(deck.Locked || "").toLowerCase() === "true" ||
-      password !== "";
-
-    return {
-      ...deck,
-      Password: password,
-      password,
-      Hidden: hidden,
-      Locked: locked,
-    };
-  });
-}
+// REMOVED: mergeAccessMetadataIntoSummary - NOT USED
+// Backend handles all access control in filterSummaryDataByAccess()
+// Frontend should never merge or modify backend response
 
 async function fetchAccessMetadata() {
   const url = `${DB_URL}?access=1&_t=${Date.now()}`;
@@ -1096,12 +1058,13 @@ function applySummaryData(summaryData) {
     return AppSync.applySummaryData(summaryData);
   }
 
-  const safeSummary = filterHiddenAndProtectedDecks(summaryData || []);
+  // CRITICAL FIX: Don't double-filter - backend already filters hidden decks
+  // Only use the data as-is from the backend response
   const previousSummary = JSON.stringify(state.categorySummary || []);
-  const nextSummary = JSON.stringify(safeSummary);
+  const nextSummary = JSON.stringify(summaryData || []);
   const changed = previousSummary !== nextSummary;
 
-  state.categorySummary = safeSummary;
+  state.categorySummary = summaryData || [];
   syncConnected = true;
   // FEATURE: Mark initial sync as complete after first successful sync
   if (!isInitialSyncComplete) {
@@ -1278,30 +1241,25 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
       isColdStart = false;
       sanitizeDeletedDeckReferences();
 
-      const sanitizedSummary = stripAccessMetadataFromSummary(summaryData);
-      const accessMap = await fetchAccessMetadata();
-      state.accessMetadata = accessMap;
-      const mergedSummary = mergeAccessMetadataIntoSummary(
-        sanitizedSummary,
-        accessMap,
-      );
-      const filteredSummary = filterHiddenAndProtectedDecks(mergedSummary);
+      // CRITICAL FIX: Backend already filters hidden decks via filterSummaryDataByAccess()
+      // Don't double-filter here - use the response directly
+      // Summary data from backend contains: Subject, QuestionCount, Locked (no Hidden field)
       const changed =
         JSON.stringify(state.categorySummary || []) !==
-        JSON.stringify(filteredSummary);
+        JSON.stringify(summaryData);
       const canApplyNow =
         state.prefs.databaseUpdateMode === "immediate" || !state.session.active;
 
       if (canApplyNow && (changed || !wasConnected)) {
         pendingSummaryData = null;
-        applySummaryData(filteredSummary);
+        applySummaryData(summaryData);
       } else if (!canApplyNow) {
-        if (changed) pendingSummaryData = filteredSummary;
+        if (changed) pendingSummaryData = summaryData;
         if (!wasConnected) renderCategoryProgress();
       }
 
       updateSyncStatus(
-        `<i class="fa-solid fa-check mr-1"></i> Connected. ${changed && !canApplyNow ? "Update waiting until your session ends." : `Checked ${filteredSummary.length} subjects.`}`,
+        `<i class="fa-solid fa-check mr-1"></i> Connected. ${changed && !canApplyNow ? "Update waiting until your session ends." : `Checked ${summaryData.length} subjects.`}`,
         "success",
         !silentSync && !initialSyncSuccessShown,
       );
@@ -1367,12 +1325,11 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
 
     const catList = document.getElementById("category-list");
     if (catList && state.categorySummary.length === 0) {
-      catList.innerHTML = `
-                    <div class="text-center py-10 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 animate-card-in">
-                        <i class="fa-solid fa-triangle-exclamation text-3xl text-red-500 mb-3 hover:scale-110 transition-transform"></i>
-                        <h3 class="font-bold text-red-700 dark:text-red-400">Database Connection Failed</h3>
-                        <p class="text-sm text-red-600 dark:text-red-300 mt-1">The app is retrying the database connection automatically. You can keep this page open.</p>
-                    </div>`;
+      if (typeof renderCategoryProgress === "function") {
+        renderCategoryProgress();
+      } else {
+        catList.innerHTML = "";
+      }
     }
   }
 }
@@ -1957,19 +1914,9 @@ function getVisibleCategorySummary() {
   ) {
     return DeckNav.getVisibleCategorySummary();
   }
-  return (state.categorySummary || []).filter((deck) => {
-    if (!deck || !deck.Subject) return false;
-    const subject = String(deck.Subject || "").trim();
-    if (!subject) return false;
-    const accessEntry = state.accessMetadata?.[subject] || {};
-    const hidden =
-      accessEntry.Hidden === true ||
-      deck.Hidden === true ||
-      String(deck.Hidden || "").toLowerCase() === "true" ||
-      String(accessEntry.Hidden || "").toLowerCase() === "true";
-    if (hidden) return false;
-    return true;
-  });
+  // CRITICAL: Backend already filters ALL hidden decks in filterSummaryDataByAccess()
+  // Frontend must NEVER filter again - return categorySummary as-is
+  return state.categorySummary || [];
 }
 
 function closeAllDropdownMenus(exceptElement = null) {
@@ -2125,7 +2072,7 @@ function renderCategoryProgress() {
         </div>`;
 
   const layoutClass = isGrid
-    ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8"
+    ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-6"
     : "flex flex-col space-y-4";
 
   html += `<div class="${layoutClass}">`;
@@ -6167,6 +6114,11 @@ window.addEventListener("DOMContentLoaded", () => {
   setupCacheInvalidationListener();
   startCacheVersionChecking();
   initDetailsExclusivity();
+
+  // CRITICAL: Fetch access metadata early to avoid filtering issues
+  fetchAccessMetadata().catch((err) => {
+    console.warn("Initial access metadata fetch failed, will retry:", err);
+  });
 
   const mainEl = document.querySelector("main");
   const headerEl = document.querySelector("header");

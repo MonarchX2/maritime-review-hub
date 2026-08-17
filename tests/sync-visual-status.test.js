@@ -88,4 +88,51 @@ globalThis.SyncCore.updateSyncStatus(
   true,
 );
 
-console.log("sync visual status tests passed");
+const dashboardFallback = makeElement("category-list");
+globalThis.document.getElementById = (id) => {
+  if (id === "category-list") return dashboardFallback;
+  if (id in elements) return elements[id];
+  return null;
+};
+
+globalThis.state = {
+  session: { active: false },
+  categorySummary: [],
+  prefs: {},
+  stats: {},
+  db: [],
+};
+globalThis.renderCategoryProgress = () => {
+  dashboardFallback.innerHTML =
+    '<div class="dashboard-shell">Dashboard ready</div>';
+};
+globalThis.DB_URL = "https://example.test/data";
+globalThis.fetch = async () => {
+  throw new Error("simulated outage");
+};
+globalThis.setTimeout = () => 0;
+globalThis.clearTimeout = () => {};
+globalThis.setInterval = () => 0;
+globalThis.clearInterval = () => {};
+globalThis.syncAbortController = null;
+globalThis.syncRetryTimer = null;
+globalThis.syncCountdownTimer = null;
+globalThis.syncPollTimer = null;
+globalThis.syncAttempt = 0;
+globalThis.syncConnected = false;
+globalThis.initialSyncSuccessShown = false;
+
+(async () => {
+  await globalThis.SyncCore.syncDatabase(false, false);
+  assert.match(
+    dashboardFallback.innerHTML,
+    /Dashboard ready/i,
+    "empty-data sync failure should keep the normal dashboard shell",
+  );
+  assert.doesNotMatch(
+    dashboardFallback.innerHTML,
+    /Database Connection Failed/i,
+    "empty-data sync failure should not replace the dashboard with the failure state",
+  );
+  console.log("sync visual status tests passed");
+})();

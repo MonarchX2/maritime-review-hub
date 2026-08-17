@@ -109,14 +109,21 @@ body.title-mode-clip {
 }
 
 .app-content-shell {
-  width: min(100%, 860px);
-  max-width: 860px;
-  margin-inline: auto;
+  width: min(100%, 1200px) !important;
+  max-width: 1200px !important;
+  margin-inline: auto !important;
   padding-inline: 1rem;
 }
 
 #view-dashboard {
   min-width: 0;
+  width: min(100%, 1200px) !important;
+  max-width: 1200px !important;
+  margin-inline: auto !important;
+}
+
+#view-dashboard > * {
+  max-width: 100%;
 }
 
 html,

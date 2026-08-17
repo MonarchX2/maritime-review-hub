@@ -30,7 +30,7 @@
   let settingsClickCount = 0;
   let settingsClickTimeout = null;
 
-  function navigate(viewId) {
+  async function navigate(viewId) {
     if (viewId === "settings") {
       settingsClickCount++;
       clearTimeout(settingsClickTimeout);
@@ -130,9 +130,14 @@
 
   // ===================== DECK LIFECYCLE & SESSION MANAGEMENT =====================
   async function fetchAndStartCategory(subject, mode, pass = null) {
-    const loader = document.getElementById(globalScope.getDeckLoaderId(subject));
+    const loader = document.getElementById(
+      globalScope.getDeckLoaderId(subject),
+    );
     if (isDeckHidden(subject)) {
-      globalScope.showToast("This deck is hidden and not available.", "warning");
+      globalScope.showToast(
+        "This deck is hidden and not available.",
+        "warning",
+      );
       return;
     }
     if (isDeckLocked(subject)) {
@@ -224,9 +229,7 @@
         }
       }
     } else if (mode === "mistakes") {
-      pool = validQuestions.filter((q) =>
-        state.stats.mistakes.includes(q.ID),
-      );
+      pool = validQuestions.filter((q) => state.stats.mistakes.includes(q.ID));
       if (pool.length === 0) {
         alert(`No mistakes to review for ${subject}! Great job.`);
         return;

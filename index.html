@@ -15,6 +15,13 @@
 
     <!-- Dark Mode Memory Fix to avoid white flash -->
     <script>
+      if (typeof window !== "undefined") {
+        window.globalScope = window;
+        globalThis.globalScope = window;
+      }
+    </script>
+
+    <script>
       try {
         const storageIdentity = (() => {
           try {
@@ -157,7 +164,7 @@
       aria-live="polite"
     ></div>
 
-    <main class="flex-1 p-4 md:p-8 overflow-y-auto w-full app-content-shell">
+    <main class="flex-1 p-4 md:p-8 overflow-y-auto app-content-shell">
       <!-- DASHBOARD SECTION -->
       <section id="view-dashboard" class="view-section active">
         <div id="resume-container" class="hidden mb-8 animate-card-in">

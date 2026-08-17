@@ -1,4 +1,10 @@
 (async function () {
+  const rootScope = typeof window !== "undefined" ? window : globalThis;
+  if (typeof rootScope !== "undefined") {
+    rootScope.globalScope = rootScope;
+    if (typeof globalThis !== "undefined") globalThis.globalScope = rootScope;
+  }
+
   // Ensure the app starts after DOM is ready and required helpers are loaded.
   const loadedFeatures = new Set();
 

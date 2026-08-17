@@ -179,6 +179,7 @@
     globalScope.syncConnected = true;
     globalScope.saveState();
     globalScope.populateFilters();
+    globalScope.renderCategoryProgress();
     return changed;
   }
 
@@ -349,12 +350,11 @@
 
       const catList = document.getElementById("category-list");
       if (catList && globalScope.state.categorySummary.length === 0) {
-        catList.innerHTML = `
-          <div class="text-center py-10 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 animate-card-in">
-            <i class="fa-solid fa-triangle-exclamation text-3xl text-red-500 mb-3 hover:scale-110 transition-transform"></i>
-            <h3 class="font-bold text-red-700 dark:text-red-400">Database Connection Failed</h3>
-            <p class="text-sm text-red-600 dark:text-red-300 mt-1">The app is retrying the database connection automatically. You can keep this page open.</p>
-          </div>`;
+        if (typeof globalScope.renderCategoryProgress === "function") {
+          globalScope.renderCategoryProgress();
+        } else {
+          catList.innerHTML = "";
+        }
       }
     }
   }
