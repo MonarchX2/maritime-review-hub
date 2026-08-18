@@ -55,6 +55,9 @@
     },
     currentPath: [],
     reportQuestion: null,
+    unlockedFolders: {},
+    adminLastModifiedTimestamp: "",
+
   };
 
   function getStoredItem(key, fallback = null) {
@@ -195,6 +198,11 @@
     }
 
     return questions;
+  }
+
+  function normalizeCacheVersion(value) {
+    if (value === null || value === undefined) return "";
+    return String(value).trim();
   }
 
   function syncPreferenceControls() {
@@ -531,6 +539,7 @@
     syncPreferenceControls: function syncPreferenceControlsAlias() {
       return syncPreferenceControls();
     },
+    normalizeCacheVersion,
     updateDashboard: function updateDashboardAlias() {
       return updateDashboard();
     },

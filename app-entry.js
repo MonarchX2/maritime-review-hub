@@ -25,6 +25,16 @@
     loadedFeatures.add(src);
   };
 
+  async function loadOptionalFeature(src) {
+    try {
+      await window.loadFeatureScript(src);
+      return true;
+    } catch (error) {
+      console.warn(`Optional feature failed to load: ${src}`, error);
+      return false;
+    }
+  }
+
   async function loadCoreHelpers() {
     const cores = [
       "storage-utils.js",
@@ -53,8 +63,11 @@
       loadFeatureScript("deck-review-core.js"),
       loadFeatureScript("analytics-core.js"),
       loadFeatureScript("quiz-rendering-core.js"),
-      loadFeatureScript("admin.js"),
     ]);
+
+    // Admin is intentionally optional so a missing admin.js cannot prevent
+    // the public quiz application from starting.
+    await loadOptionalFeature("admin.js");
   } catch (error) {
     console.error("App bootstrap failed:", error);
     const status = document.getElementById("connection-status");

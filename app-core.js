@@ -37,15 +37,15 @@ function persistSyncStatusTimestamp(timestamp) {
 }
 
 function readStoredCacheVersion() {
-  const stored = Number(getStoredItem?.(CACHE_VERSION_STORAGE_KEY, "0") || "0");
-  return Number.isFinite(stored) ? Math.max(0, stored) : 0;
+  const stored = String(getStoredItem?.(CACHE_VERSION_STORAGE_KEY, "") || "").trim();
+  return stored;
 }
 
 function persistLocalCacheVersion(version) {
-  const nextVersion = Number(version) || 0;
-  localCacheVersion = Math.max(0, nextVersion);
+  const nextVersion = String(version ?? "").trim();
+  localCacheVersion = nextVersion;
   try {
-    setStoredItem?.(CACHE_VERSION_STORAGE_KEY, String(localCacheVersion));
+    setStoredItem?.(CACHE_VERSION_STORAGE_KEY, localCacheVersion);
   } catch (e) {
     console.warn("Unable to persist cache version locally.", e);
   }
@@ -965,126 +965,47 @@ function isFolderUnlocked(subject) {
 
 function resolveSubjectAccess(subject, accessMap = {}, summaryEntries = []) {
   const subjectName = String(subject || "").trim();
-  if (!subjectName) {
-    return { Hidden: false, Password: "", Locked: false };
-  }
+  if (!subjectName) return { Hidden: false, Password: "", Locked: false };
 
-  const directEntry = accessMap[subjectName] || {};
   const summaryEntry =
     (Array.isArray(summaryEntries) &&
-      summaryEntries.find(
-        (item) => String(item?.Subject || "") === subjectName,
-      )) ||
-    {};
+      summaryEntries.find((item) => String(item?.Subject || "") === subjectName)) ||
+    null;
 
-  const hidden =
-    normalizeAccessFlag(directEntry.Hidden) ||
-    normalizeAccessFlag(summaryEntry.Hidden);
-  const password = String(
-    directEntry.Password ||
-      summaryEntry.Password ||
-      summaryEntry.password ||
-      "",
-  ).trim();
-  const locked =
-    !isFolderUnlocked(subjectName) &&
-    (normalizeAccessFlag(directEntry.Locked) ||
-      normalizeAccessFlag(summaryEntry.Locked) ||
-      password !== "");
+  const localUnlocked = isFolderUnlocked(subjectName);
+  const lockedBySummary = Boolean(summaryEntry?.Locked);
 
+  // `Password` is deliberately not reconstructed on the public client.
   return {
-    Hidden: hidden,
-    Password: password,
-    Locked: locked,
+    Hidden: false,
+    Password: "",
+    Locked: !localUnlocked && lockedBySummary,
   };
 }
 
-function buildAccessMetadataMap(accessData) {
-  const map = {};
-  const rows = Array.isArray(accessData) ? accessData : [];
-
-  rows.forEach((entry) => {
-    if (!entry || !entry.Subject) return;
-    const subject = String(entry.Subject).trim();
-    if (!subject) return;
-
-    const normalizedLocked =
-      entry.Locked === true ||
-      String(entry.Locked || "").toLowerCase() === "true";
-    const normalizedHidden =
-      entry.Hidden === true ||
-      String(entry.Hidden || "").toLowerCase() === "true";
-    const password = String(entry.Password || entry.password || "").trim();
-
-    map[subject] = {
-      Subject: subject,
-      Password: password,
-      Hidden: normalizedHidden,
-      Locked: normalizedLocked || password !== "",
-    };
-  });
-
-  return map;
-}
-
-// REMOVED: mergeAccessMetadataIntoSummary - NOT USED
-// Backend handles all access control in filterSummaryDataByAccess()
-// Frontend should never merge or modify backend response
-
-async function fetchAccessMetadata() {
-  const url = `${DB_URL}?access=1&_t=${Date.now()}`;
-  try {
-    const response = await fetch(url, {
-      cache: "no-store",
-      redirect: "follow",
-    });
-    if (!response.ok) return {};
-    const data = await response.json();
-    state.accessMetadata = buildAccessMetadataMap(
-      Array.isArray(data) ? data : [],
-    );
-    return state.accessMetadata;
-  } catch (err) {
-    console.warn("Access metadata unavailable.", err);
-    return {};
-  }
-}
-
 function isDeckPasswordProtected(subject) {
-  const rawSubject = String(subject || "").trim();
-  if (!rawSubject) return false;
-
-  const access = resolveSubjectAccess(
-    rawSubject,
-    state.accessMetadata || {},
-    state.categorySummary || [],
-  );
-  return Boolean(access.Password) || Boolean(access.Locked);
+  return isDeckLocked(subject);
 }
 
 function isDeckHidden(subject) {
   const rawSubject = String(subject || "").trim();
   if (!rawSubject) return false;
-
-  const access = resolveSubjectAccess(
-    rawSubject,
-    state.accessMetadata || {},
-    state.categorySummary || [],
-  );
-  return Boolean(access.Hidden);
+  // Hidden decks are omitted by the fixed backend summary, so absence is
+  // handled by the deck tree itself rather than a client-side secret list.
+  return false;
 }
 
 function isDeckLocked(subject) {
   const rawSubject = String(subject || "").trim();
   if (!rawSubject) return false;
-
   const access = resolveSubjectAccess(
     rawSubject,
     state.accessMetadata || {},
     state.categorySummary || [],
   );
-  return Boolean(access.Locked) || Boolean(access.Password);
+  return Boolean(access.Locked);
 }
+
 
 function applySummaryData(summaryData) {
   if (
@@ -1182,6 +1103,9 @@ async function checkSyncStatusLightweight() {
   // Lightweight version check instead of full MRH_Summary.json
   // Used for background sync checks to reduce bandwidth
   try {
+    if (typeof AppNetwork !== "undefined" && typeof AppNetwork.getSyncStatus === "function") {
+      return await AppNetwork.getSyncStatus();
+    }
     const response = await fetch(DB_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -1189,7 +1113,6 @@ async function checkSyncStatusLightweight() {
       redirect: "follow",
       cache: "no-store",
     });
-
     if (!response.ok) return null;
     return await response.json();
   } catch (err) {
@@ -2926,18 +2849,21 @@ async function fetchDeckQuestionsFromNetwork(
   }
 
   try {
-    let fetchUrl = `${DB_URL}?subject=${encodeURIComponent(subject)}&_t=${Date.now()}`;
-    if (pass) fetchUrl += `&password=${encodeURIComponent(pass)}`;
-
-    const response = await fetch(fetchUrl, { cache: "no-store" });
-    const text = await response.text();
     let newQuestions;
-    try {
-      newQuestions = JSON.parse(text);
-    } catch (parseError) {
-      throw new Error(
-        `Invalid backend response while loading deck: ${text.slice(0, 200)}`,
-      );
+    if (typeof AppNetwork !== "undefined" && typeof AppNetwork.getDeck === "function") {
+      newQuestions = await AppNetwork.getDeck(subject, pass || "");
+    } else {
+      let fetchUrl = `${DB_URL}?subject=${encodeURIComponent(subject)}&_t=${Date.now()}`;
+      if (pass) fetchUrl += `&password=${encodeURIComponent(pass)}`;
+      const response = await fetch(fetchUrl, { cache: "no-store" });
+      const text = await response.text();
+      try {
+        newQuestions = JSON.parse(text);
+      } catch (parseError) {
+        throw new Error(
+          `Invalid backend response while loading deck: ${text.slice(0, 200)}`,
+        );
+      }
     }
     if (newQuestions && newQuestions.error) {
       const errorText = String(newQuestions.error || "").toLowerCase();
@@ -5491,28 +5417,41 @@ function updateTitleModeButton() {
   }
 }
 
-async function autoSaveDeckPassword(deckPath, newPassword) {
+async function autoSaveDeckPassword(deckPath, newPassword, options = {}) {
   const safeToken = typeof getAdminToken === "function" ? getAdminToken() : "";
-  const password = String(newPassword || "").trim();
-
-  try {
-    const result = await callBackend({
-      type: "admin_update_password",
-      token: safeToken,
-      deck: deckPath,
-      password: password,
-    });
-
-    if (result.status === "success") {
-      console.log(`Password for ${deckPath} updated successfully.`);
-    } else {
-      alert("Failed to update password: " + result.message);
-    }
-  } catch (e) {
-    alert("Network error while auto-saving password.");
-    console.error(e);
+  if (!safeToken) {
+    throw new Error("Admin authentication is required to change deck passwords.");
   }
+
+  const result = await callBackend({
+    type: "admin_update",
+    token: safeToken,
+    admin_last_modified_timestamp:
+      options.admin_last_modified_timestamp || state.adminLastModifiedTimestamp || "",
+    updates: [
+      {
+        oldName: String(deckPath || "").trim(),
+        newName: String(deckPath || "").trim(),
+        password: String(newPassword || "").trim(),
+      },
+    ],
+  });
+
+  if (result?.status === "conflict") {
+    state.adminLastModifiedTimestamp = result.admin_last_modified_timestamp || "";
+    throw new Error(result.message || "Admin data changed. Reload before saving.");
+  }
+  if (result?.status !== "success") {
+    throw new Error(result?.message || "Failed to update deck password.");
+  }
+
+  state.adminLastModifiedTimestamp = result.admin_last_modified_timestamp || state.adminLastModifiedTimestamp || "";
+  try {
+    setStoredItem("mrh_admin_last_modified_timestamp", state.adminLastModifiedTimestamp);
+  } catch (_) {}
+  return result;
 }
+
 
 const folderPasswordButton = document.getElementById(
   "btn-submit-folder-password",
@@ -5529,20 +5468,13 @@ if (folderPasswordButton) {
 
     await runWithBusyButton(btn, "Verifying...", async () => {
       try {
-        const response = await fetch(
-          `${DB_URL}?subject=${encodeURIComponent(pendingLockedFolderPath || "")}&password=${encodeURIComponent(pass)}&_t=${Date.now()}`,
-        );
-        const text = await response.text();
-        let result;
-        try {
-          result = JSON.parse(text);
-        } catch (parseError) {
-          throw new Error(
-            `Invalid backend response while verifying folder password: ${text.slice(0, 200)}`,
-          );
-        }
-        if (result.error) {
-          alert(result.error);
+        const result =
+          typeof AppNetwork !== "undefined" && typeof AppNetwork.getDeck === "function"
+            ? await AppNetwork.getDeck(pendingLockedFolderPath || "", pass)
+            : null;
+        if (!Array.isArray(result)) {
+          if (result?.error) alert(result.error);
+          else alert("This folder does not expose a directly accessible deck endpoint.");
         } else {
           const folderPath =
             pendingLockedFolderPath || pendingLockedFolderName || "";
@@ -6097,91 +6029,47 @@ function getJitteredPollingInterval() {
 // OPTIMIZATION: Enhanced Cache Version Check with ETag
 // ============================================
 async function checkCacheVersionWithETag() {
-  // Only leader tab performs polling (reduces traffic 66%)
   if (!isLeaderTab) return;
-
-  // Pause polling when tab is hidden
-  if (typeof document !== "undefined" && document.hidden) {
-    console.log("[CACHE] Tab hidden, skipping version check");
-    return;
-  }
+  if (typeof document !== "undefined" && document.hidden) return;
 
   try {
-    const headers = { "Content-Type": "text/plain;charset=utf-8" };
+    const data =
+      typeof AppNetwork !== "undefined" && typeof AppNetwork.getCacheVersion === "function"
+        ? await AppNetwork.getCacheVersion()
+        : null;
 
-    // Send last known hash to enable 304 responses
-    if (lastCacheVersionHash) {
-      headers["If-None-Match"] = lastCacheVersionHash;
-    }
+    if (!data || data.status === "error") return;
 
-    const response = await fetchWithExponentialBackoff(
-      DB_URL,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ type: "get_cache_version" }),
-      },
-      2, // Max 2 retries for version check
-    );
+    const remoteVersion = String(data.version ?? "").trim();
+    if (!remoteVersion) return;
 
-    // 304 Not Modified = cache still valid, nothing to do
-    if (response.status === 304) {
-      console.log("[CACHE] 304 Not Modified, cache is current");
-      failureRetryCount = 0;
-      return;
-    }
+    const previousVersion = String(localCacheVersion || readStoredCacheVersion() || "").trim();
+    if (previousVersion && remoteVersion !== previousVersion) {
+      console.log(`[CACHE] Version changed: ${previousVersion} -> ${remoteVersion}`);
 
-    if (!response.ok) return;
-
-    const data = await response.json();
-
-    // Store ETag for next request
-    const etag = response.headers.get("ETag");
-    if (etag) lastCacheVersionHash = etag;
-
-    if (data && typeof data.version === "number") {
-      remoteCacheVersion = data.version;
-      const storedLocalCacheVersion = readStoredCacheVersion();
-      if (localCacheVersion === 0 && storedLocalCacheVersion > 0) {
-        localCacheVersion = storedLocalCacheVersion;
-      }
-
-      // If version changed, leader broadcasts to all tabs
-      if (localCacheVersion > 0 && remoteCacheVersion > localCacheVersion) {
-        console.log(
-          `[CACHE] Version changed: ${localCacheVersion} -> ${remoteCacheVersion}`,
-        );
-
-        if (isLeaderTab && typeof leaderElectionChannel !== "undefined") {
-          try {
-            leaderElectionChannel.postMessage({
-              type: "cache_version_updated",
-              newVersion: remoteCacheVersion,
-            });
-          } catch (e) {
-            console.log("[CACHE] Could not broadcast version update");
-          }
+      if (isLeaderTab && typeof leaderElectionChannel !== "undefined") {
+        try {
+          leaderElectionChannel.postMessage({
+            type: "cache_version_updated",
+            newVersion: remoteVersion,
+          });
+        } catch (e) {
+          console.log("[CACHE] Could not broadcast version update");
         }
-
-        // In-memory state re-fetch (no page reload!)
-        await reloadAppStateInMemory();
       }
 
-      persistLocalCacheVersion(remoteCacheVersion);
-      failureRetryCount = 0;
+      await reloadAppStateInMemory();
     }
+
+    persistLocalCacheVersion(remoteVersion);
+    failureRetryCount = 0;
   } catch (e) {
     failureRetryCount++;
     console.error("[CACHE] Version check failed:", e);
-
-    if (failureRetryCount > maxRetryAttempts) {
-      console.warn(
-        "[CACHE] Max retry attempts exceeded, giving up temporarily",
-      );
-      failureRetryCount = 0;
-    }
+    if (failureRetryCount > maxRetryAttempts) failureRetryCount = 0;
   }
 }
+
 
 // ============================================
 // OPTIMIZATION: Enhanced Visibility Change Handler
