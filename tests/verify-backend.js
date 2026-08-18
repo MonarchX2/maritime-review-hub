@@ -1,4 +1,5 @@
 const fs = require("fs");
+const assert = require("assert");
 const backendMain = fs.readFileSync("./backend/main.js", "utf8");
 
 console.log("═══════════════════════════════════════════════════════════════");
@@ -223,7 +224,33 @@ criticalRefs.forEach((ref) => {
 console.log("  RESULT: " + refCount + "/6 functions actively used");
 console.log("");
 
-// 10. FINAL VERDICT
+// 10. SOURCE-TRIGGER + RESUME BEHAVIOR REGRESSION CHECKS
+assert.match(
+  backendMain,
+  /function\s+shouldTriggerDatabaseCacheBuild\s*\(|function\s+triggerBuildDatabaseCache\s*\(sourceSpreadsheetId\)|function\s+forceFullRebuildDatabaseCache\s*\(/,
+  "cache rebuilds must be gated to the database/UUID source sheets and kept separate from the explicit full rebuild path",
+);
+assert.match(
+  backendMain,
+  /sourceSpreadsheetId\s*===\s*DATABASE_SHEET_ID|sourceSpreadsheetId\s*===\s*UUID_SHEET_ID|normalizedId\s*===\s*DATABASE_SHEET_ID|normalizedId\s*===\s*UUID_SHEET_ID/,
+  "the trigger gateway must accept only the database and UUID spreadsheet IDs",
+);
+const triggerFunctionStart = backendMain.indexOf(
+  "function triggerBuildDatabaseCache",
+);
+const triggerFunctionEnd = backendMain.indexOf(
+  "function cleanResumptionTriggers",
+);
+const triggerFunctionBlock = backendMain.slice(
+  triggerFunctionStart,
+  triggerFunctionEnd,
+);
+assert.ok(
+  !triggerFunctionBlock.includes('deleteProperty("BUILD_CACHE_STATE")'),
+  "resumed cache builds must preserve the saved BUILD_CACHE_STATE so the queue can continue from the saved location",
+);
+
+// 11. FINAL VERDICT
 console.log("═══════════════════════════════════════════════════════════════");
 const allPresent =
   adminCount === 9 &&

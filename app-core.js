@@ -1,5 +1,5 @@
 ﻿const DB_URL =
-  "https://script.google.com/macros/s/AKfycbw_z0Xrr_4O1_CDep2benI6CMRyGuIJu8MfGBp8PnnR90S4fraESmNWJf1ulHfsZGrGzw/exec";
+  "https://script.google.com/macros/s/AKfycby4j5hbEWyfqonO9HYKgywo4OAt1NBwerEWWZwLWb1ODbsQGUd-YMMO-H9wX3_C-tBw/exec";
 
 const SYNC_INTERVAL_MS = 3 * 1000;
 const QUIZ_NAVIGATION_BREAKPOINT = 768;
@@ -53,10 +53,16 @@ function persistLocalCacheVersion(version) {
 
 function persistNavigationPath(pathArray) {
   try {
-    const pathStr = Array.isArray(pathArray)
-      ? JSON.stringify(pathArray)
-      : JSON.stringify([]);
+    const normalized = Array.isArray(pathArray)
+      ? pathArray
+          .filter((part) => typeof part === "string" && part.trim())
+          .map((part) => String(part).trim())
+      : [];
+    const pathStr = JSON.stringify(normalized);
     setStoredItem?.(NAVIGATION_PATH_STORAGE_KEY, pathStr);
+    if (state && typeof state === "object") {
+      state.currentPath = normalized;
+    }
   } catch (e) {
     console.warn("Unable to persist navigation path.", e);
   }
@@ -67,11 +73,24 @@ function readStoredNavigationPath() {
     const stored = getStoredItem?.(NAVIGATION_PATH_STORAGE_KEY, "") || "";
     if (!stored) return [];
     const parsed = JSON.parse(stored);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((part) => typeof part === "string" && part.trim())
+      .map((part) => String(part).trim());
   } catch (e) {
     console.warn("Unable to read navigation path from storage.", e);
     return [];
   }
+}
+
+function restoreNavigationPathFromStorage() {
+  const savedPath = readStoredNavigationPath();
+  if (Array.isArray(savedPath) && savedPath.length > 0) {
+    state.currentPath = savedPath;
+    return savedPath;
+  }
+  state.currentPath = [];
+  return [];
 }
 
 // OPTIMIZATION: Leader election pattern - only one tab polls
@@ -375,10 +394,7 @@ async function loadState() {
   }
 
   // FEATURE: Restore user's navigation position from previous visit
-  const savedPath = readStoredNavigationPath();
-  if (Array.isArray(savedPath) && savedPath.length > 0) {
-    state.currentPath = savedPath;
-  }
+  restoreNavigationPathFromStorage();
 
   populateFilters();
   updateDashboard();
@@ -409,6 +425,7 @@ async function saveState() {
       "summary",
       stripAccessMetadataFromSummary(state.categorySummary || []),
     );
+    persistNavigationPath(state.currentPath || []);
   } catch (e) {
     console.error(e);
   }
@@ -600,11 +617,29 @@ async function navigate(viewId) {
 
   // FIXED: Safely check if adminState is defined globally
   if (viewId === "admin") {
+    hideAdminSettingsModal();
     await ensureAdminLoaded();
-    const activeAdminToken =
-      typeof getAdminToken === "function" ? getAdminToken() : "";
-    if (activeAdminToken && typeof loadAdminSubjects === "function") {
-      loadAdminSubjects();
+
+    // CRITICAL: Always reset admin sections to show login form initially
+    const loginSection = document.getElementById("admin-login-section");
+    const dashboardSection = document.getElementById("admin-dashboard-section");
+
+    if (loginSection && dashboardSection) {
+      const activeAdminToken =
+        typeof getAdminToken === "function" ? getAdminToken() : "";
+
+      if (activeAdminToken) {
+        // Token exists - show dashboard and load subjects
+        loginSection.classList.add("hidden");
+        dashboardSection.classList.remove("hidden");
+        if (typeof loadAdminSubjects === "function") {
+          loadAdminSubjects();
+        }
+      } else {
+        // No token - show login form
+        loginSection.classList.remove("hidden");
+        dashboardSection.classList.add("hidden");
+      }
     }
   }
 }
@@ -884,6 +919,50 @@ function normalizeAccessFlag(value, fallback = false) {
   return Boolean(value);
 }
 
+function ensureUnlockedFolderState() {
+  const rootState =
+    typeof globalThis !== "undefined" &&
+    globalThis.state &&
+    typeof globalThis.state === "object"
+      ? globalThis.state
+      : typeof state !== "undefined" && state && typeof state === "object"
+        ? state
+        : null;
+
+  if (!rootState) {
+    if (
+      !globalThis.__mrhUnlockedFolders ||
+      typeof globalThis.__mrhUnlockedFolders !== "object"
+    ) {
+      globalThis.__mrhUnlockedFolders = {};
+    }
+    return globalThis.__mrhUnlockedFolders;
+  }
+
+  if (
+    !rootState.unlockedFolders ||
+    typeof rootState.unlockedFolders !== "object"
+  ) {
+    rootState.unlockedFolders = {};
+  }
+  return rootState.unlockedFolders;
+}
+
+function setFolderUnlocked(subject, unlocked = true) {
+  const subjectName = String(subject || "").trim();
+  if (!subjectName) return false;
+  const unlockedFolders = ensureUnlockedFolderState();
+  unlockedFolders[subjectName] = Boolean(unlocked);
+  if (typeof saveState === "function") saveState();
+  return true;
+}
+
+function isFolderUnlocked(subject) {
+  const subjectName = String(subject || "").trim();
+  if (!subjectName) return false;
+  return Boolean(ensureUnlockedFolderState()[subjectName]);
+}
+
 function resolveSubjectAccess(subject, accessMap = {}, summaryEntries = []) {
   const subjectName = String(subject || "").trim();
   if (!subjectName) {
@@ -898,49 +977,20 @@ function resolveSubjectAccess(subject, accessMap = {}, summaryEntries = []) {
       )) ||
     {};
 
-  let hidden =
+  const hidden =
     normalizeAccessFlag(directEntry.Hidden) ||
     normalizeAccessFlag(summaryEntry.Hidden);
-  let password = String(
+  const password = String(
     directEntry.Password ||
       summaryEntry.Password ||
       summaryEntry.password ||
       "",
   ).trim();
-  let locked =
-    normalizeAccessFlag(directEntry.Locked) ||
-    normalizeAccessFlag(summaryEntry.Locked) ||
-    password !== "";
-
-  const subjectParts = subjectName.split("::");
-  for (let depth = subjectParts.length - 1; depth > 0; depth--) {
-    const parentName = subjectParts.slice(0, depth).join("::");
-    const parentEntry = accessMap[parentName] || {};
-    const parentSummary =
-      (Array.isArray(summaryEntries) &&
-        summaryEntries.find(
-          (item) => String(item?.Subject || "") === parentName,
-        )) ||
-      {};
-
-    if (!hidden && normalizeAccessFlag(parentEntry.Hidden)) hidden = true;
-    if (!hidden && normalizeAccessFlag(parentSummary.Hidden)) hidden = true;
-    if (!password) {
-      const parentPassword = String(
-        parentEntry.Password ||
-          parentSummary.Password ||
-          parentSummary.password ||
-          "",
-      ).trim();
-      if (parentPassword) password = parentPassword;
-    }
-    if (!locked) {
-      locked =
-        normalizeAccessFlag(parentEntry.Locked) ||
-        normalizeAccessFlag(parentSummary.Locked) ||
-        password !== "";
-    }
-  }
+  const locked =
+    !isFolderUnlocked(subjectName) &&
+    (normalizeAccessFlag(directEntry.Locked) ||
+      normalizeAccessFlag(summaryEntry.Locked) ||
+      password !== "");
 
   return {
     Hidden: hidden,
@@ -948,9 +998,6 @@ function resolveSubjectAccess(subject, accessMap = {}, summaryEntries = []) {
     Locked: locked,
   };
 }
-
-// REMOVED: filterHiddenAndProtectedDecks - Backend already filters all hidden decks
-// via filterSummaryDataByAccess(). Frontend should NEVER filter again.
 
 function buildAccessMetadataMap(accessData) {
   const map = {};
@@ -974,17 +1021,6 @@ function buildAccessMetadataMap(accessData) {
       Password: password,
       Hidden: normalizedHidden,
       Locked: normalizedLocked || password !== "",
-    };
-  });
-
-  const allSubjects = Object.keys(map);
-  allSubjects.forEach((subject) => {
-    const inherited = resolveSubjectAccess(subject, map, []);
-    map[subject] = {
-      ...map[subject],
-      Password: inherited.Password,
-      Hidden: inherited.Hidden,
-      Locked: inherited.Locked,
     };
   });
 
@@ -1844,7 +1880,8 @@ function enterFolder(folderName, isLockedFolder) {
       ? state.currentPath.join("::") + "::" + folderName
       : folderName;
 
-  if (isLockedFolder) {
+  const isUnlockedByUi = isFolderUnlocked(fullPath);
+  if (isLockedFolder && !isUnlockedByUi) {
     openFolderPasswordModal(fullPath, folderName);
     return;
   }
@@ -2031,7 +2068,15 @@ function renderCategoryProgress() {
       });
     });
   }
-  if (!state.currentPath) state.currentPath = [];
+  if (!Array.isArray(state.currentPath)) state.currentPath = [];
+  const savedPath = readStoredNavigationPath();
+  if (
+    savedPath.length > 0 &&
+    JSON.stringify(savedPath) !== JSON.stringify(state.currentPath)
+  ) {
+    state.currentPath = savedPath;
+  }
+
   let currentNode = tree;
   let pathValid = true;
 
@@ -2045,8 +2090,29 @@ function renderCategoryProgress() {
   }
 
   if (!pathValid) {
-    state.currentPath = [];
+    state.currentPath = readStoredNavigationPath();
     currentNode = tree;
+    if (Array.isArray(state.currentPath) && state.currentPath.length > 0) {
+      let restoredNode = tree;
+      let restoredValid = true;
+      for (let dir of state.currentPath) {
+        if (restoredNode[dir]) {
+          restoredNode = restoredNode[dir]._children;
+        } else {
+          restoredValid = false;
+          break;
+        }
+      }
+      if (!restoredValid) {
+        state.currentPath = [];
+        currentNode = tree;
+      } else {
+        currentNode = restoredNode;
+      }
+    } else {
+      state.currentPath = [];
+      currentNode = tree;
+    }
   }
   function getFolderStats(node) {
     let total = 0;
@@ -2398,7 +2464,10 @@ function renderCategoryProgress() {
         ? "group-hover:text-purple-600 dark:group-hover:text-purple-400"
         : "group-hover:text-brand-600 dark:group-hover:text-brand-400";
 
-      const isLocked = isDeckLocked(key) || Boolean(item?._data?.Locked);
+      const folderSubject =
+        (state.currentPath || []).concat(key).join("::") || key;
+      const isLocked =
+        isDeckLocked(folderSubject) || Boolean(item?._data?.Locked);
       const lockIcon = isLocked
         ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected Folder"></i>`
         : "";
@@ -5409,9 +5478,17 @@ if (folderPasswordButton) {
         if (result.error) {
           alert(result.error);
         } else {
+          const folderPath =
+            pendingLockedFolderPath || pendingLockedFolderName || "";
+          setFolderUnlocked(folderPath, true);
           closeFolderPasswordModal();
           if (!state.currentPath) state.currentPath = [];
-          state.currentPath.push(pendingLockedFolderName);
+          if (
+            pendingLockedFolderName &&
+            !state.currentPath.includes(pendingLockedFolderName)
+          ) {
+            state.currentPath.push(pendingLockedFolderName);
+          }
           renderCategoryProgress();
         }
       } catch (error) {

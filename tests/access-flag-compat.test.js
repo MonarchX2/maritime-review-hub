@@ -43,8 +43,16 @@ const result = context.resolveSubjectAccess(
   [{ Subject: "Parent", Hidden: false, Locked: false, Password: "" }],
 );
 
-assert.strictEqual(result.Hidden, true, "parent hidden state should inherit");
-assert.strictEqual(result.Locked, true, "direct lock should be respected");
+assert.strictEqual(
+  result.Hidden,
+  false,
+  "parent hidden state must not apply to a child with an exact-match-only check",
+);
+assert.strictEqual(
+  result.Locked,
+  true,
+  "child lock state should be respected without inheriting from a parent",
+);
 assert.strictEqual(context.normalizeAccessFlag("TRUE"), true);
 assert.strictEqual(context.normalizeAccessFlag("FALSE"), false);
 

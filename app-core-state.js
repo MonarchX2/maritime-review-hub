@@ -198,6 +198,8 @@
   }
 
   function syncPreferenceControls() {
+    if (typeof document === "undefined") return;
+
     const controls = {
       "toggle-active-recall": state.prefs.activeRecall === true,
       "toggle-shuffle-choices": state.prefs.shuffleChoices !== false,
@@ -254,6 +256,8 @@
   }
 
   function updateDashboard() {
+    if (typeof document === "undefined") return;
+
     const statTotal = document.getElementById("stat-total");
     if (statTotal) statTotal.innerText = state.stats.totalAnswered;
 
@@ -280,6 +284,10 @@
     const savedPrefs = getStoredItem("prefs");
     const savedSummary =
       getStoredItem("summary") || getAnyNamespaceStoredItem("summary");
+    const savedPath =
+      typeof globalScope.readStoredNavigationPath === "function"
+        ? globalScope.readStoredNavigationPath()
+        : [];
 
     try {
       if (typeof idbKeyval !== "undefined") {
@@ -384,9 +392,17 @@
     if (!["idle", "immediate"].includes(state.prefs.databaseUpdateMode)) {
       state.prefs.databaseUpdateMode = "idle";
     }
-    if (state.prefs?.darkMode) document.documentElement.classList.add("dark");
+    if (state.prefs?.darkMode && typeof document !== "undefined") {
+      document.documentElement.classList.add("dark");
+    }
 
-    const dbSizeEl = document.getElementById("db-size-display");
+    state.currentPath =
+      Array.isArray(savedPath) && savedPath.length > 0 ? savedPath : [];
+
+    const dbSizeEl =
+      typeof document !== "undefined"
+        ? document.getElementById("db-size-display")
+        : null;
     if (dbSizeEl) {
       dbSizeEl.innerText = state.db ? state.db.length : 0;
     }
@@ -420,6 +436,14 @@
       setStoredJSON("stats", state.stats);
       setStoredJSON("prefs", state.prefs);
       setStoredJSON("summary", state.categorySummary || []);
+      if (typeof globalScope.persistNavigationPath === "function") {
+        globalScope.persistNavigationPath(state.currentPath || []);
+      } else {
+        setStoredItem(
+          "mrh_navigation_path",
+          JSON.stringify(Array.isArray(state.currentPath) ? state.currentPath : []),
+        );
+      }
     } catch (e) {
       console.error(e);
     }
@@ -437,6 +461,34 @@
   }
 
   globalScope.state = state;
+  globalScope.persistNavigationPath =
+    typeof globalScope.persistNavigationPath === "function"
+      ? globalScope.persistNavigationPath
+      : (path) => {
+          const normalized = Array.isArray(path)
+            ? path.filter((entry) => typeof entry === "string" && entry.trim()).map((entry) => String(entry).trim())
+            : [];
+          if (globalScope.state) globalScope.state.currentPath = normalized;
+          try {
+            setStoredItem("mrh_navigation_path", JSON.stringify(normalized));
+          } catch (e) {
+            console.warn("Unable to persist navigation path.", e);
+          }
+        };
+  globalScope.readStoredNavigationPath =
+    typeof globalScope.readStoredNavigationPath === "function"
+      ? globalScope.readStoredNavigationPath
+      : () => {
+          try {
+            const raw = getStoredItem("mrh_navigation_path", "");
+            if (!raw) return [];
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return [];
+            return parsed.filter((entry) => typeof entry === "string" && entry.trim()).map((entry) => String(entry).trim());
+          } catch (e) {
+            return [];
+          }
+        };
   globalScope.getStoredItem = getStoredItem;
   globalScope.getAnyNamespaceStoredItem = getAnyNamespaceStoredItem;
   globalScope.setStoredItem = setStoredItem;

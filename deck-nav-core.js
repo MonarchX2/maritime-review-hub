@@ -4,7 +4,8 @@
 // ============================================================================
 
 (function (globalScope) {
-  // Import global dependencies
+  // Import global dependencies safely so admin helpers are available
+  // even before the admin feature is loaded on-demand.
   const {
     state,
     saveState,
@@ -16,9 +17,6 @@
     decodeHandlerValue,
     renderQuestion,
     navigate: originalNavigate,
-    ensureAdminLoaded,
-    getAdminToken,
-    loadAdminSubjects,
     isDeckHidden,
     isDeckLocked,
     fetchDeckQuestions,
@@ -68,16 +66,28 @@
       .querySelectorAll(".view-section")
       .forEach((el) => el.classList.remove("active"));
     document.getElementById(`view-${viewId}`).classList.add("active");
+    const isAdminView =
+      viewId === "admin" &&
+      typeof globalScope.getAdminToken === "function" &&
+      !!globalScope.getAdminToken();
+    document.body.classList.toggle("admin-portal-active", isAdminView);
 
     if (viewId === "stats") globalScope.renderCharts();
 
     // FIXED: Safely check if adminState is defined globally
     if (viewId === "admin") {
-      await ensureAdminLoaded();
+      if (typeof globalScope.ensureAdminLoaded === "function") {
+        await globalScope.ensureAdminLoaded();
+      }
       const activeAdminToken =
-        typeof getAdminToken === "function" ? getAdminToken() : "";
-      if (activeAdminToken && typeof loadAdminSubjects === "function") {
-        loadAdminSubjects();
+        typeof globalScope.getAdminToken === "function"
+          ? globalScope.getAdminToken()
+          : "";
+      if (
+        activeAdminToken &&
+        typeof globalScope.loadAdminSubjects === "function"
+      ) {
+        globalScope.loadAdminSubjects();
       }
     }
   }
@@ -106,7 +116,12 @@
         ? state.currentPath.join("::") + "::" + folderName
         : folderName;
 
-    if (isLockedFolder) {
+    const isUnlockedByUi =
+      typeof globalScope.isFolderUnlocked === "function"
+        ? globalScope.isFolderUnlocked(fullPath)
+        : false;
+
+    if (isLockedFolder && !isUnlockedByUi) {
       globalScope.openFolderPasswordModal(fullPath, folderName);
       return;
     }

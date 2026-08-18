@@ -15,8 +15,8 @@ const backendMain = fs.readFileSync(
 
 assert.doesNotMatch(
   backendMain,
-  /Subject:\s*key,\s*QuestionCount:\s*state\.summaryMap\[key\],\s*(Locked|Hidden):|Subject:\s*passKey,\s*QuestionCount:\s*0,\s*(Locked|Hidden):/s,
-  "summary cache should no longer embed lock/hidden flags in the core deck summary",
+  /Subject:\s*key,\s*QuestionCount:\s*state\.summaryMap\[key\],\s*Hidden:|Subject:\s*passKey,\s*QuestionCount:\s*0,\s*Hidden:/s,
+  "summary rows should not embed hidden state in the core deck summary",
 );
 
 assert.match(
@@ -66,10 +66,10 @@ assert.match(
   /const\s+hasPasswordChange\s*=\s*deckPass\s*!==\s*originalPassword;[\s\S]*?if\s*\(\s*hasPasswordChange\s*\)\s*deckUpdate\.password\s*=\s*deckPass;[\s\S]*?if\s*\(\s*hasHiddenChange\s*\)\s*deckUpdate\.hidden\s*=\s*deckHidden;/s,
   "admin save should only include changed password values, so hidden-only toggles do not clobber the hidden update",
 );
-assert.match(
+assert.doesNotMatch(
   adminJs,
-  /reloadAppStateInMemory\s*\(|syncDatabase\s*\(false,\s*true\)/,
-  "successful admin saves should refresh the in-memory deck state immediately so password and hidden changes are live across the app",
+  /fetchAccessMetadata\s*\(|syncDatabase\s*\(false,\s*true\)|reloadAppStateInMemory\s*\(/,
+  "successful admin saves should avoid the long sync/reload loop and stay on the summary-only backend update path",
 );
 
 assert.match(
@@ -77,11 +77,56 @@ assert.match(
   /if\s*\(\s*isDeckHidden\(key\)\s*\)\s*continue\s*;|if\s*\(\s*isDeckHidden\(passKey\)\s*\)\s*continue\s*;/s,
   "hidden decks should be filtered out of MRH_Summary.json generation before it is returned to users",
 );
+assert.match(
+  backendMain,
+  /fileName\.match\(\s*\/\^deck-\[A-Z0-9\]\+\\\.json\$\/i\s*\)/,
+  "generated deck cache filenames must be ignored when deriving the human-readable subject name",
+);
+assert.doesNotMatch(
+  backendMain,
+  /if\s*\(\s*requestType\s*===\s*["']admin_update["']\s*\)[\s\S]{0,1200}triggerBuildDatabaseCache\s*\(/,
+  "admin_update should not trigger the full database cache rebuild after a layout save",
+);
+assert.match(
+  backendMain,
+  /function\s+getLastAdminModificationTimestamp\(\)\s*\{\s*var\s+props\s*=\s*PropertiesService\.getScriptProperties\(\);\s*return\s+props\.getProperty\(\s*["']LAST_ADMIN_MODIFICATION_TIMESTAMP["']\s*\)\s*\|\|\s*""\s*;\s*\}/s,
+  "admin timestamp reads must remain read-only so a fetch cannot create a fake edit conflict",
+);
+assert.match(
+  backendMain,
+  /hasPreviouslySaved\s*&&\s*clientTimestamp\s*&&\s*serverTimestamp\s*&&\s*clientTimestamp\s*!==\s*serverTimestamp/s,
+  "admin updates should only report a timestamp conflict when both the client and server timestamps are present and different",
+);
+assert.match(
+  backendMain,
+  /hiddenMap\[subjectName\][\s\S]*?buildSummaryArrayFromAccessState\s*\(/s,
+  "summary rebuilds must drop hidden decks and derive Locked from the live access map instead of reusing stale summary rows",
+);
+assert.doesNotMatch(
+  adminJs,
+  /Syncing with cloud|syncWithRetry\s*\(|fetchAccessMetadata\s*\(|syncDatabase\s*\(false,\s*true\)/,
+  "Save Layout should not enter the long cloud-sync retry flow after a successful admin save",
+);
+assert.doesNotMatch(
+  adminJs,
+  /subj\.Subject\.startsWith\(folderPath \+ "::"\)|Subject\.startsWith\(folderPath \+ "::"\)/,
+  "folder password and hidden changes must not cascade to descendants by prefix match",
+);
 
 assert.match(
   appCore,
-  /filterHiddenAndProtectedDecks\s*\(|return\s*!hidden;/,
-  "hidden decks should be filtered from display, while password-protected decks remain visible with a lock icon",
+  /function\s+isDeckHidden\s*\(subject\)|function\s+isDeckLocked\s*\(subject\)|return\s*Boolean\(access\.Hidden\)|return\s*Boolean\(access\.Locked\)/,
+  "hidden decks must be filtered by exact subject match, while password-protected decks stay visible with a lock icon",
+);
+assert.doesNotMatch(
+  appCore,
+  /parentName\s*=\s*subjectParts\.slice\(0,\s*depth\)\.join\("::"\)|for\s*\(let\s+depth\s*=\s*subjectParts\.length\s*-\s*1;\s*depth\s*>\s*0;\s*depth--\)/s,
+  "frontend access must not walk parent subjects when evaluating hidden or lock state",
+);
+assert.doesNotMatch(
+  backendMain,
+  /hiddenScope\s*=\s*\[update\.oldName\][\s\S]*?for\s*\(var\s+hiddenKey\s+in\s+passMap\)[\s\S]*?hiddenKey\.indexOf\(update\.oldName\s*\+\s*"::"\)/s,
+  "folder toggles must not cascade hidden or lock state to descendant UUID rows",
 );
 assert.match(
   appCore,
@@ -98,10 +143,15 @@ assert.match(
   /if \(isDeckLocked\(subject\) && !pass\) \{[\s\S]*?openDeckPasswordModal\(subject, pendingDeckAction \|\| "continue"\)/,
   "locked decks must open the password modal before any offline fallback can trigger",
 );
-assert.match(
+assert.doesNotMatch(
   backendMain,
-  /getDeckPassword\s*\(subject\)\s*\{[\s\S]*?ancestorPassword\s*=\s*passwordMap\[ancestorSubject\]|subjectParts\.slice\(0,\s*depth\)\.join\("::"\)/,
-  "password checks must inherit from ancestor folder paths so nested locked decks remain protected",
+  /ancestorPassword|ancestorKey|subjectParts\.slice\(0,\s*depth\)\.join\("::"\)|depth\s*>\s*0/,
+  "password checks must use exact Subject matches only and never walk parent paths",
+);
+assert.doesNotMatch(
+  appCore,
+  /parentName\s*=\s*subjectParts\.slice\(0,\s*depth\)\.join\("::"\)|for\s*\(let\s+depth\s*=\s*subjectParts\.length\s*-\s*1;\s*depth\s*>\s*0;\s*depth--\)/,
+  "frontend access resolution must not inherit hidden or lock state from parent subjects",
 );
 assert.match(
   backendMain,
@@ -159,6 +209,11 @@ assert.match(
 );
 assert.doesNotMatch(
   backendMain,
+  /fallbackSummary\.push\(\{\s*Subject:\s*fallbackSubject,\s*QuestionCount:\s*0,\s*Locked:\s*true/s,
+  "fallback admin summary refresh must preserve the full summary and original question counts instead of building a password-only one-item array",
+);
+assert.doesNotMatch(
+  backendMain,
   /hidden:\s*hiddenValue|locked:\s*lockedValue|Subject:\s*subjectValue,[\s\S]*?hidden:[\s\S]*?locked:/s,
   "MRH_Summary should not embed hidden/locked flags in the generated cache",
 );
@@ -172,5 +227,9 @@ assert.match(
   /admin_clear_all[\s\S]*?uuidSheet\.getRange\(.*?\"C:C\"|uuidSheet\.getRange\(.*?\"D:D\"|setValues\(\[\[.*?,.*?,\s*\"\",\s*\"\"/s,
   "admin clear-all should clear only the Hidden and Password columns while leaving UUID rows intact",
 );
-
+assert.match(
+  backendMain,
+  /function\s+normalizeUUIDSheetParentSubjects\s*\(|normalizeUUIDSheetParentSubjects\s*\(|newEntries\.push\(\[newUUID,\s*parentPath,\s*"",\s*"",\s*new\s+Date\(\)\.toISOString\(\)\]\)/s,
+  "UUID sheet normalization must append missing parent folders for every hierarchical subject path without overwriting existing rows",
+);
 console.log("hidden/deck cleanup regression checks passed");

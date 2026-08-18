@@ -247,10 +247,21 @@
       )
     )
       globalScope.state.prefs.databaseUpdateMode = "immediate";
-    if (globalScope.state.prefs?.darkMode)
+    if (globalScope.state.prefs?.darkMode && typeof document !== "undefined") {
       document.documentElement.classList.add("dark");
+    }
 
-    const dbSizeEl = document.getElementById("db-size-display");
+    const savedPath =
+      typeof globalScope.readStoredNavigationPath === "function"
+        ? globalScope.readStoredNavigationPath()
+        : [];
+    globalScope.state.currentPath =
+      Array.isArray(savedPath) && savedPath.length > 0 ? savedPath : [];
+
+    const dbSizeEl =
+      typeof document !== "undefined"
+        ? document.getElementById("db-size-display")
+        : null;
     if (dbSizeEl) {
       dbSizeEl.innerText = globalScope.state.db
         ? globalScope.state.db.length
@@ -280,6 +291,18 @@
         "summary",
         stripAccessMetadataFromSummary(globalScope.state.categorySummary || []),
       );
+      if (typeof globalScope.persistNavigationPath === "function") {
+        globalScope.persistNavigationPath(globalScope.state.currentPath || []);
+      } else {
+        globalScope.setStoredItem(
+          "mrh_navigation_path",
+          JSON.stringify(
+            Array.isArray(globalScope.state.currentPath)
+              ? globalScope.state.currentPath
+              : [],
+          ),
+        );
+      }
     } catch (e) {
       console.error(e);
     }

@@ -93,6 +93,8 @@
       .querySelectorAll(".view-section")
       .forEach((el) => el.classList.remove("active"));
     document.getElementById(`view-${viewId}`).classList.add("active");
+    const isAdminView = viewId === "admin" && !!globalScope.getAdminToken();
+    document.body.classList.toggle("admin-portal-active", isAdminView);
 
     if (viewId === "stats") globalScope.renderCharts();
 

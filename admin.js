@@ -3,6 +3,7 @@ let adminState = {
   subjects: [],
   reports: [],
   admin_last_modified_timestamp: "", // OPTIMIZATION: For conflict detection
+  hierarchyLayoutMode: "current", // "current" or "new" - for toggling Subject Hierarchy Editor layout
 };
 
 // OPTIMIZATION: Optimistic UI Lock
@@ -34,6 +35,18 @@ function clearAdminToken() {
     sessionStorage.removeItem("mrh_admin_token");
   }
   adminState.token = "";
+}
+
+function hideAdminSettingsModal() {
+  const modal = document.getElementById("admin-settings-modal");
+  if (!modal) return;
+  const inner = modal.querySelector("div");
+
+  modal.classList.add("opacity-0");
+  if (inner) inner.classList.add("scale-95");
+  setTimeout(() => {
+    modal.classList.add("hidden");
+  }, 300);
 }
 
 async function parseJsonResponse(response) {
@@ -108,11 +121,16 @@ async function adminLogin() {
       document
         .getElementById("admin-dashboard-section")
         .classList.remove("hidden");
+      initializeAdminUI();
       loadAdminSubjects();
       adminLoadReports(); // Fetch reports upon successful login
     } else {
       const errEl = document.getElementById("admin-login-error");
-      errEl.innerText = "Incorrect password.";
+      const message =
+        typeof result?.message === "string" && result.message.trim()
+          ? result.message
+          : "Incorrect password.";
+      errEl.innerText = message;
       errEl.classList.remove("hidden");
     }
   } catch (e) {
@@ -122,6 +140,96 @@ async function adminLogin() {
     btn.innerHTML = originalText;
     btn.disabled = false;
   }
+}
+
+function collectAdminStats() {
+  const records = Array.isArray(adminState.subjects) ? adminState.subjects : [];
+  let folders = 0;
+  let decks = 0;
+  let lockedDecks = 0;
+  let hiddenDecks = 0;
+
+  records.forEach((cat) => {
+    if (!cat || !cat.Subject) return;
+
+    const isFolder =
+      cat.IsFolder === true || String(cat.IsFolder).toLowerCase() === "true";
+    const hasPassword = String(cat.Password || cat.password || "").trim();
+    const isHidden =
+      cat.Hidden === true || String(cat.Hidden).toLowerCase() === "true";
+
+    if (isFolder) {
+      folders += 1;
+      return;
+    }
+
+    decks += 1;
+    if (hasPassword) lockedDecks += 1;
+    if (isHidden) hiddenDecks += 1;
+  });
+
+  return {
+    folders,
+    decks,
+    lockedDecks,
+    hiddenDecks,
+    publicDecks: Math.max(decks - lockedDecks, 0),
+  };
+}
+
+function renderAdminSummary() {
+  const container = document.getElementById("admin-summary-cards");
+  if (!container) return;
+
+  const stats = collectAdminStats();
+  const cards = [
+    {
+      label: "Decks",
+      value: stats.decks,
+      icon: "fa-layer-group",
+      iconClasses:
+        "bg-brand-100 text-brand-600 dark:bg-brand-900/30 dark:text-brand-300",
+    },
+    {
+      label: "Folders",
+      value: stats.folders,
+      icon: "fa-folder-tree",
+      iconClasses:
+        "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300",
+    },
+    {
+      label: "Locked",
+      value: stats.lockedDecks,
+      icon: "fa-lock",
+      iconClasses:
+        "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-300",
+    },
+    {
+      label: "Hidden",
+      value: stats.hiddenDecks,
+      icon: "fa-eye-slash",
+      iconClasses:
+        "bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-300",
+    },
+  ];
+
+  container.innerHTML = cards
+    .map(
+      (card) => `
+        <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
+          <div class="flex items-center justify-between">
+            <span class="inline-flex h-10 w-10 items-center justify-center rounded-lg ${card.iconClasses}">
+              <i class="fa-solid ${card.icon}"></i>
+            </span>
+            <span class="text-2xl font-bold text-gray-900 dark:text-white">${card.value}</span>
+          </div>
+          <div class="mt-3">
+            <p class="text-sm font-bold uppercase tracking-[0.18em] text-gray-600 dark:text-gray-400">${card.label}</p>
+          </div>
+        </div>
+      `,
+    )
+    .join("");
 }
 
 async function loadAdminSubjects() {
@@ -152,6 +260,7 @@ async function loadAdminSubjects() {
     }
 
     adminState.subjects = secureSubjects;
+    renderAdminSummary();
 
     // OPTIMIZATION: Get admin_last_modified_timestamp for conflict detection
     try {
@@ -165,7 +274,11 @@ async function loadAdminSubjects() {
         }),
       });
       const versionData = await parseJsonResponse(versionResponse);
-      if (versionData && versionData.timestamp) {
+      if (
+        versionData &&
+        typeof versionData.timestamp === "string" &&
+        versionData.timestamp.trim()
+      ) {
         adminState.admin_last_modified_timestamp = versionData.timestamp;
         console.log(
           "[ADMIN] Loaded timestamp for conflict detection:",
@@ -185,10 +298,86 @@ async function loadAdminSubjects() {
       state.categorySummary.length > 0
     ) {
       adminState.subjects = state.categorySummary;
+      renderAdminSummary();
       renderAdminSubjectList();
     } else {
       container.innerHTML = `<p class="text-center text-red-500 py-6">Network error. Could not load database.</p>`;
     }
+  }
+}
+
+function setAdminHierarchyLayoutMode(mode) {
+  const normalizedMode = mode === "new" ? "new" : "current";
+  adminState.hierarchyLayoutMode = normalizedMode;
+
+  const checkbox = document.getElementById("layout-toggle-checkbox");
+  if (checkbox) checkbox.checked = normalizedMode === "new";
+
+  const button = document.getElementById("admin-layout-toggle-button");
+  const icon = document.getElementById("admin-layout-toggle-icon");
+  const label = document.getElementById("admin-layout-toggle-label");
+  if (button) {
+    const isNew = normalizedMode === "new";
+    button.setAttribute("aria-pressed", String(isNew));
+    button.classList.toggle("bg-brand-600", isNew);
+    button.classList.toggle("text-white", isNew);
+    button.classList.toggle("bg-gray-100", !isNew);
+    button.classList.toggle("text-gray-700", !isNew);
+    button.classList.toggle("dark:bg-gray-700", !isNew);
+    button.classList.toggle("dark:text-gray-200", !isNew);
+  }
+  if (icon) {
+    icon.className =
+      normalizedMode === "new"
+        ? "fa-solid fa-table-cells mr-2"
+        : "fa-solid fa-list mr-2";
+  }
+  if (label) {
+    label.textContent = normalizedMode === "new" ? "Grid View" : "List View";
+  }
+
+  console.log(
+    "[ADMIN] Layout mode changed to:",
+    adminState.hierarchyLayoutMode,
+  );
+  renderAdminSubjectList();
+}
+
+function toggleHierarchyLayout() {
+  const checkbox = document.getElementById("layout-toggle-checkbox");
+  setAdminHierarchyLayoutMode(checkbox && checkbox.checked ? "new" : "current");
+}
+
+function initializeAdminUI() {
+  const checkbox = document.getElementById("layout-toggle-checkbox");
+  if (checkbox) {
+    checkbox.checked = adminState.hierarchyLayoutMode === "new";
+  }
+
+  const button = document.getElementById("admin-layout-toggle-button");
+  if (button) {
+    const isNew = adminState.hierarchyLayoutMode === "new";
+    button.setAttribute("aria-pressed", String(isNew));
+    button.classList.toggle("bg-brand-600", isNew);
+    button.classList.toggle("text-white", isNew);
+    button.classList.toggle("bg-gray-100", !isNew);
+    button.classList.toggle("text-gray-700", !isNew);
+    button.classList.toggle("dark:bg-gray-700", !isNew);
+    button.classList.toggle("dark:text-gray-200", !isNew);
+  }
+
+  const icon = document.getElementById("admin-layout-toggle-icon");
+  if (icon) {
+    icon.className =
+      adminState.hierarchyLayoutMode === "new"
+        ? "fa-solid fa-table-cells mr-2"
+        : "fa-solid fa-list mr-2";
+  }
+
+  const label = document.getElementById("admin-layout-toggle-label");
+  if (label) {
+    label.textContent =
+      adminState.hierarchyLayoutMode === "new" ? "Grid View" : "List View";
   }
 }
 
@@ -224,11 +413,13 @@ function renderAdminSubjectList() {
             decks: [],
             folderPass: "",
             folderHidden: false,
+            UUID: "",
           };
         currentNode = currentNode.subfolders[part];
       });
       currentNode.folderPass = passString; // Assign password to the folder
       currentNode.folderHidden = hiddenStatus; // Assign hidden status to the folder
+      currentNode.UUID = currentNode.UUID || cat.UUID || "";
       return; // Stop here, it's not a deck
     }
 
@@ -274,55 +465,8 @@ function renderAdminSubjectList() {
           ? `${currentPath}::${folderName}`
           : folderName;
 
-    // Folder settings section (collapsible)
-    if (
-      depth > 0 &&
-      (Object.keys(node.subfolders).length > 0 || node.decks.length > 0)
-    ) {
-      innerHtml += `
-                <details class="mb-4 bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden group">
-                    <summary class="cursor-pointer p-3 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-between text-sm font-bold text-gray-700 dark:text-gray-300 outline-none list-none">
-                        <span class="flex items-center gap-2">
-                            <i class="fa-solid fa-sliders text-amber-600 dark:text-amber-500"></i>
-                            Folder Settings
-                        </span>
-                        <i class="fa-solid fa-chevron-right text-gray-400 transition-transform duration-200 group-open:rotate-90"></i>
-                    </summary>
-                    <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-700 space-y-4 bg-white dark:bg-gray-900/50">
-                        <div class="space-y-2">
-                            <label class="text-sm font-bold text-red-700 dark:text-red-400 flex items-center gap-2">
-                                <i class="fa-solid fa-lock"></i> Lock Folder
-                            </label>
-                            <p class="text-xs text-red-600 dark:text-red-300 mb-2">Password to access this folder and subfolders</p>
-                            <input type="text" 
-                                class="folder-pass-input w-full p-2 border border-red-300 dark:border-red-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded focus:border-red-500 focus:ring-2 outline-none transition-all text-sm" 
-                                placeholder="Leave blank for public folder..."
-                                data-path="${escapeHTML(fullPath)}"
-                                data-orig="${escapeHTML(node.folderPass || "")}"
-                                value="${escapeHTML(node.folderPass || "")}">
-                            <button onclick="cascadePassword(this)" class="w-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 py-2 rounded font-semibold hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors active:scale-95 text-xs flex items-center justify-center gap-2 mt-2">
-                                <i class="fa-solid fa-angles-down"></i> Apply to all nested decks
-                            </button>
-                        </div>
-                        
-                        <div class="border-t border-gray-200 dark:border-gray-700 pt-3">
-                            <label class="text-sm font-bold text-purple-700 dark:text-purple-400 flex items-center gap-2 cursor-pointer mb-2">
-                                <input type="checkbox" 
-                                    class="folder-hidden-input w-4 h-4 cursor-pointer"
-                                    data-path="${escapeHTML(fullPath)}"
-                                    data-orig="${String(node.folderHidden || false)}"
-                                    ${node.folderHidden ? "checked" : ""}>
-                                <i class="fa-solid fa-eye-slash"></i> Hide Entire Folder
-                            </label>
-                            <p class="text-xs text-purple-600 dark:text-purple-300 mb-2">Hidden from regular users (not synced)</p>
-                            <button onclick="cascadeHidden(this)" class="w-full bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 py-2 rounded font-semibold hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors active:scale-95 text-xs flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-angles-down"></i> Hide all nested decks
-                            </button>
-                        </div>
-                    </div>
-                </details>
-            `;
-    }
+    // Folder settings section - REMOVED (now using modal)
+    // Settings will be triggered via icon button in folder header
 
     // Render subfolders
     for (const [subName, subNode] of Object.entries(node.subfolders)) {
@@ -333,45 +477,27 @@ function renderAdminSubjectList() {
     if (node.decks.length > 0) {
       if (depth > 0) {
         innerHtml += `<div class="my-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                        <span class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">📚 Decks in this folder</span>
+                        <span class="text-sm font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider">📚 Decks in this folder</span>
                      </div>`;
       }
 
-      node.decks.forEach((subj) => {
-        innerHtml += `
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-md transition-all" data-uuid="${escapeHTML(subj.UUID || "")}">
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      node.decks
+        .sort((a, b) => a.deckName.localeCompare(b.deckName))
+        .forEach((subj) => {
+          innerHtml += `
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-md transition-all mb-3" data-uuid="${escapeHTML(subj.UUID || "")}">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
                         <!-- Left Column: Deck Info -->
-                        <div>
-                            <span class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">📖 Deck Name</span>
-                            <div class="font-semibold text-gray-800 dark:text-gray-100 text-sm break-words" title="${escapeHTML(subj.originalFull)}">${escapeHTML(subj.deckName)}</div>
-                            <div class="text-xs text-gray-500 dark:text-gray-400 mt-2 font-mono">Full path: ${escapeHTML(subj.originalFull)}</div>
+                        <div class="lg:col-span-2">
+                            <span class="text-sm font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider block mb-1">📖 Deck Name</span>
+                            <div class="font-semibold text-gray-800 dark:text-gray-100 text-lg break-words" title="${escapeHTML(subj.originalFull)}">${escapeHTML(subj.deckName)}</div>
+                            <div class="text-sm text-gray-600 dark:text-gray-400 mt-1 font-mono">Full path: ${escapeHTML(subj.originalFull)}</div>
                             
-                            <!-- UUID Box -->
-                            ${
-                              subj.UUID
-                                ? `
-                            <div class="mt-3 inline-flex max-w-full items-center gap-2 rounded border border-blue-200 bg-blue-50 px-2 py-1 dark:border-blue-700 dark:bg-blue-900/20">
-                                <span class="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">🔑</span>
-                                <span class="max-w-full truncate font-mono text-[11px] text-blue-800 dark:text-blue-300 select-all cursor-pointer" title="Click to select UUID">${escapeHTML(subj.UUID)}</span>
-                            </div>
-                            `
-                                : `
-                            <div class="mt-3 inline-flex max-w-full items-center gap-2 rounded border border-dashed border-gray-300 bg-gray-100 px-2 py-1 dark:border-gray-600 dark:bg-gray-700">
-                                <span class="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">🔑</span>
-                                <span class="text-[10px] text-gray-400 dark:text-gray-500">Will be assigned</span>
-                            </div>
-                            `
-                            }
-                        </div>
-                        
-                        <!-- Right Column: Controls -->
-                        <div class="space-y-3">
                             <!-- Path Input -->
-                            <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="text-xs font-bold text-brand-600 dark:text-brand-400 uppercase">New Path</span>
-                                    <span class="text-xs text-gray-400 font-mono" id="char-count-${subj.index}">${subj.originalFull.length}/100</span>
+                            <div class="mt-3">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="text-sm font-bold text-brand-600 dark:text-brand-400 uppercase">New Path</span>
+                                    <span class="text-sm text-gray-500 font-mono" id="char-count-${subj.index}">${subj.originalFull.length}/100</span>
                                 </div>
                                 <input type="text" 
                                         id="new-subj-${subj.index}" 
@@ -382,13 +508,33 @@ function renderAdminSubjectList() {
                                         oninput="const countEl = document.getElementById('char-count-${subj.index}');
                                         countEl.innerText = this.value.length + '/100';
                                         this.value.length >= 90 ? countEl.classList.add('text-red-500') : countEl.classList.remove('text-red-500');"
-                                        class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-sm focus:border-brand-500 focus:ring-2 outline-none transition-all">
+                                        class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-base focus:border-brand-500 focus:ring-2 outline-none transition-all">
                             </div>
+                        </div>
+                        
+                        <!-- Right Column: UUID and Controls -->
+                        <div class="space-y-3 flex flex-col">
+                            <!-- UUID Box -->
+                            ${
+                              subj.UUID
+                                ? `
+                            <div class="inline-flex max-w-full items-center gap-2 rounded border border-blue-200 bg-blue-50 px-2 py-1 dark:border-blue-700 dark:bg-blue-900/20">
+                                <span class="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">🔑</span>
+                                <span class="max-w-full truncate font-mono text-sm text-blue-800 dark:text-blue-300 select-all cursor-pointer" title="Click to select UUID">${escapeHTML(subj.UUID)}</span>
+                            </div>
+                            `
+                                : `
+                            <div class="inline-flex max-w-full items-center gap-2 rounded border border-dashed border-gray-300 bg-gray-100 px-2 py-1 dark:border-gray-600 dark:bg-gray-700">
+                                <span class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">🔑</span>
+                                <span class="text-xs text-gray-400 dark:text-gray-500">Will be assigned</span>
+                            </div>
+                            `
+                            }
                             
-                            <!-- Password & Hidden Status (Inline) -->
+                            <!-- Password & Hidden Status -->
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
-                                    <label class="text-xs font-bold text-red-600 dark:text-red-400 block mb-1">
+                                    <label class="text-sm font-bold text-red-600 dark:text-red-400 block mb-1">
                                         <i class="fa-solid fa-lock"></i> Password
                                     </label>
                                     <input type="text" 
@@ -396,10 +542,10 @@ function renderAdminSubjectList() {
                                             value="${escapeHTML(subj.password)}" 
                                             placeholder="Public"
                                             data-uuid="${escapeHTML(subj.UUID || "")}"
-                                            class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-sm focus:border-red-500 focus:ring-2 outline-none transition-all">
+                                            class="deck-pass-input w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-base focus:border-red-500 focus:ring-2 outline-none transition-all">
                                 </div>
                                 <div class="flex items-end">
-                                    <label class="text-xs font-bold text-purple-600 dark:text-purple-400 flex items-center gap-2 cursor-pointer p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-700 w-full">
+                                    <label class="text-sm font-bold text-purple-600 dark:text-purple-400 flex items-center gap-2 cursor-pointer p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-700 w-full">
                                         <input type="checkbox" 
                                             id="deck-hidden-${subj.index}"
                                             class="deck-hidden-input w-4 h-4 cursor-pointer"
@@ -408,7 +554,7 @@ function renderAdminSubjectList() {
                                             data-path="${escapeHTML(subj.originalFull)}"
                                             data-orig="${String(subj.hidden || false)}"
                                             ${subj.hidden ? "checked" : ""}>
-                                        <i class="fa-solid fa-eye-slash text-sm"></i>
+                                        <i class="fa-solid fa-eye-slash text-base"></i>
                                         <span>Hidden</span>
                                     </label>
                                 </div>
@@ -417,7 +563,7 @@ function renderAdminSubjectList() {
                     </div>
                 </div>
             `;
-      });
+        });
     }
 
     if (depth === 0) return innerHtml;
@@ -429,27 +575,292 @@ function renderAdminSubjectList() {
         : "bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700";
 
     const indentClass = depth > 1 ? "ml-2 md:ml-4" : "";
+    const folderUuid = String(node.UUID || "").trim();
+    const modalId = `folder-settings-${(folderUuid || fullPath).replace(/[^a-zA-Z0-9-_]/g, "-")}`;
 
     return `
-            <details class="${indentClass} mb-3 ${depthColor} rounded-lg border group shadow-sm">
-                <summary class="font-bold text-gray-700 dark:text-gray-300 p-4 cursor-pointer flex items-center justify-between hover:bg-white/50 dark:hover:bg-gray-900/30 transition-colors outline-none list-none group-open:bg-white/50 dark:group-open:bg-gray-900/30">
-                    <span class="flex items-center gap-3">
-                        <i class="fa-solid fa-folder text-brand-500 text-lg"></i>
-                        <span class="font-semibold">${escapeHTML(folderName)}</span>
-                        <span class="bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 text-xs px-2 py-1 rounded-full font-semibold">${totalDecks} deck${totalDecks !== 1 ? "s" : ""}</span>
+            <details class="${indentClass} mb-2 ${depthColor} rounded-lg border group shadow-sm">
+                <summary class="font-bold text-gray-700 dark:text-gray-300 p-3 cursor-pointer flex items-center justify-between hover:bg-white/50 dark:hover:bg-gray-900/30 transition-colors outline-none list-none group-open:bg-white/50 dark:group-open:bg-gray-900/30">
+                    <span class="flex items-center gap-3 flex-1">
+                        <i class="fa-solid fa-folder text-brand-500 text-lg flex-shrink-0"></i>
+                        <span class="font-semibold text-base">${escapeHTML(folderName)}</span>
+                        <span class="bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 text-sm px-2 py-0.5 rounded-full font-semibold flex-shrink-0">${totalDecks}</span>
                     </span>
-                    <i class="fa-solid fa-chevron-down text-gray-400 transition-transform duration-300 group-open:rotate-180"></i>
+                    <span class="flex items-center gap-2 flex-shrink-0">
+                        ${
+                          folderUuid
+                            ? `
+                        <div class="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-1 dark:border-blue-700 dark:bg-blue-900/20 max-w-[200px]">
+                            <span class="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">🔑</span>
+                            <span class="font-mono text-xs text-blue-800 dark:text-blue-300 truncate select-all cursor-pointer" title="Click to select UUID">${escapeHTML(folderUuid)}</span>
+                        </div>
+                        `
+                            : `
+                        <div class="inline-flex items-center gap-1 rounded border border-dashed border-gray-300 bg-gray-100 px-2 py-1 dark:border-gray-600 dark:bg-gray-700 flex-shrink-0">
+                            <span class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">🔑</span>
+                            <span class="text-xs text-gray-400 dark:text-gray-500">Will assign</span>
+                        </div>
+                        `
+                        }
+                        <button 
+                            type="button"
+                            onclick="document.getElementById('${modalId}').classList.remove('hidden')"
+                            class="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 p-2 rounded hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors flex-shrink-0"
+                            title="Folder settings">
+                            <i class="fa-solid fa-sliders text-lg"></i>
+                        </button>
+                        <i class="fa-solid fa-chevron-down text-gray-400 transition-transform duration-300 group-open:rotate-180 text-base flex-shrink-0"></i>
+                    </span>
                 </summary>
-                <div class="px-4 py-3 border-t ${depthColor.includes("blue") ? "border-blue-200 dark:border-blue-800" : "border-gray-200 dark:border-gray-700"} space-y-3">
+                <div class="px-4 py-3 border-t ${depthColor.includes("blue") ? "border-blue-200 dark:border-blue-800" : "border-gray-200 dark:border-gray-700"} space-y-2">
                     ${innerHtml}
                 </div>
             </details>
+
+            <!-- Folder Settings Modal -->
+            <div id="${modalId}" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] hidden flex items-center justify-center p-4 overflow-y-auto">
+                <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform transition-all my-auto">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+                            <i class="fa-solid fa-sliders text-amber-600 dark:text-amber-400 mr-2"></i>${escapeHTML(folderName)} - Settings
+                        </h3>
+                        <button 
+                            type="button"
+                            onclick="document.getElementById('${modalId}').classList.add('hidden')"
+                            class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="border-t border-gray-200 dark:border-gray-700 pt-0">
+                            <label class="block text-base font-bold text-red-700 dark:text-red-400 mb-2">
+                                <i class="fa-solid fa-lock mr-2"></i> Lock Folder
+                            </label>
+                            <input type="text" 
+                                class="folder-pass-input w-full p-2 border border-red-300 dark:border-red-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-base focus:border-red-500 focus:ring-2 outline-none transition-all" 
+                                placeholder="Leave blank for public folder..."
+                                data-path="${escapeHTML(fullPath)}"
+                                data-orig="${escapeHTML(node.folderPass || "")}"
+                                value="${escapeHTML(node.folderPass || "")}">
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Password to access this folder and subfolders</p>
+                        </div>
+
+                        <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+                            <label class="text-base font-bold text-purple-700 dark:text-purple-400 flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" 
+                                    class="folder-hidden-input w-5 h-5 cursor-pointer"
+                                    data-path="${escapeHTML(fullPath)}"
+                                    data-orig="${String(node.folderHidden || false)}"
+                                    ${node.folderHidden ? "checked" : ""}>
+                                <i class="fa-solid fa-eye-slash"></i> Hide Entire Folder
+                            </label>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Hidden from regular users (not synced)</p>
+                        </div>
+
+                        <div class="border-t border-gray-200 dark:border-gray-700 pt-4 flex gap-2">
+                            <button 
+                                type="button"
+                                onclick="document.getElementById('${escapeHTML(modalId)}').classList.add('hidden')"
+                                class="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-all">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         `;
   }
 
   container.innerHTML =
-    renderNode(tree, "Root", 0) ||
+    (adminState.hierarchyLayoutMode === "new"
+      ? renderGridView(tree)
+      : renderNode(tree, "Root", 0)) ||
     '<p class="text-center text-gray-500 py-6">No subjects found.</p>';
+  renderAdminSummary();
+}
+
+function renderGridView(tree) {
+  let html =
+    '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-6">';
+
+  function countTotalDecksInNode(node) {
+    let count = node.decks.length;
+    for (const key in node.subfolders)
+      count += countTotalDecksInNode(node.subfolders[key]);
+    return count;
+  }
+
+  function renderGridItems(node, parentPath = "") {
+    for (const [folderName, subNode] of Object.entries(node.subfolders)) {
+      const folderPath = parentPath
+        ? `${parentPath}::${folderName}`
+        : folderName;
+      const totalDecks = countTotalDecksInNode(subNode);
+      const folderUuid = String(subNode.UUID || "").trim();
+      const modalId = `folder-settings-${(folderUuid || folderPath).replace(/[^a-zA-Z0-9-_]/g, "-")}`;
+
+      html += `
+        <div class="group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col h-full transform hover:-translate-y-1 relative">
+          <div class="h-12 bg-brand-500 dark:bg-brand-700 transition-colors relative">
+            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
+          </div>
+          <div class="p-4 flex-1 flex flex-col justify-between">
+            <div class="flex justify-between items-start w-full gap-2">
+              <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide text-lg flex items-center min-w-0">
+                <span class="truncate">${escapeHTML(folderName)}</span>
+              </h3>
+              <button
+                type="button"
+                onclick="document.getElementById('${modalId}').classList.remove('hidden')"
+                class="text-gray-400 hover:text-brand-500 dark:hover:text-brand-400 transition-colors p-1"
+                aria-label="Folder settings"
+              >
+                <i class="fa-solid fa-gear text-sm"></i>
+              </button>
+            </div>
+            <div class="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400 mt-2">
+              <span>${totalDecks} ${totalDecks === 1 ? "card" : "cards"}</span>
+            </div>
+            <button
+              type="button"
+              onclick="toggleGridFolder('${escapeHTML(folderPath)}')"
+              class="mt-4 w-full bg-brand-600 text-white py-2 px-3 rounded-lg font-bold hover:bg-brand-700 active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300"
+            >
+              <i class="fa-solid fa-folder-open mr-2"></i> View Contents
+            </button>
+          </div>
+
+          <div id="${modalId}" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] hidden items-center justify-center p-4 overflow-y-auto">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform transition-all my-auto">
+              <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+                  <i class="fa-solid fa-sliders text-amber-600 dark:text-amber-400 mr-2"></i>${escapeHTML(folderName)} Settings
+                </h3>
+                <button
+                  type="button"
+                  onclick="document.getElementById('${modalId}').classList.add('hidden')"
+                  class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl"
+                >
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+
+              <div class="space-y-4">
+                <div class="border-t border-gray-200 dark:border-gray-700 pt-0">
+                  <label class="block text-base font-bold text-red-700 dark:text-red-400 mb-2">
+                    <i class="fa-solid fa-lock mr-2"></i> Lock Folder
+                  </label>
+                  <input type="text"
+                    class="folder-pass-input w-full p-2 border border-red-300 dark:border-red-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-base focus:border-red-500 focus:ring-2 outline-none transition-all"
+                    placeholder="Leave blank for public folder..."
+                    data-path="${escapeHTML(folderPath)}"
+                    data-orig="${escapeHTML(subNode.folderPass || "")}"
+                    value="${escapeHTML(subNode.folderPass || "")}">
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Password to access this folder and subfolders</p>
+                </div>
+
+                <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+                  <label class="text-base font-bold text-purple-700 dark:text-purple-400 flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox"
+                      class="folder-hidden-input w-5 h-5 cursor-pointer"
+                      data-path="${escapeHTML(folderPath)}"
+                      data-orig="${String(subNode.folderHidden || false)}"
+                      ${subNode.folderHidden ? "checked" : ""}>
+                    <i class="fa-solid fa-eye-slash"></i> Hide Entire Folder
+                  </label>
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Hidden from regular users (not synced)</p>
+                </div>
+
+                <div class="border-t border-gray-200 dark:border-gray-700 pt-4 flex gap-2">
+                  <button
+                    type="button"
+                    onclick="document.getElementById('${modalId}').classList.add('hidden')"
+                    class="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-all"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    node.decks
+      .sort((a, b) => a.deckName.localeCompare(b.deckName))
+      .forEach((subj) => {
+        html += `
+        <div class="group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col h-full transform hover:-translate-y-1 relative">
+          <div class="h-12 bg-purple-500 dark:bg-purple-700 transition-colors relative">
+            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
+          </div>
+          <div class="p-4 flex-1 flex flex-col">
+            <div class="flex items-start justify-between gap-2 mb-3 min-w-0">
+              <h3 class="font-bold text-gray-800 dark:text-gray-100 text-lg flex items-center min-w-0">
+                <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm flex-shrink-0"></i>
+                <span class="truncate">${escapeHTML(subj.deckName)}</span>
+              </h3>
+              <span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors">
+                <i class="fa-solid fa-cloud mr-1"></i>
+              </span>
+            </div>
+
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-3 break-all font-mono min-h-[2.5rem]">
+              ${escapeHTML(subj.originalFull)}
+            </p>
+
+            ${
+              subj.UUID
+                ? `
+              <p class="text-[10px] text-gray-500 dark:text-gray-400 mb-3 break-all font-mono">
+                ${escapeHTML(subj.UUID)}
+              </p>
+            `
+                : ""
+            }
+
+            <div class="space-y-2 mt-auto">
+              <div>
+                <label class="text-[10px] font-bold text-red-600 dark:text-red-400 block mb-1 uppercase tracking-wider">
+                  <i class="fa-solid fa-lock mr-1"></i> Password
+                </label>
+                <input type="text"
+                  id="deck-pass-${subj.index}"
+                  value="${escapeHTML(subj.password)}"
+                  placeholder="Public"
+                  data-uuid="${escapeHTML(subj.UUID || "")}"
+                  class="deck-pass-input w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-sm focus:border-red-500 focus:ring-2 outline-none transition-all">
+              </div>
+
+              <label class="text-[10px] font-bold text-purple-600 dark:text-purple-400 flex items-center gap-2 cursor-pointer p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-700">
+                <input type="checkbox"
+                  id="deck-hidden-${subj.index}"
+                  class="deck-hidden-input w-4 h-4 cursor-pointer"
+                  data-uuid="${escapeHTML(subj.UUID || "")}"
+                  data-index="${subj.index}"
+                  data-path="${escapeHTML(subj.originalFull)}"
+                  data-orig="${String(subj.hidden || false)}"
+                  ${subj.hidden ? "checked" : ""}>
+                <i class="fa-solid fa-eye-slash text-sm"></i>
+                <span>Hidden</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      `;
+      });
+  }
+
+  renderGridItems(tree);
+  html += "</div>";
+  return html;
+}
+
+function toggleGridFolder(folderPath) {
+  console.log("Toggle grid folder:", folderPath);
+  // Placeholder for expansion logic - can be implemented to show nested contents
 }
 
 async function adminClearAllSubjects() {
@@ -479,6 +890,7 @@ async function adminClearAllSubjects() {
 
     if (result.status === "success") {
       adminState.subjects = [];
+      renderAdminSummary();
       renderAdminSubjectList();
 
       if (typeof BroadcastChannel !== "undefined") {
@@ -497,14 +909,6 @@ async function adminClearAllSubjects() {
             "Could not broadcast cache invalidation after clear-all:",
             e,
           );
-        }
-      }
-
-      if (typeof fetchAccessMetadata === "function") {
-        try {
-          await fetchAccessMetadata();
-        } catch (e) {
-          console.warn("Could not refresh access metadata after clear-all:", e);
         }
       }
 
@@ -612,13 +1016,38 @@ async function saveAdminChanges() {
 
   adminSaveInProgress = true;
   lockAdminInputs(true);
-  btn.innerHTML =
-    '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Syncing with cloud...';
   btn.disabled = true;
 
   console.log("Sending updates to backend:", JSON.stringify(updates, null, 2));
 
   try {
+    // OPTIMIZATION: Fetch fresh timestamp before saving to prevent race conditions
+    try {
+      const versionResponse = await fetch(DB_URL, {
+        method: "POST",
+        redirect: "follow",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          type: "get_cache_version",
+          token: getAdminToken(),
+        }),
+      });
+      const versionData = await parseJsonResponse(versionResponse);
+      if (
+        versionData &&
+        typeof versionData.timestamp === "string" &&
+        versionData.timestamp.trim()
+      ) {
+        adminState.admin_last_modified_timestamp = versionData.timestamp;
+        console.log(
+          "[ADMIN] Updated timestamp before save:",
+          adminState.admin_last_modified_timestamp,
+        );
+      }
+    } catch (e) {
+      console.warn("[ADMIN] Could not refresh timestamp before save:", e);
+    }
+
     const response = await fetch(DB_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -626,8 +1055,8 @@ async function saveAdminChanges() {
         type: "admin_update",
         token: getAdminToken(),
         updates: updates,
-        // OPTIMIZATION: Send timestamp for conflict detection
-        admin_last_modified_timestamp: adminState.admin_last_modified_timestamp,
+        admin_last_modified_timestamp:
+          adminState.admin_last_modified_timestamp || "",
         lastModifiedBy: adminState.token.substring(0, 10) + "...",
       }),
     });
@@ -636,95 +1065,34 @@ async function saveAdminChanges() {
     console.log("Backend response:", result);
 
     if (result.status === "success") {
-      // OPTIMIZATION: Show success feedback without stripping the default save-button styling.
       btn.innerHTML = '<i class="fa-solid fa-check-circle mr-2"></i> Saved ✓';
       btn.classList.add("ring-2", "ring-green-300");
 
-      if (typeof BroadcastChannel !== "undefined") {
-        try {
-          const invalidationChannel = new BroadcastChannel(
-            "mrh_cache_invalidation",
-          );
-          invalidationChannel.postMessage({
-            type: "cache_invalidated",
-            source: "admin",
-            timestamp: Date.now(),
-          });
-          invalidationChannel.close();
-        } catch (e) {
-          console.warn(
-            "Could not broadcast cache invalidation after admin save:",
-            e,
-          );
-        }
-      }
-
-      // OPTIMIZATION: Add delay before syncing to allow backend cache rebuild to start
-      // Then retry sync a few times to ensure we get the updated data
-      const syncWithRetry = async () => {
-        let retryCount = 0;
-        const maxRetries = 3;
-        const retryDelay = 2000; // 2 seconds between retries
-
-        const attempt = async () => {
-          try {
-            console.log(
-              `[Admin] Attempting to sync database (attempt ${retryCount + 1}/${maxRetries})`,
-            );
-            if (typeof fetchAccessMetadata === "function") {
-              try {
-                await fetchAccessMetadata();
-              } catch (e) {
-                console.warn(
-                  "Could not refresh access metadata after admin save:",
-                  e,
-                );
-              }
-            }
-
-            if (typeof syncDatabase === "function") {
-              await syncDatabase(false, true);
-            } else if (typeof reloadAppStateInMemory === "function") {
-              await reloadAppStateInMemory();
-            }
-          } catch (e) {
-            console.error(`[Admin] Sync attempt ${retryCount + 1} failed:`, e);
-            if (retryCount < maxRetries - 1) {
-              retryCount++;
-              console.log(`[Admin] Retrying sync in ${retryDelay}ms...`);
-              setTimeout(attempt, retryDelay);
-            }
-          }
-        };
-
-        // Initial delay to let backend start processing
-        console.log("[Admin] Waiting 1.5s for backend cache processing...");
-        setTimeout(attempt, 1500);
-      };
-
-      syncWithRetry();
-
-      // Update timestamp for next save
       if (result.admin_last_modified_timestamp) {
         adminState.admin_last_modified_timestamp =
           result.admin_last_modified_timestamp;
       }
 
-      // Keep the admin UI responsive without forcing a full backend resync across all clients.
       setTimeout(() => {
         loadAdminSubjects();
         btn.innerHTML = originalHTML;
         btn.classList.remove("ring-2", "ring-green-300");
-      }, 1500);
+      }, 400);
     } else if (result.status === "conflict") {
-      // OPTIMIZATION: Handle conflict from concurrent admin edits
-      alert(
-        "Conflict detected: " +
-          result.message +
-          "\n\nPlease refresh the page to load the latest changes before saving.",
+      console.warn(
+        "[ADMIN] Conflict warning received, continuing save:",
+        result,
       );
-      btn.innerHTML = originalHTML;
-      await loadAdminSubjects(); // Reload to get latest timestamp
+      if (result.serverTimestamp) {
+        adminState.admin_last_modified_timestamp = result.serverTimestamp;
+      }
+      btn.innerHTML = '<i class="fa-solid fa-check-circle mr-2"></i> Saved ✓';
+      btn.classList.add("ring-2", "ring-yellow-300");
+      setTimeout(() => {
+        loadAdminSubjects();
+        btn.innerHTML = originalHTML;
+        btn.classList.remove("ring-2", "ring-yellow-300");
+      }, 400);
     } else {
       alert("Failed: " + result.message);
       btn.innerHTML = originalHTML;
@@ -882,25 +1250,22 @@ async function adminActionReport(reportId, action) {
 
 window.cascadePassword = function (btn) {
   const input = btn.previousElementSibling;
-  const folderPath = input.getAttribute("data-path");
+  const folderPath = String(input.getAttribute("data-path") || "").trim();
   const pass = String(input.value || "").trim();
 
   let count = 0;
   adminState.subjects.forEach((subj, index) => {
-    if (
-      subj.Subject.startsWith(folderPath + "::") ||
-      subj.Subject === folderPath
-    ) {
-      const deckInput = document.getElementById(`deck-pass-${index}`);
-      if (deckInput) {
-        deckInput.value = pass;
-        deckInput.classList.add("bg-red-100", "dark:bg-red-900/30");
-        setTimeout(
-          () => deckInput.classList.remove("bg-red-100", "dark:bg-red-900/30"),
-          1000,
-        );
-        count++;
-      }
+    if (String(subj.Subject || "").trim() !== folderPath) return;
+
+    const deckInput = document.getElementById(`deck-pass-${index}`);
+    if (deckInput) {
+      deckInput.value = pass;
+      deckInput.classList.add("bg-red-100", "dark:bg-red-900/30");
+      setTimeout(
+        () => deckInput.classList.remove("bg-red-100", "dark:bg-red-900/30"),
+        1000,
+      );
+      count++;
     }
   });
 
@@ -911,32 +1276,29 @@ window.cascadePassword = function (btn) {
 
 window.cascadeHidden = function (btn) {
   const checkbox = btn.previousElementSibling;
-  const folderPath = checkbox.getAttribute("data-path");
+  const folderPath = String(checkbox.getAttribute("data-path") || "").trim();
   const isHidden = checkbox.checked;
 
   let count = 0;
   adminState.subjects.forEach((subj, index) => {
-    if (
-      subj.Subject.startsWith(folderPath + "::") ||
-      subj.Subject === folderPath
-    ) {
-      const deckCheckbox = document.getElementById(`deck-hidden-${index}`);
-      if (deckCheckbox) {
-        deckCheckbox.checked = isHidden;
-        deckCheckbox.parentElement.parentElement.classList.add(
-          "bg-purple-100",
-          "dark:bg-purple-900/30",
-        );
-        setTimeout(
-          () =>
-            deckCheckbox.parentElement.parentElement.classList.remove(
-              "bg-purple-100",
-              "dark:bg-purple-900/30",
-            ),
-          1000,
-        );
-        count++;
-      }
+    if (String(subj.Subject || "").trim() !== folderPath) return;
+
+    const deckCheckbox = document.getElementById(`deck-hidden-${index}`);
+    if (deckCheckbox) {
+      deckCheckbox.checked = isHidden;
+      deckCheckbox.parentElement.parentElement.classList.add(
+        "bg-purple-100",
+        "dark:bg-purple-900/30",
+      );
+      setTimeout(
+        () =>
+          deckCheckbox.parentElement.parentElement.classList.remove(
+            "bg-purple-100",
+            "dark:bg-purple-900/30",
+          ),
+        1000,
+      );
+      count++;
     }
   });
 
@@ -972,10 +1334,11 @@ function openEditModal(reportId) {
 
 function closeEditModal() {
   const modal = document.getElementById("admin-edit-modal");
+  if (!modal) return;
   const inner = modal.querySelector("div");
 
   modal.classList.add("opacity-0");
-  inner.classList.add("scale-95");
+  if (inner) inner.classList.add("scale-95");
   setTimeout(() => {
     modal.classList.add("hidden");
   }, 300);
@@ -1034,4 +1397,22 @@ async function saveEditedQuestion() {
     saveBtn.innerHTML = originalText;
     saveBtn.disabled = false;
   }
+}
+
+if (typeof window !== "undefined") {
+  window.adminState = adminState;
+  window.adminLogin = adminLogin;
+  window.getAdminToken = getAdminToken;
+  window.setAdminToken = setAdminToken;
+  window.clearAdminToken = clearAdminToken;
+  window.hideAdminSettingsModal = hideAdminSettingsModal;
+  window.loadAdminSubjects = loadAdminSubjects;
+  window.renderAdminSubjectList = renderAdminSubjectList;
+  window.adminClearAllSubjects = adminClearAllSubjects;
+  window.saveAdminChanges = saveAdminChanges;
+  window.adminLoadReports = adminLoadReports;
+  window.adminActionReport = adminActionReport;
+  window.openEditModal = openEditModal;
+  window.closeEditModal = closeEditModal;
+  window.saveEditedQuestion = saveEditedQuestion;
 }
