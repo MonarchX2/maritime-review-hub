@@ -1,439 +1,621 @@
 (function (globalScope) {
+  const CHOICE_KEYS = ["A", "B", "C", "D"];
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const HOUR_MS = 60 * 60 * 1000;
+
+  function getElement(id) {
+    return typeof document !== "undefined" ? document.getElementById(id) : null;
+  }
+
+  function hasDOM() {
+    return typeof document !== "undefined";
+  }
+
+  function getState() {
+    return globalScope.state || {};
+  }
+
+  function getPrefs() {
+    const state = getState();
+    return state.prefs || {};
+  }
+
+  function getStats() {
+    const state = getState();
+    return state.stats || {};
+  }
+
+  function getSession() {
+    const state = getState();
+    return state.session || null;
+  }
+
+  function normalizeText(value) {
+    return String(value ?? "").trim();
+  }
+
+  function normalizeAnswer(value) {
+    const answer = normalizeText(value).toUpperCase();
+    return CHOICE_KEYS.includes(answer) ? answer : "";
+  }
+
+  function isUsableChoice(value) {
+    const text = normalizeText(value);
+    return (
+      text !== "" &&
+      text.toLowerCase() !== "undefined" &&
+      text.toLowerCase() !== "null"
+    );
+  }
+
+  function getValidChoices(question) {
+    return CHOICE_KEYS.map((key) => question?.[`Choice${key}`])
+      .filter(isUsableChoice)
+      .map(normalizeText);
+  }
+
+  function getChoiceText(question, answer) {
+    const key = normalizeAnswer(answer);
+    return key ? normalizeText(question?.[`Choice${key}`]) : "";
+  }
+
+  function getCurrentQuestion() {
+    const session = getSession();
+    if (!session || !Array.isArray(session.questions)) return null;
+    const index = Number.isInteger(session.currentIndex)
+      ? session.currentIndex
+      : -1;
+    return index >= 0 && index < session.questions.length
+      ? session.questions[index]
+      : null;
+  }
+
+  function safeClearAutoNextTimeout() {
+    const session = getSession();
+    if (session?.autoNextTimeout) {
+      clearTimeout(session.autoNextTimeout);
+      session.autoNextTimeout = null;
+    }
+  }
+
+  function stopTimerSafely() {
+    if (typeof globalScope.stopVisualTimer === "function") {
+      globalScope.stopVisualTimer();
+    }
+  }
+
+  function startTimerSafely() {
+    if (typeof globalScope.startVisualTimer === "function") {
+      globalScope.startVisualTimer();
+    }
+  }
+
   function prepareSessionPool(pool) {
-    let randomizedPool = [...pool];
-    if (globalScope.state.prefs.shuffleQuestions !== false) {
+    const sourcePool = Array.isArray(pool) ? pool.filter(Boolean) : [];
+    const prefs = getPrefs();
+    const stats = getStats();
+    const mistakes = Array.isArray(stats.mistakes) ? stats.mistakes : [];
+    let randomizedPool = [...sourcePool];
+
+    if (
+      prefs.shuffleQuestions !== false &&
+      typeof globalScope.shuffleArray === "function"
+    ) {
       randomizedPool = globalScope.shuffleArray(randomizedPool);
     }
-    randomizedPool.sort((a, b) => {
-      const aIsMistake = globalScope.state.stats.mistakes.includes(a.ID);
-      const bIsMistake = globalScope.state.stats.mistakes.includes(b.ID);
-      if (aIsMistake && !bIsMistake) return Math.random() > 0.3 ? -1 : 1;
-      if (!aIsMistake && bIsMistake) return Math.random() > 0.3 ? 1 : -1;
-      return 0;
+
+    // Do not use Math.random() inside Array.sort(): a non-deterministic comparator
+    // violates the comparator contract and can produce inconsistent ordering.
+    // Keep the existing random order, then move mistakes ahead in one stable pass.
+    const mistakeSet = new Set(mistakes);
+    const mistakesFirst = [];
+    const others = [];
+    randomizedPool.forEach((question) => {
+      if (mistakeSet.has(question?.ID)) mistakesFirst.push(question);
+      else others.push(question);
     });
+    randomizedPool = mistakesFirst.concat(others);
 
     return randomizedPool.map((originalQ) => {
-      let q = { ...originalQ };
-      let validChoices = [];
-      const rawChoices = [q.ChoiceA, q.ChoiceB, q.ChoiceC, q.ChoiceD];
-      rawChoices.forEach((c) => {
-        if (
-          c !== undefined &&
-          c !== null &&
-          String(c).trim() !== "" &&
-          String(c).trim().toLowerCase() !== "undefined"
-        ) {
-          validChoices.push(String(c).trim());
-        }
+      const q = { ...originalQ };
+      const originalAnswer = normalizeText(originalQ?.Answer);
+      const originalAnswerKey = normalizeAnswer(originalAnswer);
+      const originalCorrectText = originalAnswerKey
+        ? getChoiceText(originalQ, originalAnswerKey)
+        : originalAnswer;
+      let validChoices = getValidChoices(q);
+
+      if (
+        prefs.shuffleChoices !== false &&
+        typeof globalScope.shuffleArray === "function"
+      ) {
+        validChoices = globalScope.shuffleArray(validChoices);
+      }
+
+      CHOICE_KEYS.forEach((key, index) => {
+        q[`Choice${key}`] = validChoices[index] || "";
       });
 
-      let originalAns = String(q.Answer || "")
-        .trim()
-        .toUpperCase();
-      let correctText = "";
+      const normalizedCorrect =
+        normalizeText(originalCorrectText).toLowerCase();
+      const matchingIndex = validChoices.findIndex(
+        (choice) => normalizeText(choice).toLowerCase() === normalizedCorrect,
+      );
 
-      if (["A", "B", "C", "D"].includes(originalAns)) {
-        correctText = String(originalQ[`Choice${originalAns}`] || "").trim();
+      if (matchingIndex >= 0 && matchingIndex < CHOICE_KEYS.length) {
+        q.Answer = CHOICE_KEYS[matchingIndex];
+        delete q._invalidAnswer;
+      } else if (originalAnswerKey && validChoices.length === 0) {
+        // Preserve a valid answer key for non-choice/identification questions.
+        q.Answer = originalAnswerKey;
+        delete q._invalidAnswer;
+      } else if (originalAnswer && validChoices.length === 0) {
+        // Non-MCQ questions may legitimately store their answer as free text.
+        q.Answer = originalAnswer;
+        delete q._invalidAnswer;
       } else {
-        correctText = String(q.Answer || "").trim();
+        // Never silently turn corrupt answer data into a correct A answer.
+        q.Answer = "";
+        q._invalidAnswer = true;
       }
 
-      if (validChoices.length > 0) {
-        if (globalScope.state.prefs.shuffleChoices !== false) {
-          validChoices = globalScope.shuffleArray(validChoices);
-        }
-
-        q.ChoiceA = validChoices[0] || "";
-        q.ChoiceB = validChoices[1] || "";
-        q.ChoiceC = validChoices[2] || "";
-        q.ChoiceD = validChoices[3] || "";
-
-        // Match answer with normalized comparison (case-insensitive, trimmed)
-        let answerFound = false;
-        const normalizedCorrect = correctText.toLowerCase();
-        for (let i = 0; i < validChoices.length; i++) {
-          if (validChoices[i].toLowerCase() === normalizedCorrect) {
-            q.Answer = ["A", "B", "C", "D"][i];
-            answerFound = true;
-            break;
-          }
-        }
-        // If answer not found through matching, default to first choice
-        if (!answerFound) {
-          q.Answer = "A";
-        }
-      }
       return q;
     });
   }
 
   function initSession() {
-    const filterVal = document.getElementById("filter-subject").value;
-    let pool = [];
-
-    if (filterVal === "MISTAKES") {
-      pool = globalScope.state.db.filter((q) =>
-        globalScope.state.stats.mistakes.includes(q.ID),
+    const filterEl = getElement("filter-subject");
+    const state = getState();
+    const stats = getStats();
+    if (!filterEl || !Array.isArray(state.db)) {
+      console.error(
+        "Cannot start session: quiz filter or question database is unavailable.",
       );
-    } else if (filterVal.startsWith("SUBJ:")) {
-      const subj = filterVal.replace("SUBJ:", "");
-      pool = globalScope.getQuestionsForSubject(subj);
-    } else if (filterVal.startsWith("TAG:")) {
-      const tag = filterVal.replace("TAG:", "");
-      pool = globalScope.state.db.filter((q) => q.Tags && q.Tags.includes(tag));
-    } else {
-      pool = globalScope.state.db;
-    }
-
-    if (pool.length === 0) {
-      alert("No questions found for this filter.");
       return;
     }
-    pool = prepareSessionPool(pool);
 
-    clearTimeout(globalScope.state.session.autoNextTimeout);
+    const filterVal = normalizeText(filterEl.value);
+    let pool;
+    const mistakes = Array.isArray(stats.mistakes) ? stats.mistakes : [];
 
-    if (typeof globalScope.stopVisualTimer === "function") {
-      globalScope.stopVisualTimer();
+    if (filterVal === "MISTAKES") {
+      const mistakeSet = new Set(mistakes);
+      pool = state.db.filter((q) => mistakeSet.has(q?.ID));
+    } else if (filterVal.startsWith("SUBJ:")) {
+      const subj = filterVal.slice(5);
+      pool =
+        typeof globalScope.getQuestionsForSubject === "function"
+          ? globalScope.getQuestionsForSubject(subj)
+          : state.db.filter((q) => q?.Subject === subj);
+    } else if (filterVal.startsWith("TAG:")) {
+      const tag = filterVal.slice(4);
+      pool = state.db.filter((q) => {
+        if (Array.isArray(q?.Tags)) return q.Tags.includes(tag);
+        return normalizeText(q?.Tags)
+          .split(",")
+          .map((item) => item.trim())
+          .includes(tag);
+      });
+    } else {
+      pool = state.db;
     }
 
-    globalScope.state.session = {
+    if (!Array.isArray(pool) || pool.length === 0) {
+      if (typeof alert === "function")
+        alert("No questions found for this filter.");
+      return;
+    }
+
+    const preparedPool = prepareSessionPool(pool);
+    if (preparedPool.length === 0) {
+      if (typeof alert === "function")
+        alert("No usable questions found for this filter.");
+      return;
+    }
+
+    safeClearAutoNextTimeout();
+    stopTimerSafely();
+
+    state.session = {
       active: true,
-      questions: pool,
+      questions: preparedPool,
       currentIndex: 0,
       userAnswers: {},
       mode: "quiz",
       revealedCloze: false,
+      autoNextTimeout: null,
     };
 
-    document.getElementById("session-setup").classList.add("hidden");
-    document.getElementById("session-active").classList.remove("hidden");
+    getElement("session-setup")?.classList.add("hidden");
+    getElement("session-active")?.classList.remove("hidden");
 
-    globalScope.renderQuestion();
-    globalScope.saveSessionProgress();
+    renderQuestion();
+    saveSessionProgress();
   }
 
   function renderQuestion() {
-    globalScope.stopVisualTimer();
-    globalScope.applyNavigationPosition();
-    const q =
-      globalScope.state.session.questions[
-        globalScope.state.session.currentIndex
-      ];
-    const userAnswer =
-      globalScope.state.session.userAnswers[
-        globalScope.state.session.currentIndex
-      ];
+    const session = getSession();
+    if (
+      !session?.active ||
+      !Array.isArray(session.questions) ||
+      session.questions.length === 0
+    )
+      return;
 
-    const currentCard = globalScope.state.session.currentIndex + 1;
-    const totalCards = globalScope.state.session.questions.length;
-    document.getElementById("session-progress-text").innerText =
-      `${currentCard} / ${totalCards}`;
-    document.getElementById("session-progress").style.width =
-      `${((globalScope.state.session.currentIndex + 1) / totalCards) * 100}%`;
+    const totalCards = session.questions.length;
+    const rawIndex = Number.isInteger(session.currentIndex)
+      ? session.currentIndex
+      : 0;
+    session.currentIndex = Math.min(Math.max(rawIndex, 0), totalCards - 1);
+    const q = getCurrentQuestion();
+    if (!q) return;
 
-    const fullSubject = q.Subject || "General";
-    const parts = String(fullSubject).split("::");
-    document.getElementById("q-subject").innerText =
-      parts.length >= 2 ? parts.slice(-2).join(" :: ") : fullSubject;
+    stopTimerSafely();
+    if (typeof globalScope.applyNavigationPosition === "function") {
+      globalScope.applyNavigationPosition();
+    }
 
-    let displayId = q.ID ?? `Q-${globalScope.state.session.currentIndex + 1}`;
+    const userAnswer = session.userAnswers?.[session.currentIndex];
+    const currentCard = session.currentIndex + 1;
+    const progressText = getElement("session-progress-text");
+    const progressBar = getElement("session-progress");
+    if (progressText)
+      progressText.textContent = `${currentCard} / ${totalCards}`;
+    if (progressBar)
+      progressBar.style.width = `${(currentCard / totalCards) * 100}%`;
+
+    const fullSubject = normalizeText(q.Subject) || "General";
+    const parts = fullSubject
+      .split("::")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const subjectEl = getElement("q-subject");
+    if (subjectEl)
+      subjectEl.textContent =
+        parts.length >= 2 ? parts.slice(-2).join(" :: ") : fullSubject;
+
+    let displayId = q.ID ?? `Q-${currentCard}`;
+    displayId = normalizeText(displayId);
     if (displayId.includes("::")) {
       const match = displayId.match(/::.*?\b(\d+)\s*$/);
-      displayId = match ? match[1] : displayId.split("::").pop();
+      displayId = match ? match[1] : displayId.split("::").pop().trim();
     }
-    document.getElementById("q-id").innerText = "Question " + displayId;
+    const idEl = getElement("q-id");
+    if (idEl) idEl.textContent = `Question ${displayId}`;
 
-    // Update favorite button status
-    const favBtn = document.getElementById("btn-favorite-question");
+    const favBtn = getElement("btn-favorite-question");
     if (favBtn) {
-      const isFavorite =
-        Array.isArray(globalScope.state.prefs.favoriteQuestions) &&
-        globalScope.state.prefs.favoriteQuestions.includes(q.ID);
-      if (isFavorite) {
-        favBtn.classList.add("text-yellow-500");
-        favBtn.classList.remove("text-gray-400");
-        favBtn.title = "Remove from Favorites";
-      } else {
-        favBtn.classList.remove("text-yellow-500");
-        favBtn.classList.add("text-gray-400");
-        favBtn.title = "Add to Favorites";
-      }
+      const favoriteQuestions = Array.isArray(getPrefs().favoriteQuestions)
+        ? getPrefs().favoriteQuestions
+        : [];
+      const isFavorite = favoriteQuestions.includes(q.ID);
+      favBtn.classList.toggle("text-yellow-500", isFavorite);
+      favBtn.classList.toggle("text-gray-400", !isFavorite);
+      favBtn.title = isFavorite ? "Remove from Favorites" : "Add to Favorites";
     }
 
-    const lessonIdValue =
-      q.Lesson ||
-      q.LessonID ||
-      q.lesson ||
-      q.lessonId ||
-      q.Unit ||
-      q.Topic ||
-      "";
-    const lessonEl = document.getElementById("q-lesson");
+    const lessonEl = getElement("q-lesson");
     if (lessonEl) {
-      const normalizedLesson = String(lessonIdValue || "").trim();
-      if (normalizedLesson) {
-        lessonEl.textContent = `Lesson ${normalizedLesson}`;
-        lessonEl.classList.remove("hidden");
-      } else {
-        lessonEl.textContent = "";
-        lessonEl.classList.add("hidden");
-      }
+      const lessonIdValue =
+        q.Lesson ??
+        q.LessonID ??
+        q.lesson ??
+        q.lessonId ??
+        q.Unit ??
+        q.Topic ??
+        "";
+      const normalizedLesson = normalizeText(lessonIdValue);
+      lessonEl.textContent = normalizedLesson
+        ? `Lesson ${normalizedLesson}`
+        : "";
+      lessonEl.classList.toggle("hidden", !normalizedLesson);
     }
 
-    const clozeEnabled = globalScope.state.prefs.clozeEnabled !== false;
+    const prefs = getPrefs();
+    const clozeEnabled = prefs.clozeEnabled !== false;
     const shouldRevealCloze =
-      Boolean(userAnswer) || Boolean(globalScope.state.session.revealedCloze);
-    document.getElementById("q-text").innerHTML =
-      globalScope.formatQuestionText(q.Question, {
-        revealCloze: shouldRevealCloze && clozeEnabled,
-        clozeEnabled,
-      });
+      Boolean(userAnswer) || Boolean(session.revealedCloze);
+    const qTextEl = getElement("q-text");
+    if (qTextEl && typeof globalScope.formatQuestionText === "function") {
+      qTextEl.innerHTML = globalScope.formatQuestionText(
+        normalizeText(q.Question),
+        {
+          revealCloze: shouldRevealCloze && clozeEnabled,
+          clozeEnabled,
+        },
+      );
+    }
 
-    const imgEl = document.getElementById("q-image");
-    if (q.ImageURL && q.ImageURL.trim() !== "") {
-      imgEl.onload = () => imgEl.classList.remove("hidden");
-      imgEl.onerror = () => {
+    const imgEl = getElement("q-image");
+    const imageUrl = normalizeText(q.ImageURL);
+    if (imgEl) {
+      imgEl.onload = null;
+      imgEl.onerror = null;
+      if (imageUrl) {
+        imgEl.onload = () => imgEl.classList.remove("hidden");
+        imgEl.onerror = () => {
+          imgEl.removeAttribute("src");
+          imgEl.classList.add("hidden");
+        };
+        imgEl.src = imageUrl;
+        const questionText = normalizeText(q.Question);
+        imgEl.alt = questionText
+          ? `Reference for: ${questionText.slice(0, 50)}${questionText.length > 50 ? "..." : ""}`
+          : "Question reference image";
+        imgEl.classList.remove("hidden");
+      } else {
         imgEl.removeAttribute("src");
         imgEl.classList.add("hidden");
-      };
-      imgEl.src = q.ImageURL;
-      imgEl.alt = q.Question
-        ? `Reference for: ${q.Question.substring(0, 50)}...`
-        : "Question reference image";
-      imgEl.classList.remove("hidden");
-    } else {
-      imgEl.classList.add("hidden");
+      }
     }
 
-    const { isIdent: isPureIdent } = globalScope.getQuestionTypeMode(q);
-    const isForcedMCQ = globalScope.state.prefs.qTypeOverride === "mcq";
-    const hideABCD =
-      globalScope.state.prefs.quizHideABCD === true || isPureIdent;
+    const typeMode =
+      typeof globalScope.getQuestionTypeMode === "function"
+        ? globalScope.getQuestionTypeMode(q) || {}
+        : {};
+    const isPureIdent = typeMode.isIdent === true;
+    const isForcedMCQ = prefs.qTypeOverride === "mcq";
+    const hideABCD = prefs.quizHideABCD === true || isPureIdent;
 
-    const choices = ["A", "B", "C", "D"];
-    choices.forEach((ch) => {
-      const choiceText = q[`Choice${ch}`];
-      const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
-      let cleanChoice = String(choiceText ?? "").trim();
+    const choiceButtons = hasDOM()
+      ? [...document.querySelectorAll(".choice-btn[data-choice]")]
+      : [];
 
+    CHOICE_KEYS.forEach((choiceKey) => {
+      const btn =
+        choiceButtons.find((element) => element.dataset.choice === choiceKey) ||
+        (hasDOM()
+          ? document.querySelector(`.choice-btn[data-choice="${choiceKey}"]`)
+          : null);
+      if (!btn) return;
+
+      const choiceText = q[`Choice${choiceKey}`];
+      let cleanChoice = normalizeText(choiceText);
       btn.classList.remove("selected-correct", "selected-wrong", "dimmed");
       btn.onclick = null;
 
-      if (isForcedMCQ && cleanChoice === "") {
-        cleanChoice = "undefined";
+      if (isForcedMCQ && cleanChoice === "") cleanChoice = "undefined";
+      const shouldHide =
+        !isForcedMCQ &&
+        (cleanChoice === "" || cleanChoice.toLowerCase() === "undefined");
+
+      btn.classList.toggle("hidden", shouldHide);
+      if (shouldHide) {
+        btn.innerHTML = "";
+        return;
       }
 
-      if (
-        !isForcedMCQ &&
-        (cleanChoice === "" || cleanChoice.toLowerCase() === "undefined")
-      ) {
-        btn.classList.add("hidden");
-      } else {
-        btn.classList.remove("hidden");
-        const prefixRegex = new RegExp(`^${ch}[\\.\\)\\-]\\s*`, "i");
-        const displayText = cleanChoice.replace(prefixRegex, "");
-        const safeDisplayText = globalScope.escapeHTML(displayText);
+      const prefixRegex = new RegExp(`^${choiceKey}[\\.\\)\\-]\\s*`, "i");
+      const displayText = cleanChoice.replace(prefixRegex, "");
+      const safeDisplayText =
+        typeof globalScope.escapeHTML === "function"
+          ? globalScope.escapeHTML(displayText)
+          : displayText.replace(
+              /[&<>'"]/g,
+              (char) =>
+                ({
+                  "&": "&amp;",
+                  "<": "&lt;",
+                  ">": "&gt;",
+                  "'": "&#39;",
+                  '"': "&quot;",
+                })[char],
+            );
 
-        if (hideABCD) {
-          btn.innerHTML = safeDisplayText;
-        } else {
-          btn.innerHTML = `<span class="choice-letter font-bold mr-2 whitespace-nowrap">${ch})</span> ${safeDisplayText}`;
-        }
+      btn.innerHTML = hideABCD
+        ? safeDisplayText
+        : `<span class="choice-letter font-bold mr-2 whitespace-nowrap">${choiceKey})</span> ${safeDisplayText}`;
 
-        if (!userAnswer) {
-          btn.onclick = () => globalScope.submitPracticeAnswer(ch, q.Answer);
-        }
+      if (!userAnswer && !q._invalidAnswer) {
+        btn.onclick = () =>
+          submitPracticeAnswer(choiceKey, normalizeAnswer(q.Answer));
       }
     });
 
-    const qChoicesContainer = document.getElementById("q-choices");
-    const activeRecallMask = document.getElementById("active-recall-mask");
-    const expBox = document.getElementById("q-explanation-box");
-    const btnNext = document.getElementById("btn-next");
-    const btnPrev = document.getElementById("btn-prev");
-    const btnReveal = document.getElementById("btn-reveal");
+    const qChoicesContainer = getElement("q-choices");
+    const activeRecallMask = getElement("active-recall-mask");
+    const expBox = getElement("q-explanation-box");
+    const btnNext = getElement("btn-next");
+    const btnPrev = getElement("btn-prev");
+    const btnReveal = getElement("btn-reveal");
 
-    btnPrev.disabled = globalScope.state.session.currentIndex <= 0;
+    if (btnPrev) btnPrev.disabled = session.currentIndex <= 0;
 
     if (userAnswer) {
-      if (activeRecallMask) activeRecallMask.classList.add("hidden");
-      qChoicesContainer.classList.remove("hidden");
-      globalScope.showExplanation(q);
+      activeRecallMask?.classList.add("hidden");
+      qChoicesContainer?.classList.remove("hidden");
+      showExplanation(q);
 
-      qChoicesContainer.querySelectorAll(".choice-btn").forEach((btn) => {
+      choiceButtons.forEach((btn) => {
         btn.onclick = null;
-        const choice = btn.dataset.choice;
-
-        if (choice === q.Answer) {
+        const choice = normalizeAnswer(btn.dataset.choice);
+        const correct = normalizeAnswer(q.Answer);
+        if (correct && choice === correct) {
           btn.classList.add("selected-correct");
           btn.classList.remove("hidden");
+        } else if (isPureIdent) {
+          btn.classList.add("hidden");
+        } else if (choice === normalizeAnswer(userAnswer)) {
+          btn.classList.add("selected-wrong");
         } else {
-          if (isPureIdent) {
-            btn.classList.add("hidden");
-          } else {
-            if (choice === userAnswer) {
-              btn.classList.add("selected-wrong");
-            } else {
-              btn.classList.add("dimmed");
-            }
-          }
+          btn.classList.add("dimmed");
         }
       });
 
-      btnNext.disabled = false;
-      btnReveal.disabled = true;
+      if (btnNext) btnNext.disabled = false;
+      if (btnReveal) btnReveal.disabled = true;
     } else {
-      expBox.classList.add("hidden");
-      btnNext.disabled = false;
-      btnReveal.disabled = false;
+      expBox?.classList.add("hidden");
+      if (btnNext) btnNext.disabled = false;
+      if (btnReveal) btnReveal.disabled = false;
 
       if (isPureIdent) {
-        if (activeRecallMask) activeRecallMask.classList.add("hidden");
-        qChoicesContainer.classList.add("hidden");
+        activeRecallMask?.classList.add("hidden");
+        qChoicesContainer?.classList.add("hidden");
+      } else if (Boolean(prefs.activeRecall)) {
+        activeRecallMask?.classList.remove("hidden");
+        qChoicesContainer?.classList.add("hidden");
       } else {
-        const activeRecallEnabled = Boolean(
-          globalScope.state.prefs.activeRecall,
-        );
-        if (activeRecallEnabled) {
-          if (activeRecallMask) activeRecallMask.classList.remove("hidden");
-          qChoicesContainer.classList.add("hidden");
-        } else {
-          if (activeRecallMask) activeRecallMask.classList.add("hidden");
-          qChoicesContainer.classList.remove("hidden");
-        }
+        activeRecallMask?.classList.add("hidden");
+        qChoicesContainer?.classList.remove("hidden");
       }
     }
 
-    const activeRecallToggle = document.getElementById("toggle-active-recall");
-    const shuffleChoicesToggle = document.getElementById(
-      "toggle-shuffle-choices",
-    );
-
+    const activeRecallToggle = getElement("toggle-active-recall");
+    const shuffleChoicesToggle = getElement("toggle-shuffle-choices");
     if (activeRecallToggle) {
       activeRecallToggle.disabled = isPureIdent;
-      activeRecallToggle.parentElement.classList.toggle(
+      activeRecallToggle.parentElement?.classList.toggle(
         "opacity-50",
         isPureIdent,
       );
-      activeRecallToggle.parentElement.classList.toggle(
+      activeRecallToggle.parentElement?.classList.toggle(
         "cursor-not-allowed",
         isPureIdent,
       );
-      activeRecallToggle.parentElement.classList.toggle(
+      activeRecallToggle.parentElement?.classList.toggle(
+        "pointer-events-none",
+        isPureIdent,
+      );
+    }
+    if (shuffleChoicesToggle) {
+      shuffleChoicesToggle.disabled = isPureIdent;
+      shuffleChoicesToggle.parentElement?.classList.toggle(
+        "opacity-50",
+        isPureIdent,
+      );
+      shuffleChoicesToggle.parentElement?.classList.toggle(
+        "cursor-not-allowed",
+        isPureIdent,
+      );
+      shuffleChoicesToggle.parentElement?.classList.toggle(
         "pointer-events-none",
         isPureIdent,
       );
     }
 
-    if (shuffleChoicesToggle) {
-      shuffleChoicesToggle.disabled = isPureIdent;
-      shuffleChoicesToggle.parentElement.classList.toggle(
-        "opacity-50",
-        isPureIdent,
-      );
-      shuffleChoicesToggle.parentElement.classList.toggle(
-        "cursor-not-allowed",
-        isPureIdent,
-      );
+    const nextIndex = session.currentIndex + 1;
+    const upcomingQuestions = session.questions.slice(nextIndex, nextIndex + 2);
+    if (typeof Image === "function") {
+      upcomingQuestions.forEach((nextQ) => {
+        const nextImageUrl = normalizeText(nextQ?.ImageURL);
+        if (nextImageUrl) {
+          const imgPreload = new Image();
+          imgPreload.src = nextImageUrl;
+        }
+      });
     }
-
-    const nextIndex = globalScope.state.session.currentIndex + 1;
-    const upcomingQuestions = globalScope.state.session.questions.slice(
-      nextIndex,
-      nextIndex + 2,
-    );
-
-    upcomingQuestions.forEach((nextQ) => {
-      if (nextQ && nextQ.ImageURL) {
-        const imgPreload = new Image();
-        imgPreload.src = nextQ.ImageURL;
-      }
-    });
   }
 
   function submitPracticeAnswer(selected, correct) {
-    const q =
-      globalScope.state.session.questions[
-        globalScope.state.session.currentIndex
-      ];
-    globalScope.state.session.userAnswers[
-      globalScope.state.session.currentIndex
-    ] = selected;
+    const session = getSession();
+    const q = getCurrentQuestion();
+    const selectedKey = normalizeAnswer(selected);
+    const correctKey = normalizeAnswer(correct);
+    if (
+      !session?.active ||
+      !q ||
+      !selectedKey ||
+      q._invalidAnswer ||
+      !correctKey
+    )
+      return false;
+    if (session.userAnswers?.[session.currentIndex]) return false;
 
-    globalScope.trackStats(q, selected === correct);
-    document
-      .getElementById("q-choices")
-      .querySelectorAll(".choice-btn")
-      .forEach((btn) => {
-        btn.onclick = null;
-        if (btn.dataset.choice === correct)
-          btn.classList.add("selected-correct");
-        else if (btn.dataset.choice === selected)
-          btn.classList.add("selected-wrong");
-        else btn.classList.add("dimmed");
-      });
+    if (!session.userAnswers || typeof session.userAnswers !== "object")
+      session.userAnswers = {};
+    session.userAnswers[session.currentIndex] = selectedKey;
 
-    globalScope.showExplanation(q);
+    trackStats(q, selectedKey === correctKey);
 
-    document.getElementById("btn-next").disabled = false;
-    document.getElementById("btn-reveal").disabled = true;
-    document.getElementById("session-progress").style.width =
-      `${((globalScope.state.session.currentIndex + 1) / globalScope.state.session.questions.length) * 100}%`;
+    const choicesContainer = getElement("q-choices");
+    choicesContainer?.querySelectorAll(".choice-btn").forEach((btn) => {
+      btn.onclick = null;
+      const choice = normalizeAnswer(btn.dataset.choice);
+      btn.classList.remove("selected-correct", "selected-wrong", "dimmed");
+      if (choice === correctKey) btn.classList.add("selected-correct");
+      else if (choice === selectedKey) btn.classList.add("selected-wrong");
+      else btn.classList.add("dimmed");
+    });
 
-    globalScope.startVisualTimer();
-    if (globalScope.state.session.autoNextTimeout)
-      clearTimeout(globalScope.state.session.autoNextTimeout);
-    globalScope.state.session.autoNextTimeout = setTimeout(() => {
-      globalScope.nextQuestion();
+    showExplanation(q);
+    const btnNext = getElement("btn-next");
+    const btnReveal = getElement("btn-reveal");
+    if (btnNext) btnNext.disabled = false;
+    if (btnReveal) btnReveal.disabled = true;
+
+    const progressBar = getElement("session-progress");
+    if (progressBar) {
+      progressBar.style.width = `${((session.currentIndex + 1) / session.questions.length) * 100}%`;
+    }
+
+    startTimerSafely();
+    safeClearAutoNextTimeout();
+    session.autoNextTimeout = setTimeout(() => {
+      if (getSession()?.active) nextQuestion();
     }, 2000);
+    return true;
   }
 
   function showExplanation(q) {
-    const expBox = document.getElementById("q-explanation-box");
+    const expBox = getElement("q-explanation-box");
+    if (!expBox) return;
+    const explanation = normalizeText(q?.Explanation);
+    const textEl = getElement("q-explanation-text");
 
-    if (q.Explanation && q.Explanation.trim() !== "") {
-      document.getElementById("q-explanation-text").innerHTML =
-        globalScope.formatQuestionText(q.Explanation);
+    if (explanation) {
+      if (textEl && typeof globalScope.formatQuestionText === "function") {
+        textEl.innerHTML = globalScope.formatQuestionText(explanation);
+      } else if (textEl) {
+        textEl.textContent = explanation;
+      }
       expBox.classList.remove("hidden");
     } else {
+      if (textEl) textEl.textContent = "";
       expBox.classList.add("hidden");
     }
   }
 
   function nextQuestion() {
-    if (globalScope.state.session.autoNextTimeout)
-      clearTimeout(globalScope.state.session.autoNextTimeout);
-    globalScope.stopVisualTimer();
-
+    const session = getSession();
     if (
-      globalScope.state.session.currentIndex <
-      globalScope.state.session.questions.length - 1
-    ) {
-      const skipped =
-        !globalScope.state.session.userAnswers[
-          globalScope.state.session.currentIndex
-        ];
-      globalScope.state.session.currentIndex++;
-      globalScope.renderQuestion();
-      globalScope.saveSessionProgress();
-    } else {
-      alert("Practice Session Complete! Great job.");
-      globalScope.clearSessionProgress();
-      globalScope.endSession(false);
+      !session?.active ||
+      !Array.isArray(session.questions) ||
+      session.questions.length === 0
+    )
+      return;
+
+    safeClearAutoNextTimeout();
+    stopTimerSafely();
+
+    if (session.currentIndex < session.questions.length - 1) {
+      session.currentIndex += 1;
+      session.revealedCloze = false;
+      renderQuestion();
+      saveSessionProgress();
+      return;
     }
+
+    if (typeof alert === "function")
+      alert("Practice Session Complete! Great job.");
+    endSession(true);
+    if (typeof globalScope.navigate === "function")
+      globalScope.navigate("dashboard");
   }
 
   function prevQuestion() {
-    if (globalScope.state.session.autoNextTimeout)
-      clearTimeout(globalScope.state.session.autoNextTimeout);
-    globalScope.stopVisualTimer();
+    const session = getSession();
+    if (!session?.active || !Array.isArray(session.questions)) return;
 
-    if (globalScope.state.session.currentIndex > 0) {
-      globalScope.state.session.currentIndex--;
-      globalScope.renderQuestion();
+    safeClearAutoNextTimeout();
+    stopTimerSafely();
+
+    if (session.currentIndex > 0) {
+      session.currentIndex -= 1;
+      session.revealedCloze = false;
+      renderQuestion();
+      saveSessionProgress();
     }
-    globalScope.saveSessionProgress();
   }
 
   function getDefaultSrsEntry(qId) {
@@ -451,247 +633,311 @@
   }
 
   function updateSrsForQuestion(q, isCorrect) {
-    if (globalScope.state.prefs.srsEnabled !== true) return;
+    const prefs = getPrefs();
+    const stats = getStats();
+    if (prefs.srsEnabled !== true || !q) return;
 
-    const qId = q?.ID || q?.Question || "";
+    const qId = normalizeText(q.ID) || normalizeText(q.Question);
     if (!qId) return;
+    if (
+      !stats.srsMap ||
+      typeof stats.srsMap !== "object" ||
+      Array.isArray(stats.srsMap)
+    )
+      stats.srsMap = {};
 
-    if (!globalScope.state.stats.srsMap) globalScope.state.stats.srsMap = {};
-
-    const existing =
-      globalScope.state.stats.srsMap[qId] || getDefaultSrsEntry(qId);
+    const existing = stats.srsMap[qId] || getDefaultSrsEntry(qId);
+    const reps = Math.max(0, Number(existing.reps) || 0) + 1;
+    const existingEase = Number(existing.ease);
+    const ease = Number.isFinite(existingEase) ? existingEase : 2.5;
     const next = {
       ...existing,
       qId,
-      reps: Number(existing.reps || 0) + 1,
+      reps,
       lastAnsweredAt: Date.now(),
     };
 
     if (isCorrect) {
       next.lastScore = "correct";
-      next.step = Math.max(1, Number(existing.step || 0) + 1);
-      next.ease = Math.max(1.3, Number(existing.ease || 2.5) + 0.1);
-      next.interval = globalScope.computeSrsInterval(next.step, next.ease);
-      next.due = Date.now() + next.interval * 24 * 60 * 60 * 1000;
+      next.step = Math.max(1, (Number(existing.step) || 0) + 1);
+      next.ease = Math.max(1.3, ease + 0.1);
+      next.interval = computeSrsInterval(next.step, next.ease);
+      next.due = Date.now() + next.interval * DAY_MS;
     } else {
       next.lastScore = "wrong";
       next.step = 0;
-      next.lapses = Number(existing.lapses || 0) + 1;
-      next.ease = Math.max(1.3, Number(existing.ease || 2.5) - 0.2);
+      next.lapses = Math.max(0, Number(existing.lapses) || 0) + 1;
+      next.ease = Math.max(1.3, ease - 0.2);
       next.interval = 1;
-      next.due = Date.now() + 60 * 60 * 1000;
+      next.due = Date.now() + HOUR_MS;
     }
 
-    globalScope.state.stats.srsMap[qId] = next;
+    stats.srsMap[qId] = next;
   }
 
   function computeSrsInterval(step, ease) {
-    if (step <= 0) return 1;
-    if (step === 1) return 1;
-    if (step === 2) return 2;
-    if (step === 3) return 4;
-    return Math.max(1, Math.round((step - 1) * (ease || 2.5) * 2));
+    const normalizedStep = Math.max(0, Number(step) || 0);
+    const normalizedEase = Number.isFinite(Number(ease)) ? Number(ease) : 2.5;
+    if (normalizedStep <= 1) return 1;
+    if (normalizedStep === 2) return 2;
+    if (normalizedStep === 3) return 4;
+    return Math.max(1, Math.round((normalizedStep - 1) * normalizedEase * 2));
   }
 
   function trackStats(q, isCorrect) {
-    globalScope.state.stats.totalAnswered++;
+    const state = getState();
+    const stats = getStats();
+    if (!q || typeof stats !== "object") return;
 
-    const subj = q.Subject || "General";
-    if (!globalScope.state.stats.subjectAccuracy[subj])
-      globalScope.state.stats.subjectAccuracy[subj] = { total: 0, correct: 0 };
-    globalScope.state.stats.subjectAccuracy[subj].total++;
+    stats.totalAnswered = Math.max(0, Number(stats.totalAnswered) || 0) + 1;
+    stats.correct = Math.max(0, Number(stats.correct) || 0);
+    if (!Array.isArray(stats.mistakes)) stats.mistakes = [];
+    if (!Array.isArray(stats.completedQs)) stats.completedQs = [];
+    if (!stats.subjectAccuracy || typeof stats.subjectAccuracy !== "object")
+      stats.subjectAccuracy = {};
 
-    if (!globalScope.state.stats.completedQs)
-      globalScope.state.stats.completedQs = [];
-    if (!globalScope.state.stats.completedQs.includes(q.ID)) {
-      globalScope.state.stats.completedQs.push(q.ID);
+    const subject = normalizeText(q.Subject) || "General";
+    if (
+      !stats.subjectAccuracy[subject] ||
+      typeof stats.subjectAccuracy[subject] !== "object"
+    ) {
+      stats.subjectAccuracy[subject] = { total: 0, correct: 0 };
     }
+    const subjectStats = stats.subjectAccuracy[subject];
+    subjectStats.total = Math.max(0, Number(subjectStats.total) || 0) + 1;
+    subjectStats.correct = Math.max(0, Number(subjectStats.correct) || 0);
+
+    const questionId = q.ID;
+    if (questionId != null && !stats.completedQs.includes(questionId))
+      stats.completedQs.push(questionId);
 
     if (isCorrect) {
-      globalScope.state.stats.correct++;
-      globalScope.state.stats.subjectAccuracy[subj].correct++;
-      globalScope.state.stats.mistakes =
-        globalScope.state.stats.mistakes.filter((id) => id !== q.ID);
-    } else {
-      if (!globalScope.state.stats.mistakes.includes(q.ID))
-        globalScope.state.stats.mistakes.push(q.ID);
+      stats.correct += 1;
+      subjectStats.correct += 1;
+      if (questionId != null)
+        stats.mistakes = stats.mistakes.filter((id) => id !== questionId);
+    } else if (questionId != null && !stats.mistakes.includes(questionId)) {
+      stats.mistakes.push(questionId);
     }
 
-    updateSrsForQuestion(q, isCorrect);
-    globalScope.saveState();
+    updateSrsForQuestion(q, Boolean(isCorrect));
+    if (typeof globalScope.saveState === "function") globalScope.saveState();
   }
 
   function endSession(silent = false) {
+    const session = getSession();
+    if (!session) return;
+
+    safeClearAutoNextTimeout();
+    stopTimerSafely();
+
+    const hasValidIndex =
+      session.currentIndex >= 0 &&
+      session.currentIndex < (session.questions?.length || 0);
     const isLastQuestion =
-      globalScope.state.session.currentIndex >=
-      globalScope.state.session.questions.length - 1;
+      hasValidIndex && session.currentIndex === session.questions.length - 1;
     const isAnswered =
-      globalScope.state.session.userAnswers &&
-      globalScope.state.session.userAnswers[
-        globalScope.state.session.currentIndex
-      ];
+      hasValidIndex && Boolean(session.userAnswers?.[session.currentIndex]);
+    const shouldClearSaved = isLastQuestion && isAnswered;
 
-    if (isLastQuestion && isAnswered) {
-      globalScope.clearSessionProgress();
-    } else {
-      globalScope.saveSessionProgress();
-    }
+    if (shouldClearSaved) clearSessionProgress();
+    else saveSessionProgress();
 
-    globalScope.state.session.active = false;
+    session.active = false;
+
     if (globalScope.pendingSummaryData) {
-      globalScope.applySummaryData(globalScope.pendingSummaryData);
+      if (typeof globalScope.applySummaryData === "function") {
+        globalScope.applySummaryData(globalScope.pendingSummaryData);
+      }
       globalScope.pendingSummaryData = null;
-      globalScope.updateSyncStatus(
-        '<i class="fa-solid fa-check mr-1"></i> Database update applied after your session.',
-        "success",
-      );
+      if (typeof globalScope.updateSyncStatus === "function") {
+        globalScope.updateSyncStatus(
+          '<i class="fa-solid fa-check mr-1"></i> Database update applied after your session.',
+          "success",
+        );
+      }
     }
-    if (!silent) globalScope.navigate("dashboard");
+
+    if (!silent && typeof globalScope.navigate === "function")
+      globalScope.navigate("dashboard");
   }
 
   function saveSessionProgress() {
-    if (!globalScope.state.session.active) return;
+    const session = getSession();
+    const state = getState();
+    const prefs = getPrefs();
+    if (!session?.active || typeof globalScope.setStoredJSON !== "function")
+      return false;
 
     try {
-      globalScope.setStoredJSON("saved_session", globalScope.state.session);
-      globalScope.state.prefs.lastActivity = {
+      globalScope.setStoredJSON("saved_session", session);
+      prefs.lastActivity = {
         mode: "quiz",
-        subject:
-          globalScope.state.session.questions[
-            globalScope.state.session.currentIndex
-          ]?.Subject || null,
+        subject: session.questions?.[session.currentIndex]?.Subject || null,
         updatedAt: new Date().toISOString(),
       };
-      globalScope.setStoredJSON("prefs", globalScope.state.prefs);
-    } catch (e) {
+      state.prefs = prefs;
+      globalScope.setStoredJSON("prefs", prefs);
+      return true;
+    } catch (error) {
       console.warn(
         "Storage quota exceeded. Could not save session progress.",
-        e,
+        error,
       );
-      globalScope.showToast("Storage full. Progress won't be saved.", "error");
+      if (typeof globalScope.showToast === "function") {
+        globalScope.showToast(
+          "Storage full. Progress won't be saved.",
+          "error",
+        );
+      }
+      return false;
     }
   }
 
   function checkSavedSession() {
-    const saved = globalScope.getStoredItem("saved_session");
-    const resumeContainer = document.getElementById("resume-container");
-    const activity = globalScope.state.prefs.lastActivity;
-    const contextEl = document.getElementById("resume-context");
+    const prefs = getPrefs();
+    const saved =
+      typeof globalScope.getStoredItem === "function"
+        ? globalScope.getStoredItem("saved_session")
+        : null;
+    const resumeContainer = getElement("resume-container");
+    const contextEl = getElement("resume-context");
+    const activity = prefs.lastActivity;
 
     if (contextEl && activity) {
       const modeLabel = activity.mode === "review" ? "Study" : "Quiz";
-      contextEl.innerText = activity.subject
-        ? `${modeLabel} mode: ${activity.subject}`
+      const subject = normalizeText(activity.subject);
+      contextEl.textContent = subject
+        ? `${modeLabel} mode: ${subject}`
         : `${modeLabel} mode`;
     }
 
-    if (
-      (saved || (activity?.mode === "review" && activity.subject)) &&
-      resumeContainer
-    ) {
+    if (!resumeContainer) return;
+
+    let validSavedSession = false;
+    if (saved) {
       try {
-        const session = saved ? JSON.parse(saved) : null;
-        if (!session) {
-          resumeContainer.classList.remove("hidden");
-          return;
-        }
-        const isLastQuestion =
-          session.currentIndex >= session.questions.length - 1;
-        const isAnswered =
-          session.userAnswers && session.userAnswers[session.currentIndex];
+        const session = JSON.parse(saved);
+        validSavedSession = Boolean(
+          session?.active &&
+          Array.isArray(session.questions) &&
+          session.questions.length > 0 &&
+          Number.isInteger(session.currentIndex) &&
+          session.currentIndex >= 0 &&
+          session.currentIndex < session.questions.length &&
+          session.userAnswers &&
+          typeof session.userAnswers === "object",
+        );
 
-        if (isLastQuestion && isAnswered) {
+        if (validSavedSession) {
+          const isLastQuestion =
+            session.currentIndex === session.questions.length - 1;
+          const isAnswered = Boolean(session.userAnswers[session.currentIndex]);
+          if (
+            isLastQuestion &&
+            isAnswered &&
+            typeof globalScope.removeStoredItem === "function"
+          ) {
+            globalScope.removeStoredItem("saved_session");
+            validSavedSession = false;
+          }
+        } else if (typeof globalScope.removeStoredItem === "function") {
           globalScope.removeStoredItem("saved_session");
-          resumeContainer.classList.add("hidden");
-          return;
         }
-      } catch (e) {
-        console.error("Error checking session", e);
+      } catch (error) {
+        console.error("Error checking saved session:", error);
+        if (typeof globalScope.removeStoredItem === "function")
+          globalScope.removeStoredItem("saved_session");
       }
-
-      resumeContainer.classList.remove("hidden");
-    } else if (resumeContainer) {
-      resumeContainer.classList.add("hidden");
     }
+
+    const hasReviewActivity =
+      activity?.mode === "review" && Boolean(normalizeText(activity.subject));
+    resumeContainer.classList.toggle(
+      "hidden",
+      !(validSavedSession || hasReviewActivity),
+    );
   }
 
   function clearSessionProgress() {
-    globalScope.removeStoredItem("saved_session");
-    globalScope.state.prefs.lastActivity = null;
-    globalScope.setStoredJSON("prefs", globalScope.state.prefs);
-    const resumeContainer = document.getElementById("resume-container");
-    if (resumeContainer) {
-      resumeContainer.classList.add("hidden");
-    }
+    if (typeof globalScope.removeStoredItem === "function")
+      globalScope.removeStoredItem("saved_session");
+    const state = getState();
+    if (!state.prefs || typeof state.prefs !== "object") state.prefs = {};
+    state.prefs.lastActivity = null;
+    if (typeof globalScope.setStoredJSON === "function")
+      globalScope.setStoredJSON("prefs", state.prefs);
+    getElement("resume-container")?.classList.add("hidden");
   }
 
   function revealAnswer() {
-    if (!globalScope.state.session.active) return;
+    const session = getSession();
+    const q = getCurrentQuestion();
+    if (!session?.active || !q || session.userAnswers?.[session.currentIndex])
+      return false;
 
-    const q =
-      globalScope.state.session.questions[
-        globalScope.state.session.currentIndex
-      ];
-    globalScope.state.session.userAnswers[
-      globalScope.state.session.currentIndex
-    ] = "REVEALED";
-    globalScope.state.session.revealedCloze = true;
+    if (!session.userAnswers || typeof session.userAnswers !== "object")
+      session.userAnswers = {};
+    session.userAnswers[session.currentIndex] = "REVEALED";
+    session.revealedCloze = true;
 
-    const { isIdent: isPureIdent } = globalScope.getQuestionTypeMode(q);
+    // Revealing is not a user-correct response. Count it as a miss so statistics
+    // and SRS do not incorrectly award credit for an answer the user did not give.
+    trackStats(q, false);
 
-    globalScope.trackStats(q, isPureIdent);
+    getElement("q-choices")?.classList.remove("hidden");
+    getElement("active-recall-mask")?.classList.add("hidden");
+    renderQuestion();
+    saveSessionProgress();
+    startTimerSafely();
 
-    document.getElementById("q-choices").classList.remove("hidden");
-    const activeRecallMask = document.getElementById("active-recall-mask");
-    if (activeRecallMask) activeRecallMask.classList.add("hidden");
-
-    globalScope.renderQuestion();
-    globalScope.saveSessionProgress();
-    globalScope.startVisualTimer();
-
-    if (globalScope.state.session.autoNextTimeout)
-      clearTimeout(globalScope.state.session.autoNextTimeout);
-    globalScope.state.session.autoNextTimeout = setTimeout(() => {
-      globalScope.nextQuestion();
+    safeClearAutoNextTimeout();
+    session.autoNextTimeout = setTimeout(() => {
+      if (getSession()?.active) nextQuestion();
     }, 2000);
+    return true;
   }
 
   function startVisualTimer() {
-    const container = document.getElementById("auto-next-timer-container");
-    const bar = document.getElementById("auto-next-timer-bar");
-
+    const container = getElement("auto-next-timer-container");
+    const bar = getElement("auto-next-timer-bar");
+    if (!container || !bar) return;
     container.classList.remove("hidden");
-
     bar.classList.remove("animate-timer-bar");
     void bar.offsetWidth;
     bar.classList.add("animate-timer-bar");
   }
 
   function stopVisualTimer() {
-    const container = document.getElementById("auto-next-timer-container");
-    const bar = document.getElementById("auto-next-timer-bar");
-
+    const container = getElement("auto-next-timer-container");
+    const bar = getElement("auto-next-timer-bar");
+    if (!container || !bar) return;
     container.classList.add("hidden");
     bar.classList.remove("animate-timer-bar");
   }
 
   function getQuizNavigationPosition() {
-    if (globalScope.state.prefs.quizNavigationPosition !== "auto")
-      return globalScope.state.prefs.quizNavigationPosition;
-    return window.innerWidth <= globalScope.QUIZ_NAVIGATION_BREAKPOINT
+    const prefs = getPrefs();
+    const configured = prefs.quizNavigationPosition;
+    if (configured !== "auto") return configured === "top" ? "top" : "bottom";
+    const breakpoint = Number(globalScope.QUIZ_NAVIGATION_BREAKPOINT);
+    const threshold = Number.isFinite(breakpoint) ? breakpoint : 768;
+    return typeof window !== "undefined" && window.innerWidth <= threshold
       ? "top"
       : "bottom";
   }
 
   function applyNavigationPosition() {
-    const navigation = document.getElementById("quiz-navigation");
-    const topAnchor = document.getElementById("quiz-navigation-top");
-    const bottomAnchor = document.getElementById("quiz-navigation-bottom");
+    const navigation = getElement("quiz-navigation");
+    const topAnchor = getElement("quiz-navigation-top");
+    const bottomAnchor = getElement("quiz-navigation-bottom");
     if (!navigation || !topAnchor || !bottomAnchor) return;
 
-    const savedPosition = globalScope.state.session.active
+    const session = getSession();
+    const prefs = getPrefs();
+    const savedPosition = session?.active
       ? getQuizNavigationPosition()
-      : globalScope.state.prefs.reviewNavigationPosition;
+      : prefs.reviewNavigationPosition;
     const position = savedPosition === "top" ? "top" : "bottom";
     (position === "top" ? topAnchor : bottomAnchor).appendChild(navigation);
     topAnchor.classList.toggle("hidden", position !== "top");
@@ -700,24 +946,28 @@
 
   function changeNavigationPosition(position) {
     const normalized = position === "top" ? "top" : "bottom";
-    if (
-      document.getElementById("view-deck-review")?.classList.contains("active")
-    ) {
-      globalScope.state.prefs.reviewNavigationPosition = normalized;
+    const state = getState();
+    if (!state.prefs || typeof state.prefs !== "object") state.prefs = {};
+
+    if (getElement("view-deck-review")?.classList.contains("active")) {
+      state.prefs.reviewNavigationPosition = normalized;
     } else {
-      globalScope.state.prefs.quizNavigationPosition = normalized;
-      globalScope.state.prefs.quizNavigationMode = "manual";
+      state.prefs.quizNavigationPosition = normalized;
+      state.prefs.quizNavigationMode = "manual";
     }
-    globalScope.saveState();
-    globalScope.applyNavigationPosition();
-    const select = document.getElementById("navigation-position-select");
+
+    if (typeof globalScope.saveState === "function") globalScope.saveState();
+    applyNavigationPosition();
+    const select = getElement("navigation-position-select");
     if (select) select.value = normalized;
   }
 
   function toggleNavigationPosition(source) {
-    globalScope.changeNavigationPosition(source.checked ? "bottom" : "top");
+    if (!source) return;
+    changeNavigationPosition(source.checked ? "bottom" : "top");
     if (
-      document.getElementById("view-deck-review")?.classList.contains("active")
+      getElement("view-deck-review")?.classList.contains("active") &&
+      typeof globalScope.reRenderDeckReview === "function"
     ) {
       globalScope.reRenderDeckReview();
     }
