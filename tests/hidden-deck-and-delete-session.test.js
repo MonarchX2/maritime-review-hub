@@ -82,10 +82,20 @@ assert.match(
   /fileName\.match\(\s*\/\^deck-\[A-Z0-9\]\+\\\.json\$\/i\s*\)/,
   "generated deck cache filenames must be ignored when deriving the human-readable subject name",
 );
-assert.doesNotMatch(
+assert.match(
   backendMain,
-  /if\s*\(\s*requestType\s*===\s*["']admin_update["']\s*\)[\s\S]{0,1200}triggerBuildDatabaseCache\s*\(/,
-  "admin_update should not trigger the full database cache rebuild after a layout save",
+  /if\s*\(\s*requestType\s*===\s*["']admin_update["']\s*\)[\s\S]*?triggerBuildDatabaseCache\s*\(/,
+  "admin_update should trigger a cache rebuild after a layout save so MRH_Summary.json is refreshed from the current metadata",
+);
+assert.match(
+  backendMain,
+  /function\s+bumpCacheVersionForMutation\s*\(|bumpCacheVersionForMutation\s*\(\s*DATABASE_FOLDER_ID\s*\)|setCacheVersionProperties\s*\(\s*new Date\(\)\.getTime\(\)\.toString\(\)\s*\)/,
+  "real admin mutations must always bump the cache version and trigger a refresh, even for question edits",
+);
+assert.match(
+  backendMain,
+  /folderQueue:\s*\[\{\s*id:\s*DATABASE_FOLDER_ID\s*,\s*pathPrefix:\s*""\s*\}\]/,
+  "cache rebuilds must start from the database folder itself so the folder name is not treated as a deck container prefix",
 );
 assert.match(
   backendMain,
@@ -231,5 +241,10 @@ assert.match(
   backendMain,
   /function\s+normalizeUUIDSheetParentSubjects\s*\(|normalizeUUIDSheetParentSubjects\s*\(|newEntries\.push\(\[newUUID,\s*parentPath,\s*"",\s*"",\s*new\s+Date\(\)\.toISOString\(\)\]\)/s,
   "UUID sheet normalization must append missing parent folders for every hierarchical subject path without overwriting existing rows",
+);
+assert.match(
+  backendMain,
+  /getCacheInvalidationVersion\s*\(\)\s*\{[\s\S]*?MRH_CACHE_VERSION[\s\S]*?CACHE_VER/s,
+  "cache invalidation must read the same version property that admin updates write, or stale summaries never refresh reliably",
 );
 console.log("hidden/deck cleanup regression checks passed");

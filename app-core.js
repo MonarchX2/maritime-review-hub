@@ -5914,13 +5914,13 @@ function setupCacheInvalidationListener() {
   }
 }
 
+function triggerSilentSummaryRefresh(reason = "cache invalidation") {
+  console.log(`[CACHE] ${reason} - syncing silently in background`);
+  syncDatabase(false, true);
+}
+
 function handleCacheInvalidation() {
-  console.log(
-    "[CACHE] Handling cache invalidation - syncing silently in background",
-  );
-  // IMPROVED FIX: Silent background sync instead of disruptive reload
-  // This updates all data without interrupting user's current activity
-  syncDatabase(false, true); // isRetry=false, isBackgroundCheck=true (silent)
+  triggerSilentSummaryRefresh("Handling cache invalidation");
 }
 
 // ============================================
@@ -5971,11 +5971,8 @@ function createToastContainer() {
 async function reloadAppStateInMemory() {
   try {
     console.log("[STATE] Fetching latest app state in-memory...");
+    await triggerSilentSummaryRefresh("Refreshing app state in memory");
 
-    // Call existing sync but don't show overlays
-    await syncDatabase(false, true); // Silent background sync
-
-    // Show subtle toast
     showToastNotification(
       "Deck settings updated by admin. Latest content loaded.",
       "info",
@@ -6243,12 +6240,9 @@ function startCacheVersionChecking() {
 
 function forcePageRefresh() {
   console.log("[CACHE] Cache invalidated - triggering background sync");
-  // IMPROVED FIX: Silent background sync instead of disruptive page reload
-  // Users won't experience any interruption while data is updated silently
   clearTimeout(window.cacheInvalidationTimeout);
   window.cacheInvalidationTimeout = setTimeout(() => {
-    // Small delay allows multiple invalidation signals to batch together
-    syncDatabase(false, true); // isRetry=false, isBackgroundCheck=true (silent)
+    triggerSilentSummaryRefresh("Forcing quiet cache refresh");
   }, 100);
 }
 
