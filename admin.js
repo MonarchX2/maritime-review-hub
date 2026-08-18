@@ -1,59 +1,289 @@
-let adminState = {
+/*
+ * Admin dashboard controller.
+ *
+ * Backend action names intentionally remain unchanged so this file stays
+ * compatible with the existing admin endpoint contract.
+ */
+
+const ADMIN_REQUEST_TIMEOUT_MS = 30_000;
+const ADMIN_MAX_BATCH_SIZE = 200;
+const ADMIN_SUBJECT_MAX_LENGTH = 100;
+const ADMIN_CACHE_CHANNEL_NAME = "mrh_cache_invalidation";
+
+const adminState = {
   token: "",
   subjects: [],
   reports: [],
-  admin_last_modified_timestamp: "", // OPTIMIZATION: For conflict detection
-  hierarchyLayoutMode: "current", // "current" or "new" - for toggling Subject Hierarchy Editor layout
+  admin_last_modified_timestamp: "",
+  hierarchyLayoutMode: "current", // "current" = list, "new" = grid
 };
 
-// OPTIMIZATION: Optimistic UI Lock
 let adminSaveInProgress = false;
-let adminInputsLocked = false;
+let adminClearInProgress = false;
+let adminSubjectsLoadVersion = 0;
+let adminReportsLoadVersion = 0;
+let adminPendingReload = false;
+let adminExternalChangeWarningShown = false;
+let adminCacheChannel = null;
+const adminReportActionsInProgress = new Set();
 
-// Keep in-memory state synchronized with an existing sessionStorage token.
-adminState.token = getAdminToken();
+function adminGetGlobal(name) {
+  if (typeof globalThis === "undefined") return undefined;
+  return globalThis[name];
+}
 
-const ADMIN_REQUEST_TIMEOUT_MS = 30000;
+function adminGetDocument() {
+  return typeof document !== "undefined" ? document : null;
+}
 
 function adminGetElement(id) {
-  return typeof document !== "undefined" ? document.getElementById(id) : null;
+  const doc = adminGetDocument();
+  return doc ? doc.getElementById(id) : null;
+}
+
+function adminEscapeHTML(value) {
+  const text = String(value ?? "");
+  return text.replace(/[&<>'"]/g, (character) => {
+    switch (character) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      case "'":
+        return "&#39;";
+      default:
+        return character;
+    }
+  });
+}
+
+function adminString(value) {
+  return typeof value === "string" ? value : String(value ?? "");
+}
+
+function adminNormalizeText(value) {
+  return adminString(value).trim();
+}
+
+function adminToBoolean(value) {
+  if (value === true) return true;
+  if (typeof value === "number") return value !== 0;
+  return ["true", "1", "yes", "on"].includes(
+    adminNormalizeText(value).toLowerCase(),
+  );
+}
+
+function adminHasPassword(value) {
+  return adminNormalizeText(value).length > 0;
+}
+
+function adminGetStorage() {
+  try {
+    return typeof sessionStorage !== "undefined" ? sessionStorage : null;
+  } catch (error) {
+    console.warn("[ADMIN] sessionStorage is unavailable:", error);
+    return null;
+  }
+}
+
+function getAdminToken() {
+  const storage = adminGetStorage();
+  if (storage) {
+    try {
+      const candidate = storage.getItem("mrh_admin_token");
+      if (candidate !== null) return candidate;
+    } catch (error) {
+      console.warn("[ADMIN] Could not read admin token:", error);
+    }
+  }
+  return adminState.token || "";
+}
+
+function setAdminToken(token) {
+  const normalized = adminString(token);
+  const storage = adminGetStorage();
+
+  if (storage) {
+    try {
+      if (normalized) {
+        storage.setItem("mrh_admin_token", normalized);
+      } else {
+        storage.removeItem("mrh_admin_token");
+      }
+    } catch (error) {
+      console.warn("[ADMIN] Could not persist admin token:", error);
+    }
+  }
+
+  adminState.token = normalized;
+  return normalized;
+}
+
+function clearAdminToken() {
+  const storage = adminGetStorage();
+  if (storage) {
+    try {
+      storage.removeItem("mrh_admin_token");
+    } catch (error) {
+      console.warn("[ADMIN] Could not clear admin token:", error);
+    }
+  }
+  adminState.token = "";
 }
 
 function adminIsAuthenticated() {
   return Boolean(getAdminToken());
 }
 
+adminState.token = getAdminToken();
+
+function adminNotify(message) {
+  const text = adminString(message) || "An unexpected error occurred.";
+  const notify = adminGetGlobal("alert");
+  if (typeof notify === "function") {
+    notify(text);
+  } else {
+    console.error("[ADMIN]", text);
+  }
+}
+
+function adminConfirm(message) {
+  const confirmFn = adminGetGlobal("confirm");
+  return typeof confirmFn === "function" ? confirmFn(message) : false;
+}
+
+function adminIsUnauthorizedResult(result) {
+  return Boolean(
+    result &&
+    (String(result.code || "").toUpperCase() === "UNAUTHORIZED" ||
+      String(result.status || "").toLowerCase() === "unauthorized"),
+  );
+}
+
+function adminIsUnauthorizedError(error) {
+  const message = adminNormalizeText(error?.message).toLowerCase();
+  return (
+    message.includes("unauthorized") ||
+    message.includes("authentication") ||
+    message.includes("session expired") ||
+    message.includes("401")
+  );
+}
+
+function adminShowLoginUI() {
+  adminGetElement("admin-login-section")?.classList.remove("hidden");
+  adminGetElement("admin-dashboard-section")?.classList.add("hidden");
+}
+
+function adminShowDashboardUI() {
+  adminGetElement("admin-login-section")?.classList.add("hidden");
+  adminGetElement("admin-dashboard-section")?.classList.remove("hidden");
+}
+
+function adminHandleUnauthorized(
+  message = "Your admin session has expired. Please sign in again.",
+) {
+  clearAdminToken();
+  adminShowLoginUI();
+
+  const passwordInput = adminGetElement("admin-password");
+  if (passwordInput) passwordInput.value = "";
+
+  const errorEl = adminGetElement("admin-login-error");
+  if (errorEl) {
+    errorEl.textContent = message;
+    errorEl.classList.remove("hidden");
+  }
+}
+
+async function parseJsonResponse(response) {
+  if (!response || typeof response.ok !== "boolean") {
+    throw new Error("Invalid backend response object.");
+  }
+
+  const text = await response.text().catch(() => "");
+  const cleaned = text.replace(/^\uFEFF/, "").trim();
+
+  if (!response.ok) {
+    let message = `Backend request failed (${response.status})`;
+    if (cleaned) {
+      try {
+        const json = JSON.parse(cleaned);
+        if (json && typeof json.message === "string" && json.message.trim()) {
+          message = json.message.trim();
+        }
+      } catch (_) {
+        // Preserve the generic HTTP error rather than exposing a full HTML error page.
+      }
+    }
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
+  }
+
+  if (!cleaned) {
+    throw new Error("The backend returned an empty response.");
+  }
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (error) {
+    throw new Error(
+      `Invalid JSON response from backend: ${cleaned.slice(0, 200)}`,
+    );
+  }
+}
+
 async function adminFetch(payload, options = {}) {
-  if (typeof DB_URL === "undefined" || !DB_URL) {
+  const configuredUrl =
+    typeof DB_URL !== "undefined" && DB_URL ? String(DB_URL).trim() : "";
+  if (!configuredUrl) {
     throw new Error("Backend URL is not configured.");
+  }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new TypeError("Backend payload must be a plain object.");
+  }
+
+  if (typeof fetch !== "function") {
+    throw new Error("Fetch is not available in this environment.");
   }
 
   const controller =
     typeof AbortController !== "undefined" ? new AbortController() : null;
-  const timeoutMs = Number.isFinite(options.timeoutMs)
-    ? options.timeoutMs
+  const requestedTimeout = Number(options.timeoutMs);
+  const timeoutMs = Number.isFinite(requestedTimeout)
+    ? Math.max(1, requestedTimeout)
     : ADMIN_REQUEST_TIMEOUT_MS;
   const timeoutId = controller
     ? setTimeout(() => controller.abort(), timeoutMs)
     : null;
 
   try {
-    const response = await fetch(DB_URL, {
+    const response = await fetch(configuredUrl, {
       method: "POST",
       redirect: "follow",
       cache: "no-store",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+        Accept: "application/json, text/plain;q=0.9, */*;q=0.8",
+      },
       body: JSON.stringify(payload),
       ...(controller ? { signal: controller.signal } : {}),
     });
+
     return await parseJsonResponse(response);
   } catch (error) {
-    if (error && error.name === "AbortError") {
+    if (error?.name === "AbortError") {
       throw new Error("The backend request timed out. Please try again.");
     }
     throw error;
   } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+    if (timeoutId !== null) clearTimeout(timeoutId);
   }
 }
 
@@ -63,118 +293,165 @@ function adminFormatTimestamp(value) {
   return Number.isNaN(date.getTime()) ? "Unknown time" : date.toLocaleString();
 }
 
-function adminBroadcastCacheInvalidation(source) {
-  if (typeof BroadcastChannel === "undefined") return;
-  try {
-    const channel = new BroadcastChannel("mrh_cache_invalidation");
-    channel.postMessage({
-      type: "cache_invalidated",
-      source: source || "admin",
-      timestamp: Date.now(),
-    });
-    channel.close();
-  } catch (error) {
-    console.warn("[ADMIN] Cache invalidation broadcast failed:", error);
-  }
+function adminGetModalInner(modal) {
+  return (
+    modal?.querySelector(":scope > div") || modal?.querySelector("div") || null
+  );
 }
 
-function getAdminToken() {
-  if (typeof sessionStorage !== "undefined") {
-    const candidate = sessionStorage.getItem("mrh_admin_token");
-    if (candidate) return candidate;
-  }
-  return "";
+function adminShowModal(modal) {
+  if (!modal) return false;
+  const inner = adminGetModalInner(modal);
+  modal.classList.remove("hidden", "opacity-0");
+  if (inner) inner.classList.remove("scale-95");
+  return true;
 }
 
-function setAdminToken(token) {
-  const sanitized = typeof token === "string" ? token.trim() : "";
-  if (typeof sessionStorage !== "undefined") {
-    if (sanitized) {
-      sessionStorage.setItem("mrh_admin_token", sanitized);
-    } else {
-      sessionStorage.removeItem("mrh_admin_token");
-    }
-  }
-  adminState.token = sanitized;
-}
-
-function clearAdminToken() {
-  if (typeof sessionStorage !== "undefined") {
-    sessionStorage.removeItem("mrh_admin_token");
-  }
-  adminState.token = "";
+function adminHideModal(modal) {
+  if (!modal) return false;
+  const inner = adminGetModalInner(modal);
+  modal.classList.add("opacity-0");
+  if (inner) inner.classList.add("scale-95");
+  setTimeout(() => modal.classList.add("hidden"), 300);
+  return true;
 }
 
 function hideAdminSettingsModal() {
-  const modal = document.getElementById("admin-settings-modal");
-  if (!modal) return;
-  const inner = modal.querySelector("div");
-
-  modal.classList.add("opacity-0");
-  if (inner) inner.classList.add("scale-95");
-  setTimeout(() => {
-    modal.classList.add("hidden");
-  }, 300);
+  return adminHideModal(adminGetElement("admin-settings-modal"));
 }
 
-async function parseJsonResponse(response) {
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    let message = `Backend request failed (${response.status})`;
-    try {
-      const json = JSON.parse(text);
-      if (json && typeof json.message === "string") message = json.message;
-    } catch (ignore) {}
-    throw new Error(message);
-  }
-  const text = await response.text().catch(() => "");
+function adminBroadcastCacheInvalidation(source = "admin") {
+  if (typeof BroadcastChannel === "undefined") return false;
+
   try {
-    return JSON.parse(text);
+    const channel = new BroadcastChannel(ADMIN_CACHE_CHANNEL_NAME);
+    channel.postMessage({
+      type: "cache_invalidated",
+      source: adminString(source) || "admin",
+      timestamp: Date.now(),
+    });
+    channel.close();
+    return true;
   } catch (error) {
-    throw new Error(
-      `Invalid JSON response from backend: ${text.slice(0, 200)}`,
-    );
+    console.warn("[ADMIN] Cache invalidation broadcast failed:", error);
+    return false;
   }
 }
 
-// CRITICAL: Listen for cache invalidation broadcasts from other tabs/admin changes
-if (typeof BroadcastChannel !== "undefined") {
-  try {
-    const cacheChannel = new BroadcastChannel("mrh_cache_invalidation");
-    cacheChannel.onmessage = (event) => {
-      if (
-        event.data &&
-        event.data.type === "cache_invalidated" &&
-        getAdminToken()
-      ) {
-        console.log(
-          "[ADMIN] Cache invalidated, reloading subjects:",
-          event.data.timestamp,
-        );
-        loadAdminSubjects();
-      }
-    };
-  } catch (e) {
-    console.warn("BroadcastChannel not available for cache invalidation:", e);
+function adminHasUnsavedChanges() {
+  if (adminSaveInProgress || adminClearInProgress) return false;
+
+  const doc = adminGetDocument();
+  if (!doc) return false;
+
+  for (const input of doc.querySelectorAll(".folder-pass-input")) {
+    const current = adminString(input.value).trim();
+    const original = adminString(input.getAttribute("data-orig")).trim();
+    if (current !== original) return true;
   }
+
+  for (const checkbox of doc.querySelectorAll(".folder-hidden-input")) {
+    const current = Boolean(checkbox.checked);
+    const original = adminToBoolean(checkbox.getAttribute("data-orig"));
+    if (current !== original) return true;
+  }
+
+  for (const input of doc.querySelectorAll("input[id^='new-subj-']")) {
+    const current = adminString(input.value).trim();
+    const original = adminString(
+      input.getAttribute("data-original-name"),
+    ).trim();
+    if (current !== original) return true;
+  }
+
+  for (const input of doc.querySelectorAll(".deck-pass-input")) {
+    const current = adminString(input.value).trim();
+    const original = adminString(input.getAttribute("data-orig")).trim();
+    if (current !== original) return true;
+  }
+
+  for (const checkbox of doc.querySelectorAll(".deck-hidden-input")) {
+    const current = Boolean(checkbox.checked);
+    const original = adminToBoolean(checkbox.getAttribute("data-orig"));
+    if (current !== original) return true;
+  }
+
+  return false;
+}
+
+function adminMarkExternalChangePending() {
+  adminPendingReload = true;
+  if (!adminExternalChangeWarningShown) {
+    adminNotify(
+      "The database changed in another session while this page had unsaved changes. Your edits were kept; reload after reviewing them, or save to let the backend perform its conflict check.",
+    );
+    adminExternalChangeWarningShown = true;
+  }
+}
+
+async function adminRefreshAfterInvalidation() {
+  if (!adminIsAuthenticated()) return;
+
+  if (adminSaveInProgress || adminClearInProgress || adminHasUnsavedChanges()) {
+    adminMarkExternalChangePending();
+    return;
+  }
+
+  adminPendingReload = false;
+  adminExternalChangeWarningShown = false;
+  await loadAdminSubjects({ reason: "broadcast" });
+}
+
+function adminSetupCacheChannel() {
+  if (adminCacheChannel || typeof BroadcastChannel === "undefined") return;
+
+  try {
+    adminCacheChannel = new BroadcastChannel(ADMIN_CACHE_CHANNEL_NAME);
+    adminCacheChannel.onmessage = (event) => {
+      const data = event?.data;
+      if (
+        !data ||
+        data.type !== "cache_invalidated" ||
+        !adminIsAuthenticated()
+      ) {
+        return;
+      }
+      void adminRefreshAfterInvalidation().catch((error) => {
+        console.error("[ADMIN] Broadcast refresh failed:", error);
+      });
+    };
+  } catch (error) {
+    adminCacheChannel = null;
+    console.warn("[ADMIN] BroadcastChannel unavailable:", error);
+  }
+}
+
+function adminCloseCacheChannel() {
+  if (!adminCacheChannel) return;
+  try {
+    adminCacheChannel.close();
+  } catch (_) {
+    // Best effort only.
+  }
+  adminCacheChannel = null;
 }
 
 async function adminLogin() {
   const passwordInput = adminGetElement("admin-password");
   const btn = adminGetElement("btn-admin-login");
   const errorEl = adminGetElement("admin-login-error");
-  const loginSection = adminGetElement("admin-login-section");
-  const dashboardSection = adminGetElement("admin-dashboard-section");
 
-  const pass = String(passwordInput?.value || "").trim();
-  if (!pass) {
+  const rawPassword = adminString(passwordInput?.value);
+  if (!rawPassword.trim()) {
     if (errorEl) {
-      errorEl.innerText = "Enter the admin password.";
+      errorEl.textContent = "Enter the admin password.";
       errorEl.classList.remove("hidden");
     }
     passwordInput?.focus();
-    return;
+    return false;
   }
+
+  if (btn?.disabled) return false;
 
   const originalText = btn?.innerHTML || "Verify";
   if (btn) {
@@ -184,35 +461,39 @@ async function adminLogin() {
   }
 
   try {
-    const result = await adminFetch({ type: "verify_admin", token: pass });
+    const result = await adminFetch({
+      type: "verify_admin",
+      token: rawPassword,
+    });
 
-    if (result && result.status === "success") {
-      setAdminToken(pass);
-      adminState.token = pass;
+    if (result?.status === "success") {
+      setAdminToken(rawPassword);
       if (errorEl) errorEl.classList.add("hidden");
-      loginSection?.classList.add("hidden");
-      dashboardSection?.classList.remove("hidden");
+      adminShowDashboardUI();
       initializeAdminUI();
+      adminSetupCacheChannel();
       await Promise.allSettled([loadAdminSubjects(), adminLoadReports()]);
-      return;
+      return true;
     }
 
     const message =
       typeof result?.message === "string" && result.message.trim()
-        ? result.message
+        ? result.message.trim()
         : "Incorrect password.";
     if (errorEl) {
-      errorEl.innerText = message;
+      errorEl.textContent = message;
       errorEl.classList.remove("hidden");
     }
+    return false;
   } catch (error) {
     console.error("[ADMIN] Login failed:", error);
     if (errorEl) {
-      errorEl.innerText = error?.message || "Unable to reach the backend.";
+      errorEl.textContent = error?.message || "Unable to reach the backend.";
       errorEl.classList.remove("hidden");
     } else {
-      alert(error?.message || "Network error while verifying password.");
+      adminNotify(error?.message || "Network error while verifying password.");
     }
+    return false;
   } finally {
     if (btn) {
       btn.innerHTML = originalText;
@@ -223,41 +504,37 @@ async function adminLogin() {
 
 function collectAdminStats() {
   const records = Array.isArray(adminState.subjects) ? adminState.subjects : [];
-  let folders = 0;
-  let decks = 0;
-  let lockedDecks = 0;
-  let hiddenDecks = 0;
+  const stats = {
+    folders: 0,
+    decks: 0,
+    lockedDecks: 0,
+    hiddenDecks: 0,
+  };
 
-  records.forEach((cat) => {
-    if (!cat || !cat.Subject) return;
+  for (const record of records) {
+    if (!record || !adminNormalizeText(record.Subject)) continue;
 
-    const isFolder =
-      cat.IsFolder === true || String(cat.IsFolder).toLowerCase() === "true";
-    const hasPassword = String(cat.Password || cat.password || "").trim();
-    const isHidden =
-      cat.Hidden === true || String(cat.Hidden).toLowerCase() === "true";
-
+    const isFolder = adminToBoolean(record.IsFolder);
     if (isFolder) {
-      folders += 1;
-      return;
+      stats.folders += 1;
+      continue;
     }
 
-    decks += 1;
-    if (hasPassword) lockedDecks += 1;
-    if (isHidden) hiddenDecks += 1;
-  });
+    stats.decks += 1;
+    if (adminHasPassword(record.Password ?? record.password)) {
+      stats.lockedDecks += 1;
+    }
+    if (adminToBoolean(record.Hidden)) stats.hiddenDecks += 1;
+  }
 
   return {
-    folders,
-    decks,
-    lockedDecks,
-    hiddenDecks,
-    publicDecks: Math.max(decks - lockedDecks, 0),
+    ...stats,
+    publicDecks: Math.max(stats.decks - stats.lockedDecks, 0),
   };
 }
 
 function renderAdminSummary() {
-  const container = document.getElementById("admin-summary-cards");
+  const container = adminGetElement("admin-summary-cards");
   if (!container) return;
 
   const stats = collectAdminStats();
@@ -311,231 +588,413 @@ function renderAdminSummary() {
     .join("");
 }
 
-async function loadAdminSubjects() {
-  const container = adminGetElement("admin-subject-list");
-  if (!container) return;
+async function adminFetchStableSubjects(token, attempts = 2) {
+  let lastSubjects = null;
+  let lastTimestamp = "";
 
-  const token = getAdminToken();
-  if (!token) {
-    container.innerHTML =
-      '<p class="text-center text-red-500 py-6">Admin session expired. Please sign in again.</p>';
-    return;
-  }
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const before = await adminFetch({
+      type: "get_cache_version",
+      token,
+    });
 
-  container.innerHTML = `<p class="text-center text-brand-500 py-6"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Fetching secure database...</p>`;
+    if (adminIsUnauthorizedResult(before)) {
+      clearAdminToken();
+      throw new Error("Unauthorized admin session.");
+    }
 
-  try {
-    const secureSubjects = await adminFetch({
+    const beforeTimestamp = adminNormalizeText(before?.timestamp);
+    if (!beforeTimestamp) {
+      throw new Error(
+        "The backend did not provide a database version timestamp.",
+      );
+    }
+
+    const subjects = await adminFetch({
       type: "admin_get_subjects",
       token,
     });
-    if (secureSubjects && secureSubjects.status === "error") {
-      if (secureSubjects.code === "UNAUTHORIZED") clearAdminToken();
-      throw new Error(
-        secureSubjects.message || "Backend rejected the request.",
-      );
+
+    if (adminIsUnauthorizedResult(subjects)) {
+      clearAdminToken();
+      throw new Error("Unauthorized admin session.");
     }
-    if (!Array.isArray(secureSubjects)) {
+
+    if (!Array.isArray(subjects)) {
       throw new Error(
         "Unexpected response from the backend. Please check server configuration.",
       );
     }
 
-    adminState.subjects = secureSubjects;
-    renderAdminSummary();
-
-    // Load the version once, when the page is loaded. Do not refresh it immediately before save;
-    // the backend uses this value to detect a stale page.
-    try {
-      const versionData = await adminFetch({
-        type: "get_cache_version",
-        token,
-      });
-      if (versionData && typeof versionData.timestamp === "string") {
-        adminState.admin_last_modified_timestamp = versionData.timestamp.trim();
-      }
-    } catch (versionError) {
-      console.warn(
-        "[ADMIN] Could not load modification timestamp:",
-        versionError,
-      );
-    }
-
-    renderAdminSubjectList();
-  } catch (error) {
-    console.error("[ADMIN] Subject load failed:", error);
-    if (
-      typeof state !== "undefined" &&
-      Array.isArray(state.categorySummary) &&
-      state.categorySummary.length > 0
-    ) {
-      adminState.subjects = state.categorySummary;
-      renderAdminSummary();
-      renderAdminSubjectList();
-      return;
-    }
-
-    if (error?.message?.toLowerCase().includes("unauthorized")) {
+    const after = await adminFetch({
+      type: "get_cache_version",
+      token,
+    });
+    if (adminIsUnauthorizedResult(after)) {
       clearAdminToken();
+      throw new Error("Unauthorized admin session.");
     }
-    container.innerHTML = `<p class="text-center text-red-500 py-6">${escapeHTML(
+    const afterTimestamp = adminNormalizeText(after?.timestamp);
+
+    lastSubjects = subjects;
+    lastTimestamp = afterTimestamp;
+
+    if (afterTimestamp && afterTimestamp === beforeTimestamp) {
+      return { subjects, timestamp: afterTimestamp };
+    }
+  }
+
+  if (Array.isArray(lastSubjects) && lastTimestamp) {
+    return { subjects: lastSubjects, timestamp: lastTimestamp };
+  }
+
+  throw new Error(
+    "The database changed while it was being loaded. Please try again.",
+  );
+}
+
+async function loadAdminSubjects(options = {}) {
+  const container = adminGetElement("admin-subject-list");
+  if (!container) return false;
+
+  const token = getAdminToken();
+  if (!token) {
+    container.innerHTML =
+      '<p class="text-center text-red-500 py-6">Admin session expired. Please sign in again.</p>';
+    adminShowLoginUI();
+    return false;
+  }
+
+  const requestVersion = ++adminSubjectsLoadVersion;
+  container.innerHTML =
+    '<p class="text-center text-brand-500 py-6"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Fetching secure database...</p>';
+
+  try {
+    const loaded = await adminFetchStableSubjects(token, 2);
+
+    if (requestVersion !== adminSubjectsLoadVersion) return false;
+    if (getAdminToken() !== token) return false;
+
+    adminState.subjects = loaded.subjects;
+    adminState.admin_last_modified_timestamp = loaded.timestamp;
+    renderAdminSummary();
+    renderAdminSubjectList();
+    return true;
+  } catch (error) {
+    if (requestVersion !== adminSubjectsLoadVersion) return false;
+
+    console.error("[ADMIN] Subject load failed:", error);
+
+    if (adminIsUnauthorizedError(error)) {
+      adminHandleUnauthorized();
+      return false;
+    }
+
+    container.innerHTML = `<p class="text-center text-red-500 py-6">${adminEscapeHTML(
       error?.message || "Network error. Could not load database.",
     )}</p>`;
+    return false;
+  } finally {
+    if (
+      adminPendingReload &&
+      !adminSaveInProgress &&
+      !adminClearInProgress &&
+      !adminHasUnsavedChanges() &&
+      adminIsAuthenticated()
+    ) {
+      adminPendingReload = false;
+      adminExternalChangeWarningShown = false;
+      void loadAdminSubjects({ reason: "pending-broadcast" });
+    }
+    if (options.reason === "broadcast") {
+      adminExternalChangeWarningShown = false;
+    }
   }
 }
 
-function setAdminHierarchyLayoutMode(mode) {
-  const normalizedMode = mode === "new" ? "new" : "current";
-  adminState.hierarchyLayoutMode = normalizedMode;
+function updateAdminLayoutControls() {
+  const isGrid = adminState.hierarchyLayoutMode === "new";
+  const checkbox = adminGetElement("layout-toggle-checkbox");
+  const button = adminGetElement("admin-layout-toggle-button");
+  const icon = adminGetElement("admin-layout-toggle-icon");
+  const label = adminGetElement("admin-layout-toggle-label");
 
-  const checkbox = document.getElementById("layout-toggle-checkbox");
-  if (checkbox) checkbox.checked = normalizedMode === "new";
-
-  const button = document.getElementById("admin-layout-toggle-button");
-  const icon = document.getElementById("admin-layout-toggle-icon");
-  const label = document.getElementById("admin-layout-toggle-label");
+  if (checkbox) checkbox.checked = isGrid;
   if (button) {
-    const isNew = normalizedMode === "new";
-    button.setAttribute("aria-pressed", String(isNew));
-    button.classList.toggle("bg-brand-600", isNew);
-    button.classList.toggle("text-white", isNew);
-    button.classList.toggle("bg-gray-100", !isNew);
-    button.classList.toggle("text-gray-700", !isNew);
-    button.classList.toggle("dark:bg-gray-700", !isNew);
-    button.classList.toggle("dark:text-gray-200", !isNew);
+    button.setAttribute("aria-pressed", String(isGrid));
+    button.classList.toggle("bg-brand-600", isGrid);
+    button.classList.toggle("text-white", isGrid);
+    button.classList.toggle("bg-gray-100", !isGrid);
+    button.classList.toggle("text-gray-700", !isGrid);
+    button.classList.toggle("dark:bg-gray-700", !isGrid);
+    button.classList.toggle("dark:text-gray-200", !isGrid);
   }
   if (icon) {
-    icon.className =
-      normalizedMode === "new"
-        ? "fa-solid fa-table-cells mr-2"
-        : "fa-solid fa-list mr-2";
+    icon.className = isGrid
+      ? "fa-solid fa-table-cells mr-2"
+      : "fa-solid fa-list mr-2";
   }
-  if (label) {
-    label.textContent = normalizedMode === "new" ? "Grid View" : "List View";
-  }
+  if (label) label.textContent = isGrid ? "Grid View" : "List View";
+}
 
-  console.log(
-    "[ADMIN] Layout mode changed to:",
-    adminState.hierarchyLayoutMode,
-  );
+function setAdminHierarchyLayoutMode(mode) {
+  adminState.hierarchyLayoutMode = mode === "new" ? "new" : "current";
+  updateAdminLayoutControls();
   renderAdminSubjectList();
 }
 
 function toggleHierarchyLayout() {
-  const checkbox = document.getElementById("layout-toggle-checkbox");
-  setAdminHierarchyLayoutMode(checkbox && checkbox.checked ? "new" : "current");
+  const checkbox = adminGetElement("layout-toggle-checkbox");
+  setAdminHierarchyLayoutMode(Boolean(checkbox?.checked) ? "new" : "current");
 }
 
 function initializeAdminUI() {
-  const checkbox = document.getElementById("layout-toggle-checkbox");
-  if (checkbox) {
-    checkbox.checked = adminState.hierarchyLayoutMode === "new";
-  }
-
-  const button = document.getElementById("admin-layout-toggle-button");
-  if (button) {
-    const isNew = adminState.hierarchyLayoutMode === "new";
-    button.setAttribute("aria-pressed", String(isNew));
-    button.classList.toggle("bg-brand-600", isNew);
-    button.classList.toggle("text-white", isNew);
-    button.classList.toggle("bg-gray-100", !isNew);
-    button.classList.toggle("text-gray-700", !isNew);
-    button.classList.toggle("dark:bg-gray-700", !isNew);
-    button.classList.toggle("dark:text-gray-200", !isNew);
-  }
-
-  const icon = document.getElementById("admin-layout-toggle-icon");
-  if (icon) {
-    icon.className =
-      adminState.hierarchyLayoutMode === "new"
-        ? "fa-solid fa-table-cells mr-2"
-        : "fa-solid fa-list mr-2";
-  }
-
-  const label = document.getElementById("admin-layout-toggle-label");
-  if (label) {
-    label.textContent =
-      adminState.hierarchyLayoutMode === "new" ? "Grid View" : "List View";
-  }
+  updateAdminLayoutControls();
+  adminBindSubjectEvents();
+  adminBindReportEvents();
 }
 
-function renderAdminSubjectList() {
-  const container = document.getElementById("admin-subject-list");
-  const tree = {
-    subfolders: {},
+function adminCreateTreeNode() {
+  return {
+    subfolders: Object.create(null),
     decks: [],
     folderPass: "",
     folderHidden: false,
-  }; // Added folderPass and folderHidden state
+    UUID: "",
+    hasFolderRecord: false,
+  };
+}
 
-  adminState.subjects.forEach((cat, index) => {
-    const subjString = cat.Subject;
-    const passString = String(cat.Password || cat.password || "").trim();
-    const hiddenStatus =
-      cat.Hidden === true || String(cat.Hidden).toLowerCase() === "true";
+function adminBuildSubjectTree() {
+  const tree = adminCreateTreeNode();
 
-    console.log(
-      `[Render] Subject: ${subjString}, Hidden: ${cat.Hidden}, Parsed: ${hiddenStatus}`,
-    );
+  const records = Array.isArray(adminState.subjects) ? adminState.subjects : [];
+  records.forEach((cat, index) => {
+    if (!cat) return;
 
-    const parts = subjString.split("::").map((s) => s.trim());
-    if (
-      cat.IsFolder === true ||
-      String(cat.IsFolder).toLowerCase() === "true"
-    ) {
-      let currentNode = tree;
-      parts.forEach((part) => {
-        if (!currentNode.subfolders[part])
-          currentNode.subfolders[part] = {
-            subfolders: {},
-            decks: [],
-            folderPass: "",
-            folderHidden: false,
-            UUID: "",
-          };
-        currentNode = currentNode.subfolders[part];
-      });
-      currentNode.folderPass = passString; // Assign password to the folder
-      currentNode.folderHidden = hiddenStatus; // Assign hidden status to the folder
-      currentNode.UUID = currentNode.UUID || cat.UUID || "";
-      return; // Stop here, it's not a deck
-    }
+    const subject = adminNormalizeText(cat.Subject);
+    if (!subject) return;
 
-    const deckName = parts.pop();
+    const parts = subject.split("::").map((part) => part.trim());
+    if (!parts.length || parts.some((part) => !part)) return;
+
+    const pass = adminNormalizeText(cat.Password ?? cat.password);
+    const hidden = adminToBoolean(cat.Hidden);
+    const isFolder = adminToBoolean(cat.IsFolder);
 
     let currentNode = tree;
-    parts.forEach((part) => {
-      if (!currentNode.subfolders[part])
-        currentNode.subfolders[part] = {
-          subfolders: {},
-          decks: [],
-          folderPass: "",
-          folderHidden: false,
-        };
+    for (const part of parts) {
+      if (!currentNode.subfolders[part]) {
+        currentNode.subfolders[part] = adminCreateTreeNode();
+      }
       currentNode = currentNode.subfolders[part];
-    });
+    }
+
+    if (isFolder) {
+      currentNode.folderPass = pass;
+      currentNode.folderHidden = hidden;
+      currentNode.UUID = currentNode.UUID || adminNormalizeText(cat.UUID);
+      currentNode.hasFolderRecord = true;
+      return;
+    }
+
+    const deckName = parts[parts.length - 1];
+    currentNode = tree;
+    for (const part of parts.slice(0, -1)) {
+      if (!currentNode.subfolders[part]) {
+        currentNode.subfolders[part] = adminCreateTreeNode();
+      }
+      currentNode = currentNode.subfolders[part];
+    }
 
     currentNode.decks.push({
-      originalFull: subjString,
-      deckName: deckName,
-      index: index,
-      password: passString,
-      hidden: hiddenStatus,
-      UUID: cat.UUID || "",
+      originalFull: subject,
+      deckName,
+      index,
+      password: pass,
+      hidden,
+      UUID: adminNormalizeText(cat.UUID),
     });
-
-    console.log(`[Add Deck] ${deckName}, hidden=${hiddenStatus}`);
   });
 
-  function countTotalDecks(node) {
-    let count = node.decks.length;
-    for (const key in node.subfolders)
-      count += countTotalDecks(node.subfolders[key]);
-    return count;
+  return tree;
+}
+
+function adminCountDecks(node) {
+  let count = node?.decks?.length || 0;
+  for (const child of Object.values(node?.subfolders || {})) {
+    count += adminCountDecks(child);
+  }
+  return count;
+}
+
+function adminMakeModalId(kind, sequence) {
+  return `admin-${kind}-modal-${sequence}`;
+}
+
+function adminRenderFolderSettingsModal({
+  modalId,
+  folderName,
+  folderPath,
+  node,
+}) {
+  const persistedText = node.hasFolderRecord
+    ? ""
+    : '<p class="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">This folder has no dedicated folder record. Changes may be rejected by the backend if it does not support creating folder records from a path.</p>';
+
+  return `
+    <div id="${modalId}" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] hidden opacity-0 flex items-center justify-center p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-label="${adminEscapeHTML(folderName)} settings">
+      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-all my-auto">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+            <i class="fa-solid fa-sliders text-amber-600 dark:text-amber-400 mr-2"></i>${adminEscapeHTML(folderName)} Settings
+          </h3>
+          <button type="button" data-admin-action="close-modal" data-modal-id="${modalId}" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl" aria-label="Close folder settings">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <div class="space-y-4">
+          <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <label class="block text-base font-bold text-red-700 dark:text-red-400 mb-2">
+              <i class="fa-solid fa-lock mr-2"></i> Lock Folder
+            </label>
+            <input type="text"
+              class="folder-pass-input w-full p-2 border border-red-300 dark:border-red-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-base focus:border-red-500 focus:ring-2 outline-none transition-all"
+              placeholder="Leave blank for public folder..."
+              data-path="${adminEscapeHTML(folderPath)}"
+              data-orig="${adminEscapeHTML(node.folderPass)}"
+              value="${adminEscapeHTML(node.folderPass)}"
+              ${adminSaveInProgress || adminClearInProgress ? "disabled" : ""}>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Password to access this folder and subfolders</p>
+            ${persistedText}
+          </div>
+
+          <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <label class="text-base font-bold text-purple-700 dark:text-purple-400 flex items-center gap-2 cursor-pointer">
+              <input type="checkbox"
+                class="folder-hidden-input w-5 h-5 cursor-pointer"
+                data-path="${adminEscapeHTML(folderPath)}"
+                data-orig="${String(node.folderHidden)}"
+                ${node.folderHidden ? "checked" : ""}
+                ${adminSaveInProgress || adminClearInProgress ? "disabled" : ""}>
+              <i class="fa-solid fa-eye-slash"></i> Hide Entire Folder
+            </label>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Hidden from regular users (not synced)</p>
+          </div>
+
+          <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <button type="button" data-admin-action="close-modal" data-modal-id="${modalId}" class="w-full bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-all">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function adminRenderDeck(deck, layout) {
+  const password = adminEscapeHTML(deck.password);
+  const originalPath = adminEscapeHTML(deck.originalFull);
+  const uuid = adminEscapeHTML(deck.UUID);
+  const hiddenChecked = deck.hidden ? "checked" : "";
+  const disabled =
+    adminSaveInProgress || adminClearInProgress ? "disabled" : "";
+
+  if (layout === "grid") {
+    return `
+      <div class="group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col h-full relative" data-admin-deck-card="true">
+        <div class="h-12 bg-purple-500 dark:bg-purple-700 transition-colors relative"></div>
+        <div class="p-4 flex-1 flex flex-col">
+          <div class="flex items-start justify-between gap-2 mb-3 min-w-0">
+            <h3 class="font-bold text-gray-800 dark:text-gray-100 text-lg flex items-center min-w-0">
+              <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm flex-shrink-0"></i>
+              <span class="truncate">${adminEscapeHTML(deck.deckName)}</span>
+            </h3>
+            <span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm"><i class="fa-solid fa-cloud mr-1"></i></span>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3 break-all font-mono min-h-[2.5rem]">${originalPath}</p>
+          ${uuid ? `<p class="text-[10px] text-gray-500 dark:text-gray-400 mb-3 break-all font-mono">${uuid}</p>` : ""}
+          <div class="space-y-2 mt-auto">
+            <div>
+              <label class="text-[10px] font-bold text-red-600 dark:text-red-400 block mb-1 uppercase tracking-wider"><i class="fa-solid fa-lock mr-1"></i> Password</label>
+              <input type="text" id="deck-pass-${deck.index}" value="${password}" data-uuid="${uuid}" data-orig="${password}" class="deck-pass-input w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-sm focus:border-red-500 focus:ring-2 outline-none transition-all" placeholder="Public" ${disabled}>
+            </div>
+            <label class="text-[10px] font-bold text-purple-600 dark:text-purple-400 flex items-center gap-2 cursor-pointer p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-700">
+              <input type="checkbox" id="deck-hidden-${deck.index}" class="deck-hidden-input w-4 h-4 cursor-pointer" data-uuid="${uuid}" data-index="${deck.index}" data-path="${originalPath}" data-orig="${String(deck.hidden)}" ${hiddenChecked} ${disabled}>
+              <i class="fa-solid fa-eye-slash text-sm"></i><span>Hidden</span>
+            </label>
+          </div>
+        </div>
+      </div>`;
   }
 
+  return `
+    <div class="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-md transition-all mb-3" data-uuid="${uuid}">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="lg:col-span-2">
+          <span class="text-sm font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider block mb-1">📖 Deck Name</span>
+          <div class="font-semibold text-gray-800 dark:text-gray-100 text-lg break-words" title="${originalPath}">${adminEscapeHTML(deck.deckName)}</div>
+          <div class="text-sm text-gray-600 dark:text-gray-400 mt-1 font-mono">Full path: ${originalPath}</div>
+          <div class="mt-3">
+            <div class="flex justify-between items-center mb-2">
+              <span class="text-sm font-bold text-brand-600 dark:text-brand-400 uppercase">New Path</span>
+              <span class="text-sm text-gray-500 font-mono" data-char-count="${deck.index}">${deck.originalFull.length}/${ADMIN_SUBJECT_MAX_LENGTH}</span>
+            </div>
+            <input type="text"
+              id="new-subj-${deck.index}"
+              value="${originalPath}"
+              maxlength="${ADMIN_SUBJECT_MAX_LENGTH}"
+              data-uuid="${uuid}"
+              data-original-name="${originalPath}"
+              class="admin-subject-path-input w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-base focus:border-brand-500 focus:ring-2 outline-none transition-all"
+              ${disabled}>
+          </div>
+        </div>
+
+        <div class="space-y-3 flex flex-col">
+          ${
+            uuid
+              ? `<div class="inline-flex max-w-full items-center gap-2 rounded border border-blue-200 bg-blue-50 px-2 py-1 dark:border-blue-700 dark:bg-blue-900/20"><span class="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">🔑</span><span class="max-w-full truncate font-mono text-sm text-blue-800 dark:text-blue-300 select-all" title="UUID">${uuid}</span></div>`
+              : `<div class="inline-flex max-w-full items-center gap-2 rounded border border-dashed border-gray-300 bg-gray-100 px-2 py-1 dark:border-gray-600 dark:bg-gray-700"><span class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">🔑</span><span class="text-xs text-gray-400 dark:text-gray-500">Will be assigned</span></div>`
+          }
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-sm font-bold text-red-600 dark:text-red-400 block mb-1"><i class="fa-solid fa-lock"></i> Password</label>
+              <input type="text" id="deck-pass-${deck.index}" value="${password}" placeholder="Public" data-uuid="${uuid}" data-orig="${password}" class="deck-pass-input w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-base focus:border-red-500 focus:ring-2 outline-none transition-all" ${disabled}>
+            </div>
+            <div class="flex items-end">
+              <label class="text-sm font-bold text-purple-600 dark:text-purple-400 flex items-center gap-2 cursor-pointer p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-700 w-full">
+                <input type="checkbox" id="deck-hidden-${deck.index}" class="deck-hidden-input w-4 h-4 cursor-pointer" data-uuid="${uuid}" data-index="${deck.index}" data-path="${originalPath}" data-orig="${String(deck.hidden)}" ${hiddenChecked} ${disabled}>
+                <i class="fa-solid fa-eye-slash text-base"></i><span>Hidden</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderAdminSubjectList() {
+  const container = adminGetElement("admin-subject-list");
+  if (!container) return;
+
+  const tree = adminBuildSubjectTree();
+  const html =
+    adminState.hierarchyLayoutMode === "new"
+      ? renderGridView(tree)
+      : renderAdminListView(tree);
+
+  container.innerHTML =
+    html || '<p class="text-center text-gray-500 py-6">No subjects found.</p>';
+  renderAdminSummary();
+  adminBindSubjectEvents();
+}
+
+function renderAdminListView(tree) {
+  let modalSequence = 0;
+
   function renderNode(node, folderName, depth = 0, currentPath = "") {
-    let innerHtml = "";
+    let html = "";
     const fullPath =
       depth === 0
         ? ""
@@ -543,392 +1002,139 @@ function renderAdminSubjectList() {
           ? `${currentPath}::${folderName}`
           : folderName;
 
-    // Folder settings section - REMOVED (now using modal)
-    // Settings will be triggered via icon button in folder header
-
-    // Render subfolders
-    for (const [subName, subNode] of Object.entries(node.subfolders)) {
-      innerHtml += renderNode(subNode, subName, depth + 1, fullPath);
+    const childFolders = Object.entries(node.subfolders).sort(([a], [b]) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    );
+    for (const [subName, subNode] of childFolders) {
+      html += renderNode(subNode, subName, depth + 1, fullPath);
     }
 
-    // Render decks section with header
-    if (node.decks.length > 0) {
+    if (node.decks.length) {
       if (depth > 0) {
-        innerHtml += `<div class="my-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                        <span class="text-sm font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider">📚 Decks in this folder</span>
-                     </div>`;
+        html += `<div class="my-2 pt-2 border-t border-gray-200 dark:border-gray-700"><span class="text-sm font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider">📚 Decks in this folder</span></div>`;
       }
 
       node.decks
-        .sort((a, b) => a.deckName.localeCompare(b.deckName))
-        .forEach((subj) => {
-          innerHtml += `
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-md transition-all mb-3" data-uuid="${escapeHTML(subj.UUID || "")}">
-                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                        <!-- Left Column: Deck Info -->
-                        <div class="lg:col-span-2">
-                            <span class="text-sm font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider block mb-1">📖 Deck Name</span>
-                            <div class="font-semibold text-gray-800 dark:text-gray-100 text-lg break-words" title="${escapeHTML(subj.originalFull)}">${escapeHTML(subj.deckName)}</div>
-                            <div class="text-sm text-gray-600 dark:text-gray-400 mt-1 font-mono">Full path: ${escapeHTML(subj.originalFull)}</div>
-                            
-                            <!-- Path Input -->
-                            <div class="mt-3">
-                                <div class="flex justify-between items-center mb-2">
-                                    <span class="text-sm font-bold text-brand-600 dark:text-brand-400 uppercase">New Path</span>
-                                    <span class="text-sm text-gray-500 font-mono" id="char-count-${subj.index}">${subj.originalFull.length}/100</span>
-                                </div>
-                                <input type="text" 
-                                        id="new-subj-${subj.index}" 
-                                        value="${escapeHTML(subj.originalFull)}" 
-                                        maxlength="100"
-                                        data-uuid="${escapeHTML(subj.UUID || "")}"
-                                        data-original-name="${escapeHTML(subj.originalFull)}"
-                                        oninput="const countEl = document.getElementById('char-count-${subj.index}');
-                                        countEl.innerText = this.value.length + '/100';
-                                        this.value.length >= 90 ? countEl.classList.add('text-red-500') : countEl.classList.remove('text-red-500');"
-                                        class="w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-base focus:border-brand-500 focus:ring-2 outline-none transition-all">
-                            </div>
-                        </div>
-                        
-                        <!-- Right Column: UUID and Controls -->
-                        <div class="space-y-3 flex flex-col">
-                            <!-- UUID Box -->
-                            ${
-                              subj.UUID
-                                ? `
-                            <div class="inline-flex max-w-full items-center gap-2 rounded border border-blue-200 bg-blue-50 px-2 py-1 dark:border-blue-700 dark:bg-blue-900/20">
-                                <span class="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">🔑</span>
-                                <span class="max-w-full truncate font-mono text-sm text-blue-800 dark:text-blue-300 select-all cursor-pointer" title="Click to select UUID">${escapeHTML(subj.UUID)}</span>
-                            </div>
-                            `
-                                : `
-                            <div class="inline-flex max-w-full items-center gap-2 rounded border border-dashed border-gray-300 bg-gray-100 px-2 py-1 dark:border-gray-600 dark:bg-gray-700">
-                                <span class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">🔑</span>
-                                <span class="text-xs text-gray-400 dark:text-gray-500">Will be assigned</span>
-                            </div>
-                            `
-                            }
-                            
-                            <!-- Password & Hidden Status -->
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="text-sm font-bold text-red-600 dark:text-red-400 block mb-1">
-                                        <i class="fa-solid fa-lock"></i> Password
-                                    </label>
-                                    <input type="text" 
-                                            id="deck-pass-${subj.index}" 
-                                            value="${escapeHTML(subj.password)}" 
-                                            placeholder="Public"
-                                            data-uuid="${escapeHTML(subj.UUID || "")}"
-                                            class="deck-pass-input w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-base focus:border-red-500 focus:ring-2 outline-none transition-all">
-                                </div>
-                                <div class="flex items-end">
-                                    <label class="text-sm font-bold text-purple-600 dark:text-purple-400 flex items-center gap-2 cursor-pointer p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-700 w-full">
-                                        <input type="checkbox" 
-                                            id="deck-hidden-${subj.index}"
-                                            class="deck-hidden-input w-4 h-4 cursor-pointer"
-                                            data-uuid="${escapeHTML(subj.UUID || "")}"
-                                            data-index="${subj.index}"
-                                            data-path="${escapeHTML(subj.originalFull)}"
-                                            data-orig="${String(subj.hidden || false)}"
-                                            ${subj.hidden ? "checked" : ""}>
-                                        <i class="fa-solid fa-eye-slash text-base"></i>
-                                        <span>Hidden</span>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
+        .slice()
+        .sort((a, b) =>
+          a.deckName.localeCompare(b.deckName, undefined, {
+            sensitivity: "base",
+          }),
+        )
+        .forEach((deck) => {
+          html += adminRenderDeck(deck, "list");
         });
     }
 
-    if (depth === 0) return innerHtml;
+    if (depth === 0) return html;
 
-    const totalDecks = countTotalDecks(node);
+    const totalDecks = adminCountDecks(node);
     const depthColor =
       depth === 1
         ? "bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800"
         : "bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700";
-
     const indentClass = depth > 1 ? "ml-2 md:ml-4" : "";
-    const folderUuid = String(node.UUID || "").trim();
-    const modalId = `folder-settings-${(folderUuid || fullPath).replace(/[^a-zA-Z0-9-_]/g, "-")}`;
+    const modalId = adminMakeModalId("folder", ++modalSequence);
 
     return `
-            <details class="${indentClass} mb-2 ${depthColor} rounded-lg border group shadow-sm">
-                <summary class="font-bold text-gray-700 dark:text-gray-300 p-3 cursor-pointer flex items-center justify-between hover:bg-white/50 dark:hover:bg-gray-900/30 transition-colors outline-none list-none group-open:bg-white/50 dark:group-open:bg-gray-900/30">
-                    <span class="flex items-center gap-3 flex-1">
-                        <i class="fa-solid fa-folder text-brand-500 text-lg flex-shrink-0"></i>
-                        <span class="font-semibold text-base">${escapeHTML(folderName)}</span>
-                        <span class="bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 text-sm px-2 py-0.5 rounded-full font-semibold flex-shrink-0">${totalDecks}</span>
-                    </span>
-                    <span class="flex items-center gap-2 flex-shrink-0">
-                        ${
-                          folderUuid
-                            ? `
-                        <div class="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-1 dark:border-blue-700 dark:bg-blue-900/20 max-w-[200px]">
-                            <span class="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">🔑</span>
-                            <span class="font-mono text-xs text-blue-800 dark:text-blue-300 truncate select-all cursor-pointer" title="Click to select UUID">${escapeHTML(folderUuid)}</span>
-                        </div>
-                        `
-                            : `
-                        <div class="inline-flex items-center gap-1 rounded border border-dashed border-gray-300 bg-gray-100 px-2 py-1 dark:border-gray-600 dark:bg-gray-700 flex-shrink-0">
-                            <span class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">🔑</span>
-                            <span class="text-xs text-gray-400 dark:text-gray-500">Will assign</span>
-                        </div>
-                        `
-                        }
-                        <button 
-                            type="button"
-                            onclick="document.getElementById('${modalId}').classList.remove('hidden')"
-                            class="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 p-2 rounded hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors flex-shrink-0"
-                            title="Folder settings">
-                            <i class="fa-solid fa-sliders text-lg"></i>
-                        </button>
-                        <i class="fa-solid fa-chevron-down text-gray-400 transition-transform duration-300 group-open:rotate-180 text-base flex-shrink-0"></i>
-                    </span>
-                </summary>
-                <div class="px-4 py-3 border-t ${depthColor.includes("blue") ? "border-blue-200 dark:border-blue-800" : "border-gray-200 dark:border-gray-700"} space-y-2">
-                    ${innerHtml}
-                </div>
-            </details>
-
-            <!-- Folder Settings Modal -->
-            <div id="${modalId}" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] hidden flex items-center justify-center p-4 overflow-y-auto">
-                <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform transition-all my-auto">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
-                            <i class="fa-solid fa-sliders text-amber-600 dark:text-amber-400 mr-2"></i>${escapeHTML(folderName)} - Settings
-                        </h3>
-                        <button 
-                            type="button"
-                            onclick="document.getElementById('${modalId}').classList.add('hidden')"
-                            class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl">
-                            <i class="fa-solid fa-xmark"></i>
-                        </button>
-                    </div>
-
-                    <div class="space-y-4">
-                        <div class="border-t border-gray-200 dark:border-gray-700 pt-0">
-                            <label class="block text-base font-bold text-red-700 dark:text-red-400 mb-2">
-                                <i class="fa-solid fa-lock mr-2"></i> Lock Folder
-                            </label>
-                            <input type="text" 
-                                class="folder-pass-input w-full p-2 border border-red-300 dark:border-red-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-base focus:border-red-500 focus:ring-2 outline-none transition-all" 
-                                placeholder="Leave blank for public folder..."
-                                data-path="${escapeHTML(fullPath)}"
-                                data-orig="${escapeHTML(node.folderPass || "")}"
-                                value="${escapeHTML(node.folderPass || "")}">
-                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Password to access this folder and subfolders</p>
-                        </div>
-
-                        <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
-                            <label class="text-base font-bold text-purple-700 dark:text-purple-400 flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" 
-                                    class="folder-hidden-input w-5 h-5 cursor-pointer"
-                                    data-path="${escapeHTML(fullPath)}"
-                                    data-orig="${String(node.folderHidden || false)}"
-                                    ${node.folderHidden ? "checked" : ""}>
-                                <i class="fa-solid fa-eye-slash"></i> Hide Entire Folder
-                            </label>
-                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Hidden from regular users (not synced)</p>
-                        </div>
-
-                        <div class="border-t border-gray-200 dark:border-gray-700 pt-4 flex gap-2">
-                            <button 
-                                type="button"
-                                onclick="document.getElementById('${escapeHTML(modalId)}').classList.add('hidden')"
-                                class="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-all">
-                                Close
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
+      <details class="${indentClass} mb-2 ${depthColor} rounded-lg border group shadow-sm">
+        <summary class="font-bold text-gray-700 dark:text-gray-300 p-3 cursor-pointer flex items-center justify-between hover:bg-white/50 dark:hover:bg-gray-900/30 transition-colors outline-none list-none group-open:bg-white/50 dark:group-open:bg-gray-900/30">
+          <span class="flex items-center gap-3 flex-1 min-w-0">
+            <i class="fa-solid fa-folder text-brand-500 text-lg flex-shrink-0"></i>
+            <span class="font-semibold text-base truncate">${adminEscapeHTML(folderName)}</span>
+            <span class="bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 text-sm px-2 py-0.5 rounded-full font-semibold flex-shrink-0">${totalDecks}</span>
+          </span>
+          <span class="flex items-center gap-2 flex-shrink-0">
+            ${
+              node.UUID
+                ? `<span class="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-1 dark:border-blue-700 dark:bg-blue-900/20 max-w-[200px]"><span class="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">🔑</span><span class="font-mono text-xs text-blue-800 dark:text-blue-300 truncate select-all">${adminEscapeHTML(node.UUID)}</span></span>`
+                : ""
+            }
+            <button type="button" data-admin-action="open-folder-modal" data-modal-id="${modalId}" class="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 p-2 rounded hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors flex-shrink-0" title="Folder settings" aria-label="Folder settings for ${adminEscapeHTML(folderName)}">
+              <i class="fa-solid fa-sliders text-lg"></i>
+            </button>
+            <i class="fa-solid fa-chevron-down text-gray-400 transition-transform duration-300 group-open:rotate-180 text-base flex-shrink-0"></i>
+          </span>
+        </summary>
+        <div class="px-4 py-3 border-t ${depthColor.includes("blue") ? "border-blue-200 dark:border-blue-800" : "border-gray-200 dark:border-gray-700"} space-y-2">
+          ${html}
+        </div>
+      </details>
+      ${adminRenderFolderSettingsModal({ modalId, folderName, folderPath: fullPath, node })}`;
   }
 
-  container.innerHTML =
-    (adminState.hierarchyLayoutMode === "new"
-      ? renderGridView(tree)
-      : renderNode(tree, "Root", 0)) ||
-    '<p class="text-center text-gray-500 py-6">No subjects found.</p>';
-  renderAdminSummary();
+  return renderNode(tree, "Root", 0, "");
 }
 
 function renderGridView(tree) {
   let html =
     '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-6">';
-
-  function countTotalDecksInNode(node) {
-    let count = node.decks.length;
-    for (const key in node.subfolders)
-      count += countTotalDecksInNode(node.subfolders[key]);
-    return count;
-  }
+  let modalSequence = 0;
 
   function renderGridItems(node, parentPath = "") {
-    for (const [folderName, subNode] of Object.entries(node.subfolders)) {
+    const folders = Object.entries(node.subfolders).sort(([a], [b]) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    );
+
+    for (const [folderName, subNode] of folders) {
       const folderPath = parentPath
         ? `${parentPath}::${folderName}`
         : folderName;
-      const totalDecks = countTotalDecksInNode(subNode);
-      const folderUuid = String(subNode.UUID || "").trim();
-      const modalId = `folder-settings-${(folderUuid || folderPath).replace(/[^a-zA-Z0-9-_]/g, "-")}`;
+      const modalId = adminMakeModalId("grid-folder", ++modalSequence);
+      const totalDecks = adminCountDecks(subNode);
+      const contents = renderGridFolderContents(subNode, folderPath);
 
       html += `
-        <div class="group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col h-full transform hover:-translate-y-1 relative">
-          <div class="h-12 bg-brand-500 dark:bg-brand-700 transition-colors relative">
-            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
-          </div>
+        <div class="group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col h-full relative">
+          <div class="h-12 bg-brand-500 dark:bg-brand-700 transition-colors relative"></div>
           <div class="p-4 flex-1 flex flex-col justify-between">
             <div class="flex justify-between items-start w-full gap-2">
               <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide text-lg flex items-center min-w-0">
-                <span class="truncate">${escapeHTML(folderName)}</span>
+                <span class="truncate">${adminEscapeHTML(folderName)}</span>
               </h3>
-              <button
-                type="button"
-                onclick="document.getElementById('${modalId}').classList.remove('hidden')"
-                class="text-gray-400 hover:text-brand-500 dark:hover:text-brand-400 transition-colors p-1"
-                aria-label="Folder settings"
-              >
+              <button type="button" data-admin-action="open-folder-modal" data-modal-id="${modalId}" class="text-gray-400 hover:text-brand-500 dark:hover:text-brand-400 transition-colors p-1" aria-label="Folder settings">
                 <i class="fa-solid fa-gear text-sm"></i>
               </button>
             </div>
             <div class="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400 mt-2">
-              <span>${totalDecks} ${totalDecks === 1 ? "card" : "cards"}</span>
+              <span>${totalDecks} ${totalDecks === 1 ? "deck" : "decks"}</span>
+              ${subNode.hasFolderRecord ? "" : '<span class="text-amber-600 dark:text-amber-400">Virtual folder</span>'}
             </div>
-            <button
-              type="button"
-              onclick="toggleGridFolder('${escapeHTML(folderPath)}')"
-              class="mt-4 w-full bg-brand-600 text-white py-2 px-3 rounded-lg font-bold hover:bg-brand-700 active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300"
-            >
-              <i class="fa-solid fa-folder-open mr-2"></i> View Contents
-            </button>
+            <details class="mt-4">
+              <summary class="cursor-pointer w-full bg-brand-600 text-white py-2 px-3 rounded-lg font-bold text-xs sm:text-sm shadow-sm hover:bg-brand-700 transition-all duration-300">View Contents</summary>
+              <div class="mt-3 space-y-3">${contents || '<p class="text-xs text-gray-500">Empty folder.</p>'}</div>
+            </details>
           </div>
-
-          <div id="${modalId}" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] hidden items-center justify-center p-4 overflow-y-auto">
-            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform transition-all my-auto">
-              <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
-                  <i class="fa-solid fa-sliders text-amber-600 dark:text-amber-400 mr-2"></i>${escapeHTML(folderName)} Settings
-                </h3>
-                <button
-                  type="button"
-                  onclick="document.getElementById('${modalId}').classList.add('hidden')"
-                  class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl"
-                >
-                  <i class="fa-solid fa-xmark"></i>
-                </button>
-              </div>
-
-              <div class="space-y-4">
-                <div class="border-t border-gray-200 dark:border-gray-700 pt-0">
-                  <label class="block text-base font-bold text-red-700 dark:text-red-400 mb-2">
-                    <i class="fa-solid fa-lock mr-2"></i> Lock Folder
-                  </label>
-                  <input type="text"
-                    class="folder-pass-input w-full p-2 border border-red-300 dark:border-red-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-base focus:border-red-500 focus:ring-2 outline-none transition-all"
-                    placeholder="Leave blank for public folder..."
-                    data-path="${escapeHTML(folderPath)}"
-                    data-orig="${escapeHTML(subNode.folderPass || "")}"
-                    value="${escapeHTML(subNode.folderPass || "")}">
-                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Password to access this folder and subfolders</p>
-                </div>
-
-                <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
-                  <label class="text-base font-bold text-purple-700 dark:text-purple-400 flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox"
-                      class="folder-hidden-input w-5 h-5 cursor-pointer"
-                      data-path="${escapeHTML(folderPath)}"
-                      data-orig="${String(subNode.folderHidden || false)}"
-                      ${subNode.folderHidden ? "checked" : ""}>
-                    <i class="fa-solid fa-eye-slash"></i> Hide Entire Folder
-                  </label>
-                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Hidden from regular users (not synced)</p>
-                </div>
-
-                <div class="border-t border-gray-200 dark:border-gray-700 pt-4 flex gap-2">
-                  <button
-                    type="button"
-                    onclick="document.getElementById('${modalId}').classList.add('hidden')"
-                    class="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-all"
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
+          ${adminRenderFolderSettingsModal({ modalId, folderName, folderPath, node: subNode })}
+        </div>`;
     }
 
-    node.decks
-      .sort((a, b) => a.deckName.localeCompare(b.deckName))
-      .forEach((subj) => {
-        html += `
-        <div class="group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col h-full transform hover:-translate-y-1 relative">
-          <div class="h-12 bg-purple-500 dark:bg-purple-700 transition-colors relative">
-            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
-          </div>
-          <div class="p-4 flex-1 flex flex-col">
-            <div class="flex items-start justify-between gap-2 mb-3 min-w-0">
-              <h3 class="font-bold text-gray-800 dark:text-gray-100 text-lg flex items-center min-w-0">
-                <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm flex-shrink-0"></i>
-                <span class="truncate">${escapeHTML(subj.deckName)}</span>
-              </h3>
-              <span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors">
-                <i class="fa-solid fa-cloud mr-1"></i>
-              </span>
-            </div>
+    for (const deck of node.decks.slice().sort((a, b) =>
+      a.deckName.localeCompare(b.deckName, undefined, {
+        sensitivity: "base",
+      }),
+    )) {
+      html += adminRenderDeck(deck, "grid");
+    }
+  }
 
-            <p class="text-xs text-gray-500 dark:text-gray-400 mb-3 break-all font-mono min-h-[2.5rem]">
-              ${escapeHTML(subj.originalFull)}
-            </p>
-
-            ${
-              subj.UUID
-                ? `
-              <p class="text-[10px] text-gray-500 dark:text-gray-400 mb-3 break-all font-mono">
-                ${escapeHTML(subj.UUID)}
-              </p>
-            `
-                : ""
-            }
-
-            <div class="space-y-2 mt-auto">
-              <div>
-                <label class="text-[10px] font-bold text-red-600 dark:text-red-400 block mb-1 uppercase tracking-wider">
-                  <i class="fa-solid fa-lock mr-1"></i> Password
-                </label>
-                <input type="text"
-                  id="deck-pass-${subj.index}"
-                  value="${escapeHTML(subj.password)}"
-                  placeholder="Public"
-                  data-uuid="${escapeHTML(subj.UUID || "")}"
-                  class="deck-pass-input w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-sm focus:border-red-500 focus:ring-2 outline-none transition-all">
-              </div>
-
-              <label class="text-[10px] font-bold text-purple-600 dark:text-purple-400 flex items-center gap-2 cursor-pointer p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-700">
-                <input type="checkbox"
-                  id="deck-hidden-${subj.index}"
-                  class="deck-hidden-input w-4 h-4 cursor-pointer"
-                  data-uuid="${escapeHTML(subj.UUID || "")}"
-                  data-index="${subj.index}"
-                  data-path="${escapeHTML(subj.originalFull)}"
-                  data-orig="${String(subj.hidden || false)}"
-                  ${subj.hidden ? "checked" : ""}>
-                <i class="fa-solid fa-eye-slash text-sm"></i>
-                <span>Hidden</span>
-              </label>
-            </div>
-          </div>
-        </div>
-      `;
-      });
+  function renderGridFolderContents(node, folderPath) {
+    let contents = "";
+    const children = Object.entries(node.subfolders).sort(([a], [b]) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    );
+    for (const [name, child] of children) {
+      contents += `<div class="rounded border border-gray-200 dark:border-gray-700 p-2"><div class="font-semibold text-sm text-gray-800 dark:text-gray-100">📁 ${adminEscapeHTML(name)}</div><div class="text-xs text-gray-500">${adminCountDecks(child)} deck${adminCountDecks(child) === 1 ? "" : "s"}</div></div>`;
+    }
+    for (const deck of node.decks.slice().sort((a, b) =>
+      a.deckName.localeCompare(b.deckName, undefined, {
+        sensitivity: "base",
+      }),
+    )) {
+      contents += `<div class="rounded border border-gray-200 dark:border-gray-700 p-2"><div class="font-semibold text-sm text-gray-800 dark:text-gray-100">📖 ${adminEscapeHTML(deck.deckName)}</div><div class="text-xs text-gray-500 font-mono break-all">${adminEscapeHTML(deck.originalFull)}</div></div>`;
+    }
+    void folderPath;
+    return contents;
   }
 
   renderGridItems(tree);
@@ -936,19 +1142,235 @@ function renderGridView(tree) {
   return html;
 }
 
-function toggleGridFolder(folderPath) {
-  console.log("Toggle grid folder:", folderPath);
-  // Placeholder for expansion logic - can be implemented to show nested contents
+function adminBindSubjectEvents() {
+  const container = adminGetElement("admin-subject-list");
+  if (!container || container.dataset.adminSubjectEventsBound === "true")
+    return;
+  container.dataset.adminSubjectEventsBound = "true";
+
+  container.addEventListener("click", (event) => {
+    const target = event.target?.closest?.("[data-admin-action]");
+    if (!target || !container.contains(target)) return;
+
+    const action = target.getAttribute("data-admin-action");
+    const modalId = target.getAttribute("data-modal-id");
+
+    if (action === "open-folder-modal") {
+      adminShowModal(adminGetElement(modalId));
+    } else if (action === "close-modal") {
+      adminHideModal(adminGetElement(modalId));
+    }
+  });
+
+  container.addEventListener("input", (event) => {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement)) return;
+    if (!input.matches(".admin-subject-path-input")) return;
+
+    const index = input.id.replace(/^new-subj-/, "");
+    const count = Array.from(
+      container.querySelectorAll("[data-char-count]"),
+    ).find((element) => element.getAttribute("data-char-count") === index);
+    if (!count) return;
+    count.textContent = `${input.value.length}/${ADMIN_SUBJECT_MAX_LENGTH}`;
+    count.classList.toggle(
+      "text-red-500",
+      input.value.length >= ADMIN_SUBJECT_MAX_LENGTH * 0.9,
+    );
+  });
+}
+
+function adminBindReportEvents() {
+  const container = adminGetElement("admin-reports-list");
+  if (!container || container.dataset.adminReportEventsBound === "true") return;
+  container.dataset.adminReportEventsBound = "true";
+
+  container.addEventListener("click", (event) => {
+    const target = event.target?.closest?.("[data-admin-report-action]");
+    if (!target || !container.contains(target)) return;
+
+    const action = target.getAttribute("data-admin-report-action");
+    const reportId = target.getAttribute("data-report-id") || "";
+    if (action === "edit") {
+      openEditModal(reportId);
+    } else if (action === "resolve") {
+      void adminActionReport(reportId, "resolve");
+    } else if (action === "delete") {
+      void adminActionReport(reportId, "delete");
+    }
+  });
+}
+
+function adminNormalizeSubjectPath(value) {
+  return adminString(value)
+    .trim()
+    .replace(/\s*::\s*/g, "::");
+}
+
+function adminValidateSubjectPath(path) {
+  if (!path) return "Subject path cannot be empty.";
+  if (path.length > ADMIN_SUBJECT_MAX_LENGTH) {
+    return `Subject path must be ${ADMIN_SUBJECT_MAX_LENGTH} characters or fewer.`;
+  }
+  const parts = path.split("::");
+  if (parts.some((part) => !part.trim())) {
+    return "Subject paths cannot contain empty hierarchy levels.";
+  }
+  return "";
+}
+
+function adminAddUpdate(map, oldName, patch) {
+  const normalizedOld = adminNormalizeSubjectPath(oldName);
+  if (!normalizedOld) return;
+
+  const existing = map.get(normalizedOld) || {
+    oldName: normalizedOld,
+    newName: normalizedOld,
+  };
+  Object.assign(existing, patch);
+  map.set(normalizedOld, existing);
+}
+
+function adminCollectUpdates() {
+  const doc = adminGetDocument();
+  const updatesBySubject = new Map();
+  const errors = [];
+
+  if (!doc) return { updates: [], errors: ["Document is not available."] };
+
+  for (const input of doc.querySelectorAll(".folder-pass-input")) {
+    const path = adminNormalizeSubjectPath(input.getAttribute("data-path"));
+    const pass = adminNormalizeText(input.value);
+    const original = adminNormalizeText(input.getAttribute("data-orig"));
+    if (!path) {
+      errors.push("A folder setting is missing its path.");
+      continue;
+    }
+    if (pass !== original)
+      adminAddUpdate(updatesBySubject, path, { password: pass });
+  }
+
+  for (const checkbox of doc.querySelectorAll(".folder-hidden-input")) {
+    const path = adminNormalizeSubjectPath(checkbox.getAttribute("data-path"));
+    const hidden = Boolean(checkbox.checked);
+    const original = adminToBoolean(checkbox.getAttribute("data-orig"));
+    if (!path) {
+      errors.push("A folder setting is missing its path.");
+      continue;
+    }
+    if (hidden !== original) adminAddUpdate(updatesBySubject, path, { hidden });
+  }
+
+  const records = Array.isArray(adminState.subjects) ? adminState.subjects : [];
+  records.forEach((record, index) => {
+    if (!record || adminToBoolean(record.IsFolder)) return;
+
+    const originalName = adminNormalizeSubjectPath(record.Subject);
+    if (!originalName) return;
+
+    const newNameInput = adminGetElement(`new-subj-${index}`);
+    const passInput = adminGetElement(`deck-pass-${index}`);
+    const hiddenInput = adminGetElement(`deck-hidden-${index}`);
+    if (!newNameInput || !passInput) return;
+
+    const inputValue = adminNormalizeSubjectPath(newNameInput.value);
+    const newName = inputValue || originalName;
+    const pathError = adminValidateSubjectPath(newName);
+    if (pathError) errors.push(`${originalName}: ${pathError}`);
+
+    const originalPass = adminNormalizeText(record.Password ?? record.password);
+    const currentPass = adminNormalizeText(passInput.value);
+    const originalHidden = adminToBoolean(record.Hidden);
+    const currentHidden = hiddenInput
+      ? Boolean(hiddenInput.checked)
+      : originalHidden;
+
+    const patch = { newName };
+    let changed = newName !== originalName;
+    if (currentPass !== originalPass) {
+      patch.password = currentPass;
+      changed = true;
+    }
+    if (currentHidden !== originalHidden) {
+      patch.hidden = currentHidden;
+      changed = true;
+    }
+
+    if (changed) adminAddUpdate(updatesBySubject, originalName, patch);
+  });
+
+  const updates = Array.from(updatesBySubject.values());
+
+  const finalNames = new Map();
+  for (const record of records) {
+    const oldName = adminNormalizeSubjectPath(record?.Subject);
+    if (oldName) finalNames.set(oldName, oldName);
+  }
+  for (const update of updates) {
+    finalNames.delete(update.oldName);
+    finalNames.set(adminNormalizeSubjectPath(update.newName), update.newName);
+  }
+
+  const duplicateNames = new Set();
+  for (const name of finalNames.keys()) {
+    if (!name) duplicateNames.add(name);
+  }
+
+  // The map above already de-duplicates names by key. Detect collisions among
+  // explicitly changed records by comparing their final paths.
+  const changedNames = new Map();
+  for (const update of updates) {
+    const finalName = adminNormalizeSubjectPath(update.newName);
+    const existing = changedNames.get(finalName);
+    if (existing && existing !== update.oldName) duplicateNames.add(finalName);
+    changedNames.set(finalName, update.oldName);
+  }
+
+  if (duplicateNames.size) {
+    errors.push("Two or more records would end up with the same subject path.");
+  }
+
+  if (updates.length > ADMIN_MAX_BATCH_SIZE) {
+    errors.push(
+      `Too many changes. Save ${ADMIN_MAX_BATCH_SIZE} or fewer items at a time.`,
+    );
+  }
+
+  return { updates, errors };
 }
 
 async function adminClearAllSubjects() {
-  const confirmed = window.confirm(
-    "Clear all administrator-set passwords and hidden flags from the hierarchy? The database files and subjects will NOT be deleted.",
-  );
-  if (!confirmed) return;
+  if (adminClearInProgress || adminSaveInProgress) return false;
+  if (!adminIsAuthenticated()) {
+    adminHandleUnauthorized();
+    return false;
+  }
+
+  if (adminHasUnsavedChanges()) {
+    adminNotify(
+      "Save or discard your current changes before clearing access settings.",
+    );
+    return false;
+  }
+
+  const customConfirm = adminGetGlobal("requestConfirmation");
+  let confirmed = false;
+  if (typeof customConfirm === "function") {
+    confirmed = await customConfirm(
+      "Clear all administrator-set passwords and hidden flags from the hierarchy? The database files and subjects will NOT be deleted.",
+      "Clear Access Settings",
+    );
+  } else {
+    confirmed = adminConfirm(
+      "Clear all administrator-set passwords and hidden flags from the hierarchy? The database files and subjects will NOT be deleted.",
+    );
+  }
+  if (!confirmed) return false;
 
   const btn = adminGetElement("btn-admin-clear-all");
   const originalHTML = btn?.innerHTML || "Clear";
+  adminClearInProgress = true;
+  lockAdminInputs(true);
   if (btn) {
     btn.innerHTML =
       '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Clearing...';
@@ -956,27 +1378,44 @@ async function adminClearAllSubjects() {
   }
 
   try {
+    const token = getAdminToken();
+    if (!token)
+      throw new Error("Your admin session has expired. Please sign in again.");
+
     const result = await adminFetch({
       type: "admin_clear_all",
-      token: getAdminToken(),
+      token,
     });
 
+    if (adminIsUnauthorizedResult(result)) {
+      adminHandleUnauthorized();
+      return false;
+    }
     if (result?.status !== "success") {
       throw new Error(result?.message || "Could not clear access settings.");
     }
 
     if (result.admin_last_modified_timestamp) {
-      adminState.admin_last_modified_timestamp =
-        result.admin_last_modified_timestamp;
+      adminState.admin_last_modified_timestamp = adminNormalizeText(
+        result.admin_last_modified_timestamp,
+      );
     }
 
     adminBroadcastCacheInvalidation("admin-clear-access-settings");
-    await loadAdminSubjects();
-    alert(result.message || "Passwords and hidden flags were cleared.");
+    await loadAdminSubjects({ reason: "clear-all" });
+    adminNotify(result.message || "Passwords and hidden flags were cleared.");
+    return true;
   } catch (error) {
     console.error("[ADMIN] Clear access settings failed:", error);
-    alert(error?.message || "Network error while clearing access settings.");
+    if (adminIsUnauthorizedError(error)) adminHandleUnauthorized();
+    else
+      adminNotify(
+        error?.message || "Network error while clearing access settings.",
+      );
+    return false;
   } finally {
+    adminClearInProgress = false;
+    lockAdminInputs(false);
     if (btn) {
       btn.innerHTML = originalHTML;
       btn.disabled = false;
@@ -985,100 +1424,36 @@ async function adminClearAllSubjects() {
 }
 
 async function saveAdminChanges() {
-  if (adminSaveInProgress) {
-    alert("A save is already in progress.");
-    return;
+  if (adminSaveInProgress || adminClearInProgress) {
+    adminNotify("Another admin operation is already in progress.");
+    return false;
+  }
+
+  const token = getAdminToken();
+  if (!token) {
+    adminHandleUnauthorized();
+    return false;
+  }
+
+  const { updates, errors } = adminCollectUpdates();
+  if (errors.length) {
+    adminNotify(errors.join("\n"));
+    return false;
+  }
+  if (!updates.length) {
+    adminNotify("No changes detected.");
+    return false;
+  }
+
+  if (!adminState.admin_last_modified_timestamp) {
+    adminNotify(
+      "The database version could not be verified. Reload the admin data before saving.",
+    );
+    return false;
   }
 
   const btn = adminGetElement("btn-admin-save");
   const originalHTML = btn?.innerHTML || "Save Changes";
-
-  const updatesBySubject = new Map();
-  const addUpdate = (oldName, patch) => {
-    const normalizedOld = String(oldName || "").trim();
-    if (!normalizedOld) return;
-    const existing = updatesBySubject.get(normalizedOld) || {
-      oldName: normalizedOld,
-      newName: normalizedOld,
-    };
-    Object.assign(existing, patch);
-    updatesBySubject.set(normalizedOld, existing);
-  };
-
-  // Folder password + hidden changes must be combined into ONE backend update.
-  // The backend rejects duplicate oldName entries in the same request.
-  document.querySelectorAll(".folder-pass-input").forEach((input) => {
-    const path = String(input.getAttribute("data-path") || "").trim();
-    const pass = String(input.value || "").trim();
-    const orig = String(input.getAttribute("data-orig") || "").trim();
-    if (pass !== orig) addUpdate(path, { password: pass });
-  });
-
-  document.querySelectorAll(".folder-hidden-input").forEach((checkbox) => {
-    const path = String(checkbox.getAttribute("data-path") || "").trim();
-    const isHidden = checkbox.checked;
-    const origHidden =
-      String(checkbox.getAttribute("data-orig") || "false").toLowerCase() ===
-      "true";
-    if (isHidden !== origHidden) addUpdate(path, { hidden: isHidden });
-  });
-
-  // Deck edits
-  adminState.subjects.forEach((cat, index) => {
-    if (
-      !cat ||
-      cat.IsFolder === true ||
-      String(cat.IsFolder).toLowerCase() === "true"
-    )
-      return;
-
-    const originalName = String(cat.Subject || "").trim();
-    if (!originalName) return;
-
-    const originalPass = String(cat.Password ?? cat.password ?? "").trim();
-    const originalHidden =
-      cat.Hidden === true || String(cat.Hidden).toLowerCase() === "true";
-    const newNameInput = adminGetElement(`new-subj-${index}`);
-    const deckPassInput = adminGetElement(`deck-pass-${index}`);
-    const deckHiddenInput = adminGetElement(`deck-hidden-${index}`);
-    if (!newNameInput || !deckPassInput) return;
-
-    const newName = String(newNameInput.value || "").trim() || originalName;
-    const deckPass = String(deckPassInput.value || "").trim();
-    const deckHidden = deckHiddenInput
-      ? deckHiddenInput.checked
-      : originalHidden;
-
-    const patch = { newName };
-    let changed = newName !== originalName;
-    if (deckPass !== originalPass) {
-      patch.password = deckPass;
-      changed = true;
-    }
-    if (deckHidden !== originalHidden) {
-      patch.hidden = deckHidden;
-      changed = true;
-    }
-
-    if (changed) addUpdate(originalName, patch);
-  });
-
-  const updates = Array.from(updatesBySubject.values());
-  if (!updates.length) {
-    alert("No changes detected.");
-    return;
-  }
-
-  if (!getAdminToken()) {
-    alert("Your admin session has expired. Please sign in again.");
-    return;
-  }
-
-  if (updates.length > 200) {
-    alert("Too many changes. Save 200 or fewer items at a time.");
-    return;
-  }
-
   adminSaveInProgress = true;
   lockAdminInputs(true);
   if (btn) {
@@ -1088,30 +1463,31 @@ async function saveAdminChanges() {
   }
 
   try {
-    console.log("[ADMIN] Sending updates:", updates);
-
-    // IMPORTANT: Do not fetch get_cache_version here. The timestamp must be the
-    // timestamp captured when this page was loaded, otherwise stale-state detection
-    // can be bypassed.
     const result = await adminFetch({
       type: "admin_update",
-      token: getAdminToken(),
+      token,
       updates,
-      admin_last_modified_timestamp:
-        adminState.admin_last_modified_timestamp || "",
+      admin_last_modified_timestamp: adminState.admin_last_modified_timestamp,
     });
 
+    if (adminIsUnauthorizedResult(result)) {
+      adminHandleUnauthorized();
+      return false;
+    }
+
     if (result?.status === "conflict") {
-      const serverTimestamp =
-        result.admin_last_modified_timestamp || result.serverTimestamp || "";
+      const serverTimestamp = adminNormalizeText(
+        result.admin_last_modified_timestamp || result.serverTimestamp,
+      );
       if (serverTimestamp)
         adminState.admin_last_modified_timestamp = serverTimestamp;
-      alert(
+      adminNotify(
         result.message ||
           "The database changed after this page was loaded. Reload before saving again.",
       );
-      await loadAdminSubjects();
-      return;
+      adminPendingReload = false;
+      await loadAdminSubjects({ reason: "conflict" });
+      return false;
     }
 
     if (result?.status !== "success") {
@@ -1119,20 +1495,27 @@ async function saveAdminChanges() {
     }
 
     if (result.admin_last_modified_timestamp) {
-      adminState.admin_last_modified_timestamp =
-        result.admin_last_modified_timestamp;
+      adminState.admin_last_modified_timestamp = adminNormalizeText(
+        result.admin_last_modified_timestamp,
+      );
     }
 
+    adminExternalChangeWarningShown = false;
+    adminPendingReload = false;
     adminBroadcastCacheInvalidation("admin-update");
+
     if (btn) {
       btn.innerHTML = '<i class="fa-solid fa-check-circle mr-2"></i> Saved';
       btn.classList.add("ring-2", "ring-green-300");
     }
 
-    await loadAdminSubjects();
+    await loadAdminSubjects({ reason: "save" });
+    return true;
   } catch (error) {
     console.error("[ADMIN] Save failed:", error);
-    alert(error?.message || "Network error while saving changes.");
+    if (adminIsUnauthorizedError(error)) adminHandleUnauthorized();
+    else adminNotify(error?.message || "Network error while saving changes.");
+    return false;
   } finally {
     adminSaveInProgress = false;
     lockAdminInputs(false);
@@ -1144,36 +1527,56 @@ async function saveAdminChanges() {
   }
 }
 
-// OPTIMIZATION: Lock/unlock admin inputs
 function lockAdminInputs(lock) {
-  adminInputsLocked = lock;
-  const inputs = document.querySelectorAll(
-    ".folder-pass-input, .folder-hidden-input, .deck-pass-input, " +
-      ".deck-hidden-input, #new-subj-input, input[id*='new-subj-'], input[id*='deck-pass-'], input[id*='deck-hidden-']",
-  );
-  inputs.forEach((input) => {
+  const doc = adminGetDocument();
+  if (!doc) return;
+
+  const selectors = [
+    ".folder-pass-input",
+    ".folder-hidden-input",
+    ".deck-pass-input",
+    ".deck-hidden-input",
+    ".admin-subject-path-input",
+  ].join(",");
+
+  for (const input of doc.querySelectorAll(selectors)) {
     if (lock) {
+      if (input.dataset.adminOriginallyDisabled === undefined) {
+        input.dataset.adminOriginallyDisabled = String(Boolean(input.disabled));
+      }
       input.disabled = true;
       input.classList.add("opacity-50", "cursor-not-allowed");
     } else {
-      input.disabled = false;
+      const originallyDisabled =
+        input.dataset.adminOriginallyDisabled === "true";
+      input.disabled = originallyDisabled;
+      delete input.dataset.adminOriginallyDisabled;
       input.classList.remove("opacity-50", "cursor-not-allowed");
     }
-  });
+  }
+}
+
+function adminGetReportChoices(report) {
+  return [report?.optionA, report?.optionB, report?.optionC, report?.optionD]
+    .map((choice) => adminNormalizeText(choice))
+    .filter(Boolean);
 }
 
 async function adminLoadReports() {
   const container = adminGetElement("admin-reports-list");
-  if (!container) return;
+  if (!container) return false;
 
   const token = getAdminToken();
   if (!token) {
     container.innerHTML =
       '<div class="text-red-500 text-center py-6">Admin session expired. Please sign in again.</div>';
-    return;
+    adminShowLoginUI();
+    return false;
   }
 
-  container.innerHTML = `<p class="text-center text-gray-500 py-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading reports...</p>`;
+  const requestVersion = ++adminReportsLoadVersion;
+  container.innerHTML =
+    '<p class="text-center text-gray-500 py-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading reports...</p>';
 
   try {
     const reports = await adminFetch({
@@ -1182,283 +1585,415 @@ async function adminLoadReports() {
       token,
     });
 
-    if (reports && reports.status === "error") {
-      if (reports.code === "UNAUTHORIZED") clearAdminToken();
-      throw new Error(reports.message || "Failed to load reports.");
+    if (
+      requestVersion !== adminReportsLoadVersion ||
+      getAdminToken() !== token
+    ) {
+      return false;
     }
 
-    if (!Array.isArray(reports) || reports.length === 0) {
-      adminState.reports = [];
-      container.innerHTML = `<div class="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-xl text-center text-gray-500">No reports found in the database.</div>`;
-      return;
+    if (adminIsUnauthorizedResult(reports)) {
+      adminHandleUnauthorized();
+      return false;
+    }
+    if (!Array.isArray(reports)) {
+      throw new Error("The reports endpoint returned an invalid response.");
     }
 
-    adminState.reports = reports;
-    container.innerHTML = reports
-      .map((r) => {
-        const choices = [r.optionA, r.optionB, r.optionC, r.optionD].filter(
-          (choice) => String(choice || "").trim(),
-        );
+    adminState.reports = reports.filter(
+      (report) => report && adminNormalizeText(report.id),
+    );
+
+    if (!adminState.reports.length) {
+      container.innerHTML =
+        '<div class="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-xl text-center text-gray-500">No reports found in the database.</div>';
+      adminBindReportEvents();
+      return true;
+    }
+
+    container.innerHTML = adminState.reports
+      .map((report) => {
+        const id = adminNormalizeText(report.id);
+        const choices = adminGetReportChoices(report);
         const questionType = choices.length <= 1 ? "Identification" : "MCQ";
-        const id = escapeHTML(r.id || "");
-        const status = String(r.status || "Pending");
+        const status = adminNormalizeText(report.status) || "Pending";
+        const isResolved = status.toLowerCase() === "resolved";
+        const resolvedButton = isResolved
+          ? ""
+          : `<button type="button" data-admin-report-action="resolve" data-report-id="${adminEscapeHTML(id)}" class="flex-1 bg-green-500 text-white px-4 py-2 rounded font-bold hover:bg-green-600 shadow-sm active:scale-95 transition-all"><i class="fa-solid fa-check mr-2"></i> Mark Resolved</button>`;
 
         return `
-        <div class="bg-white dark:bg-gray-800 p-5 rounded-xl border-l-4 border-yellow-500 shadow-sm relative group mb-4">
-          <div class="flex justify-between items-start mb-2 gap-3">
-            <span class="text-xs font-mono text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">ID: ${escapeHTML(r.questionId || "N/A")}</span>
-            <span class="text-xs text-gray-400">${escapeHTML(adminFormatTimestamp(r.timestamp))}</span>
-          </div>
-          <div class="text-xs text-brand-500 font-bold uppercase tracking-wider mb-1">${escapeHTML(r.subject || "N/A")}</div>
-          ${r.lesson ? `<div class="text-sm text-gray-600 dark:text-gray-300 mb-2"><strong>Lesson / Topic:</strong> ${escapeHTML(r.lesson)}</div>` : ""}
-          <div class="text-xs text-brand-600 dark:text-brand-400 font-bold uppercase mb-2">Question Type: ${questionType}</div>
-          <div class="font-bold text-gray-800 dark:text-gray-100 mb-2">${escapeHTML(r.errorType || "Unknown issue")}</div>
-
-          <div class="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg text-sm text-gray-700 dark:text-gray-300 mb-3 border border-gray-200 dark:border-gray-700">
-            <div class="mb-3"><strong class="text-gray-900 dark:text-white">Q:</strong> ${escapeHTML(r.questionText || "N/A")}</div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 py-3 border-t border-gray-200 dark:border-gray-700 text-xs">
-              <div class="truncate" title="${escapeHTML(r.optionA || "")}"><strong class="text-gray-500 mr-1">A:</strong> ${escapeHTML(r.optionA || "N/A")}</div>
-              <div class="truncate" title="${escapeHTML(r.optionB || "")}"><strong class="text-gray-500 mr-1">B:</strong> ${escapeHTML(r.optionB || "N/A")}</div>
-              <div class="truncate" title="${escapeHTML(r.optionC || "")}"><strong class="text-gray-500 mr-1">C:</strong> ${escapeHTML(r.optionC || "N/A")}</div>
-              <div class="truncate" title="${escapeHTML(r.optionD || "")}"><strong class="text-gray-500 mr-1">D:</strong> ${escapeHTML(r.optionD || "N/A")}</div>
+          <div class="bg-white dark:bg-gray-800 p-5 rounded-xl border-l-4 border-yellow-500 shadow-sm relative group mb-4" data-report-card="true" data-report-id="${adminEscapeHTML(id)}">
+            <div class="flex justify-between items-start mb-2 gap-3">
+              <span class="text-xs font-mono text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">ID: ${adminEscapeHTML(report.questionId || "N/A")}</span>
+              <span class="text-xs text-gray-400">${adminEscapeHTML(adminFormatTimestamp(report.timestamp))}</span>
             </div>
-            <div class="pt-3 border-t border-gray-200 dark:border-gray-700"><strong class="text-green-600 dark:text-green-400 mr-1">Answer:</strong> ${escapeHTML(r.correctAnswer || "N/A")}</div>
-          </div>
+            <div class="text-xs text-brand-500 font-bold uppercase tracking-wider mb-1">${adminEscapeHTML(report.subject || "N/A")}</div>
+            ${report.lesson ? `<div class="text-sm text-gray-600 dark:text-gray-300 mb-2"><strong>Lesson / Topic:</strong> ${adminEscapeHTML(report.lesson)}</div>` : ""}
+            <div class="text-xs text-brand-600 dark:text-brand-400 font-bold uppercase mb-2">Question Type: ${questionType}</div>
+            <div class="font-bold text-gray-800 dark:text-gray-100 mb-2">${adminEscapeHTML(report.errorType || "Unknown issue")}</div>
 
-          ${r.comments ? `<p class="text-sm text-gray-600 dark:text-gray-400 mb-4 bg-yellow-50 dark:bg-yellow-900/10 p-2 rounded border border-yellow-100 dark:border-yellow-900/30"><i class="fa-solid fa-comment text-yellow-600 mr-2"></i>${escapeHTML(r.comments)}</p>` : ""}
+            <div class="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg text-sm text-gray-700 dark:text-gray-300 mb-3 border border-gray-200 dark:border-gray-700">
+              <div class="mb-3"><strong class="text-gray-900 dark:text-white">Q:</strong> ${adminEscapeHTML(report.questionText || "N/A")}</div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 py-3 border-t border-gray-200 dark:border-gray-700 text-xs">
+                <div class="truncate" title="${adminEscapeHTML(report.optionA || "")}"><strong class="text-gray-500 mr-1">A:</strong> ${adminEscapeHTML(report.optionA || "N/A")}</div>
+                <div class="truncate" title="${adminEscapeHTML(report.optionB || "")}"><strong class="text-gray-500 mr-1">B:</strong> ${adminEscapeHTML(report.optionB || "N/A")}</div>
+                <div class="truncate" title="${adminEscapeHTML(report.optionC || "")}"><strong class="text-gray-500 mr-1">C:</strong> ${adminEscapeHTML(report.optionC || "N/A")}</div>
+                <div class="truncate" title="${adminEscapeHTML(report.optionD || "")}"><strong class="text-gray-500 mr-1">D:</strong> ${adminEscapeHTML(report.optionD || "N/A")}</div>
+              </div>
+              <div class="pt-3 border-t border-gray-200 dark:border-gray-700"><strong class="text-green-600 dark:text-green-400 mr-1">Answer:</strong> ${adminEscapeHTML(report.correctAnswer || "N/A")}</div>
+            </div>
 
-          <div class="flex gap-2 flex-wrap">
-            <button type="button" onclick="openEditModal('${id}')" class="flex-1 bg-blue-500 text-white px-4 py-2 rounded font-bold hover:bg-blue-600 shadow-sm active:scale-95 transition-all"><i class="fa-solid fa-pen mr-2"></i> Edit Data</button>
-            ${status === "Resolved" ? "" : `<button type="button" onclick="adminActionReport('${id}', 'resolve')" class="flex-1 bg-green-500 text-white px-4 py-2 rounded font-bold hover:bg-green-600 shadow-sm active:scale-95 transition-all"><i class="fa-solid fa-check mr-2"></i> Mark Resolved</button>`}
-            <button type="button" onclick="adminActionReport('${id}', 'delete')" class="bg-red-100 text-red-600 px-4 py-2 rounded font-bold hover:bg-red-200 shadow-sm active:scale-95 transition-all" title="Hard Delete from Sheet"><i class="fa-solid fa-trash-can"></i></button>
-          </div>
-        </div>`;
+            ${report.comments ? `<p class="text-sm text-gray-600 dark:text-gray-400 mb-4 bg-yellow-50 dark:bg-yellow-900/10 p-2 rounded border border-yellow-100 dark:border-yellow-900/30"><i class="fa-solid fa-comment text-yellow-600 mr-2"></i>${adminEscapeHTML(report.comments)}</p>` : ""}
+
+            <div class="flex gap-2 flex-wrap">
+              <button type="button" data-admin-report-action="edit" data-report-id="${adminEscapeHTML(id)}" class="flex-1 bg-blue-500 text-white px-4 py-2 rounded font-bold hover:bg-blue-600 shadow-sm active:scale-95 transition-all"><i class="fa-solid fa-pen mr-2"></i> Edit Data</button>
+              ${resolvedButton}
+              <button type="button" data-admin-report-action="delete" data-report-id="${adminEscapeHTML(id)}" class="bg-red-100 text-red-600 px-4 py-2 rounded font-bold hover:bg-red-200 shadow-sm active:scale-95 transition-all" title="Hard Delete from Sheet"><i class="fa-solid fa-trash-can"></i></button>
+            </div>
+          </div>`;
       })
       .join("");
+
+    adminBindReportEvents();
+    return true;
   } catch (error) {
+    if (requestVersion !== adminReportsLoadVersion) return false;
+
     console.error("[ADMIN] Reports load failed:", error);
-    container.innerHTML = `<div class="text-red-500 text-center py-6">${escapeHTML(error?.message || "Failed to fetch admin reports.")}</div>`;
+    if (adminIsUnauthorizedError(error)) adminHandleUnauthorized();
+    container.innerHTML = `<div class="text-red-500 text-center py-6">${adminEscapeHTML(error?.message || "Failed to fetch admin reports.")}</div>`;
+    return false;
   }
 }
 
-async function adminActionReport(reportId, action) {
-  const normalizedAction = String(action || "").toLowerCase();
+async function adminResolveReportAction(reportId, action) {
+  const normalizedId = adminNormalizeText(reportId);
+  const normalizedAction = adminNormalizeText(action).toLowerCase();
+
+  if (!normalizedId) throw new Error("Report ID is required.");
   if (!["resolve", "delete"].includes(normalizedAction)) {
-    alert("Unsupported report action.");
-    return;
+    throw new Error("Unsupported report action.");
   }
 
-  if (normalizedAction === "delete") {
-    const confirmed =
-      typeof requestConfirmation === "function"
-        ? await requestConfirmation(
-            "Are you sure you want to permanently delete this report from Google Sheets?",
-            "Delete Report",
-          )
-        : window.confirm(
-            "Are you sure you want to permanently delete this report?",
-          );
-    if (!confirmed) return;
+  if (!adminIsAuthenticated()) {
+    throw new Error("Unauthorized admin session.");
   }
 
+  if (adminReportActionsInProgress.has(normalizedId)) {
+    throw new Error("This report is already being updated.");
+  }
+
+  adminReportActionsInProgress.add(normalizedId);
   try {
     const result = await adminFetch({
       type: "admin_resolve_report",
       token: getAdminToken(),
-      reportId: String(reportId || "").trim(),
+      reportId: normalizedId,
       action: normalizedAction,
     });
 
+    if (adminIsUnauthorizedResult(result)) {
+      adminHandleUnauthorized();
+      throw new Error("Unauthorized admin session.");
+    }
     if (result?.status !== "success") {
       throw new Error(
         result?.message || "The backend rejected the report action.",
       );
     }
+    return result;
+  } finally {
+    adminReportActionsInProgress.delete(normalizedId);
+  }
+}
 
-    alert(
+async function adminActionReport(reportId, action) {
+  const normalizedAction = adminNormalizeText(action).toLowerCase();
+  const normalizedId = adminNormalizeText(reportId);
+  if (!normalizedId || !["resolve", "delete"].includes(normalizedAction)) {
+    adminNotify("Unsupported report action.");
+    return false;
+  }
+
+  if (normalizedAction === "delete") {
+    const customConfirm = adminGetGlobal("requestConfirmation");
+    const confirmed =
+      typeof customConfirm === "function"
+        ? await customConfirm(
+            "Are you sure you want to permanently delete this report from Google Sheets?",
+            "Delete Report",
+          )
+        : adminConfirm(
+            "Are you sure you want to permanently delete this report?",
+          );
+    if (!confirmed) return false;
+  }
+
+  try {
+    await adminResolveReportAction(normalizedId, normalizedAction);
+    adminNotify(
       normalizedAction === "resolve"
         ? "Report marked as resolved."
         : "Report permanently deleted.",
     );
     await adminLoadReports();
+    return true;
   } catch (error) {
     console.error("[ADMIN] Report action failed:", error);
-    alert(error?.message || "Network error while updating the report.");
+    if (adminIsUnauthorizedError(error)) adminHandleUnauthorized();
+    else
+      adminNotify(error?.message || "Network error while updating the report.");
+    return false;
   }
 }
 
-window.cascadePassword = function (btn) {
-  const input = btn.previousElementSibling;
-  const folderPath = String(input.getAttribute("data-path") || "").trim();
-  const pass = String(input.value || "").trim();
-
-  let count = 0;
-  adminState.subjects.forEach((subj, index) => {
-    if (String(subj.Subject || "").trim() !== folderPath) return;
-
-    const deckInput = document.getElementById(`deck-pass-${index}`);
-    if (deckInput) {
-      deckInput.value = pass;
-      deckInput.classList.add("bg-red-100", "dark:bg-red-900/30");
-      setTimeout(
-        () => deckInput.classList.remove("bg-red-100", "dark:bg-red-900/30"),
-        1000,
-      );
-      count++;
-    }
-  });
-
-  alert(
-    `Applied to ${count} deck(s)! You can now customize individual decks below if needed before clicking Save.`,
-  );
-};
-
-window.cascadeHidden = function (btn) {
-  const checkbox = btn.previousElementSibling;
-  const folderPath = String(checkbox.getAttribute("data-path") || "").trim();
-  const isHidden = checkbox.checked;
-
-  let count = 0;
-  adminState.subjects.forEach((subj, index) => {
-    if (String(subj.Subject || "").trim() !== folderPath) return;
-
-    const deckCheckbox = document.getElementById(`deck-hidden-${index}`);
-    if (deckCheckbox) {
-      deckCheckbox.checked = isHidden;
-      deckCheckbox.parentElement.parentElement.classList.add(
-        "bg-purple-100",
-        "dark:bg-purple-900/30",
-      );
-      setTimeout(
-        () =>
-          deckCheckbox.parentElement.parentElement.classList.remove(
-            "bg-purple-100",
-            "dark:bg-purple-900/30",
-          ),
-        1000,
-      );
-      count++;
-    }
-  });
-
-  alert(
-    `${isHidden ? "Hidden" : "Shown"} ${count} deck(s)! You can now customize individual decks below if needed before clicking Save.`,
-  );
-};
-
 function openEditModal(reportId) {
+  const normalizedId = adminNormalizeText(reportId);
   const report = adminState.reports.find(
-    (r) => String(r.id) === String(reportId),
+    (item) => adminNormalizeText(item?.id) === normalizedId,
   );
-  if (!report) return;
+  if (!report) {
+    adminNotify("Report reference not found.");
+    return false;
+  }
 
-  document.getElementById("edit-report-id").value = String(report.id);
-  document.getElementById("edit-question-id").value = report.questionId;
+  const modal = adminGetElement("admin-edit-modal");
+  if (!modal) {
+    adminNotify("The edit form is not available.");
+    return false;
+  }
 
-  document.getElementById("edit-q-text").value = report.questionText || "";
-  document.getElementById("edit-q-optA").value = report.optionA || "";
-  document.getElementById("edit-q-optB").value = report.optionB || "";
-  document.getElementById("edit-q-optC").value = report.optionC || "";
-  document.getElementById("edit-q-optD").value = report.optionD || "";
-  document.getElementById("edit-q-answer").value = report.correctAnswer || "";
-  const modal = document.getElementById("admin-edit-modal");
-  const inner = modal.querySelector("div");
+  const assignments = {
+    "edit-report-id": adminString(report.id),
+    "edit-question-id": adminString(report.questionId),
+    "edit-q-text": adminString(report.questionText),
+    "edit-q-optA": adminString(report.optionA),
+    "edit-q-optB": adminString(report.optionB),
+    "edit-q-optC": adminString(report.optionC),
+    "edit-q-optD": adminString(report.optionD),
+    "edit-q-answer": adminString(report.correctAnswer),
+  };
 
-  modal.classList.remove("hidden");
-  setTimeout(() => {
-    modal.classList.remove("opacity-0");
-    inner.classList.remove("scale-95");
-  }, 10);
+  for (const [id, value] of Object.entries(assignments)) {
+    const element = adminGetElement(id);
+    if (element) element.value = value;
+  }
+
+  adminShowModal(modal);
+  return true;
 }
 
 function closeEditModal() {
-  const modal = document.getElementById("admin-edit-modal");
-  if (!modal) return;
-  const inner = modal.querySelector("div");
+  return adminHideModal(adminGetElement("admin-edit-modal"));
+}
 
-  modal.classList.add("opacity-0");
-  if (inner) inner.classList.add("scale-95");
-  setTimeout(() => {
-    modal.classList.add("hidden");
-  }, 300);
+function adminValidateEditedQuestion(report, fields) {
+  if (!fields.questionId) return "Question ID is required.";
+  if (!fields.questionText) return "Question text is required.";
+
+  const choices = adminGetReportChoices(fields);
+  if (choices.length >= 2) {
+    if (!["A", "B", "C", "D"].includes(fields.correctAnswer)) {
+      return "For multiple-choice questions, correct answer must be A, B, C, or D.";
+    }
+    const answerMap = {
+      A: fields.optionA,
+      B: fields.optionB,
+      C: fields.optionC,
+      D: fields.optionD,
+    };
+    if (!adminNormalizeText(answerMap[fields.correctAnswer])) {
+      return `Option ${fields.correctAnswer} cannot be the correct answer because it is empty.`;
+    }
+  } else if (!fields.correctAnswer) {
+    return "An answer is required.";
+  }
+
+  if (!adminNormalizeText(report.subject)) return "Report subject is missing.";
+  return "";
 }
 
 async function saveEditedQuestion() {
-  const reportIdEl = adminGetElement("edit-report-id");
-  const questionIdEl = adminGetElement("edit-question-id");
   const saveBtn = adminGetElement("btn-save-edit");
-  if (!reportIdEl || !questionIdEl || !saveBtn) {
-    alert("Edit form is not available.");
-    return;
+  const reportId = adminNormalizeText(adminGetElement("edit-report-id")?.value);
+  const questionId = adminNormalizeText(
+    adminGetElement("edit-question-id")?.value,
+  );
+  if (!saveBtn) {
+    adminNotify("Edit form is not available.");
+    return false;
   }
 
-  const reportId = String(reportIdEl.value || "").trim();
-  const questionId = String(questionIdEl.value || "").trim();
-  const report = adminState.reports.find((r) => String(r.id) === reportId);
+  const report = adminState.reports.find(
+    (item) => adminNormalizeText(item?.id) === reportId,
+  );
   if (!report) {
-    alert("Report reference not found.");
-    return;
+    adminNotify("Report reference not found.");
+    return false;
   }
 
-  const correctAnswer = String(adminGetElement("edit-q-answer")?.value || "")
-    .trim()
-    .toUpperCase();
-  if (!["A", "B", "C", "D"].includes(correctAnswer)) {
-    alert("Correct answer must be A, B, C, or D.");
-    return;
+  if (!getAdminToken()) {
+    adminHandleUnauthorized();
+    return false;
+  }
+  if (saveBtn.disabled) return false;
+
+  const fields = {
+    questionId,
+    questionText: adminNormalizeText(adminGetElement("edit-q-text")?.value),
+    optionA: adminNormalizeText(adminGetElement("edit-q-optA")?.value),
+    optionB: adminNormalizeText(adminGetElement("edit-q-optB")?.value),
+    optionC: adminNormalizeText(adminGetElement("edit-q-optC")?.value),
+    optionD: adminNormalizeText(adminGetElement("edit-q-optD")?.value),
+    correctAnswer: adminNormalizeText(
+      adminGetElement("edit-q-answer")?.value,
+    ).toUpperCase(),
+  };
+
+  const validationError = adminValidateEditedQuestion(report, fields);
+  if (validationError) {
+    adminNotify(validationError);
+    return false;
   }
 
   const originalText = saveBtn.innerHTML;
-  saveBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving...`;
+  saveBtn.innerHTML =
+    '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving...';
   saveBtn.disabled = true;
 
-  const payload = {
-    type: "admin_edit_question",
-    token: getAdminToken(),
-    subject: report.subject,
-    questionId,
-    questionText: String(adminGetElement("edit-q-text")?.value || "").trim(),
-    optionA: String(adminGetElement("edit-q-optA")?.value || "").trim(),
-    optionB: String(adminGetElement("edit-q-optB")?.value || "").trim(),
-    optionC: String(adminGetElement("edit-q-optC")?.value || "").trim(),
-    optionD: String(adminGetElement("edit-q-optD")?.value || "").trim(),
-    correctAnswer,
-  };
-
   try {
-    const result = await adminFetch(payload);
+    const result = await adminFetch({
+      type: "admin_edit_question",
+      token: getAdminToken(),
+      subject: adminString(report.subject),
+      questionId: fields.questionId,
+      questionText: fields.questionText,
+      optionA: fields.optionA,
+      optionB: fields.optionB,
+      optionC: fields.optionC,
+      optionD: fields.optionD,
+      correctAnswer: fields.correctAnswer,
+    });
+
+    if (adminIsUnauthorizedResult(result)) {
+      adminHandleUnauthorized();
+      return false;
+    }
     if (result?.status !== "success") {
       throw new Error(result?.message || "Failed to update question.");
     }
 
-    alert(result.message || "Question updated successfully.");
     closeEditModal();
-    await adminActionReport(reportId, "resolve");
+
+    let resolutionSucceeded = true;
+    try {
+      await adminResolveReportAction(reportId, "resolve");
+    } catch (resolutionError) {
+      resolutionSucceeded = false;
+      console.error(
+        "[ADMIN] Question saved but report resolution failed:",
+        resolutionError,
+      );
+    }
+
+    await adminLoadReports();
+    adminNotify(
+      resolutionSucceeded
+        ? result.message || "Question updated successfully and report resolved."
+        : `${result.message || "Question updated successfully."} However, the report could not be marked as resolved.`,
+    );
+    return true;
   } catch (error) {
     console.error("[ADMIN] Question edit failed:", error);
-    alert(
-      error?.message || "Network error while trying to save question changes.",
-    );
+    if (adminIsUnauthorizedError(error)) adminHandleUnauthorized();
+    else
+      adminNotify(
+        error?.message ||
+          "Network error while trying to save question changes.",
+      );
+    return false;
   } finally {
     saveBtn.innerHTML = originalText;
     saveBtn.disabled = false;
   }
 }
 
-if (typeof window !== "undefined") {
-  window.adminState = adminState;
-  window.adminLogin = adminLogin;
-  window.getAdminToken = getAdminToken;
-  window.setAdminToken = setAdminToken;
-  window.clearAdminToken = clearAdminToken;
-  window.hideAdminSettingsModal = hideAdminSettingsModal;
-  window.loadAdminSubjects = loadAdminSubjects;
-  window.renderAdminSubjectList = renderAdminSubjectList;
-  window.adminClearAllSubjects = adminClearAllSubjects;
-  window.saveAdminChanges = saveAdminChanges;
-  window.adminLoadReports = adminLoadReports;
-  window.adminActionReport = adminActionReport;
-  window.openEditModal = openEditModal;
-  window.closeEditModal = closeEditModal;
-  window.saveEditedQuestion = saveEditedQuestion;
+// Legacy compatibility helpers. The current generated UI no longer depends on them,
+// but keeping the public functions avoids breaking older HTML that may still call them.
+function cascadePasswordCompat(btn) {
+  const input = btn?.previousElementSibling;
+  if (!input) return 0;
+  const folderPath = adminNormalizeSubjectPath(input.getAttribute("data-path"));
+  const pass = adminNormalizeText(input.value);
+  let count = 0;
+
+  adminState.subjects.forEach((subject, index) => {
+    if (adminNormalizeSubjectPath(subject?.Subject) !== folderPath) return;
+    const deckInput = adminGetElement(`deck-pass-${index}`);
+    if (deckInput) {
+      deckInput.value = pass;
+      deckInput.dispatchEvent(new Event("input", { bubbles: true }));
+      count += 1;
+    }
+  });
+  return count;
+}
+
+function cascadeHiddenCompat(btn) {
+  const checkbox = btn?.previousElementSibling;
+  if (!checkbox) return 0;
+  const folderPath = adminNormalizeSubjectPath(
+    checkbox.getAttribute("data-path"),
+  );
+  const hidden = Boolean(checkbox.checked);
+  let count = 0;
+
+  adminState.subjects.forEach((subject, index) => {
+    if (adminNormalizeSubjectPath(subject?.Subject) !== folderPath) return;
+    const deckCheckbox = adminGetElement(`deck-hidden-${index}`);
+    if (deckCheckbox) {
+      deckCheckbox.checked = hidden;
+      deckCheckbox.dispatchEvent(new Event("change", { bubbles: true }));
+      count += 1;
+    }
+  });
+  return count;
+}
+
+function adminExposePublicAPI() {
+  if (typeof globalThis === "undefined") return;
+  const root = globalThis;
+  root.adminState = adminState;
+  root.adminLogin = adminLogin;
+  root.adminIsAuthenticated = adminIsAuthenticated;
+  root.getAdminToken = getAdminToken;
+  root.setAdminToken = setAdminToken;
+  root.clearAdminToken = clearAdminToken;
+  root.hideAdminSettingsModal = hideAdminSettingsModal;
+  root.loadAdminSubjects = loadAdminSubjects;
+  root.renderAdminSubjectList = renderAdminSubjectList;
+  root.initializeAdminUI = initializeAdminUI;
+  root.setAdminHierarchyLayoutMode = setAdminHierarchyLayoutMode;
+  root.toggleHierarchyLayout = toggleHierarchyLayout;
+  root.adminClearAllSubjects = adminClearAllSubjects;
+  root.saveAdminChanges = saveAdminChanges;
+  root.adminLoadReports = adminLoadReports;
+  root.adminActionReport = adminActionReport;
+  root.openEditModal = openEditModal;
+  root.closeEditModal = closeEditModal;
+  root.saveEditedQuestion = saveEditedQuestion;
+  root.cascadePassword = cascadePasswordCompat;
+  root.cascadeHidden = cascadeHiddenCompat;
+}
+
+adminExposePublicAPI();
+adminSetupCacheChannel();
+
+if (
+  typeof globalThis !== "undefined" &&
+  typeof globalThis.addEventListener === "function"
+) {
+  globalThis.addEventListener("pagehide", adminCloseCacheChannel);
+  globalThis.addEventListener("pageshow", adminSetupCacheChannel);
 }
