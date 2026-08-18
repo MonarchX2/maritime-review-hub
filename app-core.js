@@ -21,63 +21,6 @@ let isInitialSyncComplete = false; // Track if the first sync from startup has c
 const SYNC_STATUS_STORAGE_KEY = "mrh_last_sync_status_timestamp";
 const CACHE_VERSION_STORAGE_KEY = "mrh_cache_version";
 const NAVIGATION_PATH_STORAGE_KEY = "mrh_navigation_path"; // Persist user's navigation position
-const LEADER_LOCK_STORAGE_KEY = "mrh_sync_leader_lock";
-const LEADER_LOCK_TTL_MS = 15000;
-
-function safeJsonParse(value, fallback = null) {
-  try {
-    return JSON.parse(value);
-  } catch (_) {
-    return fallback;
-  }
-}
-
-function normalizeText(value) {
-  return String(value ?? "").trim();
-}
-
-function normalizeAnswerToken(value) {
-  const raw = normalizeText(value).toUpperCase();
-  const aliases = { 1: "A", 2: "B", 3: "C", 4: "D" };
-  return aliases[raw] || raw;
-}
-
-function decodeFilterValue(value) {
-  const raw = normalizeText(value);
-  try {
-    return decodeHandlerValue(raw);
-  } catch (_) {
-    try {
-      return decodeURIComponent(raw);
-    } catch (_) {
-      return raw;
-    }
-  }
-}
-
-function isSafeImageUrl(value) {
-  const raw = normalizeText(value);
-  if (!raw) return false;
-  try {
-    const url = new URL(raw, window.location.href);
-    return (
-      url.protocol === "https:" ||
-      url.protocol === "http:" ||
-      (url.protocol === "data:" && raw.toLowerCase().startsWith("data:image/"))
-    );
-  } catch (_) {
-    return false;
-  }
-}
-
-function getGlobalTimer(name) {
-  if (typeof globalThis === "undefined") return null;
-  return globalThis[name] ?? null;
-}
-
-function setGlobalTimer(name, timer) {
-  if (typeof globalThis !== "undefined") globalThis[name] = timer;
-}
 
 function readStoredSyncStatusTimestamp() {
   const stored = getStoredItem?.(SYNC_STATUS_STORAGE_KEY, "") || "";
@@ -236,7 +179,7 @@ function normalizeQuestionRecord(question, subjectOverride = null) {
   }
 
   if (normalized.Answer) {
-    normalized.Answer = normalizeAnswerToken(normalized.Answer);
+    normalized.Answer = String(normalized.Answer).trim().toUpperCase();
   }
 
   return normalized;
@@ -325,77 +268,6 @@ function setInlineError(element, message) {
   if (!element) return;
   element.textContent = message || "";
   element.classList.toggle("hidden", !message);
-}
-
-function normalizeAppStateCollections() {
-  if (!state || typeof state !== "object") return;
-  state.stats ||= {};
-  state.stats.totalAnswered = Number.isFinite(Number(state.stats.totalAnswered))
-    ? Number(state.stats.totalAnswered)
-    : 0;
-  state.stats.correct = Number.isFinite(Number(state.stats.correct))
-    ? Number(state.stats.correct)
-    : 0;
-  state.stats.mistakes = Array.isArray(state.stats.mistakes)
-    ? state.stats.mistakes.filter(Boolean)
-    : [];
-  state.stats.completedQs = Array.isArray(state.stats.completedQs)
-    ? state.stats.completedQs.filter(Boolean)
-    : [];
-  state.stats.subjectAccuracy =
-    state.stats.subjectAccuracy &&
-    typeof state.stats.subjectAccuracy === "object"
-      ? state.stats.subjectAccuracy
-      : {};
-  state.stats.srsMap =
-    state.stats.srsMap && typeof state.stats.srsMap === "object"
-      ? state.stats.srsMap
-      : {};
-
-  state.prefs ||= {};
-  for (const key of [
-    "favoriteDecks",
-    "recentDecks",
-    "archivedDecks",
-    "favoriteQuestions",
-    "localDownloadDeletedDecks",
-  ]) {
-    state.prefs[key] = Array.isArray(state.prefs[key])
-      ? state.prefs[key].filter(Boolean)
-      : [];
-  }
-  state.prefs.qToggles =
-    state.prefs.qToggles && typeof state.prefs.qToggles === "object"
-      ? state.prefs.qToggles
-      : {};
-  state.prefs.studyProgress =
-    state.prefs.studyProgress && typeof state.prefs.studyProgress === "object"
-      ? state.prefs.studyProgress
-      : {};
-  state.prefs.deckNavigationOverrides =
-    state.prefs.deckNavigationOverrides &&
-    typeof state.prefs.deckNavigationOverrides === "object"
-      ? state.prefs.deckNavigationOverrides
-      : {};
-
-  state.session ||= {};
-  state.session.questions = Array.isArray(state.session.questions)
-    ? state.session.questions
-    : [];
-  state.session.userAnswers =
-    state.session.userAnswers && typeof state.session.userAnswers === "object"
-      ? state.session.userAnswers
-      : {};
-  state.session.currentIndex = Math.max(
-    0,
-    Math.min(
-      Number(state.session.currentIndex) || 0,
-      Math.max(0, state.session.questions.length - 1),
-    ),
-  );
-  state.session.active = Boolean(
-    state.session.active && state.session.questions.length,
-  );
 }
 
 async function loadState() {
@@ -512,7 +384,7 @@ async function loadState() {
     currentAppMode = state.prefs.lastActivity.mode;
   }
 
-  normalizeAppStateCollections();
+  if (!state.stats.subjectAccuracy) state.stats.subjectAccuracy = {};
   sanitizeDeletedDeckReferences();
   if (!["idle", "immediate"].includes(state.prefs.databaseUpdateMode))
     state.prefs.databaseUpdateMode = "idle";
@@ -1201,7 +1073,6 @@ function scheduleSyncRetry(showOverlay = true) {
 // COLD START NOTIFICATION
 // ============================================
 function showColdStartNotification() {
-  if (getGlobalTimer("__mrhColdStartReloadTimer")) return;
   const overlay = document.getElementById("app-loading-overlay");
   if (!overlay) return;
 
@@ -1222,14 +1093,10 @@ function showColdStartNotification() {
   overlay.setAttribute("aria-hidden", "false");
 
   // Force refresh after 3 seconds to get fresh cache
-  setGlobalTimer(
-    "__mrhColdStartReloadTimer",
-    setTimeout(() => {
-      setGlobalTimer("__mrhColdStartReloadTimer", null);
-      console.log("[COLD START] Initiating forced page refresh");
-      window.location.reload();
-    }, 3000),
-  );
+  setTimeout(() => {
+    console.log("[COLD START] Initiating forced page refresh");
+    window.location.reload();
+  }, 3000);
 }
 
 // ============================================
@@ -1283,9 +1150,7 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
   syncAttempt++;
   syncAbortController = new AbortController();
   const requestController = syncAbortController;
-  const timeoutId = setTimeout(() => {
-    if (requestController === syncAbortController) requestController.abort();
-  }, 10000);
+  const timeoutId = setTimeout(() => syncAbortController.abort(), 10000);
 
   const url = `${DB_URL}?_t=${Date.now()}`;
 
@@ -1331,9 +1196,10 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
       return;
     }
 
-    if (Array.isArray(summaryData)) {
+    if (Array.isArray(summaryData) && summaryData.length > 0) {
       clearTimeout(timeoutId);
       lastSyncAt = Date.now();
+      const completedAttempt = syncAttempt;
       const wasConnected = syncConnected;
       syncAttempt = 0;
       syncConnected = true;
@@ -1434,22 +1300,22 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
 }
 
 function populateFilters() {
-  const subjectIndex = ensureQuestionIndex();
-  const subjects = [...subjectIndex.bySubject.keys()];
-  const tags = [
-    ...new Set(
-      (state.db || []).flatMap((q) =>
-        normalizeText(q?.Tags)
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
-      ),
-    ),
-  ];
-
   // Update old select element if it exists (for backward compatibility)
   const select = document.getElementById("filter-subject");
   if (select) {
+    const subjectIndex = ensureQuestionIndex();
+    const subjects = [...subjectIndex.bySubject.keys()];
+
+    let tags = new Set();
+    (state.db || []).forEach((q) => {
+      if (q && q.Tags) {
+        q.Tags.split(",")
+          .map((t) => t.trim())
+          .forEach((t) => tags.add(t));
+      }
+    });
+    tags = [...tags];
+
     let html = '<option value="ALL">All Subjects (Randomized)</option>';
     if (subjects.length > 0) {
       html += '<optgroup label="Subjects">';
@@ -1478,6 +1344,19 @@ function populateFilters() {
   // Populate new dropdown filter menu
   const filterListContainer = document.getElementById("quiz-filter-list");
   if (filterListContainer) {
+    const subjectIndex = ensureQuestionIndex();
+    const subjects = [...subjectIndex.bySubject.keys()];
+
+    let tags = new Set();
+    (state.db || []).forEach((q) => {
+      if (q && q.Tags) {
+        q.Tags.split(",")
+          .map((t) => t.trim())
+          .forEach((t) => tags.add(t));
+      }
+    });
+    tags = [...tags];
+
     let html = "";
 
     // Add subjects
@@ -1487,7 +1366,7 @@ function populateFilters() {
       html += subjects
         .map(
           (s) =>
-            `<button type="button" data-filter-value="${encodeHandlerValue(`SUBJ:${s}`)}" onclick="changeQuizFilter('${encodeHandlerValue(`SUBJ:${s}`)}')" class="quiz-filter-option">${escapeHTML(s)} <i class="fa-solid fa-check filter-check"></i></button>`,
+            `<button type="button" data-filter-value="SUBJ:${escapeHTML(s)}" onclick="changeQuizFilter('SUBJ:${escapeHTML(s)}')" class="quiz-filter-option">${escapeHTML(s)} <i class="fa-solid fa-check filter-check"></i></button>`,
         )
         .join("");
     }
@@ -1503,7 +1382,7 @@ function populateFilters() {
       html += tags
         .map(
           (t) =>
-            `<button type="button" data-filter-value="${encodeHandlerValue(`TAG:${t}`)}" onclick="changeQuizFilter('${encodeHandlerValue(`TAG:${t}`)}')" class="quiz-filter-option">${escapeHTML(t)} <i class="fa-solid fa-check filter-check"></i></button>`,
+            `<button type="button" data-filter-value="TAG:${escapeHTML(t)}" onclick="changeQuizFilter('TAG:${escapeHTML(t)}')" class="quiz-filter-option">${escapeHTML(t)} <i class="fa-solid fa-check filter-check"></i></button>`,
         )
         .join("");
     }
@@ -1517,16 +1396,13 @@ function prepareSessionPool(pool) {
   if (state.prefs.shuffleQuestions !== false) {
     randomizedPool = shuffleArray(randomizedPool);
   }
-  const mistakeSet = new Set(state.stats.mistakes || []);
-  randomizedPool = randomizedPool
-    .map((question) => ({
-      question,
-      priority: mistakeSet.has(question.ID)
-        ? 0.7 + Math.random() * 0.3
-        : Math.random() * 0.3,
-    }))
-    .sort((a, b) => b.priority - a.priority)
-    .map(({ question }) => question);
+  randomizedPool.sort((a, b) => {
+    const aIsMistake = state.stats.mistakes.includes(a.ID);
+    const bIsMistake = state.stats.mistakes.includes(b.ID);
+    if (aIsMistake && !bIsMistake) return Math.random() > 0.3 ? -1 : 1;
+    if (!aIsMistake && bIsMistake) return Math.random() > 0.3 ? 1 : -1;
+    return 0;
+  });
 
   return randomizedPool.map((originalQ) => {
     let q = { ...originalQ };
@@ -1580,7 +1456,6 @@ function prepareSessionPool(pool) {
 }
 
 function changeQuizFilter(filterValue) {
-  filterValue = decodeFilterValue(filterValue) || "ALL";
   // Update the display text
   const displayEl = document.getElementById("filter-subject-display");
   const trigger = document.getElementById("quiz-filter-trigger");
@@ -1597,7 +1472,7 @@ function changeQuizFilter(filterValue) {
 
   // Update check marks
   document.querySelectorAll(".quiz-filter-option").forEach((btn) => {
-    const btnValue = decodeFilterValue(btn.getAttribute("data-filter-value"));
+    const btnValue = btn.getAttribute("data-filter-value");
     const checkIcon = btn.querySelector(".filter-check");
     if (btnValue === filterValue) {
       if (checkIcon) checkIcon.style.opacity = "1";
@@ -1677,8 +1552,8 @@ function initSession() {
     revealedCloze: false,
   };
 
-  document.getElementById("session-setup")?.classList.add("hidden");
-  document.getElementById("session-active")?.classList.remove("hidden");
+  document.getElementById("session-setup").classList.add("hidden");
+  document.getElementById("session-active").classList.remove("hidden");
 
   renderQuestion();
   saveSessionProgress();
@@ -1743,7 +1618,7 @@ function renderQuestion() {
   });
 
   const imgEl = document.getElementById("q-image");
-  if (imgEl && isSafeImageUrl(q.ImageURL)) {
+  if (q.ImageURL && q.ImageURL.trim() !== "") {
     imgEl.onload = () => imgEl.classList.remove("hidden");
     imgEl.onerror = () => {
       imgEl.removeAttribute("src");
@@ -1754,8 +1629,7 @@ function renderQuestion() {
       ? `Reference for: ${q.Question.substring(0, 50)}...`
       : "Question reference image";
     imgEl.classList.remove("hidden");
-  } else if (imgEl) {
-    imgEl.removeAttribute("src");
+  } else {
     imgEl.classList.add("hidden");
   }
 
@@ -1930,7 +1804,6 @@ function renderQuestion() {
 }
 
 function enterFolder(folderName, isLockedFolder) {
-  folderName = decodeHandlerValue(folderName);
   if (
     typeof DeckNav !== "undefined" &&
     typeof DeckNav.enterFolder === "function"
@@ -2034,11 +1907,6 @@ function closeAllDropdownMenus(exceptElement = null) {
 
 function initDetailsExclusivity() {
   if (
-    typeof globalThis !== "undefined" &&
-    globalThis.__mrhDetailsExclusivityInitialized
-  )
-    return;
-  if (
     typeof UIModal !== "undefined" &&
     typeof UIModal.initDetailsExclusivity === "function"
   ) {
@@ -2061,16 +1929,18 @@ function initDetailsExclusivity() {
   });
 
   document.addEventListener("click", (event) => {
-    const clickedInsideDetails = event.target?.closest?.("details");
-    if (!clickedInsideDetails) closeAllDropdownMenus();
+    const clickedInsideDetails = event.target.closest("details");
+    if (!clickedInsideDetails) {
+      closeAllDropdownMenus();
+    }
   });
-  if (typeof globalThis !== "undefined")
-    globalThis.__mrhDetailsExclusivityInitialized = true;
 }
 
 function renderCategoryProgress() {
   // Initialize dropdown exclusivity once
-  if (typeof initDetailsExclusivity === "function") initDetailsExclusivity();
+  if (typeof initDetailsExclusivity !== "undefined") {
+    setTimeout(initDetailsExclusivity, 100);
+  }
 
   // Initialize deck source filter if not set
   if (!state.prefs.deckSourceFilter) {
@@ -2094,9 +1964,11 @@ function renderCategoryProgress() {
   // Update check marks
   document.querySelectorAll(".deck-source-option").forEach((btn) => {
     const check = btn.querySelector(".source-check");
-    if (!check) return;
-    check.style.opacity =
-      btn.dataset.sourceValue === state.prefs.deckSourceFilter ? "1" : "0";
+    if (btn.dataset.sourceValue === state.prefs.deckSourceFilter) {
+      check.style.opacity = "1";
+    } else {
+      check.style.opacity = "0";
+    }
   });
 
   const container = document.getElementById("category-list");
@@ -2566,7 +2438,7 @@ function renderCategoryProgress() {
       }
 
       html += `
-                <div onclick="enterFolder('${encodeHandlerValue(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
+                <div onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
                     <div class="h-12 ${folderColorClass} transition-colors relative">                        
                         <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
                     </div>
@@ -2621,7 +2493,10 @@ async function fetchAndStartCategory(subject, mode, pass = null) {
   const isForcedMCQ = state.prefs.qTypeOverride === "mcq";
   const customFilter = isForcedMCQ
     ? (q) =>
-        normalizeText(q?.ChoiceA) !== "" && normalizeText(q?.ChoiceB) !== ""
+        q.ChoiceA &&
+        q.ChoiceA.trim() !== "" &&
+        q.ChoiceB &&
+        q.ChoiceB.trim() !== ""
     : null;
 
   // Always attempt to fetch fresh data for gameplay sessions
@@ -2712,8 +2587,8 @@ function startCustomSession(pool) {
     return DeckNav.startCustomSession(pool);
   }
   navigate("practice");
-  document.getElementById("session-setup")?.classList.add("hidden");
-  document.getElementById("session-active")?.classList.remove("hidden");
+  document.getElementById("session-setup").classList.add("hidden");
+  document.getElementById("session-active").classList.remove("hidden");
 
   pool = prepareSessionPool(pool);
 
@@ -3387,7 +3262,7 @@ function renderDeckReview(subject, questions) {
                 
                 <p class="font-medium text-gray-800 dark:text-gray-100 mb-2 text-lg">${formatQuestionText(cleanQuestionText)}</p>
                 
-                ${isSafeImageUrl(q.ImageURL) ? `<img src="${escapeHTML(q.ImageURL)}" alt="Reference" class="w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500">` : ""}                        
+                ${q.ImageURL ? `<img src="${escapeHTML(q.ImageURL)}" alt="Reference" class="w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500">` : ""}                        
                 ${choicesHTML}
                 
                 ${
@@ -3447,7 +3322,7 @@ function toggleQuizHideABCD() {
   state.prefs.quizHideABCD = isHidden;
   saveState();
 
-  if (document.getElementById("view-practice")?.classList.contains("active")) {
+  if (document.getElementById("view-practice").classList.contains("active")) {
     renderQuestion();
   }
 }
@@ -3885,7 +3760,6 @@ async function resetProgress() {
       mistakes: [],
       subjectAccuracy: {},
       completedQs: [],
-      srsMap: {},
     };
     state.session = {
       active: false,
@@ -3902,7 +3776,7 @@ async function resetProgress() {
     saveState();
     alert("Progress Reset.");
 
-    if (document.getElementById("view-stats")?.classList.contains("active"))
+    if (document.getElementById("view-stats").classList.contains("active"))
       renderCharts();
   }
 }
@@ -4095,7 +3969,7 @@ async function fetchGlobalReports() {
   }
 }
 
-window.addEventListener("load", async () => {
+window.onload = async () => {
   await loadState();
 
   if ("serviceWorker" in navigator) {
@@ -4114,9 +3988,9 @@ window.addEventListener("load", async () => {
     currentAppMode = toggleElement.checked ? "review" : "quiz";
   }
 
-  await syncDatabase();
-  await fetchGlobalReports();
-});
+  syncDatabase();
+  fetchGlobalReports();
+};
 
 window.addEventListener("resize", () => {
   if (state.session.active && state.prefs.quizNavigationPosition === "auto")
@@ -4134,7 +4008,7 @@ function saveSessionProgress() {
   if (!state.session.active) return;
 
   try {
-    setStoredJSON("saved_session", { ...state.session, autoNextTimeout: null });
+    setStoredJSON("saved_session", state.session);
     state.prefs.lastActivity = {
       mode: "quiz",
       subject:
@@ -4225,16 +4099,7 @@ async function resumeSession(password = null) {
   const saved = getStoredItem("saved_session");
   if (!saved) return;
 
-  const parsedSavedSession = safeJsonParse(saved, null);
-  if (!parsedSavedSession || !Array.isArray(parsedSavedSession.questions)) {
-    removeStoredItem("saved_session");
-    showToast(
-      "Saved session data was invalid and has been cleared.",
-      "warning",
-    );
-    return;
-  }
-  const savedSession = pendingResumeSession || parsedSavedSession;
+  const savedSession = pendingResumeSession || JSON.parse(saved);
   const currentQuestion = savedSession.questions?.[savedSession.currentIndex];
   const currentSubject = currentQuestion?.Subject;
 
@@ -4300,8 +4165,8 @@ async function resumeSession(password = null) {
   });
 
   navigate("practice");
-  document.getElementById("session-setup")?.classList.add("hidden");
-  document.getElementById("session-active")?.classList.remove("hidden");
+  document.getElementById("session-setup").classList.add("hidden");
+  document.getElementById("session-active").classList.remove("hidden");
 
   renderQuestion();
 }
@@ -4325,8 +4190,8 @@ function shuffleArray(array) {
 }
 
 function showMCQOptions() {
-  document.getElementById("active-recall-mask")?.classList.add("hidden");
-  document.getElementById("q-choices")?.classList.remove("hidden");
+  document.getElementById("active-recall-mask").classList.add("hidden");
+  document.getElementById("q-choices").classList.remove("hidden");
 }
 
 function revealAnswer() {
@@ -4347,7 +4212,7 @@ function revealAnswer() {
 
   trackStats(q, isPureIdent);
 
-  document.getElementById("q-choices")?.classList.remove("hidden");
+  document.getElementById("q-choices").classList.remove("hidden");
   const activeRecallMask = document.getElementById("active-recall-mask");
   if (activeRecallMask) activeRecallMask.classList.add("hidden");
 
@@ -4371,7 +4236,6 @@ function startVisualTimer() {
   }
   const container = document.getElementById("auto-next-timer-container");
   const bar = document.getElementById("auto-next-timer-bar");
-  if (!container || !bar) return;
 
   container.classList.remove("hidden");
 
@@ -4387,9 +4251,14 @@ function stopVisualTimer() {
   ) {
     return QuizRendering.stopVisualTimer();
   }
+  if (
+    typeof QuizRendering !== "undefined" &&
+    typeof QuizRendering.stopVisualTimer === "function"
+  ) {
+    return QuizRendering.stopVisualTimer();
+  }
   const container = document.getElementById("auto-next-timer-container");
   const bar = document.getElementById("auto-next-timer-bar");
-  if (!container || !bar) return;
 
   container.classList.add("hidden");
   bar.classList.remove("animate-timer-bar");
@@ -4769,11 +4638,6 @@ let confirmResolver = null;
 
 function requestConfirmation(message, title = "Confirm Action") {
   return new Promise((resolve) => {
-    if (confirmResolver) {
-      const previousResolve = confirmResolver;
-      confirmResolver = null;
-      previousResolve(false);
-    }
     confirmResolver = resolve;
     const modal = document.getElementById("confirm-modal");
     if (!modal) {
@@ -4781,12 +4645,9 @@ function requestConfirmation(message, title = "Confirm Action") {
       return;
     }
     if (modal.parentElement !== document.body) document.body.appendChild(modal);
-    const titleEl = document.getElementById("confirm-title");
-    const messageEl = document.getElementById("confirm-message");
-    if (titleEl) {
-      titleEl.textContent = title;
-    }
-    if (messageEl) messageEl.textContent = message;
+    document.getElementById("confirm-title").innerHTML =
+      `<i class="fa-solid fa-circle-question text-brand-500 mr-2"></i>${escapeHTML(title)}`;
+    document.getElementById("confirm-message").innerText = message;
     toggleModal("confirm-modal", true);
   });
 }
@@ -4933,7 +4794,6 @@ function openReviewSettingsModal() {
     );
   }
   updateStudyFilterToggle();
-  if (!modal) return;
   modal.classList.remove("hidden");
   // Small delay allows the browser to render 'block' before applying opacity for the transition
   setTimeout(() => {
@@ -4951,9 +4811,8 @@ function closeReviewSettingsModal() {
     return UIModal.closeReviewSettingsModal();
   }
   const modal = document.getElementById("review-settings-modal");
-  if (!modal) return;
   modal.classList.add("opacity-0");
-  modal.querySelector("div")?.classList.add("scale-95");
+  modal.querySelector("div").classList.add("scale-95");
   // Wait for transition to finish before hiding element
   setTimeout(() => {
     modal.classList.add("hidden");
@@ -5140,18 +4999,15 @@ async function submitReport() {
     return UIModal.submitReport();
   }
   const typeEl = document.getElementById("report-type");
-  const lesson = normalizeText(document.getElementById("report-lesson")?.value);
-  const comments = normalizeText(
-    document.getElementById("report-comments")?.value,
-  );
+  const lesson = document.getElementById("report-lesson").value.trim();
+  const comments = document.getElementById("report-comments").value.trim();
 
-  if (!typeEl?.value) {
+  if (!typeEl.value) {
     alert("Please select an Error Type.");
     return;
   }
 
   const btn = document.getElementById("btn-submit-report");
-  if (!btn) return;
   const originalText = btn.innerHTML;
   btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Sending...';
   btn.disabled = true;
@@ -5287,16 +5143,12 @@ async function loadReports() {
       if (isResolved) resolvedHTML += reportHTML;
       else pendingHTML += reportHTML;
     });
-    if (pendingContainer) {
-      pendingContainer.innerHTML =
-        pendingHTML ||
-        `<p class="text-center text-gray-500 py-4">No pending reports.</p>`;
-    }
-    if (resolvedContainer) {
-      resolvedContainer.innerHTML =
-        resolvedHTML ||
-        `<p class="text-center text-gray-500 py-4">No resolved reports.</p>`;
-    }
+    document.getElementById("public-pending-reports").innerHTML =
+      pendingHTML ||
+      `<p class="text-center text-gray-500 py-4">No pending reports.</p>`;
+    document.getElementById("public-resolved-reports").innerHTML =
+      resolvedHTML ||
+      `<p class="text-center text-gray-500 py-4">No resolved reports.</p>`;
   } catch (err) {
     if (pendingContainer)
       pendingContainer.innerHTML = `<div class="text-red-500 text-center p-4">Failed to load reports. Check your connection.</div>`;
@@ -5305,7 +5157,6 @@ async function loadReports() {
 
 function showToast(message, type = "success") {
   const container = document.getElementById("toast-container");
-  if (!container) return;
   const toast = document.createElement("div");
   const colors =
     type === "error"
@@ -5326,9 +5177,7 @@ function showToast(message, type = "success") {
 }
 
 function toggleActiveRecall() {
-  const toggle = document.getElementById("toggle-active-recall");
-  if (!toggle) return;
-  const isChecked = toggle.checked;
+  const isChecked = document.getElementById("toggle-active-recall").checked;
   state.prefs.activeRecall = Boolean(isChecked);
   saveState();
   syncPreferenceControls();
@@ -5341,9 +5190,8 @@ function toggleActiveRecall() {
 let activeHubSubject = "";
 
 function openModeSelect(subject) {
-  activeHubSubject = String(subject || "").trim();
-  const titleEl = document.getElementById("mode-select-deck-title");
-  if (titleEl) titleEl.innerText = activeHubSubject;
+  activeHubSubject = subject;
+  document.getElementById("mode-select-deck-title").innerText = subject;
   navigate("mode-select");
 }
 
@@ -5704,8 +5552,7 @@ if (btnSubmitDeckPassword) {
 
 function togglePasswordVisibility(inputId, btnElement) {
   const input = document.getElementById(inputId);
-  const icon = btnElement?.querySelector("i");
-  if (!input || !btnElement || !icon) return;
+  const icon = btnElement.querySelector("i");
 
   if (input.type === "password") {
     input.type = "text";
@@ -5822,13 +5669,6 @@ function changeStudyPageSize(size) {
   reRenderDeckReview();
 }
 
-function ensureStudyProgress(subject = currentReviewSubject) {
-  if (!subject) return null;
-  state.prefs.studyProgress ||= {};
-  state.prefs.studyProgress[subject] ||= { page: 1, index: 0, scrollY: 0 };
-  return state.prefs.studyProgress[subject];
-}
-
 function changeStudyPage(delta) {
   if (
     typeof DeckReview !== "undefined" &&
@@ -5836,9 +5676,8 @@ function changeStudyPage(delta) {
   ) {
     return DeckReview.changeStudyPage(delta);
   }
-  const progress = ensureStudyProgress();
-  if (!progress) return;
-  progress.page = Math.max(1, Number(progress.page || 1) + Number(delta || 0));
+  let subject = currentReviewSubject;
+  state.prefs.studyProgress[subject].page += delta;
   saveState();
   reRenderDeckReview();
   const scrollContainer = document.querySelector("main");
@@ -5884,12 +5723,8 @@ function jumpToStudyPage(pageNumber) {
 }
 
 function changeStudyIndex(delta) {
-  const progress = ensureStudyProgress();
-  if (!progress) return;
-  progress.index = Math.max(
-    0,
-    Number(progress.index || 0) + Number(delta || 0),
-  );
+  let subject = currentReviewSubject;
+  state.prefs.studyProgress[subject].index += delta;
   saveState();
   reRenderDeckReview();
 }
@@ -5989,7 +5824,6 @@ function getQuestionTypeMode(q) {
 }
 
 async function changeQuestionTypeMode(mode) {
-  mode = ["auto", "mcq", "ident"].includes(mode) ? mode : "auto";
   if (state.prefs.qTypeOverride === mode) return;
 
   const userConfirmed = await requestConfirmation(
@@ -6024,11 +5858,8 @@ function setupCacheInvalidationListener() {
   if (typeof BroadcastChannel === "undefined") return;
 
   try {
-    const existing = getGlobalTimer("__mrhCacheInvalidationChannel");
-    existing?.close?.();
-    const channel = new BroadcastChannel("mrh_cache_invalidation");
-    setGlobalTimer("__mrhCacheInvalidationChannel", channel);
-    channel.onmessage = (event) => {
+    cacheInvalidationChannel = new BroadcastChannel("mrh_cache_invalidation");
+    cacheInvalidationChannel.onmessage = (event) => {
       if (event.data && event.data.type === "cache_invalidated") {
         console.log("[CACHE] Invalidation signal received:", event.data);
         // Force refresh database when cache is invalidated by admin
@@ -6040,9 +5871,9 @@ function setupCacheInvalidationListener() {
   }
 }
 
-async function triggerSilentSummaryRefresh(reason = "cache invalidation") {
+function triggerSilentSummaryRefresh(reason = "cache invalidation") {
   console.log(`[CACHE] ${reason} - syncing silently in background`);
-  return syncDatabase(false, true);
+  syncDatabase(false, true);
 }
 
 function handleCacheInvalidation() {
@@ -6121,106 +5952,49 @@ async function reloadAppStateInMemory() {
 // ============================================
 // OPTIMIZATION: Leader Election Pattern
 // ============================================
-function getLeaderTabId() {
-  if (typeof window === "undefined") return "server";
-  if (!window.mrh_tabId) {
-    window.mrh_tabId = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-  }
-  return window.mrh_tabId;
-}
-
-function readLeaderLock() {
-  try {
-    const raw = localStorage.getItem(LEADER_LOCK_STORAGE_KEY);
-    return raw ? safeJsonParse(raw, null) : null;
-  } catch (_) {
-    return null;
-  }
-}
-
-function writeLeaderLock(id, expiresAt) {
-  try {
-    localStorage.setItem(
-      LEADER_LOCK_STORAGE_KEY,
-      JSON.stringify({ id, expiresAt }),
-    );
-    return true;
-  } catch (_) {
-    return false;
-  }
-}
-
-function releaseLeaderLease() {
-  const id = getLeaderTabId();
-  const lock = readLeaderLock();
-  if (lock?.id !== id) return;
-  try {
-    localStorage.removeItem(LEADER_LOCK_STORAGE_KEY);
-  } catch (_) {}
-  isLeaderTab = false;
-}
-
-function claimOrRenewLeaderLease() {
-  const id = getLeaderTabId();
-  const now = Date.now();
-  const current = readLeaderLock();
-  const ownsLease = current?.id === id;
-  const leaseAvailable = !current || Number(current.expiresAt || 0) <= now;
-
-  if (ownsLease || leaseAvailable) {
-    isLeaderTab = writeLeaderLock(id, now + LEADER_LOCK_TTL_MS);
-  } else {
-    isLeaderTab = false;
-  }
-
-  if (!isLeaderTab) {
-    const cacheTimer = getGlobalTimer("__mrhCacheVersionCheckTimer");
-    if (cacheTimer) clearInterval(cacheTimer);
-    setGlobalTimer("__mrhCacheVersionCheckTimer", null);
-  }
-  return isLeaderTab;
-}
-
 function setupLeaderElection() {
-  getLeaderTabId();
-
-  if (typeof BroadcastChannel !== "undefined") {
-    try {
-      leaderElectionChannel?.close?.();
-      leaderElectionChannel = new BroadcastChannel("mrh_leader_election");
-      leaderElectionChannel.onmessage = (event) => {
-        if (
-          event.data?.type === "leader_heartbeat" &&
-          event.data.tabId !== getLeaderTabId()
-        ) {
-          claimOrRenewLeaderLease();
-        }
-      };
-    } catch (e) {
-      console.error("[LEADER] Failed to setup BroadcastChannel:", e);
-      leaderElectionChannel = null;
-    }
+  if (typeof BroadcastChannel === "undefined") {
+    // Fallback: single tab or old browser, act as leader
+    isLeaderTab = true;
+    console.log("[LEADER] Single-tab mode, this tab is the leader");
+    return;
   }
 
-  claimOrRenewLeaderLease();
-  clearInterval(leaderHeartbeatTimer);
-  leaderHeartbeatTimer = setInterval(() => {
-    const leader = claimOrRenewLeaderLease();
-    if (leader && leaderElectionChannel) {
-      try {
+  try {
+    leaderElectionChannel = new BroadcastChannel("mrh_leader_election");
+
+    leaderElectionChannel.onmessage = (event) => {
+      if (event.data && event.data.type === "leader_heartbeat") {
+        // Another tab claims leadership, yield to it
+        if (isLeaderTab && event.data.tabId !== window.mrh_tabId) {
+          console.log("[LEADER] Yielding leadership to another tab");
+          isLeaderTab = false;
+          clearTimeout(leaderHeartbeatTimer);
+        }
+      }
+    };
+
+    // Generate unique tab ID
+    window.mrh_tabId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Claim leadership
+    isLeaderTab = true;
+    console.log("[LEADER] This tab elected as leader:", window.mrh_tabId);
+
+    // Send periodic heartbeat (proves this tab is alive)
+    leaderHeartbeatTimer = setInterval(() => {
+      if (isLeaderTab) {
         leaderElectionChannel.postMessage({
           type: "leader_heartbeat",
-          tabId: getLeaderTabId(),
+          tabId: window.mrh_tabId,
           timestamp: Date.now(),
         });
-      } catch (_) {}
-    }
-  }, 5000);
-
-  window.addEventListener("storage", (event) => {
-    if (event.key === LEADER_LOCK_STORAGE_KEY) claimOrRenewLeaderLease();
-  });
-  window.addEventListener("beforeunload", releaseLeaderLease, { once: true });
+      }
+    }, 10000); // Heartbeat every 10 seconds
+  } catch (e) {
+    console.error("[LEADER] Failed to setup leader election:", e);
+    isLeaderTab = true; // Fallback: act as leader
+  }
 }
 
 // ============================================
@@ -6253,7 +6027,6 @@ async function fetchWithExponentialBackoff(url, options = {}, maxRetries = 3) {
       return response;
     } catch (error) {
       lastError = error;
-      if (error?.name === "AbortError") throw error;
 
       if (attempt < maxRetries) {
         const delay = calculateBackoffDelay(attempt);
@@ -6304,6 +6077,17 @@ async function checkCacheVersionWithETag() {
         `[CACHE] Version changed: ${previousVersion} -> ${remoteVersion}`,
       );
 
+      if (isLeaderTab && typeof leaderElectionChannel !== "undefined") {
+        try {
+          leaderElectionChannel.postMessage({
+            type: "cache_version_updated",
+            newVersion: remoteVersion,
+          });
+        } catch (e) {
+          console.log("[CACHE] Could not broadcast version update");
+        }
+      }
+
       await reloadAppStateInMemory();
     }
 
@@ -6325,12 +6109,13 @@ function setupVisibilityChangeHandler() {
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
       console.log("[VISIBILITY] Tab became visible, checking cache version");
+      // Immediately check cache when tab becomes visible
+      checkCacheVersionWithETag();
+
+      // Reset polling to random interval
       scheduleNextPolling();
     } else {
-      console.log("[VISIBILITY] Tab hidden, pausing cache polling");
-      const cacheTimer = getGlobalTimer("__mrhCacheVersionCheckTimer");
-      if (cacheTimer) clearInterval(cacheTimer);
-      setGlobalTimer("__mrhCacheVersionCheckTimer", null);
+      console.log("[VISIBILITY] Tab hidden, will pause polling");
     }
   });
 }
@@ -6344,21 +6129,16 @@ function scheduleNextPolling() {
     return;
   }
 
-  const cacheTimer = getGlobalTimer("__mrhCacheVersionCheckTimer");
-  if (cacheTimer) clearInterval(cacheTimer);
-  setGlobalTimer("__mrhCacheVersionCheckTimer", null);
+  clearInterval(cacheVersionCheckTimer);
 
   const nextInterval = getJitteredPollingInterval();
   console.log(
     `[POLLING] Next check in ${Math.round(nextInterval / 1000)}s (jittered)`,
   );
 
-  setGlobalTimer(
-    "__mrhCacheVersionCheckTimer",
-    setInterval(() => {
-      checkCacheVersionWithETag();
-    }, nextInterval),
-  );
+  cacheVersionCheckTimer = setInterval(() => {
+    checkCacheVersionWithETag();
+  }, nextInterval);
 
   // Also check immediately
   checkCacheVersionWithETag();
