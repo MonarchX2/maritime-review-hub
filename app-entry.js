@@ -52,6 +52,7 @@
       loadFeatureScript("deck-nav-core.js"),
       loadFeatureScript("deck-review-core.js"),
       loadFeatureScript("analytics-core.js"),
+      loadFeatureScript("quiz-rendering-core.js"),
       loadFeatureScript("admin.js"),
     ]);
   } catch (error) {

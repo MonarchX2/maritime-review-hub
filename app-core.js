@@ -1644,6 +1644,12 @@ function getShortSubjectLabel(subject, fallback = "General") {
 
 function renderQuestion() {
   if (
+    typeof QuizRendering !== "undefined" &&
+    typeof QuizRendering.renderQuestion === "function"
+  ) {
+    return QuizRendering.renderQuestion();
+  }
+  if (
     typeof SessionCore !== "undefined" &&
     typeof SessionCore.renderQuestion === "function"
   ) {
@@ -3352,6 +3358,12 @@ function renderDeckReview(subject, questions) {
 }
 
 function toggleHideABCD() {
+  if (
+    typeof QuizRendering !== "undefined" &&
+    typeof QuizRendering.toggleHideABCD === "function"
+  ) {
+    return QuizRendering.toggleHideABCD();
+  }
   const isHidden = document.getElementById("toggle-hide-abcd").checked;
   state.prefs.hideABCD = isHidden;
   saveState();
@@ -3360,6 +3372,12 @@ function toggleHideABCD() {
 }
 
 function toggleQuizHideABCD() {
+  if (
+    typeof QuizRendering !== "undefined" &&
+    typeof QuizRendering.toggleQuizHideABCD === "function"
+  ) {
+    return QuizRendering.toggleQuizHideABCD();
+  }
   const hideToggle = document.getElementById("toggle-quiz-hide-abcd");
   if (!hideToggle || hideToggle.disabled) return;
 
@@ -3375,6 +3393,12 @@ function toggleQuizHideABCD() {
 }
 
 function toggleShowWrongChoices() {
+  if (
+    typeof QuizRendering !== "undefined" &&
+    typeof QuizRendering.toggleShowWrongChoices === "function"
+  ) {
+    return QuizRendering.toggleShowWrongChoices();
+  }
   const isChecked = document.getElementById("toggle-wrong-choices").checked;
   state.prefs.showWrongChoices = isChecked;
   saveState();
@@ -3382,6 +3406,12 @@ function toggleShowWrongChoices() {
 }
 
 function toggleClozeMode(source) {
+  if (
+    typeof QuizRendering !== "undefined" &&
+    typeof QuizRendering.toggleClozeMode === "function"
+  ) {
+    return QuizRendering.toggleClozeMode(source);
+  }
   const element = source || document.getElementById("toggle-cloze-mode");
   state.prefs.clozeEnabled = element ? Boolean(element.checked) : false;
   saveState();
@@ -3392,6 +3422,12 @@ function toggleClozeMode(source) {
 }
 
 function toggleSrsMode(source) {
+  if (
+    typeof QuizRendering !== "undefined" &&
+    typeof QuizRendering.toggleSrsMode === "function"
+  ) {
+    return QuizRendering.toggleSrsMode(source);
+  }
   const element = source || document.getElementById("toggle-srs-mode");
   state.prefs.srsEnabled = element ? Boolean(element.checked) : false;
   saveState();
@@ -3494,6 +3530,12 @@ function submitPracticeAnswer(selected, correct) {
 }
 
 function showExplanation(q) {
+  if (
+    typeof QuizRendering !== "undefined" &&
+    typeof QuizRendering.showExplanation === "function"
+  ) {
+    return QuizRendering.showExplanation(q);
+  }
   if (
     typeof SessionCore !== "undefined" &&
     typeof SessionCore.showExplanation === "function"
@@ -4218,6 +4260,12 @@ function showMCQOptions() {
 }
 
 function revealAnswer() {
+  if (
+    typeof QuizRendering !== "undefined" &&
+    typeof QuizRendering.revealAnswer === "function"
+  ) {
+    return QuizRendering.revealAnswer();
+  }
   if (!state.session.active) return;
 
   const q = state.session.questions[state.session.currentIndex];
@@ -4245,6 +4293,12 @@ function revealAnswer() {
 }
 
 function startVisualTimer() {
+  if (
+    typeof QuizRendering !== "undefined" &&
+    typeof QuizRendering.startVisualTimer === "function"
+  ) {
+    return QuizRendering.startVisualTimer();
+  }
   const container = document.getElementById("auto-next-timer-container");
   const bar = document.getElementById("auto-next-timer-bar");
 
@@ -4256,6 +4310,18 @@ function startVisualTimer() {
 }
 
 function stopVisualTimer() {
+  if (
+    typeof QuizRendering !== "undefined" &&
+    typeof QuizRendering.stopVisualTimer === "function"
+  ) {
+    return QuizRendering.stopVisualTimer();
+  }
+  if (
+    typeof QuizRendering !== "undefined" &&
+    typeof QuizRendering.stopVisualTimer === "function"
+  ) {
+    return QuizRendering.stopVisualTimer();
+  }
   const container = document.getElementById("auto-next-timer-container");
   const bar = document.getElementById("auto-next-timer-bar");
 

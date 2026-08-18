@@ -114,6 +114,14 @@ assert.match(
   appCore,
   /typeof\s+Analytics\s*!==\s*"undefined"\s*&&\s*typeof\s+Analytics\.toggleTheme\s*===\s*"function"/,
 );
+assert.match(
+  appCore,
+  /typeof\s+QuizRendering\s*!==\s*"undefined"\s*&&\s*typeof\s+QuizRendering\.renderQuestion\s*===\s*"function"/,
+);
+assert.match(
+  appCore,
+  /typeof\s+QuizRendering\s*!==\s*"undefined"\s*&&\s*typeof\s+QuizRendering\.revealAnswer\s*===\s*"function"/,
+);
 assert.doesNotMatch(resetProgressBlock, /state\.db\s*=\s*\[/);
 assert.doesNotMatch(clearDatabaseBlock, /state\.stats\s*=/);
 assert.doesNotMatch(clearDatabaseBlock, /state\.prefs\s*=\s*\{/);
