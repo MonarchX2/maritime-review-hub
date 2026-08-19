@@ -101,6 +101,8 @@ function restoreNavigationPathFromStorage() {
 let isLeaderTab = false;
 let leaderHeartbeatTimer = null;
 let leaderElectionChannel = null;
+let cacheVersionCheckTimer = null;
+let cacheInvalidationChannel = null;
 
 // OPTIMIZATION: ETag/Hash headers for 304 responses
 let lastCacheVersionHash = null;
@@ -109,17 +111,26 @@ let lastCacheVersionHash = null;
 let failureRetryCount = 0;
 let maxRetryAttempts = 5;
 
+function isRequestAbortError(error) {
+  return (
+    error?.name === "AbortError" ||
+    /\babort(ed|ing)?\b/i.test(String(error?.message || ""))
+  );
+}
+
 function cleanupAppRuntime() {
   clearTimeout(syncRetryTimer);
   clearInterval(syncCountdownTimer);
   clearTimeout(syncStatusHideTimer);
   clearTimeout(syncPollTimer);
   clearInterval(leaderHeartbeatTimer);
+  clearInterval(cacheVersionCheckTimer);
   syncRetryTimer = null;
   syncCountdownTimer = null;
   syncStatusHideTimer = null;
   syncPollTimer = null;
   leaderHeartbeatTimer = null;
+  cacheVersionCheckTimer = null;
   if (syncAbortController) syncAbortController.abort();
   syncAbortController = null;
   if (typeof stopVisualTimer === "function") stopVisualTimer();
@@ -130,6 +141,10 @@ function cleanupAppRuntime() {
   if (leaderElectionChannel) {
     leaderElectionChannel.close();
     leaderElectionChannel = null;
+  }
+  if (cacheInvalidationChannel) {
+    cacheInvalidationChannel.close();
+    cacheInvalidationChannel = null;
   }
 }
 
@@ -1172,6 +1187,7 @@ async function checkSyncStatusLightweight() {
     if (!response.ok) return null;
     return await response.json();
   } catch (err) {
+    if (isRequestAbortError(err)) return null;
     console.log("[SYNC] Lightweight status check failed:", err);
     return null;
   }
@@ -1237,6 +1253,17 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
       clearTimeout(timeoutId);
       console.warn("[COLD START] Detected! Backend is rebuilding cache...");
       isColdStart = true;
+
+      if (isBackgroundCheck && state.categorySummary.length > 0) {
+        syncConnected = false;
+        updateSyncStatus(
+          `<i class="fa-solid fa-exclamation-triangle mr-1"></i> Using locally cached deck list while the database rebuilds.`,
+          "warning",
+          false,
+        );
+        scheduleSyncPoll();
+        return;
+      }
 
       // Show notification and force refresh
       showColdStartNotification();
@@ -1311,6 +1338,10 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
   } catch (err) {
     clearTimeout(timeoutId);
     if (requestController !== syncAbortController) return;
+    if (isRequestAbortError(err)) {
+      scheduleSyncPoll();
+      return;
+    }
     console.error("[SYNC] Error:", err);
 
     // FIX 3: GRACEFUL FALLBACK FOR CACHED DATA ON ERROR
@@ -4080,6 +4111,7 @@ async function fetchGlobalReports() {
     if (Array.isArray(reports))
       globallyReportedQs = new Set(reports.map((r) => r.questionId));
   } catch (e) {
+    if (isRequestAbortError(e)) return;
     console.warn("Unable to fetch global reports", e);
   }
 }
@@ -4112,7 +4144,7 @@ async function initializeApp() {
   }
 
   try {
-    await syncDatabase();
+    await syncDatabase(false, state.categorySummary.length > 0);
   } catch (error) {
     console.error("Initial database sync failed:", error);
     showToast("Unable to connect to the database.", "error");
@@ -6281,6 +6313,7 @@ async function checkCacheVersionWithETag() {
     failureRetryCount = 0;
   } catch (e) {
     failureRetryCount++;
+    if (isRequestAbortError(e)) return;
     console.error("[CACHE] Version check failed:", e);
     if (failureRetryCount > maxRetryAttempts) failureRetryCount = 0;
   }
@@ -6354,11 +6387,6 @@ function initializeDomFeatures() {
   setupCacheInvalidationListener();
   startCacheVersionChecking();
   initDetailsExclusivity();
-
-  // CRITICAL: Fetch access metadata early to avoid filtering issues
-  fetchAccessMetadata().catch((err) => {
-    console.warn("Initial access metadata fetch failed, will retry:", err);
-  });
 
   const mainEl = document.querySelector("main");
   const headerEl = document.querySelector("header");
