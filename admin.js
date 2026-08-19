@@ -125,6 +125,7 @@ function adminIsUnauthorizedResult(result) {
 function adminIsUnauthorizedError(error) {
   const message = adminNormalizeText(error?.message).toLowerCase();
   return (
+    String(error?.code || "").toUpperCase() === "UNAUTHORIZED" ||
     message.includes("unauthorized") ||
     message.includes("authentication") ||
     message.includes("session expired") ||
@@ -188,8 +189,25 @@ async function parseJsonResponse(response) {
   }
 
   try {
-    return JSON.parse(cleaned);
+    const result = JSON.parse(cleaned);
+    if (
+      result &&
+      typeof result === "object" &&
+      (result.status === "error" ||
+        result.ok === false ||
+        result.success === false)
+    ) {
+      const error = new Error(
+        String(result.message || result.error || "Backend request failed."),
+      );
+      error.status = Number(result.statusCode) || response.status;
+      error.code = result.code || "BACKEND_ERROR";
+      error.payload = result;
+      throw error;
+    }
+    return result;
   } catch (error) {
+    if (error?.payload) throw error;
     throw new Error(
       `Invalid JSON response from backend: ${cleaned.slice(0, 200)}`,
     );

@@ -331,7 +331,11 @@
     if (imgEl) {
       imgEl.onload = null;
       imgEl.onerror = null;
-      if (imageUrl) {
+      if (
+        imageUrl &&
+        typeof globalScope.isSafeImageURL === "function" &&
+        globalScope.isSafeImageURL(imageUrl)
+      ) {
         imgEl.onload = () => imgEl.classList.remove("hidden");
         imgEl.onerror = () => {
           imgEl.removeAttribute("src");

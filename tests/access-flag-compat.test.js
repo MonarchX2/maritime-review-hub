@@ -12,9 +12,22 @@ assert.notStrictEqual(
 );
 assert.notStrictEqual(resolverStart, -1, "resolveSubjectAccess should exist");
 
-const helperBlock = source.slice(
-  helperStart,
-  source.indexOf("function buildAccessMetadataMap", helperStart),
+const nextFunctionAfter = (start) => {
+  const next = source.indexOf("\nfunction ", start + 1);
+  return next === -1 ? source.length : next;
+};
+const helperBlock = source.slice(helperStart, nextFunctionAfter(helperStart));
+const unlockedStateBlock = source.slice(
+  source.indexOf("function ensureUnlockedFolderState"),
+  nextFunctionAfter(source.indexOf("function ensureUnlockedFolderState")),
+);
+const folderUnlockedBlock = source.slice(
+  source.indexOf("function isFolderUnlocked"),
+  nextFunctionAfter(source.indexOf("function isFolderUnlocked")),
+);
+const resolverBlock = source.slice(
+  resolverStart,
+  nextFunctionAfter(resolverStart),
 );
 const context = {
   console,
@@ -27,10 +40,11 @@ const context = {
 vm.runInNewContext(
   helperBlock +
     "\n" +
-    source.slice(
-      resolverStart,
-      source.indexOf("function buildAccessMetadataMap", resolverStart),
-    ),
+    unlockedStateBlock +
+    "\n" +
+    folderUnlockedBlock +
+    "\n" +
+    resolverBlock,
   context,
 );
 
@@ -40,7 +54,10 @@ const result = context.resolveSubjectAccess(
     Parent: { Hidden: true, Locked: false, Password: "" },
     "Parent::Child": { Hidden: false, Locked: true, Password: "" },
   },
-  [{ Subject: "Parent", Hidden: false, Locked: false, Password: "" }],
+  [
+    { Subject: "Parent", Hidden: false, Locked: false, Password: "" },
+    { Subject: "Parent::Child", Hidden: false, Locked: true, Password: "" },
+  ],
 );
 
 assert.strictEqual(

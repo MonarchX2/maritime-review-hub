@@ -223,6 +223,10 @@ function renderMathExpression(rawExpression, displayMode) {
   return TextUtils.renderMathExpression(rawExpression, displayMode);
 }
 
+function isSafeImageURL(value) {
+  return TextUtils.isSafeImageURL(value);
+}
+
 function encodeHandlerValue(value) {
   return TextUtils.encodeHandlerValue(value);
 }
@@ -1664,7 +1668,7 @@ function renderQuestion() {
   });
 
   const imgEl = document.getElementById("q-image");
-  if (q.ImageURL && q.ImageURL.trim() !== "") {
+  if (isSafeImageURL(q.ImageURL)) {
     imgEl.onload = () => imgEl.classList.remove("hidden");
     imgEl.onerror = () => {
       imgEl.removeAttribute("src");
@@ -1840,7 +1844,7 @@ function renderQuestion() {
   );
 
   upcomingQuestions.forEach((nextQ) => {
-    if (nextQ && nextQ.ImageURL) {
+    if (nextQ && isSafeImageURL(nextQ.ImageURL)) {
       const imgPreload = new Image();
       imgPreload.src = nextQ.ImageURL;
     }
@@ -2518,7 +2522,8 @@ function renderCategoryProgress() {
 async function fetchDeckInPages(subject, pass = "") {
   const pageSize = 100;
   const questions = [];
-  for (let page = 1; page <= 100; page += 1) {
+  const maxPages = 1000;
+  for (let page = 1; page <= maxPages; page += 1) {
     let result;
     if (
       typeof AppNetwork !== "undefined" &&
@@ -2549,6 +2554,10 @@ async function fetchDeckInPages(subject, pass = "") {
     questions.push(...result.data);
     if (questions.length >= Number(result.total || questions.length)) break;
     if (result.data.length < pageSize) break;
+
+    if (page === maxPages) {
+      throw new Error("Deck exceeds the supported pagination limit.");
+    }
   }
   return questions;
 }
@@ -3239,6 +3248,9 @@ function renderDeckReview(subject, questions) {
   displayQuestions.forEach((q, displayIndex) => {
     const originalIndex = questionIndexById.get(q.ID) ?? displayIndex;
     const isQuestionFavorite = favoriteQuestions.has(q.ID);
+    const safeImageURL = isSafeImageURL(q.ImageURL)
+      ? escapeHTML(q.ImageURL)
+      : "";
 
     let rawQuestionText = q.Question ? String(q.Question) : "";
     let cleanQuestionText = rawQuestionText.replace(/^\s*\d+\.\s*/, "");
@@ -3340,7 +3352,7 @@ function renderDeckReview(subject, questions) {
                 
                 <p class="font-medium text-gray-800 dark:text-gray-100 mb-2 text-lg">${formatQuestionText(cleanQuestionText)}</p>
                 
-                ${q.ImageURL ? `<img src="${escapeHTML(q.ImageURL)}" alt="Reference" class="w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500">` : ""}                        
+                ${safeImageURL ? `<img src="${safeImageURL}" alt="Reference" class="w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500">` : ""}
                 ${choicesHTML}
                 
                 ${
@@ -4072,7 +4084,7 @@ async function fetchGlobalReports() {
   }
 }
 
-window.onload = async () => {
+async function initializeApp() {
   try {
     await loadState();
   } catch (error) {
@@ -4086,12 +4098,11 @@ window.onload = async () => {
 
   if ("serviceWorker" in navigator) {
     try {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      for (const registration of registrations) {
-        await registration.unregister();
-      }
-    } catch (e) {
-      console.warn("Unable to clear stale service worker registrations", e);
+      await navigator.serviceWorker.register(
+        new URL("sw.js", document.baseURI),
+      );
+    } catch (error) {
+      console.warn("Unable to register the service worker.", error);
     }
   }
 
@@ -4111,7 +4122,13 @@ window.onload = async () => {
   } catch (error) {
     console.error("Initial report sync failed:", error);
   }
-};
+}
+
+if (document.readyState === "complete") {
+  void initializeApp();
+} else {
+  window.addEventListener("load", () => void initializeApp(), { once: true });
+}
 
 window.addEventListener("resize", () => {
   if (state.session.active && state.prefs.quizNavigationPosition === "auto")
@@ -5637,6 +5654,16 @@ if (folderPasswordButton) {
   folderPasswordButton.addEventListener("click", async () => {
     const pass = document.getElementById("folder-password-input")?.value || "";
     const btn = folderPasswordButton;
+    const folderPath =
+      typeof UIModal !== "undefined" &&
+      typeof UIModal.getPendingLockedFolderPath === "function"
+        ? UIModal.getPendingLockedFolderPath()
+        : pendingLockedFolderPath;
+    const folderName =
+      typeof UIModal !== "undefined" &&
+      typeof UIModal.getPendingLockedFolderName === "function"
+        ? UIModal.getPendingLockedFolderName()
+        : pendingLockedFolderName;
 
     if (!pass) {
       alert("Please enter a password.");
@@ -5645,34 +5672,30 @@ if (folderPasswordButton) {
 
     await runWithBusyButton(btn, "Verifying...", async () => {
       try {
+        if (!folderPath) throw new Error("Folder access context is missing.");
         const result =
           typeof AppNetwork !== "undefined" &&
-          typeof AppNetwork.getDeck === "function"
-            ? await AppNetwork.getDeck(pendingLockedFolderPath || "", pass)
-            : null;
-        if (!Array.isArray(result)) {
-          if (result?.error) alert(result.error);
-          else
-            alert(
-              "This folder does not expose a directly accessible deck endpoint.",
-            );
-        } else {
-          const folderPath =
-            pendingLockedFolderPath || pendingLockedFolderName || "";
-          setFolderUnlocked(folderPath, true);
-          closeFolderPasswordModal();
-          if (!state.currentPath) state.currentPath = [];
-          if (
-            pendingLockedFolderName &&
-            !state.currentPath.includes(pendingLockedFolderName)
-          ) {
-            state.currentPath.push(pendingLockedFolderName);
-          }
-          renderCategoryProgress();
+          typeof AppNetwork.verifyFolderAccess === "function"
+            ? await AppNetwork.verifyFolderAccess(folderPath, pass)
+            : await callBackend({
+                type: "verify_folder_access",
+                subject: folderPath,
+                password: pass,
+              });
+        if (result?.status !== "success") {
+          throw new Error(result?.message || "Incorrect Password.");
         }
+
+        setFolderUnlocked(folderPath, true);
+        closeFolderPasswordModal();
+        if (!state.currentPath) state.currentPath = [];
+        if (folderName && !state.currentPath.includes(folderName)) {
+          state.currentPath.push(folderName);
+        }
+        renderCategoryProgress();
       } catch (error) {
         console.error("Verification failed", error);
-        alert("Network error while verifying the folder password.");
+        alert(error?.message || "Unable to verify folder access.");
       }
     });
   });
@@ -6326,7 +6349,7 @@ function forcePageRefresh() {
   }, 100);
 }
 
-window.addEventListener("DOMContentLoaded", () => {
+function initializeDomFeatures() {
   // CRITICAL FIX: Setup cache invalidation listener and version checking
   setupCacheInvalidationListener();
   startCacheVersionChecking();
@@ -6387,4 +6410,12 @@ window.addEventListener("DOMContentLoaded", () => {
     applyTitleMode();
     updateTitleModeButton();
   }, 100);
-});
+}
+
+if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", initializeDomFeatures, {
+    once: true,
+  });
+} else {
+  initializeDomFeatures();
+}

@@ -56,6 +56,13 @@
   async function callBackend(payload, options = {}) {
     const { timeoutMs = 20000, url, headers, requestInit = {} } = options || {};
 
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      throw new TypeError("Backend payload must be a plain object.");
+    }
+    if (!String(payload.type || "").trim()) {
+      throw new TypeError("Backend request type is required.");
+    }
+
     const fetchImpl = getFetch();
     const timeout = getTimeoutMs(timeoutMs);
     const Controller = getAbortController();
@@ -102,7 +109,24 @@
         throw new Error(getErrorMessage(text, response.status));
       }
 
-      return await parseResponseBody(response);
+      const result = await parseResponseBody(response);
+      if (
+        result &&
+        typeof result === "object" &&
+        (result.status === "error" ||
+          result.ok === false ||
+          result.success === false ||
+          Number(result.statusCode) >= 400)
+      ) {
+        const error = new Error(
+          String(result.message || result.error || "Backend request failed."),
+        );
+        error.status = Number(result.statusCode) || response.status;
+        error.code = result.code || "BACKEND_ERROR";
+        error.payload = result;
+        throw error;
+      }
+      return result;
     } catch (error) {
       if (
         error?.name === "AbortError" ||

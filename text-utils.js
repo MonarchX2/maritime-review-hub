@@ -34,6 +34,25 @@
     return `<code class="math-fallback">${escapeHTML(expr)}</code>`;
   }
 
+  function isSafeImageURL(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw) return false;
+
+    try {
+      const base = globalScope.location?.href || "https://localhost/";
+      const url = new URL(raw, base);
+      return (
+        (url.protocol === "https:" ||
+          (url.protocol === "http:" &&
+            url.origin === globalScope.location?.origin)) &&
+        !url.username &&
+        !url.password
+      );
+    } catch (error) {
+      return false;
+    }
+  }
+
   function stripQuestionNumberPrefix(value) {
     const raw = String(value ?? "");
     if (!raw.trim()) return raw;
@@ -155,6 +174,7 @@
   const TextUtils = {
     escapeHTML,
     renderMathExpression,
+    isSafeImageURL,
     stripQuestionNumberPrefix,
     naturalSortStrings,
     formatQuestionText,

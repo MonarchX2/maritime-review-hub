@@ -175,13 +175,16 @@
     submitReport: (payload) =>
       callBackend({ type: "submit_report", ...payload }),
     getReports: (role = "user", token = "", options = {}) =>
-      callBackend({
-        type: "get_reports",
-        role,
-        ...(options.page !== undefined ? { page: options.page } : {}),
-        ...(options.limit !== undefined ? { limit: options.limit } : {}),
-        ...(role === "admin" ? { token } : {}),
-      }, options),
+      callBackend(
+        {
+          type: "get_reports",
+          role,
+          ...(options.page !== undefined ? { page: options.page } : {}),
+          ...(options.limit !== undefined ? { limit: options.limit } : {}),
+          ...(role === "admin" ? { token } : {}),
+        },
+        options,
+      ),
     resolveReport: (token, reportId, action) =>
       callBackend({ type: "admin_resolve_report", token, reportId, action }),
     getCacheVersion: () => callBackend({ type: "get_cache_version" }),
@@ -217,6 +220,15 @@
     callBackend,
     getDeckSummary,
     getDeck,
+    verifyFolderAccess: (subject, password, options = {}) =>
+      callBackend(
+        {
+          type: "verify_folder_access",
+          subject: String(subject || "").trim(),
+          password: String(password || ""),
+        },
+        options,
+      ),
     ...backendApi,
     getAdminToken,
     setAdminToken,
