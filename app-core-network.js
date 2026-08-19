@@ -2,6 +2,7 @@
   "use strict";
 
   const DEFAULT_TIMEOUT_MS = 15000;
+  let adminToken = "";
 
   function getDatabaseUrl() {
     try {
@@ -22,6 +23,31 @@
       );
     }
     return fallback || "Request failed.";
+  }
+
+  function getBackendError(result, response) {
+    const statusCode = Number(result?.statusCode);
+    const hasErrorEnvelope =
+      result &&
+      typeof result === "object" &&
+      (result.status === "error" ||
+        result.ok === false ||
+        result.success === false ||
+        (Number.isFinite(statusCode) && statusCode >= 400));
+    if (response.ok && !hasErrorEnvelope) return null;
+
+    const error = new Error(
+      normalizeErrorMessage(
+        result,
+        response.ok
+          ? "Backend request failed."
+          : `Backend HTTP ${response.status}.`,
+      ),
+    );
+    error.status = response.ok ? statusCode || 500 : response.status;
+    error.code = result?.code || "HTTP_ERROR";
+    error.payload = result;
+    return error;
   }
 
   async function parseJsonResponse(response) {
@@ -102,15 +128,8 @@
     );
 
     const result = await parseJsonResponse(response);
-    if (!response.ok) {
-      const error = new Error(
-        normalizeErrorMessage(result, `Backend HTTP ${response.status}.`),
-      );
-      error.status = response.status;
-      error.code = result?.code || "HTTP_ERROR";
-      error.payload = result;
-      throw error;
-    }
+    const backendError = getBackendError(result, response);
+    if (backendError) throw backendError;
     return result;
   }
 
@@ -131,49 +150,22 @@
       Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 15000,
     );
     const result = await parseJsonResponse(response);
-    if (!response.ok) {
-      const error = new Error(
-        normalizeErrorMessage(result, `Backend HTTP ${response.status}.`),
-      );
-      error.status = response.status;
-      error.code = result?.code || "HTTP_ERROR";
-      error.payload = result;
-      throw error;
-    }
+    const backendError = getBackendError(result, response);
+    if (backendError) throw backendError;
     return result;
   }
 
   async function getDeck(subject, password = "", options = {}) {
-    const databaseUrl = getDatabaseUrl();
-    if (!databaseUrl) throw new Error("Database URL is not configured.");
-    const url = new URL(databaseUrl, globalScope.location?.href || undefined);
-    url.searchParams.set("subject", String(subject || "").trim());
-    if (password) url.searchParams.set("password", String(password));
-    url.searchParams.set("_t", Date.now().toString());
-
-    const response = await fetchWithTimeout(
-      url.toString(),
+    return callBackend(
       {
-        method: "GET",
-        headers: { Accept: "application/json", ...(options.headers || {}) },
-        redirect: "follow",
-        cache: "no-store",
-        signal: options.signal,
+        type: "get_deck",
+        subject: String(subject || "").trim(),
+        password: String(password || ""),
+        ...(options.page !== undefined ? { page: options.page } : {}),
+        ...(options.limit !== undefined ? { limit: options.limit } : {}),
       },
-      Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 15000,
+      options,
     );
-
-    const result = await parseJsonResponse(response);
-    if (!response.ok) {
-      const error = new Error(
-        normalizeErrorMessage(result, `Backend HTTP ${response.status}.`),
-      );
-      error.status = response.status;
-      error.code = result?.code || "HTTP_ERROR";
-      error.payload = result;
-      throw error;
-    }
-    return result;
   }
 
   const backendApi = {
@@ -182,12 +174,14 @@
       callBackend({ type: "admin_get_subjects", token }),
     submitReport: (payload) =>
       callBackend({ type: "submit_report", ...payload }),
-    getReports: (role = "user", token = "") =>
+    getReports: (role = "user", token = "", options = {}) =>
       callBackend({
         type: "get_reports",
         role,
+        ...(options.page !== undefined ? { page: options.page } : {}),
+        ...(options.limit !== undefined ? { limit: options.limit } : {}),
         ...(role === "admin" ? { token } : {}),
-      }),
+      }, options),
     resolveReport: (token, reportId, action) =>
       callBackend({ type: "admin_resolve_report", token, reportId, action }),
     getCacheVersion: () => callBackend({ type: "get_cache_version" }),
@@ -206,42 +200,17 @@
   }
 
   function getAdminToken() {
-    try {
-      if (typeof globalScope.getStoredItem === "function") {
-        return String(
-          globalScope.getStoredItem(adminTokenStorageKey(), "") || "",
-        ).trim();
-      }
-      return String(
-        globalScope.localStorage?.getItem(adminTokenStorageKey()) || "",
-      ).trim();
-    } catch (_) {
-      return "";
-    }
+    return adminToken;
   }
 
   function setAdminToken(token) {
     const clean = String(token || "").trim();
-    try {
-      if (typeof globalScope.setStoredItem === "function") {
-        globalScope.setStoredItem(adminTokenStorageKey(), clean);
-      } else if (globalScope.localStorage) {
-        globalScope.localStorage.setItem(adminTokenStorageKey(), clean);
-      }
-    } catch (_) {
-      // Token persistence is optional; the caller can keep it in memory.
-    }
+    adminToken = clean;
     return clean;
   }
 
   function clearAdminToken() {
-    try {
-      if (typeof globalScope.removeStoredItem === "function") {
-        globalScope.removeStoredItem(adminTokenStorageKey());
-      } else {
-        globalScope.localStorage?.removeItem(adminTokenStorageKey());
-      }
-    } catch (_) {}
+    adminToken = "";
   }
 
   const AppNetwork = {

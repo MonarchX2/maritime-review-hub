@@ -10,6 +10,7 @@ let syncRetryTimer = null;
 let syncCountdownTimer = null;
 let syncStatusHideTimer = null;
 let syncPollTimer = null;
+let syncPollInFlight = false;
 let syncAttempt = 0;
 let initialSyncSuccessShown = false;
 let pendingSummaryData = null;
@@ -18,6 +19,7 @@ let isColdStart = false;
 let lastSyncStatusTimestamp = "";
 let localCacheVersion = 0;
 let isInitialSyncComplete = false; // Track if the first sync from startup has completed
+let syncStatusGeneration = 0;
 const SYNC_STATUS_STORAGE_KEY = "mrh_last_sync_status_timestamp";
 const CACHE_VERSION_STORAGE_KEY = "mrh_cache_version";
 const NAVIGATION_PATH_STORAGE_KEY = "mrh_navigation_path"; // Persist user's navigation position
@@ -106,6 +108,34 @@ let lastCacheVersionHash = null;
 // OPTIMIZATION: Exponential backoff retry tracking
 let failureRetryCount = 0;
 let maxRetryAttempts = 5;
+
+function cleanupAppRuntime() {
+  clearTimeout(syncRetryTimer);
+  clearInterval(syncCountdownTimer);
+  clearTimeout(syncStatusHideTimer);
+  clearTimeout(syncPollTimer);
+  clearInterval(leaderHeartbeatTimer);
+  syncRetryTimer = null;
+  syncCountdownTimer = null;
+  syncStatusHideTimer = null;
+  syncPollTimer = null;
+  leaderHeartbeatTimer = null;
+  if (syncAbortController) syncAbortController.abort();
+  syncAbortController = null;
+  if (typeof stopVisualTimer === "function") stopVisualTimer();
+  if (typeof state !== "undefined" && state?.session?.autoNextTimeout) {
+    clearTimeout(state.session.autoNextTimeout);
+    state.session.autoNextTimeout = null;
+  }
+  if (leaderElectionChannel) {
+    leaderElectionChannel.close();
+    leaderElectionChannel = null;
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", cleanupAppRuntime);
+}
 
 const debugLogger =
   typeof DebugUtils !== "undefined" && DebugUtils.createDebugLogger
@@ -739,6 +769,7 @@ function updateSyncStatus(message, tone = "info", showOverlay = true) {
     return AppSync.updateSyncStatus(message, tone, showOverlay);
   }
   const visualState = getSyncStatusVisualState(tone);
+  const statusGeneration = ++syncStatusGeneration;
   const activeSessionBlocking = Boolean(state.session?.active);
   const shouldSuppressOverlay =
     activeSessionBlocking &&
@@ -805,6 +836,7 @@ function updateSyncStatus(message, tone = "info", showOverlay = true) {
       clearTimeout(syncStatusHideTimer);
       connectionStatus.classList.add("opacity-0", "scale-95");
       setTimeout(() => {
+        if (statusGeneration !== syncStatusGeneration) return;
         if (connectionStatus) {
           connectionStatus.classList.add("hidden");
           connectionStatus.classList.remove("opacity-0", "scale-95");
@@ -816,11 +848,16 @@ function updateSyncStatus(message, tone = "info", showOverlay = true) {
 
 function hideConnectionStatusAfterDelay(delay = 3000) {
   clearTimeout(syncStatusHideTimer);
+  const statusGeneration = ++syncStatusGeneration;
   syncStatusHideTimer = setTimeout(() => {
+    if (statusGeneration !== syncStatusGeneration) return;
     const element = document.getElementById("connection-status");
     if (!element) return;
     element.classList.add("opacity-0", "scale-95");
-    setTimeout(() => element.classList.add("hidden"), 500);
+    setTimeout(() => {
+      if (statusGeneration === syncStatusGeneration)
+        element.classList.add("hidden");
+    }, 500);
   }, delay);
 }
 
@@ -890,8 +927,17 @@ function scheduleSyncPoll() {
 
   clearTimeout(syncPollTimer);
   syncPollTimer = setTimeout(() => {
-    optimizedBackgroundSync();
-    scheduleSyncPoll(); // Schedule next poll
+    if (syncPollInFlight) return;
+    syncPollInFlight = true;
+    Promise.resolve()
+      .then(() => optimizedBackgroundSync())
+      .catch((error) => {
+        console.error("[SYNC] Background poll failed:", error);
+      })
+      .finally(() => {
+        syncPollInFlight = false;
+        scheduleSyncPoll();
+      });
   }, SYNC_INTERVAL_MS);
 }
 
@@ -2469,6 +2515,44 @@ function renderCategoryProgress() {
   applyTitleMode();
 }
 
+async function fetchDeckInPages(subject, pass = "") {
+  const pageSize = 100;
+  const questions = [];
+  for (let page = 1; page <= 100; page += 1) {
+    let result;
+    if (
+      typeof AppNetwork !== "undefined" &&
+      typeof AppNetwork.getDeck === "function"
+    ) {
+      result = await AppNetwork.getDeck(subject, pass, {
+        page,
+        limit: pageSize,
+      });
+    } else if (
+      typeof NetworkUtils !== "undefined" &&
+      typeof NetworkUtils.callBackend === "function"
+    ) {
+      result = await NetworkUtils.callBackend({
+        type: "get_deck",
+        subject,
+        password: pass,
+        page,
+        limit: pageSize,
+      });
+    } else {
+      throw new Error("Backend network support is unavailable.");
+    }
+
+    if (Array.isArray(result)) return result;
+    if (!result || !Array.isArray(result.data))
+      throw new Error("Unexpected paginated deck response.");
+    questions.push(...result.data);
+    if (questions.length >= Number(result.total || questions.length)) break;
+    if (result.data.length < pageSize) break;
+  }
+  return questions;
+}
+
 async function fetchAndStartCategory(subject, mode, pass = null) {
   if (
     typeof DeckNav !== "undefined" &&
@@ -2681,11 +2765,9 @@ async function deleteSubjectData(subject) {
     clearTimeout(syncRetryTimer);
     clearInterval(syncCountdownTimer);
 
-    // Reset sync state after local deletion succeeds
-    // (deletion doesn't depend on backend connectivity)
+    // Local deletion must not claim that the backend is reachable.
     syncAttempt = 0;
-    syncConnected = true;
-    setGlobalLoadingState(false);
+    syncConnected = false;
 
     const beforeSummary = (state.categorySummary || []).find(
       (deck) => deck && deck.Subject === subject,
@@ -2811,6 +2893,7 @@ async function deleteSubjectData(subject) {
     }
 
     updateDashboard();
+    await syncDatabase(false, true);
   }
 }
 
@@ -2856,24 +2939,7 @@ async function fetchDeckQuestionsFromNetwork(
 
   try {
     let newQuestions;
-    if (
-      typeof AppNetwork !== "undefined" &&
-      typeof AppNetwork.getDeck === "function"
-    ) {
-      newQuestions = await AppNetwork.getDeck(subject, pass || "");
-    } else {
-      let fetchUrl = `${DB_URL}?subject=${encodeURIComponent(subject)}&_t=${Date.now()}`;
-      if (pass) fetchUrl += `&password=${encodeURIComponent(pass)}`;
-      const response = await fetch(fetchUrl, { cache: "no-store" });
-      const text = await response.text();
-      try {
-        newQuestions = JSON.parse(text);
-      } catch (parseError) {
-        throw new Error(
-          `Invalid backend response while loading deck: ${text.slice(0, 200)}`,
-        );
-      }
-    }
+    newQuestions = await fetchDeckInPages(subject, pass || "");
     if (newQuestions && newQuestions.error) {
       const errorText = String(newQuestions.error || "").toLowerCase();
       if (
@@ -2927,7 +2993,19 @@ async function fetchDeckQuestionsFromNetwork(
     return validQuestions;
   } catch (err) {
     console.warn("Network fetch failed.", err);
-    return getQuestionsForSubject(subject);
+    if (err?.code === "UNAUTHORIZED" && !pass) {
+      pendingDeckSubject = subject;
+      pendingDeckAction = pendingDeckAction || "continue";
+      openDeckPasswordModal(subject, pendingDeckAction || "continue");
+    }
+    const cachedQuestions = getQuestionsForSubject(subject);
+    if (cachedQuestions.length === 0 && typeof showToast === "function") {
+      showToast(
+        "Unable to load this deck. Check your connection and try again.",
+        "error",
+      );
+    }
+    return cachedQuestions;
   } finally {
     if (loaderElement) loaderElement.classList.add("hidden");
   }
@@ -3959,9 +4037,34 @@ document.addEventListener("keydown", (e) => {
 
 let globallyReportedQs = new Set();
 
+async function fetchReportPages(role = "user", token = "") {
+  const pageSize = 100;
+  const reports = [];
+  for (let page = 1; page <= 100; page += 1) {
+    const result =
+      typeof AppNetwork !== "undefined" &&
+      typeof AppNetwork.getReports === "function"
+        ? await AppNetwork.getReports(role, token, { page, limit: pageSize })
+        : await callBackend({
+            type: "get_reports",
+            role,
+            page,
+            limit: pageSize,
+            ...(role === "admin" ? { token } : {}),
+          });
+    if (Array.isArray(result)) return reports.concat(result);
+    if (!result || !Array.isArray(result.data))
+      throw new Error("The reports endpoint returned an invalid response.");
+    reports.push(...result.data);
+    if (reports.length >= Number(result.total || reports.length)) break;
+    if (result.data.length < pageSize) break;
+  }
+  return reports;
+}
+
 async function fetchGlobalReports() {
   try {
-    const reports = await callBackend({ type: "get_reports", role: "user" });
+    const reports = await fetchReportPages("user");
     if (Array.isArray(reports))
       globallyReportedQs = new Set(reports.map((r) => r.questionId));
   } catch (e) {
@@ -3970,7 +4073,16 @@ async function fetchGlobalReports() {
 }
 
 window.onload = async () => {
-  await loadState();
+  try {
+    await loadState();
+  } catch (error) {
+    console.error("Application state initialization failed:", error);
+    showToast(
+      "Unable to initialize the application. Please reload the page.",
+      "error",
+    );
+    return;
+  }
 
   if ("serviceWorker" in navigator) {
     try {
@@ -3988,8 +4100,17 @@ window.onload = async () => {
     currentAppMode = toggleElement.checked ? "review" : "quiz";
   }
 
-  syncDatabase();
-  fetchGlobalReports();
+  try {
+    await syncDatabase();
+  } catch (error) {
+    console.error("Initial database sync failed:", error);
+    showToast("Unable to connect to the database.", "error");
+  }
+  try {
+    await fetchGlobalReports();
+  } catch (error) {
+    console.error("Initial report sync failed:", error);
+  }
 };
 
 window.addEventListener("resize", () => {
@@ -4170,6 +4291,17 @@ async function resumeSession(password = null) {
 
   renderQuestion();
 }
+
+const resumeSessionInternal = resumeSession;
+resumeSession = async (...args) => {
+  try {
+    return await resumeSessionInternal(...args);
+  } catch (error) {
+    console.error("Unable to resume session:", error);
+    showToast("Unable to resume this session. Please try again.", "error");
+    return false;
+  }
+};
 
 function clearSessionProgress() {
   removeStoredItem("saved_session");
@@ -5087,7 +5219,7 @@ async function loadReports() {
     pendingContainer.innerHTML = `<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500"></i><p class="mt-2 text-gray-500">Fetching community reports...</p></div>`;
 
   try {
-    const reports = await callBackend({ type: "get_reports", role: "user" });
+    const reports = await fetchReportPages("user");
     if (!Array.isArray(reports) || reports.length === 0) {
       if (pendingContainer)
         pendingContainer.innerHTML = `<p class="text-center text-gray-500 py-4">No pending reports.</p>`;
@@ -5196,12 +5328,24 @@ function openModeSelect(subject) {
 }
 
 function proceedToReview() {
-  reviewDeck(activeHubSubject);
+  reviewDeck(activeHubSubject).catch((error) => {
+    console.error("Unable to open deck review:", error);
+    showToast(
+      "Unable to open this deck. Check your connection and try again.",
+      "error",
+    );
+  });
 }
 
 function proceedToQuiz() {
   if (activeHubSubject) {
-    fetchAndStartCategory(activeHubSubject, "continue");
+    fetchAndStartCategory(activeHubSubject, "continue").catch((error) => {
+      console.error("Unable to start deck session:", error);
+      showToast(
+        "Unable to start this session. Check your connection and try again.",
+        "error",
+      );
+    });
   }
 }
 
@@ -5296,9 +5440,21 @@ function handleDeckClick(subj, action = "continue") {
     return;
   }
   if (currentAppMode === "review") {
-    reviewDeck(subj, null);
+    reviewDeck(subj, null).catch((error) => {
+      console.error("Unable to open deck review:", error);
+      showToast(
+        "Unable to open this deck. Check your connection and try again.",
+        "error",
+      );
+    });
   } else {
-    fetchAndStartCategory(subj, action, null);
+    fetchAndStartCategory(subj, action, null).catch((error) => {
+      console.error("Unable to start deck session:", error);
+      showToast(
+        "Unable to start this session. Check your connection and try again.",
+        "error",
+      );
+    });
   }
 }
 
@@ -5542,10 +5698,17 @@ if (btnSubmitDeckPassword) {
       } else if (pendingDeckAction === "resume-review") {
         await reviewDeck(pendingDeckSubject, pass);
       } else if (currentAppMode === "review") {
-        reviewDeck(pendingDeckSubject, pass);
+        await reviewDeck(pendingDeckSubject, pass);
       } else {
-        fetchAndStartCategory(pendingDeckSubject, pendingDeckAction, pass);
+        await fetchAndStartCategory(
+          pendingDeckSubject,
+          pendingDeckAction,
+          pass,
+        );
       }
+    }).catch((error) => {
+      console.error("Unable to complete password-protected action:", error);
+      showToast("Unable to complete this action. Please try again.", "error");
     });
   });
 }

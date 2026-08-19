@@ -265,7 +265,13 @@
       }
     }
 
-    startCustomSession(pool);
+    startCustomSession(pool).catch((error) => {
+      console.error("Unable to start deck session:", error);
+      globalScope.showToast?.(
+        "Unable to start this session. Check your connection and try again.",
+        "error",
+      );
+    });
   }
 
   async function startCustomSession(pool) {

@@ -81,65 +81,23 @@ function adminHasPassword(value) {
   return adminNormalizeText(value).length > 0;
 }
 
-function adminGetStorage() {
-  try {
-    return typeof sessionStorage !== "undefined" ? sessionStorage : null;
-  } catch (error) {
-    console.warn("[ADMIN] sessionStorage is unavailable:", error);
-    return null;
-  }
-}
-
 function getAdminToken() {
-  const storage = adminGetStorage();
-  if (storage) {
-    try {
-      const candidate = storage.getItem("mrh_admin_token");
-      if (candidate !== null) return candidate;
-    } catch (error) {
-      console.warn("[ADMIN] Could not read admin token:", error);
-    }
-  }
   return adminState.token || "";
 }
 
 function setAdminToken(token) {
   const normalized = adminString(token);
-  const storage = adminGetStorage();
-
-  if (storage) {
-    try {
-      if (normalized) {
-        storage.setItem("mrh_admin_token", normalized);
-      } else {
-        storage.removeItem("mrh_admin_token");
-      }
-    } catch (error) {
-      console.warn("[ADMIN] Could not persist admin token:", error);
-    }
-  }
-
   adminState.token = normalized;
   return normalized;
 }
 
 function clearAdminToken() {
-  const storage = adminGetStorage();
-  if (storage) {
-    try {
-      storage.removeItem("mrh_admin_token");
-    } catch (error) {
-      console.warn("[ADMIN] Could not clear admin token:", error);
-    }
-  }
   adminState.token = "";
 }
 
 function adminIsAuthenticated() {
   return Boolean(getAdminToken());
 }
-
-adminState.token = getAdminToken();
 
 function adminNotify(message) {
   const text = adminString(message) || "An unexpected error occurred.";
@@ -1589,6 +1547,27 @@ function adminGetReportChoices(report) {
     .filter(Boolean);
 }
 
+async function adminFetchAllReports(token) {
+  const pageSize = 100;
+  const reports = [];
+  for (let page = 1; page <= 100; page += 1) {
+    const result = await adminFetch({
+      type: "get_reports",
+      role: "admin",
+      token,
+      page,
+      limit: pageSize,
+    });
+    if (Array.isArray(result)) return reports.concat(result);
+    if (!result || !Array.isArray(result.data))
+      throw new Error("The reports endpoint returned an invalid response.");
+    reports.push(...result.data);
+    if (reports.length >= Number(result.total || reports.length)) break;
+    if (result.data.length < pageSize) break;
+  }
+  return reports;
+}
+
 async function adminLoadReports() {
   const container = adminGetElement("admin-reports-list");
   if (!container) return false;
@@ -1606,11 +1585,7 @@ async function adminLoadReports() {
     '<p class="text-center text-gray-500 py-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading reports...</p>';
 
   try {
-    const reports = await adminFetch({
-      type: "get_reports",
-      role: "admin",
-      token,
-    });
+    const reports = await adminFetchAllReports(token);
 
     if (
       requestVersion !== adminReportsLoadVersion ||
