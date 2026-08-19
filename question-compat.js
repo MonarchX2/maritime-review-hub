@@ -1,4 +1,12 @@
 (function (globalScope) {
+  "use strict";
+
+  const ANSWER_LETTERS = ["A", "B", "C", "D"];
+
+  function isObject(value) {
+    return value !== null && typeof value === "object";
+  }
+
   function firstAvailableValue(...values) {
     for (const value of values) {
       if (value === null || value === undefined) continue;
@@ -11,31 +19,83 @@
   function toBoolean(value, fallback = false) {
     if (value === null || value === undefined) return fallback;
     if (typeof value === "boolean") return value;
-    if (typeof value === "number") return value !== 0;
+    if (typeof value === "number")
+      return Number.isFinite(value) ? value !== 0 : fallback;
+
     if (typeof value === "string") {
       const normalized = value.trim().toLowerCase();
       if (["true", "1", "yes", "y", "on"].includes(normalized)) return true;
       if (["false", "0", "no", "n", "off", ""].includes(normalized))
         return false;
     }
+
     return fallback;
   }
 
+  function toTrimmedString(value, fallback = "") {
+    if (value === null || value === undefined) return fallback;
+    const text = String(value).trim();
+    return text || fallback;
+  }
+
   function normalizeSubjectFromPath(parts) {
-    return (Array.isArray(parts) ? parts : [])
-      .map((part) => String(part || "").trim())
-      .filter(Boolean)
-      .join("::");
+    let source = parts;
+
+    if (typeof source === "string") {
+      source = source.split("::");
+    }
+
+    if (!Array.isArray(source)) return "";
+
+    const result = [];
+    const seen = new Set();
+
+    for (const part of source) {
+      const text = toTrimmedString(part);
+      if (!text) continue;
+
+      const key = text.toLocaleLowerCase();
+      if (seen.has(key)) continue;
+
+      seen.add(key);
+      result.push(text);
+    }
+
+    return result.join("::");
+  }
+
+  function normalizeAnswerValue(value) {
+    if (value === null || value === undefined || value === "") return "";
+
+    if (typeof value === "number") {
+      return Number.isInteger(value) &&
+        value >= 0 &&
+        value < ANSWER_LETTERS.length
+        ? ANSWER_LETTERS[value]
+        : "";
+    }
+
+    const normalized = String(value).trim().toUpperCase();
+
+    if (/^[ABCD]$/.test(normalized)) return normalized;
+    if (/^[0-3]$/.test(normalized)) return ANSWER_LETTERS[Number(normalized)];
+
+    return "";
   }
 
   function normalizeQuestionRecord(question, subjectOverride = null) {
-    if (!question || typeof question !== "object") return {};
+    if (!isObject(question) || Array.isArray(question)) return {};
 
-    const source = { ...question };
+    const source = question;
+    const choices = Array.isArray(source.c) ? source.c : [];
 
-    const next = {
+    const subjectOverrideValue = Array.isArray(subjectOverride)
+      ? normalizeSubjectFromPath(subjectOverride)
+      : toTrimmedString(subjectOverride);
+
+    return {
       Subject: firstAvailableValue(
-        subjectOverride,
+        subjectOverrideValue,
         source.Subject,
         source.subject,
         source.s,
@@ -43,27 +103,13 @@
       ),
       ID: firstAvailableValue(source.ID, source.id, source.i),
       Question: firstAvailableValue(source.Question, source.question, source.q),
-      ChoiceA: firstAvailableValue(
-        source.ChoiceA,
-        source.choiceA,
-        source.c?.[0],
+      ChoiceA: firstAvailableValue(source.ChoiceA, source.choiceA, choices[0]),
+      ChoiceB: firstAvailableValue(source.ChoiceB, source.choiceB, choices[1]),
+      ChoiceC: firstAvailableValue(source.ChoiceC, source.choiceC, choices[2]),
+      ChoiceD: firstAvailableValue(source.ChoiceD, source.choiceD, choices[3]),
+      Answer: normalizeAnswerValue(
+        firstAvailableValue(source.Answer, source.answer, source.a),
       ),
-      ChoiceB: firstAvailableValue(
-        source.ChoiceB,
-        source.choiceB,
-        source.c?.[1],
-      ),
-      ChoiceC: firstAvailableValue(
-        source.ChoiceC,
-        source.choiceC,
-        source.c?.[2],
-      ),
-      ChoiceD: firstAvailableValue(
-        source.ChoiceD,
-        source.choiceD,
-        source.c?.[3],
-      ),
-      Answer: firstAvailableValue(source.Answer, source.answer, source.a),
       Explanation: firstAvailableValue(
         source.Explanation,
         source.explanation,
@@ -77,84 +123,130 @@
       ),
       Tags: firstAvailableValue(source.Tags, source.tags, source.t),
     };
+  }
 
-    if (typeof next.Answer === "number") {
-      next.Answer = ["A", "B", "C", "D"][next.Answer] || "";
+  function normalizeQuestionCount(value) {
+    if (value === null || value === undefined || value === "") return 0;
+
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? number : 0;
+  }
+
+  function slugify(value, fallback = "deck") {
+    const slug = toTrimmedString(value)
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase();
+
+    return slug || fallback;
+  }
+
+  function getPathParts(subject) {
+    if (Array.isArray(subject)) {
+      return normalizeSubjectFromPath(subject).split("::").filter(Boolean);
     }
 
-    if (next.Answer && /^[ABCDabcd]$/.test(String(next.Answer).trim())) {
-      next.Answer = String(next.Answer).trim().toUpperCase();
-    }
-
-    return next;
+    const text = toTrimmedString(subject);
+    return text
+      ? text
+          .split("::")
+          .map((part) => part.trim())
+          .filter(Boolean)
+      : [];
   }
 
   function normalizeDeckRecord(deck, subjectOverride = null) {
-    if (!deck || typeof deck !== "object") return {};
+    if (!isObject(deck) || Array.isArray(deck)) return {};
 
-    const source = { ...deck };
+    const source = deck;
     const metadata =
-      source.metadata && typeof source.metadata === "object"
+      isObject(source.metadata) && !Array.isArray(source.metadata)
         ? source.metadata
         : {};
 
-    const category = firstAvailableValue(
-      source.category,
-      source.Category,
-      source.categoryName,
-      metadata.category,
-      metadata.Category,
-    );
-    const subCategory = firstAvailableValue(
-      source.subCategory,
-      source.subcategory,
-      source.SubCategory,
-      metadata.subCategory,
-      metadata.subcategory,
-    );
-    const moduleName = firstAvailableValue(
-      source.module,
-      source.Module,
-      source.moduleName,
-      source.name,
-      source.Name,
-      source.title,
-      source.Title,
-      metadata.module,
-      metadata.Module,
-    );
-    const version = firstAvailableValue(
-      source.version,
-      source.Version,
-      source.courseVersion,
-      source.courseVersionName,
-      metadata.version,
-      metadata.courseVersion,
+    const category = toTrimmedString(
+      firstAvailableValue(
+        source.category,
+        source.Category,
+        source.categoryName,
+        metadata.category,
+        metadata.Category,
+      ),
     );
 
-    let subject = firstAvailableValue(
-      subjectOverride,
-      source.subject,
-      source.Subject,
-      source.s,
-      source.subjectPath,
-      source.path,
-      Array.isArray(source.path) ? normalizeSubjectFromPath(source.path) : null,
+    const subCategory = toTrimmedString(
+      firstAvailableValue(
+        source.subCategory,
+        source.subcategory,
+        source.SubCategory,
+        metadata.subCategory,
+        metadata.subcategory,
+      ),
     );
 
-    const subjectParts = [];
-    if (typeof category === "string" && category.trim())
-      subjectParts.push(category.trim());
-    if (typeof subCategory === "string" && subCategory.trim())
-      subjectParts.push(subCategory.trim());
-    if (typeof moduleName === "string" && moduleName.trim())
-      subjectParts.push(moduleName.trim());
-    if (!subject && subjectParts.length > 0) {
-      subject = normalizeSubjectFromPath(subjectParts);
+    const moduleName = toTrimmedString(
+      firstAvailableValue(
+        source.module,
+        source.Module,
+        source.moduleName,
+        source.name,
+        source.Name,
+        source.title,
+        source.Title,
+        metadata.module,
+        metadata.Module,
+      ),
+    );
+
+    const version = toTrimmedString(
+      firstAvailableValue(
+        source.version,
+        source.Version,
+        source.courseVersion,
+        source.courseVersionName,
+        metadata.version,
+        metadata.courseVersion,
+      ),
+    );
+
+    let subject = "";
+
+    if (
+      subjectOverride !== null &&
+      subjectOverride !== undefined &&
+      subjectOverride !== ""
+    ) {
+      subject = normalizeSubjectFromPath(subjectOverride);
     }
-    if (typeof subject === "string") {
-      subject = subject.trim();
+
+    if (!subject) {
+      const directSubject = firstAvailableValue(
+        source.subject,
+        source.Subject,
+        source.s,
+        source.subjectPath,
+      );
+
+      subject = normalizeSubjectFromPath(directSubject);
     }
+
+    if (!subject && Array.isArray(source.path)) {
+      subject = normalizeSubjectFromPath(source.path);
+    } else if (!subject && typeof source.path === "string") {
+      subject = normalizeSubjectFromPath(source.path);
+    }
+
+    if (!subject) {
+      subject = normalizeSubjectFromPath([category, subCategory, moduleName]);
+    }
+
+    const subjectParts = getPathParts(subject);
+    const derivedCategory = subjectParts[0] || "";
+    const derivedSubCategory = subjectParts.length > 2 ? subjectParts[1] : "";
+    const derivedModule =
+      subjectParts.length > 1 ? subjectParts[subjectParts.length - 1] : "";
 
     const questionCountValue = firstAvailableValue(
       source.questionCount,
@@ -163,19 +255,22 @@
       source.totalQuestions,
       source.totalQuestionsCount,
       source.questionsCount,
-      source.questions?.length,
+      Array.isArray(source.questions) ? source.questions.length : null,
       metadata.questionCount,
       metadata.QuestionCount,
     );
-    const normalizedQuestionCount = Number(questionCountValue || 0);
+    const questionCount = normalizeQuestionCount(questionCountValue);
 
-    const password = firstAvailableValue(
-      source.password,
-      source.Password,
-      source.pass,
-      metadata.password,
-      metadata.Password,
+    const password = toTrimmedString(
+      firstAvailableValue(
+        source.password,
+        source.Password,
+        source.pass,
+        metadata.password,
+        metadata.Password,
+      ),
     );
+
     const hidden = toBoolean(
       firstAvailableValue(
         source.hidden,
@@ -186,240 +281,253 @@
       ),
       false,
     );
-    const locked = toBoolean(
+
+    const explicitLocked = firstAvailableValue(
+      source.locked,
+      source.Locked,
+      source.isLocked,
+      metadata.locked,
+      metadata.Locked,
+    );
+
+    const locked =
+      explicitLocked === ""
+        ? password.length > 0
+        : toBoolean(explicitLocked, password.length > 0);
+
+    const idValue = toTrimmedString(
       firstAvailableValue(
-        source.locked,
-        source.Locked,
-        source.isLocked,
-        password && String(password).trim() !== "",
-        metadata.locked,
-        metadata.Locked,
+        source.id,
+        source.ID,
+        source.uuid,
+        source.uuidValue,
+        source._id,
+        source.guid,
+        source.identifier,
+        metadata.id,
+        metadata.ID,
       ),
-      Boolean(password && String(password).trim() !== ""),
     );
 
-    const idValue = firstAvailableValue(
-      source.id,
-      source.ID,
-      source.uuid,
-      source.uuidValue,
-      source._id,
-      source.guid,
-      source.identifier,
-      metadata.id,
-      metadata.ID,
-    );
-
-    const record = {
-      id: idValue || "",
-      ID: idValue || "",
-      subject: subject || "",
-      Subject: subject || "",
-      name: firstAvailableValue(
+    const name = toTrimmedString(
+      firstAvailableValue(
         source.name,
         source.Name,
         source.title,
         source.Title,
         moduleName,
-        subject && String(subject).includes("::")
-          ? String(subject).split("::").pop()
-          : "",
+        subjectParts.length > 0 ? subjectParts[subjectParts.length - 1] : "",
       ),
-      category:
-        category ||
-        (subject && String(subject).includes("::")
-          ? String(subject).split("::")[0]
-          : ""),
-      subCategory:
-        subCategory ||
-        (subject && String(subject).split("::").length > 2
-          ? String(subject).split("::")[1]
-          : ""),
-      module:
-        moduleName ||
-        (subject && String(subject).includes("::")
-          ? String(subject).split("::").slice(-1)[0]
-          : ""),
-      version: version || "",
-      courseVersion: version || "",
-      questionCount: Number.isFinite(normalizedQuestionCount)
-        ? normalizedQuestionCount
-        : 0,
-      QuestionCount: Number.isFinite(normalizedQuestionCount)
-        ? normalizedQuestionCount
-        : 0,
+    );
+
+    const normalizedCategory = category || derivedCategory;
+    const normalizedSubCategory = subCategory || derivedSubCategory;
+    const normalizedModule = moduleName || derivedModule;
+    const normalizedSubject = subject || name;
+
+    const generatedId = slugify(
+      normalizedSubject || name || normalizedModule || "deck",
+    );
+    const id = idValue || generatedId;
+
+    const record = {
+      id,
+      ID: id,
+      subject: normalizedSubject,
+      Subject: normalizedSubject,
+      name,
+      category: normalizedCategory,
+      subCategory: normalizedSubCategory,
+      module: normalizedModule,
+      version,
+      courseVersion: version,
+      questionCount: questionCount,
+      QuestionCount: questionCount,
       hidden,
       Hidden: hidden,
-      password: String(password || "").trim(),
-      Password: String(password || "").trim(),
+      password,
+      Password: password,
       locked,
       Locked: locked,
       metadata: {
-        category: category || "",
-        subCategory: subCategory || "",
-        module: moduleName || "",
-        version: version || "",
-        courseVersion: version || "",
+        category: normalizedCategory,
+        subCategory: normalizedSubCategory,
+        module: normalizedModule,
+        version,
+        courseVersion: version,
       },
     };
-
-    if (!record.id && record.Subject) {
-      record.id =
-        String(record.Subject)
-          .replace(/[^a-zA-Z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "")
-          .toLowerCase() || "deck";
-    }
-    if (!record.id && record.name) {
-      record.id =
-        String(record.name)
-          .replace(/[^a-zA-Z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "")
-          .toLowerCase() || "deck";
-    }
-
-    if (!record.Subject && record.name) {
-      record.Subject = record.name;
-      record.subject = record.name;
-    }
 
     return record;
   }
 
+  function isDeckLikeNode(node) {
+    if (!isObject(node) || Array.isArray(node)) return false;
+    if (isObject(node.deck) && !Array.isArray(node.deck)) return true;
+
+    const hasQuestionCount = [
+      "questionCount",
+      "QuestionCount",
+      "totalQuestions",
+      "totalQuestionsCount",
+    ].some(
+      (key) =>
+        node[key] !== undefined && node[key] !== null && node[key] !== "",
+    );
+
+    const hasLockState = [
+      "password",
+      "Password",
+      "locked",
+      "Locked",
+      "isLocked",
+    ].some(
+      (key) =>
+        node[key] !== undefined && node[key] !== null && node[key] !== "",
+    );
+
+    const hasSubject = ["subject", "Subject", "s", "subjectPath"].some(
+      (key) =>
+        node[key] !== undefined && node[key] !== null && node[key] !== "",
+    );
+
+    const hasIdentity = [
+      "id",
+      "ID",
+      "uuid",
+      "uuidValue",
+      "_id",
+      "guid",
+      "identifier",
+    ].some(
+      (key) =>
+        node[key] !== undefined && node[key] !== null && node[key] !== "",
+    );
+
+    const hasName = ["name", "Name", "title", "Title", "module", "Module"].some(
+      (key) => typeof node[key] === "string" && node[key].trim(),
+    );
+
+    return (
+      hasQuestionCount ||
+      hasLockState ||
+      (hasSubject && (hasIdentity || hasName))
+    );
+  }
+
+  function collectChildren(node) {
+    const children = [];
+    const seenArrays = new Set();
+
+    const keys = ["children", "categories", "subCategories", "items", "decks"];
+    for (const key of keys) {
+      const value = node[key];
+      if (!Array.isArray(value) || seenArrays.has(value)) continue;
+      seenArrays.add(value);
+      children.push(...value);
+    }
+
+    return children;
+  }
+
+  function createDeckKey(deck) {
+    const id = toTrimmedString(deck.id || deck.ID);
+    const subject = toTrimmedString(deck.subject || deck.Subject);
+    const name = toTrimmedString(deck.name);
+
+    return [id, subject, name].filter(Boolean).join("|").toLocaleLowerCase();
+  }
+
   function normalizeCategorySummary(summaryValue) {
     const flattened = [];
+    const seenDecks = new Set();
 
-    function isDeckLikeNode(node) {
-      if (!node || typeof node !== "object") return false;
-      if (node.deck && typeof node.deck === "object") return true;
-      return (
-        node.questionCount !== undefined ||
-        node.QuestionCount !== undefined ||
-        node.totalQuestions !== undefined ||
-        node.totalQuestionsCount !== undefined ||
-        node.subject !== undefined ||
-        node.Subject !== undefined ||
-        node.password !== undefined ||
-        node.Password !== undefined ||
-        node.hidden !== undefined ||
-        node.Hidden !== undefined ||
-        node.locked !== undefined ||
-        node.Locked !== undefined
-      );
+    function pushDeck(deck) {
+      if (!isObject(deck) || Array.isArray(deck)) return;
+
+      const normalized = normalizeDeckRecord(deck);
+      if (!(normalized.Subject || normalized.name || normalized.id)) return;
+
+      const key = createDeckKey(normalized);
+      if (key && seenDecks.has(key)) return;
+
+      if (key) seenDecks.add(key);
+      flattened.push(normalized);
     }
 
     function walk(node, inheritedPath = []) {
-      if (!node || typeof node !== "object") return;
+      if (Array.isArray(node)) {
+        node.forEach((child) => walk(child, inheritedPath));
+        return;
+      }
+
+      if (!isObject(node)) return;
 
       const inheritedParts = Array.isArray(inheritedPath)
         ? inheritedPath
-        : String(inheritedPath || "")
-            .split("::")
-            .filter(Boolean);
+        : normalizeSubjectFromPath(inheritedPath).split("::").filter(Boolean);
 
-      const directName = firstAvailableValue(
-        node.name,
-        node.Name,
-        node.title,
-        node.Title,
+      const directName = toTrimmedString(
+        firstAvailableValue(node.name, node.Name, node.title, node.Title),
       );
 
       const nextPath = [...inheritedParts];
-      const safeDirectName = directName ? String(directName).trim() : "";
-      const shouldSkipRootContainer =
+      const isRootContainer =
         inheritedParts.length === 0 &&
-        (safeDirectName === "" ||
-          /^root$/i.test(safeDirectName) ||
-          /^home$/i.test(safeDirectName));
-      if (safeDirectName && !shouldSkipRootContainer) {
-        if (!nextPath.includes(safeDirectName)) {
-          nextPath.push(safeDirectName);
-        }
+        (directName === "" ||
+          /^root$/i.test(directName) ||
+          /^home$/i.test(directName));
+
+      if (directName && !isRootContainer) {
+        const lowerName = directName.toLocaleLowerCase();
+        const alreadyPresent = nextPath.some(
+          (part) => part.toLocaleLowerCase() === lowerName,
+        );
+        if (!alreadyPresent) nextPath.push(directName);
       }
+
       const nextSubject = normalizeSubjectFromPath(nextPath);
 
-      if (node.deck && typeof node.deck === "object") {
-        const deck = normalizeDeckRecord(
-          node.deck,
-          nextSubject || node.Subject || node.subject || "",
-        );
-        if (deck.Subject || deck.name || deck.id) flattened.push(deck);
+      if (isObject(node.deck) && !Array.isArray(node.deck)) {
+        const deckSubject = nextSubject || node.Subject || node.subject || "";
+        const normalized = normalizeDeckRecord(node.deck, deckSubject);
+        pushDeck(normalized);
       } else if (isDeckLikeNode(node)) {
-        const deck = normalizeDeckRecord(
-          node,
-          nextSubject || node.Subject || node.subject || "",
-        );
-        if (deck.Subject || deck.name || deck.id) flattened.push(deck);
+        const deckSubject = nextSubject || node.Subject || node.subject || "";
+        const normalized = normalizeDeckRecord(node, deckSubject);
+        pushDeck(normalized);
       }
 
-      const children = [];
-      if (Array.isArray(node.children)) children.push(...node.children);
-      if (Array.isArray(node.categories)) children.push(...node.categories);
-      if (Array.isArray(node.subCategories))
-        children.push(...node.subCategories);
-      if (Array.isArray(node.items)) children.push(...node.items);
-      if (Array.isArray(node.decks)) children.push(...node.decks);
-      children.forEach((child) => walk(child, nextPath));
+      for (const child of collectChildren(node)) {
+        walk(child, nextPath);
+      }
     }
 
-    if (Array.isArray(summaryValue)) {
-      summaryValue.forEach((entry) => {
-        if (
-          entry &&
-          typeof entry === "object" &&
-          entry.deck &&
-          typeof entry.deck === "object"
-        ) {
-          const normalized = normalizeDeckRecord(
-            entry.deck,
-            entry.subject || entry.Subject || "",
-          );
-          if (normalized.Subject || normalized.name || normalized.id)
-            flattened.push(normalized);
-          return;
-        }
-        if (isDeckLikeNode(entry)) {
-          const normalized = normalizeDeckRecord(
-            entry,
-            entry.subject || entry.Subject || "",
-          );
-          if (normalized.Subject || normalized.name || normalized.id)
-            flattened.push(normalized);
-        }
-      });
-      return flattened;
-    }
+    if (!Array.isArray(summaryValue) && !isObject(summaryValue)) return [];
 
-    if (summaryValue && typeof summaryValue === "object") {
-      walk(summaryValue, []);
-      return flattened;
-    }
-
-    return [];
+    walk(summaryValue, []);
+    return flattened;
   }
 
   function compactQuestionRecord(question, subjectOverride = null) {
     const normalized = normalizeQuestionRecord(question, subjectOverride);
     const rawChoices = [
-      normalized.ChoiceA || "",
-      normalized.ChoiceB || "",
-      normalized.ChoiceC || "",
-      normalized.ChoiceD || "",
+      normalized.ChoiceA,
+      normalized.ChoiceB,
+      normalized.ChoiceC,
+      normalized.ChoiceD,
     ];
 
-    const answerLetter = String(normalized.Answer || "")
-      .trim()
-      .toUpperCase();
-    const answerOrder = ["A", "B", "C", "D"];
+    const answerLetter = normalizeAnswerValue(normalized.Answer);
     const choices = [];
-    let answerIndex = 0;
+    let answerIndex = -1;
 
     rawChoices.forEach((choice, choiceIndex) => {
-      const trimmedChoice = String(choice).trim();
-      if (trimmedChoice === "") return;
+      const trimmedChoice = toTrimmedString(choice);
+      if (!trimmedChoice) return;
 
       const compactIndex = choices.length;
-      if (answerOrder[choiceIndex] === answerLetter) {
+      if (ANSWER_LETTERS[choiceIndex] === answerLetter) {
         answerIndex = compactIndex;
       }
 
@@ -427,37 +535,26 @@
     });
 
     const compact = {
-      s: normalized.Subject || "",
-      i: normalized.ID || "",
-      q: normalized.Question || "",
+      s: toTrimmedString(normalized.Subject),
+      i: toTrimmedString(normalized.ID),
+      q: toTrimmedString(normalized.Question),
       c: choices,
-      a: answerIndex,
     };
 
-    if (normalized.Explanation && String(normalized.Explanation).trim()) {
-      compact.e = normalized.Explanation.trim();
-    }
-    if (normalized.ImageURL && String(normalized.ImageURL).trim()) {
-      compact.u = normalized.ImageURL.trim();
-    }
-    if (normalized.Tags && String(normalized.Tags).trim()) {
-      compact.t = normalized.Tags.trim();
-    }
+    if (answerIndex >= 0) compact.a = answerIndex;
 
-    Object.keys(compact).forEach((key) => {
-      if (
-        compact[key] === "" ||
-        compact[key] === null ||
-        compact[key] === undefined
-      ) {
-        delete compact[key];
-      }
-    });
+    const explanation = toTrimmedString(normalized.Explanation);
+    const imageURL = toTrimmedString(normalized.ImageURL);
+    const tags = toTrimmedString(normalized.Tags);
+
+    if (explanation) compact.e = explanation;
+    if (imageURL) compact.u = imageURL;
+    if (tags) compact.t = tags;
 
     return compact;
   }
 
-  const QuestionCompat = {
+  const QuestionCompat = Object.freeze({
     firstAvailableValue,
     toBoolean,
     normalizeSubjectFromPath,
@@ -465,11 +562,13 @@
     normalizeDeckRecord,
     normalizeCategorySummary,
     compactQuestionRecord,
-  };
+  });
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = QuestionCompat;
   }
 
-  globalScope.QuestionCompat = QuestionCompat;
+  if (globalScope) {
+    globalScope.QuestionCompat = QuestionCompat;
+  }
 })(typeof window !== "undefined" ? window : globalThis);

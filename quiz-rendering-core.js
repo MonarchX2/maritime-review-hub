@@ -9,8 +9,6 @@
     state,
     saveState,
     saveSessionProgress,
-    renderQuestion: originalRenderQuestion,
-    stopVisualTimer: originalStopVisualTimer,
     applyNavigationPosition,
     getShortSubjectLabel,
     formatQuestionText,
@@ -26,49 +24,75 @@
   // ===================== QUESTION RENDERING =====================
   function renderQuestion() {
     if (
-      typeof SessionCore !== "undefined" &&
-      typeof SessionCore.renderQuestion === "function"
+      globalScope.SessionCore &&
+      typeof globalScope.SessionCore.renderQuestion === "function"
     ) {
-      return SessionCore.renderQuestion();
+      return globalScope.SessionCore.renderQuestion();
     }
 
+    state.session = state.session || {
+      active: false,
+      questions: [],
+      currentIndex: 0,
+      userAnswers: {},
+    };
+    state.session.questions = Array.isArray(state.session.questions)
+      ? state.session.questions
+      : [];
+    state.session.userAnswers =
+      state.session.userAnswers && typeof state.session.userAnswers === "object"
+        ? state.session.userAnswers
+        : {};
     stopVisualTimer();
-    applyNavigationPosition();
+    if (typeof applyNavigationPosition === "function")
+      applyNavigationPosition();
     const q = state.session.questions[state.session.currentIndex];
+    if (!q) {
+      document
+        .getElementById("session-progress-text")
+        ?.replaceChildren(document.createTextNode("0 / 0"));
+      const progress = document.getElementById("session-progress");
+      if (progress) progress.style.width = "0%";
+      return false;
+    }
     const userAnswer = state.session.userAnswers[state.session.currentIndex];
 
     const currentCard = state.session.currentIndex + 1;
     const totalCards = state.session.questions.length;
-    document.getElementById("session-progress-text").innerText =
-      `${currentCard} / ${totalCards}`;
-    document.getElementById("session-progress").style.width =
-      `${((state.session.currentIndex + 1) / totalCards) * 100}%`;
+    const progressText = document.getElementById("session-progress-text");
+    if (progressText)
+      progressText.textContent = `${currentCard} / ${totalCards}`;
+    const progress = document.getElementById("session-progress");
+    if (progress)
+      progress.style.width = `${totalCards ? ((state.session.currentIndex + 1) / totalCards) * 100 : 0}%`;
 
     const fullSubject = q.Subject || "General";
-    document.getElementById("q-subject").innerText = getShortSubjectLabel(
-      fullSubject,
-      "General",
-    );
+    const subjectEl = document.getElementById("q-subject");
+    if (subjectEl)
+      subjectEl.textContent =
+        typeof getShortSubjectLabel === "function"
+          ? getShortSubjectLabel(fullSubject, "General")
+          : fullSubject;
 
     let displayId = q.ID ?? `Q-${state.session.currentIndex + 1}`;
     if (displayId.includes("::")) {
       const match = displayId.match(/::.*?\b(\d+)\s*$/);
       displayId = match ? match[1] : displayId.split("::").pop();
     }
-    document.getElementById("q-id").innerText = "Question " + displayId;
+    const idEl = document.getElementById("q-id");
+    if (idEl) idEl.textContent = "Question " + displayId;
     const clozeEnabled = state.prefs.clozeEnabled !== false;
     const shouldRevealCloze =
       Boolean(userAnswer) || Boolean(state.session.revealedCloze);
-    document.getElementById("q-text").innerHTML = formatQuestionText(
-      q.Question,
-      {
+    const qText = document.getElementById("q-text");
+    if (qText)
+      qText.innerHTML = formatQuestionText(q.Question, {
         revealCloze: shouldRevealCloze && clozeEnabled,
         clozeEnabled,
-      },
-    );
+      });
 
     const imgEl = document.getElementById("q-image");
-    if (q.ImageURL && q.ImageURL.trim() !== "") {
+    if (imgEl && q.ImageURL && String(q.ImageURL).trim() !== "") {
       imgEl.onload = () => imgEl.classList.remove("hidden");
       imgEl.onerror = () => {
         imgEl.removeAttribute("src");
@@ -76,10 +100,13 @@
       };
       imgEl.src = q.ImageURL;
       imgEl.alt = q.Question
-        ? `Reference for: ${q.Question.substring(0, 50)}...`
+        ? `Reference for: ${String(q.Question).substring(0, 50)}...`
         : "Question reference image";
       imgEl.classList.remove("hidden");
-    } else {
+    } else if (imgEl) {
+      imgEl.onload = null;
+      imgEl.onerror = null;
+      imgEl.removeAttribute("src");
       imgEl.classList.add("hidden");
     }
 
@@ -91,6 +118,7 @@
     choices.forEach((ch) => {
       const choiceText = q[`Choice${ch}`];
       const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
+      if (!btn) return;
       let cleanChoice = String(choiceText ?? "").trim();
 
       btn.classList.remove("selected-correct", "selected-wrong", "dimmed");
@@ -130,11 +158,11 @@
     const btnPrev = document.getElementById("btn-prev");
     const btnReveal = document.getElementById("btn-reveal");
 
-    btnPrev.disabled = state.session.currentIndex <= 0;
+    if (btnPrev) btnPrev.disabled = state.session.currentIndex <= 0;
 
     if (userAnswer) {
       if (activeRecallMask) activeRecallMask.classList.add("hidden");
-      qChoicesContainer.classList.remove("hidden");
+      if (qChoicesContainer) qChoicesContainer.classList.remove("hidden");
       showExplanation(q);
 
       qChoicesContainer.querySelectorAll(".choice-btn").forEach((btn) => {
@@ -157,24 +185,24 @@
         }
       });
 
-      btnNext.disabled = false;
-      btnReveal.disabled = true;
+      if (btnNext) btnNext.disabled = false;
+      if (btnReveal) btnReveal.disabled = true;
     } else {
-      expBox.classList.add("hidden");
-      btnNext.disabled = false;
-      btnReveal.disabled = false;
+      if (expBox) expBox.classList.add("hidden");
+      if (btnNext) btnNext.disabled = false;
+      if (btnReveal) btnReveal.disabled = false;
 
       if (isPureIdent) {
         if (activeRecallMask) activeRecallMask.classList.add("hidden");
-        qChoicesContainer.classList.add("hidden");
+        if (qChoicesContainer) qChoicesContainer.classList.add("hidden");
       } else {
         const activeRecallEnabled = Boolean(state.prefs.activeRecall);
         if (activeRecallEnabled) {
           if (activeRecallMask) activeRecallMask.classList.remove("hidden");
-          qChoicesContainer.classList.add("hidden");
+          if (qChoicesContainer) qChoicesContainer.classList.add("hidden");
         } else {
           if (activeRecallMask) activeRecallMask.classList.add("hidden");
-          qChoicesContainer.classList.remove("hidden");
+          if (qChoicesContainer) qChoicesContainer.classList.remove("hidden");
         }
       }
     }
@@ -256,20 +284,20 @@
   // ===================== ANSWER & EXPLANATION =====================
   function showExplanation(q) {
     if (
-      typeof SessionCore !== "undefined" &&
-      typeof SessionCore.showExplanation === "function"
+      globalScope.SessionCore &&
+      typeof globalScope.SessionCore.showExplanation === "function"
     ) {
-      return SessionCore.showExplanation(q);
+      return globalScope.SessionCore.showExplanation(q);
     }
 
     const expBox = document.getElementById("q-explanation-box");
 
-    if (q.Explanation && q.Explanation.trim() !== "") {
-      document.getElementById("q-explanation-text").innerHTML =
-        formatQuestionText(q.Explanation);
-      expBox.classList.remove("hidden");
+    if (q?.Explanation && String(q.Explanation).trim() !== "") {
+      const expText = document.getElementById("q-explanation-text");
+      if (expText) expText.innerHTML = formatQuestionText(q.Explanation);
+      if (expBox) expBox.classList.remove("hidden");
     } else {
-      expBox.classList.add("hidden");
+      if (expBox) expBox.classList.add("hidden");
     }
   }
 
@@ -277,6 +305,7 @@
     if (!state.session.active) return;
 
     const q = state.session.questions[state.session.currentIndex];
+    if (!q) return false;
     state.session.userAnswers[state.session.currentIndex] = "REVEALED";
     state.session.revealedCloze = true;
 
@@ -284,7 +313,7 @@
 
     trackStats(q, isPureIdent);
 
-    document.getElementById("q-choices").classList.remove("hidden");
+    document.getElementById("q-choices")?.classList.remove("hidden");
     const activeRecallMask = document.getElementById("active-recall-mask");
     if (activeRecallMask) activeRecallMask.classList.add("hidden");
 
@@ -292,8 +321,10 @@
     saveSessionProgress();
     startVisualTimer();
 
-    if (state.session.autoNextTimeout)
+    if (state.session.autoNextTimeout) {
       clearTimeout(state.session.autoNextTimeout);
+      state.session.autoNextTimeout = null;
+    }
     state.session.autoNextTimeout = setTimeout(() => {
       nextQuestion();
     }, 2000);
@@ -304,24 +335,30 @@
     const container = document.getElementById("auto-next-timer-container");
     const bar = document.getElementById("auto-next-timer-bar");
 
+    if (!container || !bar) return false;
     container.classList.remove("hidden");
 
     bar.classList.remove("animate-timer-bar");
     void bar.offsetWidth;
     bar.classList.add("animate-timer-bar");
+    return true;
   }
 
   function stopVisualTimer() {
     const container = document.getElementById("auto-next-timer-container");
     const bar = document.getElementById("auto-next-timer-bar");
 
+    if (!container || !bar) return false;
     container.classList.add("hidden");
     bar.classList.remove("animate-timer-bar");
+    return true;
   }
 
   // ===================== QUIZ TOGGLES =====================
   function toggleHideABCD() {
-    const isHidden = document.getElementById("toggle-hide-abcd").checked;
+    const toggle = document.getElementById("toggle-hide-abcd");
+    if (!toggle) return;
+    const isHidden = toggle.checked;
     state.prefs.hideABCD = isHidden;
     saveState();
 
@@ -343,13 +380,17 @@
     state.prefs.quizHideABCD = isHidden;
     saveState();
 
-    if (document.getElementById("view-practice").classList.contains("active")) {
+    if (
+      document.getElementById("view-practice")?.classList.contains("active")
+    ) {
       renderQuestion();
     }
   }
 
   function toggleShowWrongChoices() {
-    const isChecked = document.getElementById("toggle-wrong-choices").checked;
+    const toggle = document.getElementById("toggle-wrong-choices");
+    if (!toggle) return;
+    const isChecked = toggle.checked;
     state.prefs.showWrongChoices = isChecked;
     saveState();
 

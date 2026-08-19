@@ -11,12 +11,9 @@
     saveState,
     requestConfirmation,
     saveSessionProgress,
-    startVisualTimer,
     getQuestionsForSubject,
-    encodeHandlerValue,
     decodeHandlerValue,
     renderQuestion,
-    navigate: originalNavigate,
     isDeckHidden,
     isDeckLocked,
     fetchDeckQuestions,
@@ -34,8 +31,10 @@
       clearTimeout(settingsClickTimeout);
       if (settingsClickCount >= 5) {
         const adminBtn = document.getElementById("btn-admin-nav");
-        adminBtn.classList.remove("hidden");
-        adminBtn.classList.add("animate-card-in");
+        if (adminBtn) {
+          adminBtn.classList.remove("hidden");
+          adminBtn.classList.add("animate-card-in");
+        }
         settingsClickCount = 0;
       } else {
         settingsClickTimeout = setTimeout(() => {
@@ -65,7 +64,9 @@
     document
       .querySelectorAll(".view-section")
       .forEach((el) => el.classList.remove("active"));
-    document.getElementById(`view-${viewId}`).classList.add("active");
+    const viewElement = document.getElementById(`view-${viewId}`);
+    if (!viewElement) return false;
+    viewElement.classList.add("active");
     const isAdminView =
       viewId === "admin" &&
       typeof globalScope.getAdminToken === "function" &&
@@ -148,14 +149,20 @@
     const loader = document.getElementById(
       globalScope.getDeckLoaderId(subject),
     );
-    if (isDeckHidden(subject)) {
+    if (
+      typeof globalScope.isDeckHidden === "function" &&
+      globalScope.isDeckHidden(subject)
+    ) {
       globalScope.showToast(
         "This deck is hidden and not available.",
         "warning",
       );
       return;
     }
-    if (isDeckLocked(subject)) {
+    if (
+      typeof globalScope.isDeckLocked === "function" &&
+      globalScope.isDeckLocked(subject)
+    ) {
       if (!pass) {
         globalScope.pendingDeckSubject = subject;
         globalScope.pendingDeckAction = mode;
@@ -175,16 +182,23 @@
       : null;
 
     // Always attempt to fetch fresh data for gameplay sessions
-    let validQuestions = await fetchDeckQuestions(
+    if (typeof globalScope.fetchDeckQuestions !== "function") {
+      throw new Error("fetchDeckQuestions is not available.");
+    }
+    let validQuestions = await globalScope.fetchDeckQuestions(
       subject,
       pass,
       loader,
       customFilter,
     );
+    if (!Array.isArray(validQuestions)) validQuestions = [];
 
     // Fallback check if offline and fetch returned empty
     if (validQuestions.length === 0) {
-      if (isDeckLocked(subject)) {
+      if (
+        typeof globalScope.isDeckLocked === "function" &&
+        globalScope.isDeckLocked(subject)
+      ) {
         globalScope.pendingDeckSubject = subject;
         globalScope.pendingDeckAction = mode;
         openDeckPasswordModal(subject, mode);
@@ -254,12 +268,23 @@
     startCustomSession(pool);
   }
 
-  function startCustomSession(pool) {
-    navigate("practice");
-    document.getElementById("session-setup").classList.add("hidden");
-    document.getElementById("session-active").classList.remove("hidden");
+  async function startCustomSession(pool) {
+    if (!Array.isArray(pool) || pool.length === 0) return false;
+    if (typeof globalScope.prepareSessionPool !== "function")
+      throw new Error("prepareSessionPool is not available.");
+    if (
+      typeof globalScope.navigate === "function" &&
+      globalScope.navigate !== navigate
+    ) {
+      await globalScope.navigate("practice");
+    } else {
+      await navigate("practice");
+    }
+    document.getElementById("session-setup")?.classList.add("hidden");
+    document.getElementById("session-active")?.classList.remove("hidden");
 
-    pool = prepareSessionPool(pool);
+    pool = globalScope.prepareSessionPool(pool);
+    if (!Array.isArray(pool) || pool.length === 0) return false;
 
     state.session = {
       active: true,
@@ -270,8 +295,11 @@
       revealedCloze: false,
     };
 
-    renderQuestion();
-    saveSessionProgress();
+    if (typeof globalScope.renderQuestion === "function")
+      globalScope.renderQuestion();
+    if (typeof globalScope.saveSessionProgress === "function")
+      globalScope.saveSessionProgress();
+    return true;
   }
 
   async function resetCategory(subject) {

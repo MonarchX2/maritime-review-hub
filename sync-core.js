@@ -158,11 +158,11 @@
     }, delay);
   }
 
-  function scheduleSyncPoll() {
+  function scheduleSyncPoll(delay = globalScope.SYNC_INTERVAL_MS) {
     clearTimeout(globalScope.syncPollTimer);
     globalScope.syncPollTimer = setTimeout(
       () => globalScope.syncDatabase(true, true),
-      globalScope.SYNC_INTERVAL_MS,
+      Math.max(250, Number(delay) || 3000),
     );
   }
 
@@ -175,11 +175,15 @@
     const nextSummary = JSON.stringify(summaryData);
     const changed = previousSummary !== nextSummary;
 
-    globalScope.state.categorySummary = summaryData;
+    globalScope.state.categorySummary = Array.isArray(summaryData)
+      ? summaryData
+      : [];
     globalScope.syncConnected = true;
-    globalScope.saveState();
-    globalScope.populateFilters();
-    globalScope.renderCategoryProgress();
+    if (typeof globalScope.saveState === "function") globalScope.saveState();
+    if (typeof globalScope.populateFilters === "function")
+      globalScope.populateFilters();
+    if (typeof globalScope.renderCategoryProgress === "function")
+      globalScope.renderCategoryProgress();
     return changed;
   }
 
@@ -212,20 +216,18 @@
     clearTimeout(globalScope.syncRetryTimer);
     clearInterval(globalScope.syncCountdownTimer);
     clearTimeout(globalScope.syncPollTimer);
+
     if (globalScope.syncAbortController) {
       globalScope.syncAbortController.abort();
     }
 
     if (!isRetry) globalScope.syncAttempt = 0;
-    globalScope.syncAttempt++;
-    globalScope.syncAbortController = new AbortController();
-    const requestController = globalScope.syncAbortController;
-    const timeoutId = setTimeout(
-      () => globalScope.syncAbortController.abort(),
-      10000,
-    );
+    globalScope.syncAttempt = Number(globalScope.syncAttempt || 0) + 1;
 
-    const url = `${globalScope.DB_URL}?_t=${Date.now()}`;
+    const controller = new AbortController();
+    globalScope.syncAbortController = controller;
+    const attemptNumber = globalScope.syncAttempt;
+
     updateSyncStatus(
       `<i class="fa-solid fa-spinner fa-spin mr-1"></i> ${isRetry ? "Checking for database updates" : "Connecting to database"}...`,
       "info",
@@ -233,109 +235,109 @@
     );
 
     try {
-      const response = await fetch(url, {
-        signal: requestController.signal,
-        redirect: "follow",
-        cache: "no-store",
-      });
-
-      if (!response.ok) throw new Error("Network response failed");
-      const text = await response.text();
       let summaryData;
-      try {
-        summaryData = JSON.parse(text);
-      } catch (parseError) {
-        throw new Error(
-          `Invalid backend response while syncing database: ${text.slice(0, 200)}`,
+      if (
+        globalScope.AppNetwork &&
+        typeof globalScope.AppNetwork.getDeckSummary === "function"
+      ) {
+        summaryData = await globalScope.AppNetwork.getDeckSummary({
+          timeoutMs: 10000,
+          signal: controller.signal,
+        });
+      } else {
+        const databaseUrl =
+          typeof globalScope.DB_URL === "string"
+            ? globalScope.DB_URL.trim()
+            : "";
+        if (!databaseUrl) throw new Error("Database URL is not configured.");
+        const url = new URL(
+          databaseUrl,
+          globalScope.location?.href || undefined,
         );
+        url.searchParams.set("_t", String(Date.now()));
+        const response = await fetch(url.toString(), {
+          signal: controller.signal,
+          redirect: "follow",
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        });
+        const text = await response.text();
+        let parsed = {};
+        try {
+          parsed = text ? JSON.parse(text) : {};
+        } catch (error) {
+          throw new Error(
+            `Invalid backend response while syncing database: ${text.slice(0, 200)}`,
+          );
+        }
+        if (!response.ok)
+          throw new Error(
+            String(
+              parsed?.message ||
+                parsed?.error ||
+                `Backend HTTP ${response.status}.`,
+            ),
+          );
+        summaryData = parsed;
       }
 
-      // ROBUSTNESS: Handle cold start response from backend
+      if (
+        controller.signal.aborted ||
+        controller !== globalScope.syncAbortController
+      )
+        return false;
+
       if (
         summaryData &&
-        summaryData.isColdStart &&
-        !Array.isArray(summaryData)
+        !Array.isArray(summaryData) &&
+        summaryData.isColdStart
       ) {
-        clearTimeout(timeoutId);
-        // Cold start detected: backend triggered rebuild
-        console.warn("Cold start detected! Backend is rebuilding cache...");
         globalScope.isColdStart = true;
-
-        // Show cold start notification and force refresh
         showColdStartNotification();
-
-        // Still retry but don't apply empty data
         scheduleSyncRetry(!isBackgroundCheck);
-        return;
+        return false;
       }
 
-      if (Array.isArray(summaryData) && summaryData.length > 0) {
-        clearTimeout(timeoutId);
-        globalScope.lastSyncAt = Date.now();
-        const completedAttempt = globalScope.syncAttempt;
-        const wasConnected = globalScope.syncConnected;
-        globalScope.syncAttempt = 0;
-        globalScope.syncConnected = true;
-        globalScope.isColdStart = false;
-        const changed =
-          JSON.stringify(globalScope.state.categorySummary || []) !==
-          JSON.stringify(summaryData);
-        const canApplyNow = !globalScope.state.session.active;
-
-        if (canApplyNow && (changed || !wasConnected)) {
-          globalScope.pendingSummaryData = null;
-          applySummaryData(summaryData);
-        } else if (!canApplyNow) {
-          if (changed) globalScope.pendingSummaryData = summaryData;
-          if (!wasConnected) globalScope.renderCategoryProgress();
-        }
-
-        updateSyncStatus(
-          `<i class="fa-solid fa-check mr-1"></i> Connected. ${changed && !canApplyNow ? "Update waiting until your session ends." : `Checked ${summaryData.length} subjects.`}`,
-          "success",
-          !isBackgroundCheck && !globalScope.initialSyncSuccessShown,
-        );
-        if (!isBackgroundCheck && !globalScope.initialSyncSuccessShown) {
-          globalScope.initialSyncSuccessShown = true;
-          hideConnectionStatusAfterDelay();
-        }
-        scheduleSyncPoll();
-      } else {
-        clearTimeout(timeoutId);
-        // ROBUSTNESS: Even if sync fails, allow users to access cached decks if available
-        if (
-          globalScope.state.categorySummary &&
-          globalScope.state.categorySummary.length > 0 &&
-          isBackgroundCheck
-        ) {
-          // Background check failed but we have cached data - silently continue
-          updateSyncStatus(
-            `<i class="fa-solid fa-exclamation-triangle mr-1"></i> Using locally cached deck list. Background sync unavailable.`,
-            "warning",
-            false,
-          );
-          scheduleSyncPoll();
-        } else {
-          scheduleSyncRetry(!isBackgroundCheck);
-          if (
-            globalScope.state.categorySummary.length &&
-            globalScope.syncConnected
-          )
-            globalScope.renderCategoryProgress();
-        }
+      if (!Array.isArray(summaryData)) {
+        throw new Error("Database summary response must be an array.");
       }
-    } catch (err) {
-      clearTimeout(timeoutId);
-      if (requestController !== globalScope.syncAbortController) return;
-      console.error(err);
 
-      // ROBUSTNESS: If background sync fails but we have cached data, don't block user
-      if (
-        isBackgroundCheck &&
-        globalScope.state.categorySummary &&
-        globalScope.state.categorySummary.length > 0
-      ) {
-        // Silently continue with cached data
+      globalScope.lastSyncAt = Date.now();
+      const previous = JSON.stringify(globalScope.state.categorySummary || []);
+      const next = JSON.stringify(summaryData);
+      const changed = previous !== next;
+      const wasConnected = globalScope.syncConnected === true;
+      globalScope.syncAttempt = 0;
+      globalScope.syncConnected = true;
+      globalScope.isColdStart = false;
+
+      if (!globalScope.state?.session?.active && (changed || !wasConnected)) {
+        globalScope.pendingSummaryData = null;
+        applySummaryData(summaryData);
+      } else if (globalScope.state?.session?.active && changed) {
+        globalScope.pendingSummaryData = summaryData;
+      }
+
+      updateSyncStatus(
+        `<i class="fa-solid fa-check mr-1"></i> Connected. ${changed && globalScope.state?.session?.active ? "Update waiting until your session ends." : `Checked ${summaryData.length} subjects.`}`,
+        "success",
+        !isBackgroundCheck && !globalScope.initialSyncSuccessShown,
+      );
+      if (!isBackgroundCheck && !globalScope.initialSyncSuccessShown) {
+        globalScope.initialSyncSuccessShown = true;
+        hideConnectionStatusAfterDelay();
+      }
+      scheduleSyncPoll();
+      return { ok: true, changed, attempt: attemptNumber };
+    } catch (error) {
+      if (controller !== globalScope.syncAbortController) return false;
+      if (controller.signal.aborted) return false;
+      console.error("Database sync failed:", error);
+
+      const hasCachedData =
+        Array.isArray(globalScope.state?.categorySummary) &&
+        globalScope.state.categorySummary.length > 0;
+      if (isBackgroundCheck && hasCachedData) {
         globalScope.syncConnected = false;
         updateSyncStatus(
           `<i class="fa-solid fa-exclamation-triangle mr-1"></i> Database unavailable. Using cached deck list.`,
@@ -343,25 +345,27 @@
           false,
         );
         scheduleSyncPoll();
-        return;
+        return false;
       }
 
       scheduleSyncRetry(!isBackgroundCheck);
-
-      const catList = document.getElementById("category-list");
-      if (catList && globalScope.state.categorySummary.length === 0) {
-        if (typeof globalScope.renderCategoryProgress === "function") {
-          globalScope.renderCategoryProgress();
-        } else {
-          catList.innerHTML = "";
-        }
+      if (
+        !hasCachedData &&
+        typeof globalScope.renderCategoryProgress === "function"
+      ) {
+        globalScope.renderCategoryProgress();
+      }
+      return false;
+    } finally {
+      if (controller === globalScope.syncAbortController) {
+        globalScope.syncAbortController = null;
       }
     }
   }
 
   function showColdStartNotification() {
     const overlay = document.getElementById("app-loading-overlay");
-    if (!overlay) return;
+    if (!overlay) return false;
 
     setGlobalLoadingState(
       true,
@@ -369,11 +373,11 @@
       "The database is being rebuilt. Refreshing the website...",
       "warning",
     );
-
-    // Force refresh after 3 seconds
-    setTimeout(() => {
-      window.location.reload();
+    clearTimeout(globalScope.coldStartReloadTimer);
+    globalScope.coldStartReloadTimer = setTimeout(() => {
+      if (globalScope.location?.reload) globalScope.location.reload();
     }, 3000);
+    return true;
   }
 
   const SyncCore = {

@@ -1,56 +1,130 @@
 (function (globalScope) {
-  async function callBackend(payload, options = {}) {
-    const timeoutMs = options.timeoutMs || 20000;
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  "use strict";
+
+  const root =
+    globalScope || (typeof globalThis !== "undefined" ? globalThis : {});
+
+  function getFetch() {
+    if (typeof root.fetch === "function") return root.fetch.bind(root);
+    if (typeof fetch === "function") return fetch;
+    throw new Error("Fetch is unavailable in this environment.");
+  }
+
+  function getAbortController() {
+    if (typeof root.AbortController === "function") return root.AbortController;
+    if (typeof AbortController === "function") return AbortController;
+    return null;
+  }
+
+  function getBackendUrl(options) {
+    const url = options && options.url != null ? options.url : root.DB_URL;
+    if (!url) throw new Error("Backend URL (DB_URL) is not configured.");
+    return String(url);
+  }
+
+  function getTimeoutMs(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return 20000;
+    return Math.min(parsed, 120000);
+  }
+
+  async function parseResponseBody(response) {
+    const text = await response.text().catch(() => "");
+    if (!text.trim()) return null;
 
     try {
-      const response = await fetch(DB_URL, {
-        method: "POST",
-        redirect: "follow",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-        ...options,
-      });
-
-      if (!response.ok) {
-        const text = await response.text().catch(() => "");
-        let message = text || `Backend request failed (${response.status})`;
-        try {
-          const json = JSON.parse(text);
-          if (json && json.message) message = json.message;
-        } catch (e) {
-          // ignore invalid JSON
-        }
-        throw new Error(message);
-      }
-
-      const text = await response.text().catch(() => "");
-      try {
-        return JSON.parse(text);
-      } catch (error) {
-        throw new Error(
-          `Invalid response from backend. Expected JSON but received: ${text.slice(0, 200)}`,
-        );
-      }
+      return JSON.parse(text);
     } catch (error) {
-      if (error?.name === "AbortError") {
-        throw new Error("The request timed out. Please try again.");
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeoutId);
+      throw new Error(
+        `Invalid response from backend. Expected JSON but received: ${text.slice(0, 200)}`,
+      );
     }
   }
 
-  const NetworkUtils = {
-    callBackend,
-  };
+  function getErrorMessage(text, status) {
+    const fallback = text || `Backend request failed (${status})`;
+    if (!text) return fallback;
 
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = NetworkUtils;
+    try {
+      const json = JSON.parse(text);
+      return String(json?.message || json?.error || fallback);
+    } catch (error) {
+      return fallback;
+    }
   }
 
-  globalScope.NetworkUtils = NetworkUtils;
-})(typeof window !== "undefined" ? window : globalThis);
+  async function callBackend(payload, options = {}) {
+    const { timeoutMs = 20000, url, headers, requestInit = {} } = options || {};
+
+    const fetchImpl = getFetch();
+    const timeout = getTimeoutMs(timeoutMs);
+    const Controller = getAbortController();
+    const controller = Controller ? new Controller() : null;
+    let timeoutId = null;
+
+    const defaultHeaders = {
+      "Content-Type": "text/plain;charset=utf-8",
+    };
+    const mergedHeaders = { ...defaultHeaders, ...(headers || {}) };
+
+    const init = {
+      ...requestInit,
+      method: "POST",
+      redirect: "follow",
+      headers: mergedHeaders,
+      body: JSON.stringify(payload),
+    };
+
+    if (controller) {
+      init.signal = controller.signal;
+      timeoutId = setTimeout(() => controller.abort(), timeout);
+    }
+
+    try {
+      const response = controller
+        ? await fetchImpl(getBackendUrl({ url }), init)
+        : await Promise.race([
+            fetchImpl(getBackendUrl({ url }), init),
+            new Promise((_, reject) => {
+              timeoutId = setTimeout(
+                () => reject(new Error("__MRH_TIMEOUT__")),
+                timeout,
+              );
+            }),
+          ]);
+
+      if (!response || typeof response.ok !== "boolean") {
+        throw new Error("Invalid response object from backend.");
+      }
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(getErrorMessage(text, response.status));
+      }
+
+      return await parseResponseBody(response);
+    } catch (error) {
+      if (
+        error?.name === "AbortError" ||
+        error?.message === "__MRH_TIMEOUT__"
+      ) {
+        throw new Error("The request timed out. Please try again.");
+      }
+      throw error instanceof Error ? error : new Error(String(error));
+    } finally {
+      if (timeoutId !== null) clearTimeout(timeoutId);
+    }
+  }
+
+  const NetworkUtils = { callBackend };
+
+  if (typeof module !== "undefined" && module.exports)
+    module.exports = NetworkUtils;
+  root.NetworkUtils = NetworkUtils;
+})(
+  typeof window !== "undefined"
+    ? window
+    : typeof globalThis !== "undefined"
+      ? globalThis
+      : this,
+);

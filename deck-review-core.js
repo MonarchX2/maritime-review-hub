@@ -19,6 +19,7 @@
     isDeckPasswordProtected,
     applyTitleMode,
   } = globalScope;
+  const legacyRenderDeckReview = globalScope.renderDeckReview;
 
   // ===================== STATE VARIABLES =====================
   let currentReviewSubject = null;
@@ -32,6 +33,16 @@
   function renderDeckReview(subject, questions) {
     currentReviewSubject = subject;
     currentReviewQuestions = questions;
+
+    if (typeof legacyRenderDeckReview === "function") {
+      const activeDeckReview = globalScope.DeckReview;
+      globalScope.DeckReview = undefined;
+      try {
+        return legacyRenderDeckReview(subject, questions);
+      } finally {
+        globalScope.DeckReview = activeDeckReview;
+      }
+    }
 
     const container = document.getElementById("deck-review-list");
     document.getElementById("deck-review-title").innerText =

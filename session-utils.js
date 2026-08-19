@@ -1,126 +1,164 @@
 (function (globalScope) {
+  "use strict";
+
   const nodeStorage =
-    globalThis.__mrhNodeStorage || (globalThis.__mrhNodeStorage = {});
+    globalThis.__mrhNodeStorage ||
+    (globalThis.__mrhNodeStorage = Object.create(null));
+  const DEFAULT_PROGRESS_SAVE_TYPE = "save_progress";
+  const DEFAULT_PROGRESS_GET_TYPE = "get_progress";
 
   function getRuntimeState() {
-    if (typeof globalThis !== "undefined" && globalThis.state) {
-      return globalThis.state;
-    }
-    if (typeof state !== "undefined" && state) {
-      return state;
-    }
-    return {};
+    return globalScope.state && typeof globalScope.state === "object"
+      ? globalScope.state
+      : {};
+  }
+
+  function getFunction(name) {
+    return typeof globalScope[name] === "function" ? globalScope[name] : null;
   }
 
   function safeReadStorage(key, fallback = null) {
-    if (typeof getStoredItem === "function")
-      return getStoredItem(key, fallback);
-    if (typeof localStorage !== "undefined") {
-      const value = localStorage.getItem(key);
-      return value === null ? fallback : value;
-    }
+    try {
+      const reader = getFunction("getStoredItem");
+      if (reader) {
+        const value = reader(key, fallback);
+        return value === undefined || value === null ? fallback : value;
+      }
+      if (typeof globalThis.localStorage !== "undefined") {
+        const value = globalThis.localStorage.getItem(key);
+        return value === null ? fallback : value;
+      }
+    } catch (_) {}
     return Object.prototype.hasOwnProperty.call(nodeStorage, key)
       ? nodeStorage[key]
       : fallback;
   }
 
   function safeWriteStorage(key, value) {
-    if (typeof setStoredItem === "function") return setStoredItem(key, value);
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(key, value);
-      return value;
-    }
+    try {
+      const writer = getFunction("setStoredItem");
+      if (writer) return writer(key, value);
+      if (typeof globalThis.localStorage !== "undefined") {
+        globalThis.localStorage.setItem(key, String(value));
+        return value;
+      }
+    } catch (_) {}
     nodeStorage[key] = value;
     return value;
   }
 
   function safeDeleteStorage(key) {
-    if (typeof removeStoredItem === "function") return removeStoredItem(key);
-    if (typeof localStorage !== "undefined") {
-      localStorage.removeItem(key);
-      return;
-    }
+    try {
+      const remover = getFunction("removeStoredItem");
+      if (remover) return remover(key);
+      if (typeof globalThis.localStorage !== "undefined") {
+        globalThis.localStorage.removeItem(key);
+        return;
+      }
+    } catch (_) {}
     delete nodeStorage[key];
   }
 
   function safeReadJSON(key, fallback = null) {
     const raw = safeReadStorage(key, null);
-    if (raw === null || raw === undefined) return fallback;
+    if (raw === null || raw === undefined || raw === "") return fallback;
+    if (typeof raw === "object") return raw;
     try {
-      return JSON.parse(raw);
-    } catch (e) {
+      return JSON.parse(String(raw));
+    } catch (_) {
       return fallback;
     }
   }
 
   function safeWriteJSON(key, value) {
-    safeWriteStorage(key, JSON.stringify(value));
+    return safeWriteStorage(key, JSON.stringify(value));
   }
 
-  function safeBtoa(value) {
-    const text = String(value);
-    if (typeof btoa === "function") return btoa(text);
+  function safeBase64Url(value) {
+    const text = String(value ?? "");
+    let bytes;
+    if (typeof TextEncoder === "function") {
+      bytes = new TextEncoder().encode(text);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += 1)
+        binary += String.fromCharCode(bytes[i]);
+      const encoded =
+        typeof btoa === "function"
+          ? btoa(binary)
+          : typeof Buffer !== "undefined"
+            ? Buffer.from(bytes).toString("base64")
+            : text;
+      return encoded
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/g, "");
+    }
     if (typeof Buffer !== "undefined") {
-      return Buffer.from(text, "binary").toString("base64");
+      return Buffer.from(text, "utf8")
+        .toString("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/g, "");
     }
     return text;
   }
 
   function getProgressPayload() {
     const currentState = getRuntimeState();
-    const savedSession = safeReadJSON("saved_session", null);
+    const prefs =
+      currentState.prefs && typeof currentState.prefs === "object"
+        ? currentState.prefs
+        : {};
+    const stats =
+      currentState.stats && typeof currentState.stats === "object"
+        ? currentState.stats
+        : {};
+
     return {
       version: 2,
       stats: {
-        totalAnswered: Number(currentState.stats?.totalAnswered || 0),
-        correct: Number(currentState.stats?.correct || 0),
-        mistakes: Array.isArray(currentState.stats?.mistakes)
-          ? currentState.stats.mistakes
-          : [],
-        completedQs: Array.isArray(currentState.stats?.completedQs)
-          ? currentState.stats.completedQs
+        totalAnswered: Math.max(0, Number(stats.totalAnswered) || 0),
+        correct: Math.max(0, Number(stats.correct) || 0),
+        mistakes: Array.isArray(stats.mistakes) ? [...stats.mistakes] : [],
+        completedQs: Array.isArray(stats.completedQs)
+          ? [...stats.completedQs]
           : [],
         subjectAccuracy:
-          currentState.stats?.subjectAccuracy &&
-          typeof currentState.stats.subjectAccuracy === "object"
-            ? currentState.stats.subjectAccuracy
+          stats.subjectAccuracy && typeof stats.subjectAccuracy === "object"
+            ? stats.subjectAccuracy
             : {},
         srsMap:
-          currentState.stats?.srsMap &&
-          typeof currentState.stats.srsMap === "object"
-            ? currentState.stats.srsMap
-            : {},
+          stats.srsMap && typeof stats.srsMap === "object" ? stats.srsMap : {},
       },
-      prefs:
-        currentState.prefs && typeof currentState.prefs === "object"
-          ? currentState.prefs
-          : {},
-      savedSession,
+      prefs: { ...prefs },
+      savedSession: safeReadJSON("saved_session", null),
       deckState: {
         downloadedDecks: Array.isArray(currentState.db)
-          ? [
-              ...new Set(
-                (currentState.db || []).map((q) => q.Subject).filter(Boolean),
-              ),
-            ]
+          ? [...new Set(currentState.db.map((q) => q?.Subject).filter(Boolean))]
           : [],
-        archivedDecks: Array.isArray(currentState.prefs?.archivedDecks)
-          ? [...currentState.prefs.archivedDecks]
+        archivedDecks: Array.isArray(prefs.archivedDecks)
+          ? [...prefs.archivedDecks]
           : [],
-        studyProgress: currentState.prefs?.studyProgress || {},
-        qToggles: currentState.prefs?.qToggles || {},
-        lastActivity: currentState.prefs?.lastActivity || null,
+        studyProgress:
+          prefs.studyProgress && typeof prefs.studyProgress === "object"
+            ? prefs.studyProgress
+            : {},
+        qToggles:
+          prefs.qToggles && typeof prefs.qToggles === "object"
+            ? prefs.qToggles
+            : {},
+        lastActivity: prefs.lastActivity || null,
       },
       localState: {
         categorySummary: Array.isArray(currentState.categorySummary)
           ? currentState.categorySummary
           : [],
         currentPath: Array.isArray(currentState.currentPath)
-          ? currentState.currentPath
+          ? [...currentState.currentPath]
           : [],
         appMode:
-          typeof globalThis?.currentAppMode === "string"
-            ? globalThis.currentAppMode
+          typeof globalScope.currentAppMode === "string"
+            ? globalScope.currentAppMode
             : null,
         dbSize: Array.isArray(currentState.db) ? currentState.db.length : 0,
       },
@@ -128,17 +166,20 @@
   }
 
   function getProgressMeta() {
-    return safeReadJSON("progress_meta", {});
+    const meta = safeReadJSON("progress_meta", {});
+    return meta && typeof meta === "object" ? meta : {};
   }
 
   function setProgressMeta(updatedAt, serverUpdatedAt = updatedAt || "") {
     const runtimeState = getRuntimeState();
-    runtimeState.progressServerUpdatedAt = serverUpdatedAt || updatedAt || "";
+    const cleanServer = String(serverUpdatedAt || updatedAt || "");
+    runtimeState.progressServerUpdatedAt = cleanServer;
     safeWriteJSON("progress_meta", {
-      updatedAt: runtimeState.progressServerUpdatedAt,
-      localUpdatedAt: runtimeState.progressServerUpdatedAt,
-      serverUpdatedAt: runtimeState.progressServerUpdatedAt,
+      updatedAt: cleanServer,
+      localUpdatedAt: String(updatedAt || cleanServer || ""),
+      serverUpdatedAt: cleanServer,
     });
+    return cleanServer;
   }
 
   function clearLocalUserProgress() {
@@ -152,6 +193,7 @@
       srsMap: {},
     };
     currentState.session = {
+      ...(currentState.session || {}),
       active: false,
       questions: [],
       currentIndex: 0,
@@ -162,38 +204,48 @@
     currentState.prefs.studyProgress = {};
     currentState.prefs.qToggles = {};
     currentState.prefs.lastActivity = null;
-    safeDeleteStorage("stats");
-    safeDeleteStorage("saved_session");
-    safeDeleteStorage("progress_meta");
-    safeDeleteStorage("pending_sync_queue");
-    safeDeleteStorage("recovery_snapshot");
+
+    [
+      "stats",
+      "saved_session",
+      "progress_meta",
+      "pending_sync_queue",
+      "recovery_snapshot",
+    ].forEach(safeDeleteStorage);
+
+    return true;
   }
 
   function hasLocalProgress() {
-    return Boolean(
-      safeReadStorage("stats") ||
-      safeReadStorage("saved_session") ||
-      safeReadStorage("prefs"),
-    );
+    const keys = ["stats", "saved_session", "prefs", "pending_sync_queue"];
+    return keys.some((key) => {
+      const value = safeReadStorage(key, null);
+      return value !== null && value !== undefined && value !== "";
+    });
   }
 
   function applyRemoteProgress(payload, updatedAt) {
-    if (!payload || typeof payload !== "object") return;
+    if (!payload || typeof payload !== "object") return false;
     const currentState = getRuntimeState();
-    const runtimeSuppress = globalThis;
-    runtimeSuppress.suppressProgressSync = true;
+    const previousSuppress = globalScope.suppressProgressSync === true;
+    globalScope.suppressProgressSync = true;
+
     try {
       if (payload.stats && typeof payload.stats === "object") {
         currentState.stats = {
-          totalAnswered: Number(payload.stats.totalAnswered || 0),
-          correct: Number(payload.stats.correct || 0),
+          totalAnswered: Math.max(0, Number(payload.stats.totalAnswered) || 0),
+          correct: Math.max(0, Number(payload.stats.correct) || 0),
           mistakes: Array.isArray(payload.stats.mistakes)
             ? payload.stats.mistakes
             : [],
           completedQs: Array.isArray(payload.stats.completedQs)
             ? payload.stats.completedQs
             : [],
-          subjectAccuracy: payload.stats.subjectAccuracy || {},
+          subjectAccuracy:
+            payload.stats.subjectAccuracy &&
+            typeof payload.stats.subjectAccuracy === "object"
+              ? payload.stats.subjectAccuracy
+              : {},
           srsMap:
             payload.stats.srsMap && typeof payload.stats.srsMap === "object"
               ? payload.stats.srsMap
@@ -201,86 +253,208 @@
         };
         safeWriteJSON("stats", currentState.stats);
       }
+
       if (payload.prefs && typeof payload.prefs === "object") {
+        const userId = currentState.prefs?.userId;
         currentState.prefs = {
           ...(currentState.prefs || {}),
           ...payload.prefs,
-          userId: currentState.prefs?.userId,
         };
+        if (userId !== undefined) currentState.prefs.userId = userId;
         safeWriteJSON("prefs", currentState.prefs);
       }
+
       if (payload.deckState && typeof payload.deckState === "object") {
         currentState.prefs = currentState.prefs || {};
         if (Array.isArray(payload.deckState.archivedDecks)) {
           currentState.prefs.archivedDecks = payload.deckState.archivedDecks;
         }
-        if (payload.deckState.studyProgress) {
+        if (
+          payload.deckState.studyProgress &&
+          typeof payload.deckState.studyProgress === "object"
+        ) {
           currentState.prefs.studyProgress = payload.deckState.studyProgress;
         }
-        if (payload.deckState.qToggles) {
+        if (
+          payload.deckState.qToggles &&
+          typeof payload.deckState.qToggles === "object"
+        ) {
           currentState.prefs.qToggles = payload.deckState.qToggles;
         }
-        if (payload.deckState.lastActivity) {
+        if (payload.deckState.lastActivity !== undefined) {
           currentState.prefs.lastActivity = payload.deckState.lastActivity;
         }
         safeWriteJSON("prefs", currentState.prefs);
       }
+
       if (payload.localState && typeof payload.localState === "object") {
         if (Array.isArray(payload.localState.categorySummary)) {
           currentState.categorySummary = payload.localState.categorySummary;
           safeWriteJSON("summary", currentState.categorySummary);
         }
         if (Array.isArray(payload.localState.currentPath)) {
-          currentState.currentPath = payload.localState.currentPath;
+          currentState.currentPath = [...payload.localState.currentPath];
         }
-        if (payload.localState.appMode) {
-          globalThis.currentAppMode = payload.localState.appMode;
+        if (typeof payload.localState.appMode === "string") {
+          globalScope.currentAppMode = payload.localState.appMode;
         }
       }
-      if (payload.savedSession) {
+
+      if (payload.savedSession && typeof payload.savedSession === "object") {
         safeWriteJSON("saved_session", payload.savedSession);
       } else {
         safeDeleteStorage("saved_session");
       }
-      setProgressMeta(updatedAt);
-      if (typeof updateDashboard === "function") updateDashboard();
-      if (typeof syncPreferenceControls === "function")
-        syncPreferenceControls();
+
+      setProgressMeta(updatedAt || new Date().toISOString(), updatedAt || "");
+      getFunction("updateDashboard")?.();
+      getFunction("syncPreferenceControls")?.();
+      return true;
     } finally {
-      runtimeSuppress.suppressProgressSync = false;
+      globalScope.suppressProgressSync = previousSuppress;
     }
   }
 
   function createIdempotencyKey(payload) {
-    const keySeed = `${JSON.stringify(payload)}:${Date.now()}`;
-    return safeBtoa(unescape(encodeURIComponent(keySeed))).replace(/=+$/g, "");
+    const seed = `${JSON.stringify(payload)}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    return safeBase64Url(seed);
   }
 
   function getPendingOfflineQueue() {
-    try {
-      return JSON.parse(getStoredItem("pending_sync_queue", "[]"));
-    } catch (e) {
-      return [];
-    }
+    const queue = safeReadJSON("pending_sync_queue", []);
+    if (!Array.isArray(queue)) return [];
+    return queue.filter(
+      (entry) =>
+        entry &&
+        typeof entry === "object" &&
+        entry.payload &&
+        entry.idempotencyKey,
+    );
   }
 
   function savePendingOfflineQueue(queue) {
-    setStoredJSON("pending_sync_queue", queue);
+    const clean = Array.isArray(queue) ? queue : [];
+    safeWriteJSON("pending_sync_queue", clean);
+    return clean;
   }
 
-  function queueOfflineProgress(payload, idempotencyKey) {
+  function queueOfflineProgress(
+    payload,
+    idempotencyKey = createIdempotencyKey(payload),
+  ) {
+    if (!payload || typeof payload !== "object") return false;
     const queue = getPendingOfflineQueue();
-    queue.push({
-      idempotencyKey,
-      payload,
-      createdAt: new Date().toISOString(),
-    });
-    savePendingOfflineQueue(queue);
+    const key = String(idempotencyKey);
+    if (!queue.some((entry) => String(entry.idempotencyKey) === key)) {
+      queue.push({
+        idempotencyKey: key,
+        payload,
+        createdAt: new Date().toISOString(),
+      });
+      savePendingOfflineQueue(queue);
+    }
+    return key;
+  }
+
+  function extractBackendPayload(result) {
+    if (!result || typeof result !== "object") return null;
+    if (result.payload && typeof result.payload === "object")
+      return result.payload;
+    if (result.progress && typeof result.progress === "object")
+      return result.progress;
+    if (result.data?.payload && typeof result.data.payload === "object")
+      return result.data.payload;
+    if (result.data?.progress && typeof result.data.progress === "object")
+      return result.data.progress;
+    return null;
+  }
+
+  function extractUpdatedAt(result) {
+    return String(
+      result?.updatedAt ||
+        result?.updated_at ||
+        result?.serverUpdatedAt ||
+        result?.server_updated_at ||
+        result?.data?.updatedAt ||
+        result?.data?.updated_at ||
+        "",
+    );
+  }
+
+  function isBackendSuccess(result) {
+    if (!result || typeof result !== "object") return false;
+    if (
+      result.status === "error" ||
+      result.ok === false ||
+      result.success === false
+    )
+      return false;
+    return (
+      result.ok === true ||
+      result.success === true ||
+      result.status === "success" ||
+      result.status === "ok"
+    );
+  }
+
+  async function backendRequest(payload, options = {}) {
+    const customSave =
+      payload.type === DEFAULT_PROGRESS_SAVE_TYPE &&
+      getFunction("saveUserProgressToServer");
+    const customGet =
+      payload.type === DEFAULT_PROGRESS_GET_TYPE &&
+      getFunction("getUserProgressFromServer");
+
+    if (customSave) return customSave(payload, options);
+    if (customGet) return customGet(payload, options);
+
+    const callBackend = getFunction("callBackend");
+    if (!callBackend)
+      throw new Error("Backend request function is not available.");
+    return callBackend(payload, options);
+  }
+
+  async function saveUserProgress(
+    payload = getProgressPayload(),
+    force = false,
+    options = {},
+  ) {
+    if (!payload || typeof payload !== "object") return false;
+    const idempotencyKey = String(
+      options.idempotencyKey || createIdempotencyKey(payload),
+    );
+    try {
+      const result = await backendRequest(
+        {
+          type: globalScope.PROGRESS_SAVE_TYPE || DEFAULT_PROGRESS_SAVE_TYPE,
+          payload,
+          force: Boolean(force),
+          idempotencyKey,
+          updatedAt: new Date().toISOString(),
+          clientUpdatedAt: new Date().toISOString(),
+        },
+        options,
+      );
+
+      if (!isBackendSuccess(result)) return false;
+      const updatedAt = extractUpdatedAt(result) || new Date().toISOString();
+      setProgressMeta(new Date().toISOString(), updatedAt);
+      return true;
+    } catch (error) {
+      console.warn("Progress save failed:", error);
+      return false;
+    }
+  }
+
+  function queueProgressSync(payload = getProgressPayload()) {
+    const key = createIdempotencyKey(payload);
+    return queueOfflineProgress(payload, key);
   }
 
   async function flushPendingOfflineProgress() {
     const queue = getPendingOfflineQueue();
-    if (!queue.length) return;
+    if (!queue.length) return true;
+
     const remaining = [];
     for (const entry of queue) {
       const ok = await saveUserProgress(entry.payload, false, {
@@ -289,6 +463,30 @@
       if (!ok) remaining.push(entry);
     }
     savePendingOfflineQueue(remaining);
+    return remaining.length === 0;
+  }
+
+  function comparableTimestamp(value) {
+    if (!value) return 0;
+    const time = Date.parse(String(value));
+    return Number.isFinite(time) ? time : 0;
+  }
+
+  function canonicalize(value) {
+    if (Array.isArray(value)) return value.map(canonicalize);
+    if (!value || typeof value !== "object") return value;
+    return Object.keys(value)
+      .sort()
+      .reduce((out, key) => {
+        out[key] = canonicalize(value[key]);
+        return out;
+      }, {});
+  }
+
+  function areProgressPayloadsEquivalent(left, right) {
+    return (
+      JSON.stringify(canonicalize(left)) === JSON.stringify(canonicalize(right))
+    );
   }
 
   async function chooseProgressConflict(
@@ -301,52 +499,99 @@
       return true;
     }
 
-    if (state.session.active) {
-      const snapshot = {
+    const currentState = getRuntimeState();
+    if (currentState.session?.active) {
+      safeWriteJSON("recovery_snapshot", {
         timestamp: new Date().toISOString(),
         payload: localPayload,
         source: "recovery",
-      };
-      setStoredJSON("recovery_snapshot", snapshot);
-      showToast(
-        "A progress conflict was detected during the active session. The server copy is being preserved and a recovery snapshot was saved.",
-        "success",
+      });
+      getFunction("showToast")?.(
+        "A progress conflict was detected during the active session. The server copy was preserved and a recovery snapshot was saved.",
+        "warning",
       );
       applyRemoteProgress(remotePayload, remoteUpdatedAt);
       return true;
     }
 
-    const useLocal = await requestConfirmation(
-      "A newer progress version exists in the database. Choose OK to keep your current device progress and create a backup snapshot before overwriting the remote copy. Choose Cancel to merge with the server progress using server timestamps.",
-      "Sync Conflict",
-    );
+    const requestConfirmation = getFunction("requestConfirmation");
+    const useLocal = requestConfirmation
+      ? await requestConfirmation(
+          "A newer progress version exists in the database. Choose OK to keep the current device copy; choose Cancel to use the server copy.",
+          "Sync Conflict",
+        )
+      : false;
+
     if (useLocal) {
-      const snapshot = {
+      safeWriteJSON("recovery_snapshot", {
         timestamp: new Date().toISOString(),
         payload: localPayload,
         source: "recovery",
-      };
-      setStoredJSON("recovery_snapshot", snapshot);
+      });
       return saveUserProgress(localPayload, true);
     }
+
     applyRemoteProgress(remotePayload, remoteUpdatedAt);
     return true;
   }
 
-  async function saveUserProgress(
-    payload = getProgressPayload(),
-    force = false,
-    options = {},
-  ) {
-    return false;
-  }
-
-  function queueProgressSync() {
-    return false;
-  }
-
   async function syncUserProgress() {
-    return false;
+    await flushPendingOfflineProgress();
+
+    const localPayload = getProgressPayload();
+    const meta = getProgressMeta();
+    let result;
+
+    try {
+      result = await backendRequest({
+        type: globalScope.PROGRESS_GET_TYPE || DEFAULT_PROGRESS_GET_TYPE,
+        updatedAt: meta?.serverUpdatedAt || meta?.updatedAt || "",
+      });
+    } catch (error) {
+      console.warn("Progress sync fetch failed:", error);
+      queueOfflineProgress(localPayload);
+      return false;
+    }
+
+    if (!isBackendSuccess(result) && !extractBackendPayload(result))
+      return false;
+
+    const remotePayload = extractBackendPayload(result);
+    if (!remotePayload) return false;
+
+    const remoteUpdatedAt = extractUpdatedAt(result);
+    const localUpdatedAt = meta?.localUpdatedAt || meta?.updatedAt || "";
+    const remoteTime = comparableTimestamp(remoteUpdatedAt);
+    const localTime = comparableTimestamp(localUpdatedAt);
+
+    if (
+      remoteTime &&
+      localTime &&
+      localTime > remoteTime &&
+      !areProgressPayloadsEquivalent(localPayload, remotePayload)
+    ) {
+      return saveUserProgress(localPayload, true);
+    }
+
+    if (remoteTime && localTime && remoteTime > localTime) {
+      return chooseProgressConflict(
+        localPayload,
+        remotePayload,
+        remoteUpdatedAt,
+      );
+    }
+
+    if (!areProgressPayloadsEquivalent(localPayload, remotePayload)) {
+      return chooseProgressConflict(
+        localPayload,
+        remotePayload,
+        remoteUpdatedAt,
+      );
+    }
+
+    if (remoteUpdatedAt)
+      setProgressMeta(localUpdatedAt || remoteUpdatedAt, remoteUpdatedAt);
+    return true;
   }
 
   const SessionUtils = {
@@ -365,11 +610,27 @@
     saveUserProgress,
     queueProgressSync,
     syncUserProgress,
+    areProgressPayloadsEquivalent,
   };
 
-  if (typeof module !== "undefined" && module.exports) {
+  if (typeof module !== "undefined" && module.exports)
     module.exports = SessionUtils;
-  }
-
   globalScope.SessionUtils = SessionUtils;
+
+  globalScope.getProgressPayload = getProgressPayload;
+  globalScope.getProgressMeta = getProgressMeta;
+  globalScope.setProgressMeta = setProgressMeta;
+  globalScope.clearLocalUserProgress = clearLocalUserProgress;
+  globalScope.hasLocalProgress = hasLocalProgress;
+  globalScope.applyRemoteProgress = applyRemoteProgress;
+  globalScope.createIdempotencyKey = createIdempotencyKey;
+  globalScope.getPendingOfflineQueue = getPendingOfflineQueue;
+  globalScope.savePendingOfflineQueue = savePendingOfflineQueue;
+  globalScope.queueOfflineProgress = queueOfflineProgress;
+  globalScope.flushPendingOfflineProgress = flushPendingOfflineProgress;
+  globalScope.chooseProgressConflict = chooseProgressConflict;
+  globalScope.saveUserProgress = saveUserProgress;
+  globalScope.queueProgressSync = queueProgressSync;
+  globalScope.syncUserProgress = syncUserProgress;
+  globalScope.areProgressPayloadsEquivalent = areProgressPayloadsEquivalent;
 })(typeof window !== "undefined" ? window : globalThis);

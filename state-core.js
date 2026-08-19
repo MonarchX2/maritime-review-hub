@@ -22,7 +22,7 @@
 
       if (subject) {
         const subjectList = bySubject.get(subject) || [];
-        if (id) subjectList.push(id);
+        if (id && !subjectList.includes(id)) subjectList.push(id);
         bySubject.set(subject, subjectList);
       }
 
@@ -75,25 +75,62 @@
       normalized.Answer = ["A", "B", "C", "D"][normalized.Answer] || "";
     }
 
-    if (normalized.Answer) {
-      normalized.Answer = String(normalized.Answer).trim().toUpperCase();
+    if (normalized.Answer !== "") {
+      const answer = String(normalized.Answer).trim().toUpperCase();
+      const numericAnswer = Number(answer);
+      if (/^\d$/.test(answer) && Number.isInteger(numericAnswer)) {
+        normalized.Answer = ["A", "B", "C", "D"][numericAnswer] || "";
+      } else {
+        const letterMatch = answer.match(/\b([ABCD])\b/);
+        normalized.Answer = letterMatch ? letterMatch[1] : "";
+      }
     }
 
     return normalized;
   }
 
   async function loadState() {
-    globalScope.migrateLegacyStorageKeys();
-    const savedStats = globalScope.getStoredItem("stats");
-    const savedPrefs = globalScope.getStoredItem("prefs");
+    if (!globalScope.state || typeof globalScope.state !== "object") {
+      throw new Error("Application state is not initialized.");
+    }
+    if (
+      !globalScope.state.stats ||
+      typeof globalScope.state.stats !== "object"
+    ) {
+      globalScope.state.stats = {};
+    }
+    if (
+      !globalScope.state.prefs ||
+      typeof globalScope.state.prefs !== "object"
+    ) {
+      globalScope.state.prefs = {};
+    }
+    globalScope.state.db = Array.isArray(globalScope.state.db)
+      ? globalScope.state.db
+      : [];
+    globalScope.state.categorySummary = Array.isArray(
+      globalScope.state.categorySummary,
+    )
+      ? globalScope.state.categorySummary
+      : [];
+    if (typeof globalScope.migrateLegacyStorageKeys === "function")
+      globalScope.migrateLegacyStorageKeys();
+    const getStoredItem =
+      typeof globalScope.getStoredItem === "function"
+        ? globalScope.getStoredItem.bind(globalScope)
+        : (_key, fallback = null) => fallback;
+    const savedStats = getStoredItem("stats");
+    const savedPrefs = getStoredItem("prefs");
     const savedSummary =
-      globalScope.getStoredItem("summary") ||
-      globalScope.getAnyNamespaceStoredItem("summary");
+      getStoredItem("summary") ||
+      (typeof globalScope.getAnyNamespaceStoredItem === "function"
+        ? globalScope.getAnyNamespaceStoredItem("summary")
+        : null);
 
     try {
       if (typeof idbKeyval !== "undefined") {
         const savedDb = await idbKeyval.get("mrh_db");
-        if (savedDb) {
+        if (Array.isArray(savedDb)) {
           globalScope.state.db = savedDb.map((q) => {
             const normalized = normalizeQuestionRecord(q);
             if (normalized.ID && !normalized.ID.toString().includes("::")) {
@@ -239,8 +276,36 @@
       globalScope.currentAppMode = globalScope.state.prefs.lastActivity.mode;
     }
 
-    if (!globalScope.state.stats.subjectAccuracy)
-      globalScope.state.stats.subjectAccuracy = {};
+    globalScope.state.stats =
+      globalScope.state.stats && typeof globalScope.state.stats === "object"
+        ? globalScope.state.stats
+        : {};
+    globalScope.state.stats.totalAnswered = Number(
+      globalScope.state.stats.totalAnswered || 0,
+    );
+    globalScope.state.stats.correct = Number(
+      globalScope.state.stats.correct || 0,
+    );
+    globalScope.state.stats.mistakes = Array.isArray(
+      globalScope.state.stats.mistakes,
+    )
+      ? globalScope.state.stats.mistakes
+      : [];
+    globalScope.state.stats.completedQs = Array.isArray(
+      globalScope.state.stats.completedQs,
+    )
+      ? globalScope.state.stats.completedQs
+      : [];
+    globalScope.state.stats.srsMap =
+      globalScope.state.stats.srsMap &&
+      typeof globalScope.state.stats.srsMap === "object"
+        ? globalScope.state.stats.srsMap
+        : {};
+    globalScope.state.stats.subjectAccuracy =
+      globalScope.state.stats.subjectAccuracy &&
+      typeof globalScope.state.stats.subjectAccuracy === "object"
+        ? globalScope.state.stats.subjectAccuracy
+        : {};
     if (
       !["idle", "immediate"].includes(
         globalScope.state.prefs.databaseUpdateMode,
@@ -268,23 +333,32 @@
         : 0;
     }
 
-    globalScope.populateFilters();
-    globalScope.bindDiscoveryUi();
-    globalScope.updateDashboard();
-    globalScope.updateThemeButton();
-    globalScope.syncPreferenceControls();
-    globalScope.emitDebugState("load_state:complete", {
-      dbCount: globalScope.state.db.length,
-      summaryCount: globalScope.state.categorySummary.length,
-    });
+    if (typeof globalScope.populateFilters === "function")
+      globalScope.populateFilters();
+    if (typeof globalScope.bindDiscoveryUi === "function")
+      globalScope.bindDiscoveryUi();
+    if (typeof globalScope.updateDashboard === "function")
+      globalScope.updateDashboard();
+    if (typeof globalScope.updateThemeButton === "function")
+      globalScope.updateThemeButton();
+    if (typeof globalScope.syncPreferenceControls === "function")
+      globalScope.syncPreferenceControls();
+    if (typeof globalScope.emitDebugState === "function")
+      globalScope.emitDebugState("load_state:complete", {
+        dbCount: globalScope.state.db.length,
+        summaryCount: globalScope.state.categorySummary.length,
+      });
   }
 
   async function saveState() {
     try {
-      globalScope.emitDebugState("save_state:begin", {
-        dbCount: globalScope.state.db.length,
-        summaryCount: globalScope.state.categorySummary.length,
-      });
+      if (typeof globalScope.emitDebugState === "function")
+        globalScope.emitDebugState("save_state:begin", {
+          dbCount: globalScope.state.db.length,
+          summaryCount: globalScope.state.categorySummary.length,
+        });
+      if (typeof globalScope.setStoredJSON !== "function")
+        throw new Error("Storage helpers are not available.");
       globalScope.setStoredJSON("stats", globalScope.state.stats);
       globalScope.setStoredJSON("prefs", globalScope.state.prefs);
       globalScope.setStoredJSON(
@@ -307,12 +381,15 @@
       console.error(e);
     }
 
-    globalScope.syncPreferenceControls();
-    globalScope.updateDashboard();
-    globalScope.emitDebugState("save_state:complete", {
-      dbCount: globalScope.state.db.length,
-      summaryCount: globalScope.state.categorySummary.length,
-    });
+    if (typeof globalScope.syncPreferenceControls === "function")
+      globalScope.syncPreferenceControls();
+    if (typeof globalScope.updateDashboard === "function")
+      globalScope.updateDashboard();
+    if (typeof globalScope.emitDebugState === "function")
+      globalScope.emitDebugState("save_state:complete", {
+        dbCount: globalScope.state.db.length,
+        summaryCount: globalScope.state.categorySummary.length,
+      });
   }
 
   const StateCore = {

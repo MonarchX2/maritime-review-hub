@@ -17,7 +17,9 @@
 
   function normalizeErrorMessage(payload, fallback) {
     if (payload && typeof payload === "object") {
-      return String(payload.message || payload.error || fallback || "Request failed.");
+      return String(
+        payload.message || payload.error || fallback || "Request failed.",
+      );
     }
     return fallback || "Request failed.";
   }
@@ -36,7 +38,11 @@
     }
   }
 
-  async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  async function fetchWithTimeout(
+    url,
+    options = {},
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+  ) {
     const controller = new AbortController();
     const externalSignal = options.signal;
     let externalAbortHandler = null;
@@ -45,7 +51,10 @@
     if (externalSignal) {
       externalAbortHandler = () => controller.abort();
       if (externalSignal.aborted) controller.abort();
-      else externalSignal.addEventListener("abort", externalAbortHandler, { once: true });
+      else
+        externalSignal.addEventListener("abort", externalAbortHandler, {
+          once: true,
+        });
     }
 
     try {
@@ -87,12 +96,16 @@
         cache: "no-store",
         signal: options.signal,
       },
-      Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : DEFAULT_TIMEOUT_MS,
+      Number(options.timeoutMs) > 0
+        ? Number(options.timeoutMs)
+        : DEFAULT_TIMEOUT_MS,
     );
 
     const result = await parseJsonResponse(response);
     if (!response.ok) {
-      const error = new Error(normalizeErrorMessage(result, `Backend HTTP ${response.status}.`));
+      const error = new Error(
+        normalizeErrorMessage(result, `Backend HTTP ${response.status}.`),
+      );
       error.status = response.status;
       error.code = result?.code || "HTTP_ERROR";
       error.payload = result;
@@ -102,7 +115,9 @@
   }
 
   async function getDeckSummary(options = {}) {
-    const url = new URL(getDatabaseUrl());
+    const databaseUrl = getDatabaseUrl();
+    if (!databaseUrl) throw new Error("Database URL is not configured.");
+    const url = new URL(databaseUrl, globalScope.location?.href || undefined);
     url.searchParams.set("_t", Date.now().toString());
     const response = await fetchWithTimeout(
       url.toString(),
@@ -117,7 +132,9 @@
     );
     const result = await parseJsonResponse(response);
     if (!response.ok) {
-      const error = new Error(normalizeErrorMessage(result, `Backend HTTP ${response.status}.`));
+      const error = new Error(
+        normalizeErrorMessage(result, `Backend HTTP ${response.status}.`),
+      );
       error.status = response.status;
       error.code = result?.code || "HTTP_ERROR";
       error.payload = result;
@@ -127,7 +144,9 @@
   }
 
   async function getDeck(subject, password = "", options = {}) {
-    const url = new URL(getDatabaseUrl());
+    const databaseUrl = getDatabaseUrl();
+    if (!databaseUrl) throw new Error("Database URL is not configured.");
+    const url = new URL(databaseUrl, globalScope.location?.href || undefined);
     url.searchParams.set("subject", String(subject || "").trim());
     if (password) url.searchParams.set("password", String(password));
     url.searchParams.set("_t", Date.now().toString());
@@ -146,7 +165,9 @@
 
     const result = await parseJsonResponse(response);
     if (!response.ok) {
-      const error = new Error(normalizeErrorMessage(result, `Backend HTTP ${response.status}.`));
+      const error = new Error(
+        normalizeErrorMessage(result, `Backend HTTP ${response.status}.`),
+      );
       error.status = response.status;
       error.code = result?.code || "HTTP_ERROR";
       error.payload = result;
@@ -157,18 +178,27 @@
 
   const backendApi = {
     verifyAdmin: (token) => callBackend({ type: "verify_admin", token }),
-    getAdminSubjects: (token) => callBackend({ type: "admin_get_subjects", token }),
-    submitReport: (payload) => callBackend({ type: "submit_report", ...payload }),
+    getAdminSubjects: (token) =>
+      callBackend({ type: "admin_get_subjects", token }),
+    submitReport: (payload) =>
+      callBackend({ type: "submit_report", ...payload }),
     getReports: (role = "user", token = "") =>
-      callBackend({ type: "get_reports", role, ...(role === "admin" ? { token } : {}) }),
+      callBackend({
+        type: "get_reports",
+        role,
+        ...(role === "admin" ? { token } : {}),
+      }),
     resolveReport: (token, reportId, action) =>
       callBackend({ type: "admin_resolve_report", token, reportId, action }),
     getCacheVersion: () => callBackend({ type: "get_cache_version" }),
     getSyncStatus: () => callBackend({ type: "get_sync_status" }),
-    clearAllAccessMetadata: (token) => callBackend({ type: "admin_clear_all", token }),
+    clearAllAccessMetadata: (token) =>
+      callBackend({ type: "admin_clear_all", token }),
     wipeEverything: (token) => callBackend({ type: "wipe_everything", token }),
-    updateSubjects: (payload) => callBackend({ type: "admin_update", ...payload }),
-    editQuestion: (payload) => callBackend({ type: "admin_edit_question", ...payload }),
+    updateSubjects: (payload) =>
+      callBackend({ type: "admin_update", ...payload }),
+    editQuestion: (payload) =>
+      callBackend({ type: "admin_edit_question", ...payload }),
   };
 
   function adminTokenStorageKey() {
@@ -178,9 +208,13 @@
   function getAdminToken() {
     try {
       if (typeof globalScope.getStoredItem === "function") {
-        return String(globalScope.getStoredItem(adminTokenStorageKey(), "") || "").trim();
+        return String(
+          globalScope.getStoredItem(adminTokenStorageKey(), "") || "",
+        ).trim();
       }
-      return String(globalScope.localStorage?.getItem(adminTokenStorageKey()) || "").trim();
+      return String(
+        globalScope.localStorage?.getItem(adminTokenStorageKey()) || "",
+      ).trim();
     } catch (_) {
       return "";
     }
@@ -228,7 +262,10 @@
   globalScope.AppNetwork = AppNetwork;
 
   // Do not overwrite an admin.js implementation if one is already loaded.
-  if (typeof globalScope.getAdminToken !== "function") globalScope.getAdminToken = getAdminToken;
-  if (typeof globalScope.setAdminToken !== "function") globalScope.setAdminToken = setAdminToken;
-  if (typeof globalScope.clearAdminToken !== "function") globalScope.clearAdminToken = clearAdminToken;
+  if (typeof globalScope.getAdminToken !== "function")
+    globalScope.getAdminToken = getAdminToken;
+  if (typeof globalScope.setAdminToken !== "function")
+    globalScope.setAdminToken = setAdminToken;
+  if (typeof globalScope.clearAdminToken !== "function")
+    globalScope.clearAdminToken = clearAdminToken;
 })(typeof window !== "undefined" ? window : globalThis);

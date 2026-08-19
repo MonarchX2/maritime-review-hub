@@ -18,9 +18,10 @@
     const expr = String(rawExpression || "").trim();
     if (!expr) return "";
 
-    if (window.katex && typeof katex.renderToString === "function") {
+    const katexApi = globalScope.katex;
+    if (katexApi && typeof katexApi.renderToString === "function") {
       try {
-        return katex.renderToString(expr, {
+        return katexApi.renderToString(expr, {
           throwOnError: false,
           displayMode: Boolean(displayMode),
           strict: "ignore",
@@ -90,7 +91,7 @@
 
     const revealCloze = Boolean(options.revealCloze);
     const clozeEnabled =
-      options.clozeEnabled ?? state.prefs.clozeEnabled !== false;
+      options.clozeEnabled ?? globalScope.state?.prefs?.clozeEnabled !== false;
     const normalizedText = stripQuestionNumberPrefix(text);
 
     function formatNonMathSegment(segment) {
@@ -140,14 +141,14 @@
   }
 
   function encodeHandlerValue(value) {
-    return encodeURIComponent(String(value));
+    return encodeURIComponent(String(value ?? ""));
   }
 
   function decodeHandlerValue(value) {
     try {
-      return decodeURIComponent(value);
+      return decodeURIComponent(String(value ?? ""));
     } catch (error) {
-      return value;
+      return String(value ?? "");
     }
   }
 

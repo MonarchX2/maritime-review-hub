@@ -1,13 +1,16 @@
 (function (globalScope) {
   function populateFilters() {
     const select = document.getElementById("filter-subject");
+    if (!select || typeof globalScope.ensureQuestionIndex !== "function")
+      return;
     const subjectIndex = globalScope.ensureQuestionIndex();
     const subjects = [...subjectIndex.bySubject.keys()];
 
     let tags = new Set();
     (globalScope.state.db || []).forEach((q) => {
-      if (q && q.Tags) {
-        q.Tags.split(",")
+      if (q && q.Tags != null) {
+        String(q.Tags)
+          .split(",")
           .map((t) => t.trim())
           .forEach((t) => tags.add(t));
       }
@@ -55,82 +58,38 @@
       globalScope.renderCategoryProgress();
   }
 
-  async function navigate(viewId) {
-    if (viewId === "settings") {
-      globalScope.settingsClickCount++;
-      clearTimeout(globalScope.settingsClickTimeout);
-      if (globalScope.settingsClickCount >= 5) {
-        const adminBtn = document.getElementById("btn-admin-nav");
-        adminBtn.classList.remove("hidden");
-        adminBtn.classList.add("animate-card-in");
-        globalScope.settingsClickCount = 0;
-      } else {
-        globalScope.settingsClickTimeout = setTimeout(() => {
-          globalScope.settingsClickCount = 0;
-        }, 2000);
-      }
-    }
-
+  const navigate = async (...args) => {
     if (
-      globalScope.state.session.active &&
-      viewId !== "practice" &&
-      !(await globalScope.requestConfirmation(
-        "You have an active session. Do you want to pause and return? Your progress will be saved.",
-        "Pause Session",
-      ))
-    )
-      return;
-
-    if (globalScope.state.session.active && viewId !== "practice") {
-      globalScope.saveSessionProgress();
-      globalScope.state.session.active = false;
-      globalScope.saveState();
+      globalScope.DeckNavCore &&
+      typeof globalScope.DeckNavCore.navigate === "function"
+    ) {
+      return globalScope.DeckNavCore.navigate(...args);
     }
-
-    globalScope.updateDashboard();
-
+    const [viewId] = args;
+    const target = document.getElementById(`view-${viewId}`);
+    if (!target) return false;
     document
       .querySelectorAll(".view-section")
       .forEach((el) => el.classList.remove("active"));
-    document.getElementById(`view-${viewId}`).classList.add("active");
-    const isAdminView = viewId === "admin" && !!globalScope.getAdminToken();
-    document.body.classList.toggle("admin-portal-active", isAdminView);
-
-    if (viewId === "stats") globalScope.renderCharts();
-
-    if (viewId === "admin") {
-      await globalScope.ensureAdminLoaded();
-      const activeAdminToken =
-        typeof globalScope.getAdminToken === "function"
-          ? globalScope.getAdminToken()
-          : "";
-      if (
-        activeAdminToken &&
-        typeof globalScope.loadAdminSubjects === "function"
-      ) {
-        globalScope.loadAdminSubjects();
-      }
-    }
-  }
+    target.classList.add("active");
+    return true;
+  };
 
   function syncPreferenceControls() {
+    const prefs = globalScope.state?.prefs || {};
     const values = {
-      "toggle-active-recall": globalScope.state.prefs.activeRecall === true,
-      "toggle-shuffle-choices":
-        globalScope.state.prefs.shuffleChoices !== false,
-      "toggle-modal-shuffle-choices":
-        globalScope.state.prefs.shuffleChoices !== false,
-      "toggle-shuffle-questions":
-        globalScope.state.prefs.shuffleQuestions !== false,
-      "toggle-hide-abcd": globalScope.state.prefs.hideABCD === true,
-      "toggle-quiz-hide-abcd": globalScope.state.prefs.quizHideABCD === true,
-      "toggle-cloze-mode": globalScope.state.prefs.clozeEnabled !== false,
-      "toggle-main-cloze-mode": globalScope.state.prefs.clozeEnabled !== false,
-      "toggle-srs-mode": globalScope.state.prefs.srsEnabled === true,
-      "toggle-main-srs-mode": globalScope.state.prefs.srsEnabled === true,
-      "toggle-wrong-choices":
-        globalScope.state.prefs.showWrongChoices !== false,
-      globalModeToggle: globalScope.state.prefs.lastActivity?.mode === "review",
+      "toggle-active-recall": prefs.activeRecall === true,
+      "toggle-shuffle-choices": prefs.shuffleChoices !== false,
+      "toggle-modal-shuffle-choices": prefs.shuffleChoices !== false,
+      "toggle-shuffle-questions": prefs.shuffleQuestions !== false,
+      "toggle-hide-abcd": prefs.hideABCD === true,
+      "toggle-quiz-hide-abcd": prefs.quizHideABCD === true,
+      "toggle-cloze-mode": prefs.clozeEnabled !== false,
+      "toggle-main-cloze-mode": prefs.clozeEnabled !== false,
+      "toggle-srs-mode": prefs.srsEnabled === true,
+      "toggle-main-srs-mode": prefs.srsEnabled === true,
+      "toggle-wrong-choices": prefs.showWrongChoices !== false,
+      globalModeToggle: prefs.lastActivity?.mode === "review",
     };
 
     Object.entries(values).forEach(([id, checked]) => {
@@ -145,27 +104,26 @@
     };
 
     [
-      [
-        "toggle-main-navigation-quiz",
-        globalScope.state.prefs.quizNavigationPosition || "top",
-      ],
+      ["toggle-main-navigation-quiz", prefs.quizNavigationPosition || "top"],
       [
         "toggle-main-navigation-single",
-        globalScope.state.prefs.studySingleNavigationPosition || "top",
+        prefs.studySingleNavigationPosition || "top",
       ],
       [
         "toggle-main-navigation-scroll",
-        globalScope.state.prefs.studyScrollNavigationPosition || "top",
+        prefs.studyScrollNavigationPosition || "top",
       ],
       [
         "toggle-session-navigation-bottom",
-        globalScope.state.prefs.quizNavigationPosition || "top",
+        prefs.quizNavigationPosition || "top",
       ],
       [
         "toggle-review-navigation-bottom",
-        globalScope.getStudyNavigationPosition(
-          globalScope.state.prefs.studyLayout || "scroll",
-        ),
+        typeof globalScope.getStudyNavigationPosition === "function"
+          ? globalScope.getStudyNavigationPosition(
+              prefs.studyLayout || "scroll",
+            )
+          : prefs.reviewNavigationPosition || "top",
       ],
     ].forEach(([id, value]) => {
       const button = document.getElementById(id);
@@ -174,15 +132,12 @@
 
     const databaseUpdateMode = document.getElementById("database-update-mode");
     if (databaseUpdateMode)
-      databaseUpdateMode.value =
-        globalScope.state.prefs.databaseUpdateMode || "idle";
+      databaseUpdateMode.value = prefs.databaseUpdateMode || "idle";
 
     const deckNameMode = document.getElementById("deck-name-mode");
     if (deckNameMode) {
-      deckNameMode.value = ["wrap", "clip"].includes(
-        globalScope.state.prefs.deckNameMode,
-      )
-        ? globalScope.state.prefs.deckNameMode
+      deckNameMode.value = ["wrap", "clip"].includes(prefs.deckNameMode)
+        ? prefs.deckNameMode
         : "wrap";
     }
 
@@ -195,8 +150,10 @@
     const activeNavigationPosition = document
       .getElementById("view-deck-review")
       ?.classList.contains("active")
-      ? globalScope.state.prefs.reviewNavigationPosition
-      : globalScope.getQuizNavigationPosition();
+      ? prefs.reviewNavigationPosition
+      : typeof globalScope.getQuizNavigationPosition === "function"
+        ? globalScope.getQuizNavigationPosition()
+        : prefs.quizNavigationPosition || "top";
     if (navigationSelect) navigationSelect.value = activeNavigationPosition;
     [
       "toggle-main-navigation-quiz",
@@ -208,9 +165,8 @@
       const control = document.getElementById(id);
       if (control) control.checked = values[id] ?? false;
     });
-    const sortBy = globalScope.state.prefs.deckSortBy || "letters";
-    const sortDirection =
-      globalScope.state.prefs.deckSortDirection === "desc" ? "desc" : "asc";
+    const sortBy = prefs.deckSortBy || "letters";
+    const sortDirection = prefs.deckSortDirection === "desc" ? "desc" : "asc";
     const deckSortIcon = document.getElementById("deck-sort-icon");
     if (deckSortIcon) {
       deckSortIcon.className = `fa-solid fa-arrow-${sortDirection === "desc" ? "down" : "up"}`;

@@ -8,24 +8,36 @@
   const { getStoredItem, setStoredItem, callBackend } = globalScope;
 
   // ===================== CORE MODAL CONTROL =====================
+  const modalTimers = new WeakMap();
+
   function toggleModal(modalId, isVisible) {
     const modal = document.getElementById(modalId);
-    if (!modal) return;
-    const inner = modal.querySelector("div");
+    if (!modal) return false;
+    const inner =
+      modal.querySelector(":scope > div") || modal.querySelector("div");
+    const previous = modalTimers.get(modal);
+    if (previous) {
+      clearTimeout(previous.show);
+      clearTimeout(previous.hide);
+    }
 
     if (isVisible) {
       modal.classList.remove("hidden");
-      setTimeout(() => {
+      const show = setTimeout(() => {
+        if (modal.classList.contains("hidden")) return;
         modal.classList.remove("opacity-0");
         if (inner) inner.classList.remove("scale-95", "opacity-0");
       }, 10);
+      modalTimers.set(modal, { show, hide: null });
     } else {
       modal.classList.add("opacity-0");
-      if (inner) inner.classList.add("scale-95");
-      setTimeout(() => {
+      if (inner) inner.classList.add("scale-95", "opacity-0");
+      const hide = setTimeout(() => {
         modal.classList.add("hidden");
       }, 300);
+      modalTimers.set(modal, { show: null, hide });
     }
+    return true;
   }
 
   // ===================== ABOUT MODAL =====================
@@ -38,49 +50,70 @@
   }
 
   // ===================== CONFIRM MODAL =====================
-  let confirmResolver = null;
+  let confirmRequest = null;
 
   function requestConfirmation(message, title = "Confirm Action") {
     return new Promise((resolve) => {
-      confirmResolver = resolve;
+      if (confirmRequest) confirmRequest.resolve(false);
+      confirmRequest = { resolve };
       const modal = document.getElementById("confirm-modal");
       if (!modal) {
-        resolve(window.confirm(message));
+        const result =
+          typeof globalScope.confirm === "function"
+            ? globalScope.confirm(message)
+            : false;
+        confirmRequest = null;
+        resolve(result);
         return;
       }
       if (modal.parentElement !== document.body)
         document.body.appendChild(modal);
-      document.getElementById("confirm-title").innerHTML =
-        `<i class="fa-solid fa-circle-question text-brand-500 mr-2"></i>${globalScope.escapeHTML(title)}`;
-      document.getElementById("confirm-message").innerText = message;
+      const titleEl = document.getElementById("confirm-title");
+      const messageEl = document.getElementById("confirm-message");
+      if (titleEl)
+        titleEl.innerHTML = `<i class="fa-solid fa-circle-question text-brand-500 mr-2"></i>${typeof globalScope.escapeHTML === "function" ? globalScope.escapeHTML(title) : String(title)}`;
+      if (messageEl) messageEl.textContent = String(message ?? "");
       toggleModal("confirm-modal", true);
     });
   }
 
   function closeConfirmModal(confirmed) {
     toggleModal("confirm-modal", false);
-    if (confirmResolver) {
-      const resolve = confirmResolver;
-      confirmResolver = null;
-      setTimeout(() => resolve(confirmed), 320);
+    if (confirmRequest) {
+      const current = confirmRequest;
+      confirmRequest = null;
+      queueMicrotask(() => current.resolve(Boolean(confirmed)));
     }
   }
 
+  function readReportedQuestionIds() {
+    try {
+      const raw =
+        typeof getStoredItem === "function"
+          ? getStoredItem("reported_qs", "[]")
+          : "[]";
+      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+      return Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function rememberReportedQuestion(id) {
+    const ids = new Set(readReportedQuestionIds());
+    ids.add(String(id));
+    if (typeof setStoredItem === "function")
+      setStoredItem("reported_qs", JSON.stringify([...ids]));
+  }
   // ===================== REPORT MODAL =====================
   function openReportModal() {
     const state = globalScope.state;
     const q = state.session?.questions?.[state.session?.currentIndex];
     if (!q) return;
 
-    let reportedQs = [];
-    try {
-      reportedQs = JSON.parse(getStoredItem("reported_qs", "[]"));
-    } catch (e) {
-      console.warn("Reported QS array corrupted. Resetting.", e);
-      setStoredItem("reported_qs", "[]");
-    }
+    const reportedQs = readReportedQuestionIds();
 
-    if (reportedQs.includes(q.ID)) {
+    if (reportedQs.includes(String(q.ID))) {
       alert(
         "You have already reported this question. Thank you for your feedback!",
       );
@@ -111,15 +144,9 @@
     const q = (state.db || []).find((item) => item.ID === questionId);
     if (!q) return;
 
-    let reportedQs = [];
-    try {
-      reportedQs = JSON.parse(getStoredItem("reported_qs", "[]"));
-    } catch (e) {
-      console.warn("Reported QS array corrupted. Resetting.", e);
-      setStoredItem("reported_qs", "[]");
-    }
+    const reportedQs = readReportedQuestionIds();
 
-    if (reportedQs.includes(q.ID)) {
+    if (reportedQs.includes(String(q.ID))) {
       alert(
         "You have already reported this question. Thank you for your feedback!",
       );
@@ -139,8 +166,11 @@
   async function submitReport() {
     const state = globalScope.state;
     const typeEl = document.getElementById("report-type");
-    const lesson = document.getElementById("report-lesson").value.trim();
-    const comments = document.getElementById("report-comments").value.trim();
+    const lessonEl = document.getElementById("report-lesson");
+    const commentsEl = document.getElementById("report-comments");
+    if (!typeEl) return false;
+    const lesson = String(lessonEl?.value || "").trim();
+    const comments = String(commentsEl?.value || "").trim();
 
     if (!typeEl.value) {
       alert("Please select an Error Type.");
@@ -148,6 +178,7 @@
     }
 
     const btn = document.getElementById("btn-submit-report");
+    if (!btn) return false;
     const originalText = btn.innerHTML;
     btn.innerHTML =
       '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Sending...';
@@ -155,7 +186,7 @@
 
     const q =
       state.reportQuestion ||
-      state.session.questions[state.session.currentIndex];
+      state.session?.questions?.[state.session.currentIndex];
 
     if (!q) {
       alert("Error: No question found to report.");
@@ -164,7 +195,10 @@
       return;
     }
 
-    if (globalScope.isDeckPasswordProtected(q.Subject)) {
+    if (
+      typeof globalScope.isDeckPasswordProtected === "function" &&
+      globalScope.isDeckPasswordProtected(q.Subject)
+    ) {
       alert("Reporting is disabled for password-protected decks.");
       btn.innerHTML = originalText;
       btn.disabled = false;
@@ -185,9 +219,7 @@
       });
 
       if (result.status === "success") {
-        const reportedQs = JSON.parse(getStoredItem("reported_qs", "[]"));
-        reportedQs.push(q.ID);
-        setStoredItem("reported_qs", JSON.stringify(reportedQs));
+        rememberReportedQuestion(q.ID);
 
         btn.innerHTML =
           '<i class="fa-solid fa-check mr-2"></i> Report Submitted!';
@@ -392,8 +424,9 @@
     pendingLockedFolderPath = fullPath;
     pendingLockedFolderName = folderName;
 
-    document.getElementById("folder-password-message").innerText =
-      `The folder "${folderName}" requires a password to view its contents.`;
+    const messageEl = document.getElementById("folder-password-message");
+    if (messageEl)
+      messageEl.textContent = `The folder "${folderName}" requires a password to view its contents.`;
 
     toggleModal("folder-password-modal", true);
   }
@@ -414,7 +447,7 @@
     const messageEl = document.getElementById("deck-password-message");
     if (messageEl) {
       const shortName = subject.split("::").pop();
-      messageEl.innerText = `The deck "${globalScope.escapeHTML(shortName)}" requires a password.`;
+      messageEl.innerText = `The deck "${shortName}" requires a password.`;
     }
 
     toggleModal("deck-password-modal", true);
@@ -436,10 +469,17 @@
   }
 
   function initDetailsExclusivity() {
+    if (typeof document === "undefined") return false;
     const detailsElements = document.querySelectorAll(
       "#deck-source-menu, #deck-sort-menu, #quiz-filter-menu",
     );
 
+    if (
+      document.documentElement.dataset.mrhDetailsExclusivityInitialized ===
+      "true"
+    )
+      return;
+    document.documentElement.dataset.mrhDetailsExclusivityInitialized = "true";
     detailsElements.forEach((details) => {
       details.addEventListener("toggle", (e) => {
         if (e.target.open) {
