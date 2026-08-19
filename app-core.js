@@ -1,5 +1,5 @@
 ﻿const DB_URL =
-  "https://script.google.com/macros/s/AKfycby4j5hbEWyfqonO9HYKgywo4OAt1NBwerEWWZwLWb1ODbsQGUd-YMMO-H9wX3_C-tBw/exec";
+  "https://script.google.com/macros/s/AKfycbzjM_24-2K-1m9FXSaMhBWelyh1s3_QnV0DSFZUcLQh57Lhjl8wxl9z7Z87WRgFwb8L/exec";
 
 const SYNC_INTERVAL_MS = 3 * 1000;
 const QUIZ_NAVIGATION_BREAKPOINT = 768;
@@ -104,6 +104,13 @@ let leaderElectionChannel = null;
 let cacheVersionCheckTimer = null;
 let cacheInvalidationChannel = null;
 
+function stopCacheVersionPolling() {
+  if (cacheVersionCheckTimer !== null) {
+    clearInterval(cacheVersionCheckTimer);
+    cacheVersionCheckTimer = null;
+  }
+}
+
 // OPTIMIZATION: ETag/Hash headers for 304 responses
 let lastCacheVersionHash = null;
 
@@ -124,13 +131,12 @@ function cleanupAppRuntime() {
   clearTimeout(syncStatusHideTimer);
   clearTimeout(syncPollTimer);
   clearInterval(leaderHeartbeatTimer);
-  clearInterval(cacheVersionCheckTimer);
+  stopCacheVersionPolling();
   syncRetryTimer = null;
   syncCountdownTimer = null;
   syncStatusHideTimer = null;
   syncPollTimer = null;
   leaderHeartbeatTimer = null;
-  cacheVersionCheckTimer = null;
   if (syncAbortController) syncAbortController.abort();
   syncAbortController = null;
   if (typeof stopVisualTimer === "function") stopVisualTimer();
@@ -503,7 +509,6 @@ function updateShuffleWarning() {
 
 function syncPreferenceControls() {
   const values = {
-    "toggle-active-recall": state.prefs.activeRecall === true,
     "toggle-shuffle-choices": state.prefs.shuffleChoices !== false,
     "toggle-modal-shuffle-choices": state.prefs.shuffleChoices !== false,
     "toggle-shuffle-questions": state.prefs.shuffleQuestions !== false,
@@ -6188,6 +6193,8 @@ function setupLeaderElection() {
           console.log("[LEADER] Yielding leadership to another tab");
           isLeaderTab = false;
           clearTimeout(leaderHeartbeatTimer);
+          leaderHeartbeatTimer = null;
+          stopCacheVersionPolling();
         }
       }
     };
@@ -6344,11 +6351,12 @@ function setupVisibilityChangeHandler() {
 // ============================================
 function scheduleNextPolling() {
   if (!isLeaderTab) {
-    console.log("[POLLING] Not leader, skipping poll schedule");
+    console.log("[POLLING] Not leader, stopping poll schedule");
+    stopCacheVersionPolling();
     return;
   }
 
-  clearInterval(cacheVersionCheckTimer);
+  stopCacheVersionPolling();
 
   const nextInterval = getJitteredPollingInterval();
   console.log(
