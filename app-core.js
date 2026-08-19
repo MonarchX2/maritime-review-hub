@@ -1,5 +1,5 @@
 ﻿const DB_URL =
-  "https://script.google.com/macros/s/AKfycbzjM_24-2K-1m9FXSaMhBWelyh1s3_QnV0DSFZUcLQh57Lhjl8wxl9z7Z87WRgFwb8L/exec";
+  "https://script.google.com/macros/s/AKfycby4j5hbEWyfqonO9HYKgywo4OAt1NBwerEWWZwLWb1ODbsQGUd-YMMO-H9wX3_C-tBw/exec";
 
 const SYNC_INTERVAL_MS = 3 * 1000;
 const QUIZ_NAVIGATION_BREAKPOINT = 768;
@@ -10,7 +10,6 @@ let syncRetryTimer = null;
 let syncCountdownTimer = null;
 let syncStatusHideTimer = null;
 let syncPollTimer = null;
-let syncPollInFlight = false;
 let syncAttempt = 0;
 let initialSyncSuccessShown = false;
 let pendingSummaryData = null;
@@ -19,7 +18,6 @@ let isColdStart = false;
 let lastSyncStatusTimestamp = "";
 let localCacheVersion = 0;
 let isInitialSyncComplete = false; // Track if the first sync from startup has completed
-let syncStatusGeneration = 0;
 const SYNC_STATUS_STORAGE_KEY = "mrh_last_sync_status_timestamp";
 const CACHE_VERSION_STORAGE_KEY = "mrh_cache_version";
 const NAVIGATION_PATH_STORAGE_KEY = "mrh_navigation_path"; // Persist user's navigation position
@@ -39,17 +37,15 @@ function persistSyncStatusTimestamp(timestamp) {
 }
 
 function readStoredCacheVersion() {
-  const stored = String(
-    getStoredItem?.(CACHE_VERSION_STORAGE_KEY, "") || "",
-  ).trim();
-  return stored;
+  const stored = Number(getStoredItem?.(CACHE_VERSION_STORAGE_KEY, "0") || "0");
+  return Number.isFinite(stored) ? Math.max(0, stored) : 0;
 }
 
 function persistLocalCacheVersion(version) {
-  const nextVersion = String(version ?? "").trim();
-  localCacheVersion = nextVersion;
+  const nextVersion = Number(version) || 0;
+  localCacheVersion = Math.max(0, nextVersion);
   try {
-    setStoredItem?.(CACHE_VERSION_STORAGE_KEY, localCacheVersion);
+    setStoredItem?.(CACHE_VERSION_STORAGE_KEY, String(localCacheVersion));
   } catch (e) {
     console.warn("Unable to persist cache version locally.", e);
   }
@@ -101,15 +97,6 @@ function restoreNavigationPathFromStorage() {
 let isLeaderTab = false;
 let leaderHeartbeatTimer = null;
 let leaderElectionChannel = null;
-let cacheVersionCheckTimer = null;
-let cacheInvalidationChannel = null;
-
-function stopCacheVersionPolling() {
-  if (cacheVersionCheckTimer !== null) {
-    clearInterval(cacheVersionCheckTimer);
-    cacheVersionCheckTimer = null;
-  }
-}
 
 // OPTIMIZATION: ETag/Hash headers for 304 responses
 let lastCacheVersionHash = null;
@@ -117,46 +104,6 @@ let lastCacheVersionHash = null;
 // OPTIMIZATION: Exponential backoff retry tracking
 let failureRetryCount = 0;
 let maxRetryAttempts = 5;
-
-function isRequestAbortError(error) {
-  return (
-    error?.name === "AbortError" ||
-    /\babort(ed|ing)?\b/i.test(String(error?.message || ""))
-  );
-}
-
-function cleanupAppRuntime() {
-  clearTimeout(syncRetryTimer);
-  clearInterval(syncCountdownTimer);
-  clearTimeout(syncStatusHideTimer);
-  clearTimeout(syncPollTimer);
-  clearInterval(leaderHeartbeatTimer);
-  stopCacheVersionPolling();
-  syncRetryTimer = null;
-  syncCountdownTimer = null;
-  syncStatusHideTimer = null;
-  syncPollTimer = null;
-  leaderHeartbeatTimer = null;
-  if (syncAbortController) syncAbortController.abort();
-  syncAbortController = null;
-  if (typeof stopVisualTimer === "function") stopVisualTimer();
-  if (typeof state !== "undefined" && state?.session?.autoNextTimeout) {
-    clearTimeout(state.session.autoNextTimeout);
-    state.session.autoNextTimeout = null;
-  }
-  if (leaderElectionChannel) {
-    leaderElectionChannel.close();
-    leaderElectionChannel = null;
-  }
-  if (cacheInvalidationChannel) {
-    cacheInvalidationChannel.close();
-    cacheInvalidationChannel = null;
-  }
-}
-
-if (typeof window !== "undefined") {
-  window.addEventListener("pagehide", cleanupAppRuntime);
-}
 
 const debugLogger =
   typeof DebugUtils !== "undefined" && DebugUtils.createDebugLogger
@@ -242,10 +189,6 @@ function escapeHTML(value) {
 
 function renderMathExpression(rawExpression, displayMode) {
   return TextUtils.renderMathExpression(rawExpression, displayMode);
-}
-
-function isSafeImageURL(value) {
-  return TextUtils.isSafeImageURL(value);
 }
 
 function encodeHandlerValue(value) {
@@ -509,6 +452,7 @@ function updateShuffleWarning() {
 
 function syncPreferenceControls() {
   const values = {
+    "toggle-active-recall": state.prefs.activeRecall === true,
     "toggle-shuffle-choices": state.prefs.shuffleChoices !== false,
     "toggle-modal-shuffle-choices": state.prefs.shuffleChoices !== false,
     "toggle-shuffle-questions": state.prefs.shuffleQuestions !== false,
@@ -793,7 +737,6 @@ function updateSyncStatus(message, tone = "info", showOverlay = true) {
     return AppSync.updateSyncStatus(message, tone, showOverlay);
   }
   const visualState = getSyncStatusVisualState(tone);
-  const statusGeneration = ++syncStatusGeneration;
   const activeSessionBlocking = Boolean(state.session?.active);
   const shouldSuppressOverlay =
     activeSessionBlocking &&
@@ -860,7 +803,6 @@ function updateSyncStatus(message, tone = "info", showOverlay = true) {
       clearTimeout(syncStatusHideTimer);
       connectionStatus.classList.add("opacity-0", "scale-95");
       setTimeout(() => {
-        if (statusGeneration !== syncStatusGeneration) return;
         if (connectionStatus) {
           connectionStatus.classList.add("hidden");
           connectionStatus.classList.remove("opacity-0", "scale-95");
@@ -872,16 +814,11 @@ function updateSyncStatus(message, tone = "info", showOverlay = true) {
 
 function hideConnectionStatusAfterDelay(delay = 3000) {
   clearTimeout(syncStatusHideTimer);
-  const statusGeneration = ++syncStatusGeneration;
   syncStatusHideTimer = setTimeout(() => {
-    if (statusGeneration !== syncStatusGeneration) return;
     const element = document.getElementById("connection-status");
     if (!element) return;
     element.classList.add("opacity-0", "scale-95");
-    setTimeout(() => {
-      if (statusGeneration === syncStatusGeneration)
-        element.classList.add("hidden");
-    }, 500);
+    setTimeout(() => element.classList.add("hidden"), 500);
   }, delay);
 }
 
@@ -951,17 +888,8 @@ function scheduleSyncPoll() {
 
   clearTimeout(syncPollTimer);
   syncPollTimer = setTimeout(() => {
-    if (syncPollInFlight) return;
-    syncPollInFlight = true;
-    Promise.resolve()
-      .then(() => optimizedBackgroundSync())
-      .catch((error) => {
-        console.error("[SYNC] Background poll failed:", error);
-      })
-      .finally(() => {
-        syncPollInFlight = false;
-        scheduleSyncPoll();
-      });
+    optimizedBackgroundSync();
+    scheduleSyncPoll(); // Schedule next poll
   }, SYNC_INTERVAL_MS);
 }
 
@@ -1037,47 +965,125 @@ function isFolderUnlocked(subject) {
 
 function resolveSubjectAccess(subject, accessMap = {}, summaryEntries = []) {
   const subjectName = String(subject || "").trim();
-  if (!subjectName) return { Hidden: false, Password: "", Locked: false };
+  if (!subjectName) {
+    return { Hidden: false, Password: "", Locked: false };
+  }
 
+  const directEntry = accessMap[subjectName] || {};
   const summaryEntry =
     (Array.isArray(summaryEntries) &&
       summaryEntries.find(
         (item) => String(item?.Subject || "") === subjectName,
       )) ||
-    null;
+    {};
 
-  const localUnlocked = isFolderUnlocked(subjectName);
-  const lockedBySummary = Boolean(summaryEntry?.Locked);
+  const hidden =
+    normalizeAccessFlag(directEntry.Hidden) ||
+    normalizeAccessFlag(summaryEntry.Hidden);
+  const password = String(
+    directEntry.Password ||
+      summaryEntry.Password ||
+      summaryEntry.password ||
+      "",
+  ).trim();
+  const locked =
+    !isFolderUnlocked(subjectName) &&
+    (normalizeAccessFlag(directEntry.Locked) ||
+      normalizeAccessFlag(summaryEntry.Locked) ||
+      password !== "");
 
-  // `Password` is deliberately not reconstructed on the public client.
   return {
-    Hidden: false,
-    Password: "",
-    Locked: !localUnlocked && lockedBySummary,
+    Hidden: hidden,
+    Password: password,
+    Locked: locked,
   };
 }
 
+function buildAccessMetadataMap(accessData) {
+  const map = {};
+  const rows = Array.isArray(accessData) ? accessData : [];
+
+  rows.forEach((entry) => {
+    if (!entry || !entry.Subject) return;
+    const subject = String(entry.Subject).trim();
+    if (!subject) return;
+
+    const normalizedLocked =
+      entry.Locked === true ||
+      String(entry.Locked || "").toLowerCase() === "true";
+    const normalizedHidden =
+      entry.Hidden === true ||
+      String(entry.Hidden || "").toLowerCase() === "true";
+    const password = String(entry.Password || entry.password || "").trim();
+
+    map[subject] = {
+      Subject: subject,
+      Password: password,
+      Hidden: normalizedHidden,
+      Locked: normalizedLocked || password !== "",
+    };
+  });
+
+  return map;
+}
+
+// REMOVED: mergeAccessMetadataIntoSummary - NOT USED
+// Backend handles all access control in filterSummaryDataByAccess()
+// Frontend should never merge or modify backend response
+
+async function fetchAccessMetadata() {
+  const url = `${DB_URL}?access=1&_t=${Date.now()}`;
+  try {
+    const response = await fetch(url, {
+      cache: "no-store",
+      redirect: "follow",
+    });
+    if (!response.ok) return {};
+    const data = await response.json();
+    state.accessMetadata = buildAccessMetadataMap(
+      Array.isArray(data) ? data : [],
+    );
+    return state.accessMetadata;
+  } catch (err) {
+    console.warn("Access metadata unavailable.", err);
+    return {};
+  }
+}
+
 function isDeckPasswordProtected(subject) {
-  return isDeckLocked(subject);
-}
-
-function isDeckHidden(subject) {
   const rawSubject = String(subject || "").trim();
   if (!rawSubject) return false;
-  // Hidden decks are omitted by the fixed backend summary, so absence is
-  // handled by the deck tree itself rather than a client-side secret list.
-  return false;
-}
 
-function isDeckLocked(subject) {
-  const rawSubject = String(subject || "").trim();
-  if (!rawSubject) return false;
   const access = resolveSubjectAccess(
     rawSubject,
     state.accessMetadata || {},
     state.categorySummary || [],
   );
-  return Boolean(access.Locked);
+  return Boolean(access.Password) || Boolean(access.Locked);
+}
+
+function isDeckHidden(subject) {
+  const rawSubject = String(subject || "").trim();
+  if (!rawSubject) return false;
+
+  const access = resolveSubjectAccess(
+    rawSubject,
+    state.accessMetadata || {},
+    state.categorySummary || [],
+  );
+  return Boolean(access.Hidden);
+}
+
+function isDeckLocked(subject) {
+  const rawSubject = String(subject || "").trim();
+  if (!rawSubject) return false;
+
+  const access = resolveSubjectAccess(
+    rawSubject,
+    state.accessMetadata || {},
+    state.categorySummary || [],
+  );
+  return Boolean(access.Locked) || Boolean(access.Password);
 }
 
 function applySummaryData(summaryData) {
@@ -1176,12 +1182,6 @@ async function checkSyncStatusLightweight() {
   // Lightweight version check instead of full MRH_Summary.json
   // Used for background sync checks to reduce bandwidth
   try {
-    if (
-      typeof AppNetwork !== "undefined" &&
-      typeof AppNetwork.getSyncStatus === "function"
-    ) {
-      return await AppNetwork.getSyncStatus();
-    }
     const response = await fetch(DB_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -1189,10 +1189,10 @@ async function checkSyncStatusLightweight() {
       redirect: "follow",
       cache: "no-store",
     });
+
     if (!response.ok) return null;
     return await response.json();
   } catch (err) {
-    if (isRequestAbortError(err)) return null;
     console.log("[SYNC] Lightweight status check failed:", err);
     return null;
   }
@@ -1258,17 +1258,6 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
       clearTimeout(timeoutId);
       console.warn("[COLD START] Detected! Backend is rebuilding cache...");
       isColdStart = true;
-
-      if (isBackgroundCheck && state.categorySummary.length > 0) {
-        syncConnected = false;
-        updateSyncStatus(
-          `<i class="fa-solid fa-exclamation-triangle mr-1"></i> Using locally cached deck list while the database rebuilds.`,
-          "warning",
-          false,
-        );
-        scheduleSyncPoll();
-        return;
-      }
 
       // Show notification and force refresh
       showColdStartNotification();
@@ -1343,10 +1332,6 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
   } catch (err) {
     clearTimeout(timeoutId);
     if (requestController !== syncAbortController) return;
-    if (isRequestAbortError(err)) {
-      scheduleSyncPoll();
-      return;
-    }
     console.error("[SYNC] Error:", err);
 
     // FIX 3: GRACEFUL FALLBACK FOR CACHED DATA ON ERROR
@@ -1704,7 +1689,7 @@ function renderQuestion() {
   });
 
   const imgEl = document.getElementById("q-image");
-  if (isSafeImageURL(q.ImageURL)) {
+  if (q.ImageURL && q.ImageURL.trim() !== "") {
     imgEl.onload = () => imgEl.classList.remove("hidden");
     imgEl.onerror = () => {
       imgEl.removeAttribute("src");
@@ -1880,7 +1865,7 @@ function renderQuestion() {
   );
 
   upcomingQuestions.forEach((nextQ) => {
-    if (nextQ && isSafeImageURL(nextQ.ImageURL)) {
+    if (nextQ && nextQ.ImageURL) {
       const imgPreload = new Image();
       imgPreload.src = nextQ.ImageURL;
     }
@@ -2555,49 +2540,6 @@ function renderCategoryProgress() {
   applyTitleMode();
 }
 
-async function fetchDeckInPages(subject, pass = "") {
-  const pageSize = 100;
-  const questions = [];
-  const maxPages = 1000;
-  for (let page = 1; page <= maxPages; page += 1) {
-    let result;
-    if (
-      typeof AppNetwork !== "undefined" &&
-      typeof AppNetwork.getDeck === "function"
-    ) {
-      result = await AppNetwork.getDeck(subject, pass, {
-        page,
-        limit: pageSize,
-      });
-    } else if (
-      typeof NetworkUtils !== "undefined" &&
-      typeof NetworkUtils.callBackend === "function"
-    ) {
-      result = await NetworkUtils.callBackend({
-        type: "get_deck",
-        subject,
-        password: pass,
-        page,
-        limit: pageSize,
-      });
-    } else {
-      throw new Error("Backend network support is unavailable.");
-    }
-
-    if (Array.isArray(result)) return result;
-    if (!result || !Array.isArray(result.data))
-      throw new Error("Unexpected paginated deck response.");
-    questions.push(...result.data);
-    if (questions.length >= Number(result.total || questions.length)) break;
-    if (result.data.length < pageSize) break;
-
-    if (page === maxPages) {
-      throw new Error("Deck exceeds the supported pagination limit.");
-    }
-  }
-  return questions;
-}
-
 async function fetchAndStartCategory(subject, mode, pass = null) {
   if (
     typeof DeckNav !== "undefined" &&
@@ -2810,9 +2752,11 @@ async function deleteSubjectData(subject) {
     clearTimeout(syncRetryTimer);
     clearInterval(syncCountdownTimer);
 
-    // Local deletion must not claim that the backend is reachable.
+    // Reset sync state after local deletion succeeds
+    // (deletion doesn't depend on backend connectivity)
     syncAttempt = 0;
-    syncConnected = false;
+    syncConnected = true;
+    setGlobalLoadingState(false);
 
     const beforeSummary = (state.categorySummary || []).find(
       (deck) => deck && deck.Subject === subject,
@@ -2938,7 +2882,6 @@ async function deleteSubjectData(subject) {
     }
 
     updateDashboard();
-    await syncDatabase(false, true);
   }
 }
 
@@ -2983,8 +2926,19 @@ async function fetchDeckQuestionsFromNetwork(
   }
 
   try {
+    let fetchUrl = `${DB_URL}?subject=${encodeURIComponent(subject)}&_t=${Date.now()}`;
+    if (pass) fetchUrl += `&password=${encodeURIComponent(pass)}`;
+
+    const response = await fetch(fetchUrl, { cache: "no-store" });
+    const text = await response.text();
     let newQuestions;
-    newQuestions = await fetchDeckInPages(subject, pass || "");
+    try {
+      newQuestions = JSON.parse(text);
+    } catch (parseError) {
+      throw new Error(
+        `Invalid backend response while loading deck: ${text.slice(0, 200)}`,
+      );
+    }
     if (newQuestions && newQuestions.error) {
       const errorText = String(newQuestions.error || "").toLowerCase();
       if (
@@ -3038,19 +2992,7 @@ async function fetchDeckQuestionsFromNetwork(
     return validQuestions;
   } catch (err) {
     console.warn("Network fetch failed.", err);
-    if (err?.code === "UNAUTHORIZED" && !pass) {
-      pendingDeckSubject = subject;
-      pendingDeckAction = pendingDeckAction || "continue";
-      openDeckPasswordModal(subject, pendingDeckAction || "continue");
-    }
-    const cachedQuestions = getQuestionsForSubject(subject);
-    if (cachedQuestions.length === 0 && typeof showToast === "function") {
-      showToast(
-        "Unable to load this deck. Check your connection and try again.",
-        "error",
-      );
-    }
-    return cachedQuestions;
+    return getQuestionsForSubject(subject);
   } finally {
     if (loaderElement) loaderElement.classList.add("hidden");
   }
@@ -3284,9 +3226,6 @@ function renderDeckReview(subject, questions) {
   displayQuestions.forEach((q, displayIndex) => {
     const originalIndex = questionIndexById.get(q.ID) ?? displayIndex;
     const isQuestionFavorite = favoriteQuestions.has(q.ID);
-    const safeImageURL = isSafeImageURL(q.ImageURL)
-      ? escapeHTML(q.ImageURL)
-      : "";
 
     let rawQuestionText = q.Question ? String(q.Question) : "";
     let cleanQuestionText = rawQuestionText.replace(/^\s*\d+\.\s*/, "");
@@ -3388,7 +3327,7 @@ function renderDeckReview(subject, questions) {
                 
                 <p class="font-medium text-gray-800 dark:text-gray-100 mb-2 text-lg">${formatQuestionText(cleanQuestionText)}</p>
                 
-                ${safeImageURL ? `<img src="${safeImageURL}" alt="Reference" class="w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500">` : ""}
+                ${q.ImageURL ? `<img src="${escapeHTML(q.ImageURL)}" alt="Reference" class="w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500">` : ""}                        
                 ${choicesHTML}
                 
                 ${
@@ -4085,61 +4024,27 @@ document.addEventListener("keydown", (e) => {
 
 let globallyReportedQs = new Set();
 
-async function fetchReportPages(role = "user", token = "") {
-  const pageSize = 100;
-  const reports = [];
-  for (let page = 1; page <= 100; page += 1) {
-    const result =
-      typeof AppNetwork !== "undefined" &&
-      typeof AppNetwork.getReports === "function"
-        ? await AppNetwork.getReports(role, token, { page, limit: pageSize })
-        : await callBackend({
-            type: "get_reports",
-            role,
-            page,
-            limit: pageSize,
-            ...(role === "admin" ? { token } : {}),
-          });
-    if (Array.isArray(result)) return reports.concat(result);
-    if (!result || !Array.isArray(result.data))
-      throw new Error("The reports endpoint returned an invalid response.");
-    reports.push(...result.data);
-    if (reports.length >= Number(result.total || reports.length)) break;
-    if (result.data.length < pageSize) break;
-  }
-  return reports;
-}
-
 async function fetchGlobalReports() {
   try {
-    const reports = await fetchReportPages("user");
+    const reports = await callBackend({ type: "get_reports", role: "user" });
     if (Array.isArray(reports))
       globallyReportedQs = new Set(reports.map((r) => r.questionId));
   } catch (e) {
-    if (isRequestAbortError(e)) return;
     console.warn("Unable to fetch global reports", e);
   }
 }
 
-async function initializeApp() {
-  try {
-    await loadState();
-  } catch (error) {
-    console.error("Application state initialization failed:", error);
-    showToast(
-      "Unable to initialize the application. Please reload the page.",
-      "error",
-    );
-    return;
-  }
+window.onload = async () => {
+  await loadState();
 
   if ("serviceWorker" in navigator) {
     try {
-      await navigator.serviceWorker.register(
-        new URL("sw.js", document.baseURI),
-      );
-    } catch (error) {
-      console.warn("Unable to register the service worker.", error);
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const registration of registrations) {
+        await registration.unregister();
+      }
+    } catch (e) {
+      console.warn("Unable to clear stale service worker registrations", e);
     }
   }
 
@@ -4148,24 +4053,9 @@ async function initializeApp() {
     currentAppMode = toggleElement.checked ? "review" : "quiz";
   }
 
-  try {
-    await syncDatabase(false, state.categorySummary.length > 0);
-  } catch (error) {
-    console.error("Initial database sync failed:", error);
-    showToast("Unable to connect to the database.", "error");
-  }
-  try {
-    await fetchGlobalReports();
-  } catch (error) {
-    console.error("Initial report sync failed:", error);
-  }
-}
-
-if (document.readyState === "complete") {
-  void initializeApp();
-} else {
-  window.addEventListener("load", () => void initializeApp(), { once: true });
-}
+  syncDatabase();
+  fetchGlobalReports();
+};
 
 window.addEventListener("resize", () => {
   if (state.session.active && state.prefs.quizNavigationPosition === "auto")
@@ -4345,17 +4235,6 @@ async function resumeSession(password = null) {
 
   renderQuestion();
 }
-
-const resumeSessionInternal = resumeSession;
-resumeSession = async (...args) => {
-  try {
-    return await resumeSessionInternal(...args);
-  } catch (error) {
-    console.error("Unable to resume session:", error);
-    showToast("Unable to resume this session. Please try again.", "error");
-    return false;
-  }
-};
 
 function clearSessionProgress() {
   removeStoredItem("saved_session");
@@ -5273,7 +5152,7 @@ async function loadReports() {
     pendingContainer.innerHTML = `<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500"></i><p class="mt-2 text-gray-500">Fetching community reports...</p></div>`;
 
   try {
-    const reports = await fetchReportPages("user");
+    const reports = await callBackend({ type: "get_reports", role: "user" });
     if (!Array.isArray(reports) || reports.length === 0) {
       if (pendingContainer)
         pendingContainer.innerHTML = `<p class="text-center text-gray-500 py-4">No pending reports.</p>`;
@@ -5382,24 +5261,12 @@ function openModeSelect(subject) {
 }
 
 function proceedToReview() {
-  reviewDeck(activeHubSubject).catch((error) => {
-    console.error("Unable to open deck review:", error);
-    showToast(
-      "Unable to open this deck. Check your connection and try again.",
-      "error",
-    );
-  });
+  reviewDeck(activeHubSubject);
 }
 
 function proceedToQuiz() {
   if (activeHubSubject) {
-    fetchAndStartCategory(activeHubSubject, "continue").catch((error) => {
-      console.error("Unable to start deck session:", error);
-      showToast(
-        "Unable to start this session. Check your connection and try again.",
-        "error",
-      );
-    });
+    fetchAndStartCategory(activeHubSubject, "continue");
   }
 }
 
@@ -5494,21 +5361,9 @@ function handleDeckClick(subj, action = "continue") {
     return;
   }
   if (currentAppMode === "review") {
-    reviewDeck(subj, null).catch((error) => {
-      console.error("Unable to open deck review:", error);
-      showToast(
-        "Unable to open this deck. Check your connection and try again.",
-        "error",
-      );
-    });
+    reviewDeck(subj, null);
   } else {
-    fetchAndStartCategory(subj, action, null).catch((error) => {
-      console.error("Unable to start deck session:", error);
-      showToast(
-        "Unable to start this session. Check your connection and try again.",
-        "error",
-      );
-    });
+    fetchAndStartCategory(subj, action, null);
   }
 }
 
@@ -5636,52 +5491,27 @@ function updateTitleModeButton() {
   }
 }
 
-async function autoSaveDeckPassword(deckPath, newPassword, options = {}) {
+async function autoSaveDeckPassword(deckPath, newPassword) {
   const safeToken = typeof getAdminToken === "function" ? getAdminToken() : "";
-  if (!safeToken) {
-    throw new Error(
-      "Admin authentication is required to change deck passwords.",
-    );
-  }
+  const password = String(newPassword || "").trim();
 
-  const result = await callBackend({
-    type: "admin_update",
-    token: safeToken,
-    admin_last_modified_timestamp:
-      options.admin_last_modified_timestamp ||
-      state.adminLastModifiedTimestamp ||
-      "",
-    updates: [
-      {
-        oldName: String(deckPath || "").trim(),
-        newName: String(deckPath || "").trim(),
-        password: String(newPassword || "").trim(),
-      },
-    ],
-  });
-
-  if (result?.status === "conflict") {
-    state.adminLastModifiedTimestamp =
-      result.admin_last_modified_timestamp || "";
-    throw new Error(
-      result.message || "Admin data changed. Reload before saving.",
-    );
-  }
-  if (result?.status !== "success") {
-    throw new Error(result?.message || "Failed to update deck password.");
-  }
-
-  state.adminLastModifiedTimestamp =
-    result.admin_last_modified_timestamp ||
-    state.adminLastModifiedTimestamp ||
-    "";
   try {
-    setStoredItem(
-      "mrh_admin_last_modified_timestamp",
-      state.adminLastModifiedTimestamp,
-    );
-  } catch (_) {}
-  return result;
+    const result = await callBackend({
+      type: "admin_update_password",
+      token: safeToken,
+      deck: deckPath,
+      password: password,
+    });
+
+    if (result.status === "success") {
+      console.log(`Password for ${deckPath} updated successfully.`);
+    } else {
+      alert("Failed to update password: " + result.message);
+    }
+  } catch (e) {
+    alert("Network error while auto-saving password.");
+    console.error(e);
+  }
 }
 
 const folderPasswordButton = document.getElementById(
@@ -5691,16 +5521,6 @@ if (folderPasswordButton) {
   folderPasswordButton.addEventListener("click", async () => {
     const pass = document.getElementById("folder-password-input")?.value || "";
     const btn = folderPasswordButton;
-    const folderPath =
-      typeof UIModal !== "undefined" &&
-      typeof UIModal.getPendingLockedFolderPath === "function"
-        ? UIModal.getPendingLockedFolderPath()
-        : pendingLockedFolderPath;
-    const folderName =
-      typeof UIModal !== "undefined" &&
-      typeof UIModal.getPendingLockedFolderName === "function"
-        ? UIModal.getPendingLockedFolderName()
-        : pendingLockedFolderName;
 
     if (!pass) {
       alert("Please enter a password.");
@@ -5709,30 +5529,37 @@ if (folderPasswordButton) {
 
     await runWithBusyButton(btn, "Verifying...", async () => {
       try {
-        if (!folderPath) throw new Error("Folder access context is missing.");
-        const result =
-          typeof AppNetwork !== "undefined" &&
-          typeof AppNetwork.verifyFolderAccess === "function"
-            ? await AppNetwork.verifyFolderAccess(folderPath, pass)
-            : await callBackend({
-                type: "verify_folder_access",
-                subject: folderPath,
-                password: pass,
-              });
-        if (result?.status !== "success") {
-          throw new Error(result?.message || "Incorrect Password.");
+        const response = await fetch(
+          `${DB_URL}?subject=${encodeURIComponent(pendingLockedFolderPath || "")}&password=${encodeURIComponent(pass)}&_t=${Date.now()}`,
+        );
+        const text = await response.text();
+        let result;
+        try {
+          result = JSON.parse(text);
+        } catch (parseError) {
+          throw new Error(
+            `Invalid backend response while verifying folder password: ${text.slice(0, 200)}`,
+          );
         }
-
-        setFolderUnlocked(folderPath, true);
-        closeFolderPasswordModal();
-        if (!state.currentPath) state.currentPath = [];
-        if (folderName && !state.currentPath.includes(folderName)) {
-          state.currentPath.push(folderName);
+        if (result.error) {
+          alert(result.error);
+        } else {
+          const folderPath =
+            pendingLockedFolderPath || pendingLockedFolderName || "";
+          setFolderUnlocked(folderPath, true);
+          closeFolderPasswordModal();
+          if (!state.currentPath) state.currentPath = [];
+          if (
+            pendingLockedFolderName &&
+            !state.currentPath.includes(pendingLockedFolderName)
+          ) {
+            state.currentPath.push(pendingLockedFolderName);
+          }
+          renderCategoryProgress();
         }
-        renderCategoryProgress();
       } catch (error) {
         console.error("Verification failed", error);
-        alert(error?.message || "Unable to verify folder access.");
+        alert("Network error while verifying the folder password.");
       }
     });
   });
@@ -5758,17 +5585,10 @@ if (btnSubmitDeckPassword) {
       } else if (pendingDeckAction === "resume-review") {
         await reviewDeck(pendingDeckSubject, pass);
       } else if (currentAppMode === "review") {
-        await reviewDeck(pendingDeckSubject, pass);
+        reviewDeck(pendingDeckSubject, pass);
       } else {
-        await fetchAndStartCategory(
-          pendingDeckSubject,
-          pendingDeckAction,
-          pass,
-        );
+        fetchAndStartCategory(pendingDeckSubject, pendingDeckAction, pass);
       }
-    }).catch((error) => {
-      console.error("Unable to complete password-protected action:", error);
-      showToast("Unable to complete this action. Please try again.", "error");
     });
   });
 }
@@ -6193,8 +6013,6 @@ function setupLeaderElection() {
           console.log("[LEADER] Yielding leadership to another tab");
           isLeaderTab = false;
           clearTimeout(leaderHeartbeatTimer);
-          leaderHeartbeatTimer = null;
-          stopCacheVersionPolling();
         }
       }
     };
@@ -6279,50 +6097,89 @@ function getJitteredPollingInterval() {
 // OPTIMIZATION: Enhanced Cache Version Check with ETag
 // ============================================
 async function checkCacheVersionWithETag() {
+  // Only leader tab performs polling (reduces traffic 66%)
   if (!isLeaderTab) return;
-  if (typeof document !== "undefined" && document.hidden) return;
+
+  // Pause polling when tab is hidden
+  if (typeof document !== "undefined" && document.hidden) {
+    console.log("[CACHE] Tab hidden, skipping version check");
+    return;
+  }
 
   try {
-    const data =
-      typeof AppNetwork !== "undefined" &&
-      typeof AppNetwork.getCacheVersion === "function"
-        ? await AppNetwork.getCacheVersion()
-        : null;
+    const headers = { "Content-Type": "text/plain;charset=utf-8" };
 
-    if (!data || data.status === "error") return;
-
-    const remoteVersion = String(data.version ?? "").trim();
-    if (!remoteVersion) return;
-
-    const previousVersion = String(
-      localCacheVersion || readStoredCacheVersion() || "",
-    ).trim();
-    if (previousVersion && remoteVersion !== previousVersion) {
-      console.log(
-        `[CACHE] Version changed: ${previousVersion} -> ${remoteVersion}`,
-      );
-
-      if (isLeaderTab && typeof leaderElectionChannel !== "undefined") {
-        try {
-          leaderElectionChannel.postMessage({
-            type: "cache_version_updated",
-            newVersion: remoteVersion,
-          });
-        } catch (e) {
-          console.log("[CACHE] Could not broadcast version update");
-        }
-      }
-
-      await reloadAppStateInMemory();
+    // Send last known hash to enable 304 responses
+    if (lastCacheVersionHash) {
+      headers["If-None-Match"] = lastCacheVersionHash;
     }
 
-    persistLocalCacheVersion(remoteVersion);
-    failureRetryCount = 0;
+    const response = await fetchWithExponentialBackoff(
+      DB_URL,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ type: "get_cache_version" }),
+      },
+      2, // Max 2 retries for version check
+    );
+
+    // 304 Not Modified = cache still valid, nothing to do
+    if (response.status === 304) {
+      console.log("[CACHE] 304 Not Modified, cache is current");
+      failureRetryCount = 0;
+      return;
+    }
+
+    if (!response.ok) return;
+
+    const data = await response.json();
+
+    // Store ETag for next request
+    const etag = response.headers.get("ETag");
+    if (etag) lastCacheVersionHash = etag;
+
+    if (data && typeof data.version === "number") {
+      remoteCacheVersion = data.version;
+      const storedLocalCacheVersion = readStoredCacheVersion();
+      if (localCacheVersion === 0 && storedLocalCacheVersion > 0) {
+        localCacheVersion = storedLocalCacheVersion;
+      }
+
+      // If version changed, leader broadcasts to all tabs
+      if (localCacheVersion > 0 && remoteCacheVersion > localCacheVersion) {
+        console.log(
+          `[CACHE] Version changed: ${localCacheVersion} -> ${remoteCacheVersion}`,
+        );
+
+        if (isLeaderTab && typeof leaderElectionChannel !== "undefined") {
+          try {
+            leaderElectionChannel.postMessage({
+              type: "cache_version_updated",
+              newVersion: remoteCacheVersion,
+            });
+          } catch (e) {
+            console.log("[CACHE] Could not broadcast version update");
+          }
+        }
+
+        // In-memory state re-fetch (no page reload!)
+        await reloadAppStateInMemory();
+      }
+
+      persistLocalCacheVersion(remoteCacheVersion);
+      failureRetryCount = 0;
+    }
   } catch (e) {
     failureRetryCount++;
-    if (isRequestAbortError(e)) return;
     console.error("[CACHE] Version check failed:", e);
-    if (failureRetryCount > maxRetryAttempts) failureRetryCount = 0;
+
+    if (failureRetryCount > maxRetryAttempts) {
+      console.warn(
+        "[CACHE] Max retry attempts exceeded, giving up temporarily",
+      );
+      failureRetryCount = 0;
+    }
   }
 }
 
@@ -6351,12 +6208,11 @@ function setupVisibilityChangeHandler() {
 // ============================================
 function scheduleNextPolling() {
   if (!isLeaderTab) {
-    console.log("[POLLING] Not leader, stopping poll schedule");
-    stopCacheVersionPolling();
+    console.log("[POLLING] Not leader, skipping poll schedule");
     return;
   }
 
-  stopCacheVersionPolling();
+  clearInterval(cacheVersionCheckTimer);
 
   const nextInterval = getJitteredPollingInterval();
   console.log(
@@ -6390,11 +6246,16 @@ function forcePageRefresh() {
   }, 100);
 }
 
-function initializeDomFeatures() {
+window.addEventListener("DOMContentLoaded", () => {
   // CRITICAL FIX: Setup cache invalidation listener and version checking
   setupCacheInvalidationListener();
   startCacheVersionChecking();
   initDetailsExclusivity();
+
+  // CRITICAL: Fetch access metadata early to avoid filtering issues
+  fetchAccessMetadata().catch((err) => {
+    console.warn("Initial access metadata fetch failed, will retry:", err);
+  });
 
   const mainEl = document.querySelector("main");
   const headerEl = document.querySelector("header");
@@ -6446,12 +6307,4 @@ function initializeDomFeatures() {
     applyTitleMode();
     updateTitleModeButton();
   }, 100);
-}
-
-if (document.readyState === "loading") {
-  window.addEventListener("DOMContentLoaded", initializeDomFeatures, {
-    once: true,
-  });
-} else {
-  initializeDomFeatures();
-}
+});
