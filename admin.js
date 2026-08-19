@@ -7,7 +7,7 @@
 
 const ADMIN_REQUEST_TIMEOUT_MS = 30_000;
 const ADMIN_MAX_BATCH_SIZE = 200;
-const ADMIN_SUBJECT_MAX_LENGTH = 100;
+const ADMIN_SUBJECT_MAX_LENGTH = 500;
 const ADMIN_CACHE_CHANNEL_NAME = "mrh_cache_invalidation";
 
 const adminState = {
@@ -840,7 +840,7 @@ function adminRenderFolderSettingsModal({
 }) {
   const persistedText = node.hasFolderRecord
     ? ""
-    : '<p class="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">This folder has no dedicated folder record. Changes may be rejected by the backend if it does not support creating folder records from a path.</p>';
+    : '<p class="mt-2 rounded border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-200">This hierarchy node does not yet have an access record. Saving will create one automatically.</p>';
 
   return `
     <div id="${modalId}" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] hidden opacity-0 flex items-center justify-center p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-label="${adminEscapeHTML(folderName)} settings">
@@ -880,7 +880,7 @@ function adminRenderFolderSettingsModal({
                 ${adminSaveInProgress || adminClearInProgress ? "disabled" : ""}>
               <i class="fa-solid fa-eye-slash"></i> Hide Entire Folder
             </label>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Hidden from regular users (not synced)</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Hidden from regular users; all descendants remain inaccessible until the folder is shown.</p>
           </div>
 
           <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
@@ -911,7 +911,21 @@ function adminRenderDeck(deck, layout) {
             </h3>
             <span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm"><i class="fa-solid fa-cloud mr-1"></i></span>
           </div>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3 break-all font-mono min-h-[2.5rem]">${originalPath}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-2 break-all font-mono">${originalPath}</p>
+          <div class="mb-3">
+            <div class="flex justify-between items-center mb-1">
+              <label class="text-[10px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">New Path</label>
+              <span class="text-[10px] text-gray-500 font-mono" data-char-count="${deck.index}">${deck.originalFull.length}/${ADMIN_SUBJECT_MAX_LENGTH}</span>
+            </div>
+            <input type="text"
+              id="new-subj-${deck.index}"
+              value="${originalPath}"
+              maxlength="${ADMIN_SUBJECT_MAX_LENGTH}"
+              data-uuid="${uuid}"
+              data-original-name="${originalPath}"
+              class="admin-subject-path-input w-full p-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded text-sm focus:border-brand-500 focus:ring-2 outline-none transition-all"
+              ${disabled}>
+          </div>
           ${uuid ? `<p class="text-[10px] text-gray-500 dark:text-gray-400 mb-3 break-all font-mono">${uuid}</p>` : ""}
           <div class="space-y-2 mt-auto">
             <div>
@@ -1124,7 +1138,8 @@ function renderGridView(tree) {
       a.localeCompare(b, undefined, { sensitivity: "base" }),
     );
     for (const [name, child] of children) {
-      contents += `<div class="rounded border border-gray-200 dark:border-gray-700 p-2"><div class="font-semibold text-sm text-gray-800 dark:text-gray-100">📁 ${adminEscapeHTML(name)}</div><div class="text-xs text-gray-500">${adminCountDecks(child)} deck${adminCountDecks(child) === 1 ? "" : "s"}</div></div>`;
+      const childDeckCount = adminCountDecks(child);
+      contents += `<div class="rounded border border-gray-200 dark:border-gray-700 p-2"><div class="font-semibold text-sm text-gray-800 dark:text-gray-100">📁 ${adminEscapeHTML(name)}</div><div class="text-xs text-gray-500">${childDeckCount} deck${childDeckCount === 1 ? "" : "s"}</div></div>`;
     }
     for (const deck of node.decks.slice().sort((a, b) =>
       a.deckName.localeCompare(b.deckName, undefined, {
@@ -1208,13 +1223,18 @@ function adminNormalizeSubjectPath(value) {
 }
 
 function adminValidateSubjectPath(path) {
-  if (!path) return "Subject path cannot be empty.";
-  if (path.length > ADMIN_SUBJECT_MAX_LENGTH) {
+  const normalized = adminNormalizeSubjectPath(path);
+  if (!normalized) return "Subject path cannot be empty.";
+  if (normalized.length > ADMIN_SUBJECT_MAX_LENGTH) {
     return `Subject path must be ${ADMIN_SUBJECT_MAX_LENGTH} characters or fewer.`;
   }
-  const parts = path.split("::");
+
+  const parts = normalized.split("::");
   if (parts.some((part) => !part.trim())) {
     return "Subject paths cannot contain empty hierarchy levels.";
+  }
+  if (parts.some((part) => part.trim().length > 100)) {
+    return "Each hierarchy level must be 100 characters or fewer.";
   }
   return "";
 }
@@ -1242,26 +1262,46 @@ function adminCollectUpdates() {
     const path = adminNormalizeSubjectPath(input.getAttribute("data-path"));
     const pass = adminNormalizeText(input.value);
     const original = adminNormalizeText(input.getAttribute("data-orig"));
+
     if (!path) {
       errors.push("A folder setting is missing its path.");
       continue;
     }
-    if (pass !== original)
-      adminAddUpdate(updatesBySubject, path, { password: pass });
+
+    const pathError = adminValidateSubjectPath(path);
+    if (pathError) {
+      errors.push(`${path}: ${pathError}`);
+      continue;
+    }
+
+    if (pass !== original) {
+      adminAddUpdate(updatesBySubject, path, { password: pass, newName: path });
+    }
   }
 
   for (const checkbox of doc.querySelectorAll(".folder-hidden-input")) {
     const path = adminNormalizeSubjectPath(checkbox.getAttribute("data-path"));
     const hidden = Boolean(checkbox.checked);
     const original = adminToBoolean(checkbox.getAttribute("data-orig"));
+
     if (!path) {
       errors.push("A folder setting is missing its path.");
       continue;
     }
-    if (hidden !== original) adminAddUpdate(updatesBySubject, path, { hidden });
+
+    const pathError = adminValidateSubjectPath(path);
+    if (pathError) {
+      errors.push(`${path}: ${pathError}`);
+      continue;
+    }
+
+    if (hidden !== original) {
+      adminAddUpdate(updatesBySubject, path, { hidden, newName: path });
+    }
   }
 
   const records = Array.isArray(adminState.subjects) ? adminState.subjects : [];
+
   records.forEach((record, index) => {
     if (!record || adminToBoolean(record.IsFolder)) return;
 
@@ -1271,10 +1311,14 @@ function adminCollectUpdates() {
     const newNameInput = adminGetElement(`new-subj-${index}`);
     const passInput = adminGetElement(`deck-pass-${index}`);
     const hiddenInput = adminGetElement(`deck-hidden-${index}`);
-    if (!newNameInput || !passInput) return;
 
-    const inputValue = adminNormalizeSubjectPath(newNameInput.value);
+    if (!passInput) return;
+
+    const inputValue = newNameInput
+      ? adminNormalizeSubjectPath(newNameInput.value)
+      : originalName;
     const newName = inputValue || originalName;
+
     const pathError = adminValidateSubjectPath(newName);
     if (pathError) errors.push(`${originalName}: ${pathError}`);
 
@@ -1287,10 +1331,12 @@ function adminCollectUpdates() {
 
     const patch = { newName };
     let changed = newName !== originalName;
+
     if (currentPass !== originalPass) {
       patch.password = currentPass;
       changed = true;
     }
+
     if (currentHidden !== originalHidden) {
       patch.hidden = currentHidden;
       changed = true;
@@ -1301,33 +1347,14 @@ function adminCollectUpdates() {
 
   const updates = Array.from(updatesBySubject.values());
 
-  const finalNames = new Map();
-  for (const record of records) {
-    const oldName = adminNormalizeSubjectPath(record?.Subject);
-    if (oldName) finalNames.set(oldName, oldName);
-  }
-  for (const update of updates) {
-    finalNames.delete(update.oldName);
-    finalNames.set(adminNormalizeSubjectPath(update.newName), update.newName);
-  }
-
-  const duplicateNames = new Set();
-  for (const name of finalNames.keys()) {
-    if (!name) duplicateNames.add(name);
-  }
-
-  // The map above already de-duplicates names by key. Detect collisions among
-  // explicitly changed records by comparing their final paths.
   const changedNames = new Map();
   for (const update of updates) {
     const finalName = adminNormalizeSubjectPath(update.newName);
     const existing = changedNames.get(finalName);
-    if (existing && existing !== update.oldName) duplicateNames.add(finalName);
+    if (existing && existing !== update.oldName) {
+      errors.push(`Duplicate destination subject: ${finalName}`);
+    }
     changedNames.set(finalName, update.oldName);
-  }
-
-  if (duplicateNames.size) {
-    errors.push("Two or more records would end up with the same subject path.");
   }
 
   if (updates.length > ADMIN_MAX_BATCH_SIZE) {
@@ -1336,7 +1363,7 @@ function adminCollectUpdates() {
     );
   }
 
-  return { updates, errors };
+  return { updates, errors: [...new Set(errors)] };
 }
 
 async function adminClearAllSubjects() {
@@ -1922,43 +1949,22 @@ async function saveEditedQuestion() {
 // Legacy compatibility helpers. The current generated UI no longer depends on them,
 // but keeping the public functions avoids breaking older HTML that may still call them.
 function cascadePasswordCompat(btn) {
+  // Compatibility entry point retained for older HTML. Password inheritance is
+  // intentionally disabled: each node is governed only by its own metadata.
   const input = btn?.previousElementSibling;
   if (!input) return 0;
-  const folderPath = adminNormalizeSubjectPath(input.getAttribute("data-path"));
-  const pass = adminNormalizeText(input.value);
-  let count = 0;
-
-  adminState.subjects.forEach((subject, index) => {
-    if (adminNormalizeSubjectPath(subject?.Subject) !== folderPath) return;
-    const deckInput = adminGetElement(`deck-pass-${index}`);
-    if (deckInput) {
-      deckInput.value = pass;
-      deckInput.dispatchEvent(new Event("input", { bubbles: true }));
-      count += 1;
-    }
-  });
-  return count;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  return 0;
 }
 
 function cascadeHiddenCompat(btn) {
+  // Compatibility entry point retained for older HTML. Hidden state is stored
+  // on the selected folder/deck and is evaluated hierarchically by the backend;
+  // it is never copied into child metadata.
   const checkbox = btn?.previousElementSibling;
   if (!checkbox) return 0;
-  const folderPath = adminNormalizeSubjectPath(
-    checkbox.getAttribute("data-path"),
-  );
-  const hidden = Boolean(checkbox.checked);
-  let count = 0;
-
-  adminState.subjects.forEach((subject, index) => {
-    if (adminNormalizeSubjectPath(subject?.Subject) !== folderPath) return;
-    const deckCheckbox = adminGetElement(`deck-hidden-${index}`);
-    if (deckCheckbox) {
-      deckCheckbox.checked = hidden;
-      deckCheckbox.dispatchEvent(new Event("change", { bubbles: true }));
-      count += 1;
-    }
-  });
-  return count;
+  checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+  return 0;
 }
 
 function adminExposePublicAPI() {
