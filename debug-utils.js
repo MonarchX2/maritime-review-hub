@@ -47,7 +47,7 @@
       return value.map((item) => cloneDebugSafe(item, seen));
 
     const sensitiveKeys =
-      /^(?:password|passcode|adminpassword|deckpassword|folderpassword|token|secret|apikey|api_key|authorization|cookie)$/i;
+      /^(?:password|passcode|deckpassword|folderpassword|token|secret|apikey|api_key|authorization|cookie)$/i;
     const output = {};
     Object.keys(value).forEach((key) => {
       output[key] = sensitiveKeys.test(key)
