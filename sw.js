@@ -16,7 +16,6 @@ const APP_SHELL = [
   "/deck-review-core.js",
   "/analytics-core.js",
   "/quiz-rendering-core.js",
-  "/admin.js",
   "/network-utils.js",
   "/question-compat.js",
   "/session-utils.js",

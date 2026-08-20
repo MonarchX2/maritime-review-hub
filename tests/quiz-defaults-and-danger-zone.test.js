@@ -10,7 +10,6 @@ const appCore = fs.readFileSync(
   path.join(__dirname, "..", "app-core.js"),
   "utf8",
 );
-const adminJs = fs.readFileSync(path.join(__dirname, "..", "admin.js"), "utf8");
 const indexHtml = fs.readFileSync(
   path.join(__dirname, "..", "index.html"),
   "utf8",
@@ -41,11 +40,6 @@ assert.match(appCore, /const SYNC_INTERVAL_MS = 3 \* 1000/);
 assert.match(
   appCore,
   /setTimeout\(\(\) => syncAbortController\.abort\(\), 10000\)/,
-);
-assert.doesNotMatch(
-  adminJs,
-  /btn\.classList\.remove\(\s*"bg-green-600"\s*,\s*"hover:bg-green-700"\s*\)/,
-  "save button should keep its default green styling while adding only temporary success-state styling",
 );
 assert.match(
   appCore,

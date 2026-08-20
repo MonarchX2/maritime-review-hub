@@ -220,13 +220,6 @@ function sanitizeDeletedDeckReferences() {
   });
 }
 
-async function ensureAdminLoaded() {
-  if (window.adminState && typeof loadAdminSubjects === "function") return;
-  if (typeof window.loadFeatureScript === "function") {
-    await window.loadFeatureScript("admin.js");
-  }
-}
-
 const actionLocks = {};
 
 function runWithActionLock(lockKey, action) {
@@ -565,9 +558,6 @@ async function updateDashboard() {
   if (typeof renderCategoryProgress === "function") renderCategoryProgress();
 }
 
-let settingsClickCount = 0;
-let settingsClickTimeout = null;
-
 async function navigate(viewId) {
   if (
     typeof DeckNav !== "undefined" &&
@@ -575,21 +565,6 @@ async function navigate(viewId) {
   ) {
     return DeckNav.navigate(viewId);
   }
-  if (viewId === "settings") {
-    settingsClickCount++;
-    clearTimeout(settingsClickTimeout);
-    if (settingsClickCount >= 5) {
-      const adminBtn = document.getElementById("btn-admin-nav");
-      adminBtn.classList.remove("hidden");
-      adminBtn.classList.add("animate-card-in");
-      settingsClickCount = 0;
-    } else {
-      settingsClickTimeout = setTimeout(() => {
-        settingsClickCount = 0;
-      }, 2000);
-    }
-  }
-
   if (
     state.session.active &&
     viewId !== "practice" &&
@@ -614,34 +589,6 @@ async function navigate(viewId) {
   document.getElementById(`view-${viewId}`).classList.add("active");
 
   if (viewId === "stats") renderCharts();
-
-  // FIXED: Safely check if adminState is defined globally
-  if (viewId === "admin") {
-    hideAdminSettingsModal();
-    await ensureAdminLoaded();
-
-    // CRITICAL: Always reset admin sections to show login form initially
-    const loginSection = document.getElementById("admin-login-section");
-    const dashboardSection = document.getElementById("admin-dashboard-section");
-
-    if (loginSection && dashboardSection) {
-      const activeAdminToken =
-        typeof getAdminToken === "function" ? getAdminToken() : "";
-
-      if (activeAdminToken) {
-        // Token exists - show dashboard and load subjects
-        loginSection.classList.add("hidden");
-        dashboardSection.classList.remove("hidden");
-        if (typeof loadAdminSubjects === "function") {
-          loadAdminSubjects();
-        }
-      } else {
-        // No token - show login form
-        loginSection.classList.remove("hidden");
-        dashboardSection.classList.add("hidden");
-      }
-    }
-  }
 }
 
 function getSyncStatusVisualState(tone = "info") {
@@ -5491,29 +5438,6 @@ function updateTitleModeButton() {
   }
 }
 
-async function autoSaveDeckPassword(deckPath, newPassword) {
-  const safeToken = typeof getAdminToken === "function" ? getAdminToken() : "";
-  const password = String(newPassword || "").trim();
-
-  try {
-    const result = await callBackend({
-      type: "admin_update_password",
-      token: safeToken,
-      deck: deckPath,
-      password: password,
-    });
-
-    if (result.status === "success") {
-      console.log(`Password for ${deckPath} updated successfully.`);
-    } else {
-      alert("Failed to update password: " + result.message);
-    }
-  } catch (e) {
-    alert("Network error while auto-saving password.");
-    console.error(e);
-  }
-}
-
 const folderPasswordButton = document.getElementById(
   "btn-submit-folder-password",
 );
@@ -5905,7 +5829,7 @@ function setupCacheInvalidationListener() {
     cacheInvalidationChannel.onmessage = (event) => {
       if (event.data && event.data.type === "cache_invalidated") {
         console.log("[CACHE] Invalidation signal received:", event.data);
-        // Force refresh database when cache is invalidated by admin
+        // Force refresh database when the cache version changes
         handleCacheInvalidation();
       }
     };
@@ -5974,7 +5898,7 @@ async function reloadAppStateInMemory() {
     await triggerSilentSummaryRefresh("Refreshing app state in memory");
 
     showToastNotification(
-      "Deck settings updated by admin. Latest content loaded.",
+      "Deck settings updated. Latest content loaded.",
       "info",
       2500,
     );

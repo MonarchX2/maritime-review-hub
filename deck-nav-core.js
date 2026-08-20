@@ -4,8 +4,6 @@
 // ============================================================================
 
 (function (globalScope) {
-  // Import global dependencies safely so admin helpers are available
-  // even before the admin feature is loaded on-demand.
   const {
     state,
     saveState,
@@ -22,27 +20,7 @@
   } = globalScope;
 
   // ===================== VIEW NAVIGATION =====================
-  let settingsClickCount = 0;
-  let settingsClickTimeout = null;
-
   async function navigate(viewId) {
-    if (viewId === "settings") {
-      settingsClickCount++;
-      clearTimeout(settingsClickTimeout);
-      if (settingsClickCount >= 5) {
-        const adminBtn = document.getElementById("btn-admin-nav");
-        if (adminBtn) {
-          adminBtn.classList.remove("hidden");
-          adminBtn.classList.add("animate-card-in");
-        }
-        settingsClickCount = 0;
-      } else {
-        settingsClickTimeout = setTimeout(() => {
-          settingsClickCount = 0;
-        }, 2000);
-      }
-    }
-
     if (
       state.session.active &&
       viewId !== "practice" &&
@@ -67,30 +45,7 @@
     const viewElement = document.getElementById(`view-${viewId}`);
     if (!viewElement) return false;
     viewElement.classList.add("active");
-    const isAdminView =
-      viewId === "admin" &&
-      typeof globalScope.getAdminToken === "function" &&
-      !!globalScope.getAdminToken();
-    document.body.classList.toggle("admin-portal-active", isAdminView);
-
     if (viewId === "stats") globalScope.renderCharts();
-
-    // FIXED: Safely check if adminState is defined globally
-    if (viewId === "admin") {
-      if (typeof globalScope.ensureAdminLoaded === "function") {
-        await globalScope.ensureAdminLoaded();
-      }
-      const activeAdminToken =
-        typeof globalScope.getAdminToken === "function"
-          ? globalScope.getAdminToken()
-          : "";
-      if (
-        activeAdminToken &&
-        typeof globalScope.loadAdminSubjects === "function"
-      ) {
-        globalScope.loadAdminSubjects();
-      }
-    }
   }
 
   // ===================== CATEGORY VISIBILITY & FILTERING =====================

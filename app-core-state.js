@@ -56,8 +56,6 @@
     currentPath: [],
     reportQuestion: null,
     unlockedFolders: {},
-    adminLastModifiedTimestamp: "",
-
   };
 
   function getStoredItem(key, fallback = null) {
@@ -449,7 +447,9 @@
       } else {
         setStoredItem(
           "mrh_navigation_path",
-          JSON.stringify(Array.isArray(state.currentPath) ? state.currentPath : []),
+          JSON.stringify(
+            Array.isArray(state.currentPath) ? state.currentPath : [],
+          ),
         );
       }
     } catch (e) {
@@ -474,7 +474,9 @@
       ? globalScope.persistNavigationPath
       : (path) => {
           const normalized = Array.isArray(path)
-            ? path.filter((entry) => typeof entry === "string" && entry.trim()).map((entry) => String(entry).trim())
+            ? path
+                .filter((entry) => typeof entry === "string" && entry.trim())
+                .map((entry) => String(entry).trim())
             : [];
           if (globalScope.state) globalScope.state.currentPath = normalized;
           try {
@@ -492,7 +494,9 @@
             if (!raw) return [];
             const parsed = JSON.parse(raw);
             if (!Array.isArray(parsed)) return [];
-            return parsed.filter((entry) => typeof entry === "string" && entry.trim()).map((entry) => String(entry).trim());
+            return parsed
+              .filter((entry) => typeof entry === "string" && entry.trim())
+              .map((entry) => String(entry).trim());
           } catch (e) {
             return [];
           }

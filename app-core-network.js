@@ -2,8 +2,6 @@
   "use strict";
 
   const DEFAULT_TIMEOUT_MS = 15000;
-  let adminToken = "";
-
   function getDatabaseUrl() {
     try {
       if (typeof DB_URL !== "undefined" && String(DB_URL).trim()) {
@@ -169,52 +167,20 @@
   }
 
   const backendApi = {
-    verifyAdmin: (token) => callBackend({ type: "verify_admin", token }),
-    getAdminSubjects: (token) =>
-      callBackend({ type: "admin_get_subjects", token }),
     submitReport: (payload) =>
       callBackend({ type: "submit_report", ...payload }),
-    getReports: (role = "user", token = "", options = {}) =>
+    getReports: (options = {}) =>
       callBackend(
         {
           type: "get_reports",
-          role,
           ...(options.page !== undefined ? { page: options.page } : {}),
           ...(options.limit !== undefined ? { limit: options.limit } : {}),
-          ...(role === "admin" ? { token } : {}),
         },
         options,
       ),
-    resolveReport: (token, reportId, action) =>
-      callBackend({ type: "admin_resolve_report", token, reportId, action }),
     getCacheVersion: () => callBackend({ type: "get_cache_version" }),
     getSyncStatus: () => callBackend({ type: "get_sync_status" }),
-    clearAllAccessMetadata: (token) =>
-      callBackend({ type: "admin_clear_all", token }),
-    wipeEverything: (token) => callBackend({ type: "wipe_everything", token }),
-    updateSubjects: (payload) =>
-      callBackend({ type: "admin_update", ...payload }),
-    editQuestion: (payload) =>
-      callBackend({ type: "admin_edit_question", ...payload }),
   };
-
-  function adminTokenStorageKey() {
-    return "mrh_admin_token";
-  }
-
-  function getAdminToken() {
-    return adminToken;
-  }
-
-  function setAdminToken(token) {
-    const clean = String(token || "").trim();
-    adminToken = clean;
-    return clean;
-  }
-
-  function clearAdminToken() {
-    adminToken = "";
-  }
 
   const AppNetwork = {
     callBackend,
@@ -230,9 +196,6 @@
         options,
       ),
     ...backendApi,
-    getAdminToken,
-    setAdminToken,
-    clearAdminToken,
   };
 
   if (typeof module !== "undefined" && module.exports) {
@@ -241,12 +204,4 @@
 
   globalScope.callBackend = callBackend;
   globalScope.AppNetwork = AppNetwork;
-
-  // Do not overwrite an admin.js implementation if one is already loaded.
-  if (typeof globalScope.getAdminToken !== "function")
-    globalScope.getAdminToken = getAdminToken;
-  if (typeof globalScope.setAdminToken !== "function")
-    globalScope.setAdminToken = setAdminToken;
-  if (typeof globalScope.clearAdminToken !== "function")
-    globalScope.clearAdminToken = clearAdminToken;
 })(typeof window !== "undefined" ? window : globalThis);

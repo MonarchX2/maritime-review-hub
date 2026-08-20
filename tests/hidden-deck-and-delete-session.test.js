@@ -3,7 +3,6 @@ const fs = require("fs");
 const path = require("path");
 
 const appCore = fs.readFileSync(path.join(__dirname, "../app-core.js"), "utf8");
-const adminJs = fs.readFileSync(path.join(__dirname, "../admin.js"), "utf8");
 const backendMain = fs.readFileSync(
   path.join(__dirname, "../backend/main.js"),
   "utf8",
@@ -38,9 +37,6 @@ assert.match(
 
 assert.match(appCore, /removeStoredItem\("saved_session"\)/);
 assert.match(appCore, /rebuildQuestionIndex\(\)/);
-assert.match(adminJs, /data-path="\$\{originalPath\}"/);
-assert.match(adminJs, /patch\.password\s*=\s*currentPass/);
-assert.match(adminJs, /patch\.hidden\s*=\s*currentHidden/);
 assert.match(textUtils, /function\s+isSafeImageURL\(value\)/);
 
 console.log("hidden/deck cleanup regression checks passed");
