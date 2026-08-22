@@ -16,8 +16,10 @@ let pendingSummaryData = null;
 let syncConnected = false;
 let isColdStart = false;
 let lastSyncStatusTimestamp = "";
-let localCacheVersion = 0;
+let localCacheVersion = "";
+let remoteCacheVersion = "";
 let isInitialSyncComplete = false; // Track if the first sync from startup has completed
+let lastSyncAt = 0;
 const SYNC_STATUS_STORAGE_KEY = "mrh_last_sync_status_timestamp";
 const CACHE_VERSION_STORAGE_KEY = "mrh_cache_version";
 const NAVIGATION_PATH_STORAGE_KEY = "mrh_navigation_path"; // Persist user's navigation position
@@ -37,15 +39,14 @@ function persistSyncStatusTimestamp(timestamp) {
 }
 
 function readStoredCacheVersion() {
-  const stored = Number(getStoredItem?.(CACHE_VERSION_STORAGE_KEY, "0") || "0");
-  return Number.isFinite(stored) ? Math.max(0, stored) : 0;
+  return String(getStoredItem?.(CACHE_VERSION_STORAGE_KEY, "") || "").trim();
 }
 
 function persistLocalCacheVersion(version) {
-  const nextVersion = Number(version) || 0;
-  localCacheVersion = Math.max(0, nextVersion);
+  const nextVersion = String(version ?? "").trim();
+  localCacheVersion = nextVersion;
   try {
-    setStoredItem?.(CACHE_VERSION_STORAGE_KEY, String(localCacheVersion));
+    setStoredItem?.(CACHE_VERSION_STORAGE_KEY, nextVersion);
   } catch (e) {
     console.warn("Unable to persist cache version locally.", e);
   }
@@ -791,7 +792,11 @@ async function optimizedBackgroundSync() {
   try {
     const syncStatus = await checkSyncStatusLightweight();
 
-    if (!syncStatus) {
+    if (
+      !syncStatus ||
+      typeof syncStatus !== "object" ||
+      syncStatus.status !== "ok"
+    ) {
       // Lightweight check failed - fall back to full sync attempt
       // But do it silently if we have cached data
       if (state.categorySummary.length > 0) {
@@ -803,9 +808,15 @@ async function optimizedBackgroundSync() {
       return;
     }
 
+    if (syncStatus.isColdStart === true) {
+      isColdStart = true;
+      showColdStartNotification();
+      return;
+    }
+
     // Compare timestamp with what we last stored
     const storedTimestamp = readStoredSyncStatusTimestamp();
-    const newTimestamp = syncStatus.syncTimestamp || "";
+    const newTimestamp = String(syncStatus.syncTimestamp || "").trim();
 
     if (storedTimestamp !== newTimestamp) {
       // Sync timestamp changed - fetch full summary
@@ -980,22 +991,13 @@ function buildAccessMetadataMap(accessData) {
 // Frontend should never merge or modify backend response
 
 async function fetchAccessMetadata() {
-  const url = `${DB_URL}?access=1&_t=${Date.now()}`;
-  try {
-    const response = await fetch(url, {
-      cache: "no-store",
-      redirect: "follow",
-    });
-    if (!response.ok) return {};
-    const data = await response.json();
-    state.accessMetadata = buildAccessMetadataMap(
-      Array.isArray(data) ? data : [],
-    );
-    return state.accessMetadata;
-  } catch (err) {
-    console.warn("Access metadata unavailable.", err);
-    return {};
-  }
+  // Backend v8 does not expose the old ?access=1 endpoint. The public summary
+  // is the authoritative client-safe access representation: it contains
+  // Locked and excludes hidden subjects entirely.
+  state.accessMetadata = buildAccessMetadataMap(
+    Array.isArray(state.categorySummary) ? state.categorySummary : [],
+  );
+  return state.accessMetadata;
 }
 
 function isDeckPasswordProtected(subject) {
@@ -1169,7 +1171,10 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
   syncAttempt++;
   syncAbortController = new AbortController();
   const requestController = syncAbortController;
-  const timeoutId = setTimeout(() => syncAbortController.abort(), 10000);
+  const timeoutId = setTimeout(() => {
+    // Abort only this request; the global controller may already refer to a newer sync.
+    requestController.abort();
+  }, 10000);
 
   const url = `${DB_URL}?_t=${Date.now()}`;
 
@@ -1201,8 +1206,12 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
     }
 
     // FIX 2: COLD START DETECTION
-    // Check if backend returned cold start signal
-    if (summaryData && summaryData.isColdStart && !Array.isArray(summaryData)) {
+    // Check if backend returned a cold-start signal before applying summary data.
+    if (
+      summaryData &&
+      !Array.isArray(summaryData) &&
+      summaryData.isColdStart === true
+    ) {
       clearTimeout(timeoutId);
       console.warn("[COLD START] Detected! Backend is rebuilding cache...");
       isColdStart = true;
@@ -1215,7 +1224,8 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
       return;
     }
 
-    if (Array.isArray(summaryData) && summaryData.length > 0) {
+    // An empty array is a valid public summary when no visible decks exist.
+    if (Array.isArray(summaryData)) {
       clearTimeout(timeoutId);
       lastSyncAt = Date.now();
       const completedAttempt = syncAttempt;
@@ -1237,6 +1247,7 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
       if (canApplyNow && (changed || !wasConnected)) {
         pendingSummaryData = null;
         applySummaryData(summaryData);
+        state.accessMetadata = buildAccessMetadataMap(summaryData);
       } else if (!canApplyNow) {
         if (changed) pendingSummaryData = summaryData;
         if (!wasConnected) renderCategoryProgress();
@@ -5922,46 +5933,95 @@ async function reloadAppStateInMemory() {
 // ============================================
 function setupLeaderElection() {
   if (typeof BroadcastChannel === "undefined") {
-    // Fallback: single tab or old browser, act as leader
+    // Fallback: single-tab or older browser, act as leader.
     isLeaderTab = true;
-    console.log("[LEADER] Single-tab mode, this tab is the leader");
+    console.log(
+      "[LEADER] BroadcastChannel unavailable; this tab is the leader",
+    );
     return;
   }
 
   try {
-    leaderElectionChannel = new BroadcastChannel("mrh_leader_election");
+    if (leaderElectionChannel) {
+      try {
+        leaderElectionChannel.close();
+      } catch (e) {}
+    }
 
-    leaderElectionChannel.onmessage = (event) => {
-      if (event.data && event.data.type === "leader_heartbeat") {
-        // Another tab claims leadership, yield to it
-        if (isLeaderTab && event.data.tabId !== window.mrh_tabId) {
-          console.log("[LEADER] Yielding leadership to another tab");
-          isLeaderTab = false;
-          clearTimeout(leaderHeartbeatTimer);
+    leaderElectionChannel = new BroadcastChannel("mrh_leader_election");
+    window.mrh_tabId =
+      window.mrh_tabId ||
+      `tab_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+
+    const peers = new Map();
+    const PEER_TTL_MS = 25000;
+
+    const electLeader = () => {
+      const now = Date.now();
+      for (const [tabId, seenAt] of peers) {
+        if (now - seenAt > PEER_TTL_MS) peers.delete(tabId);
+      }
+      const candidates = [window.mrh_tabId, ...peers.keys()].sort();
+      const nextLeader = candidates[0] || window.mrh_tabId;
+      const wasLeader = isLeaderTab;
+      isLeaderTab = nextLeader === window.mrh_tabId;
+      if (wasLeader !== isLeaderTab) {
+        console.log(
+          `[LEADER] ${isLeaderTab ? "Became" : "Yielded"} leadership: ${nextLeader}`,
+        );
+        if (!isLeaderTab && cacheVersionCheckTimer !== null) {
+          clearInterval(cacheVersionCheckTimer);
+          cacheVersionCheckTimer = null;
+        } else if (isLeaderTab && typeof scheduleNextPolling === "function") {
+          // Reclaiming leadership must restart cache-version polling.
+          scheduleNextPolling();
         }
       }
     };
 
-    // Generate unique tab ID
-    window.mrh_tabId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    leaderElectionChannel.onmessage = (event) => {
+      const data = event?.data;
+      if (!data || !data.type) return;
 
-    // Claim leadership
-    isLeaderTab = true;
-    console.log("[LEADER] This tab elected as leader:", window.mrh_tabId);
+      if (data.type === "leader_heartbeat" && data.tabId) {
+        if (data.tabId !== window.mrh_tabId) {
+          peers.set(String(data.tabId), Date.now());
+          electLeader();
+        }
+        return;
+      }
 
-    // Send periodic heartbeat (proves this tab is alive)
-    leaderHeartbeatTimer = setInterval(() => {
-      if (isLeaderTab) {
+      if (data.type === "cache_version_updated" && data.newVersion != null) {
+        const newVersion = String(data.newVersion).trim();
+        const currentVersion = String(localCacheVersion || "").trim();
+        if (newVersion && newVersion !== currentVersion) {
+          persistLocalCacheVersion(newVersion);
+          reloadAppStateInMemory().catch((error) => {
+            console.warn("[CACHE] Cross-tab state refresh failed:", error);
+          });
+        }
+      }
+    };
+
+    const sendHeartbeat = () => {
+      try {
         leaderElectionChannel.postMessage({
           type: "leader_heartbeat",
           tabId: window.mrh_tabId,
           timestamp: Date.now(),
         });
+      } catch (e) {
+        console.warn("[LEADER] Heartbeat failed:", e);
       }
-    }, 10000); // Heartbeat every 10 seconds
+      electLeader();
+    };
+
+    clearInterval(leaderHeartbeatTimer);
+    leaderHeartbeatTimer = setInterval(sendHeartbeat, 10000);
+    sendHeartbeat();
   } catch (e) {
     console.error("[LEADER] Failed to setup leader election:", e);
-    isLeaderTab = true; // Fallback: act as leader
+    isLeaderTab = true;
   }
 }
 
@@ -6064,17 +6124,22 @@ async function checkCacheVersionWithETag() {
     const etag = response.headers.get("ETag");
     if (etag) lastCacheVersionHash = etag;
 
-    if (data && typeof data.version === "number") {
-      remoteCacheVersion = data.version;
+    if (data && data.version !== undefined && data.version !== null) {
+      // Backend v8 returns an opaque string version token; compare exact tokens.
+      remoteCacheVersion = String(data.version).trim();
+
       const storedLocalCacheVersion = readStoredCacheVersion();
-      if (localCacheVersion === 0 && storedLocalCacheVersion > 0) {
+      if (!String(localCacheVersion || "").trim() && storedLocalCacheVersion) {
         localCacheVersion = storedLocalCacheVersion;
       }
 
-      // If version changed, leader broadcasts to all tabs
-      if (localCacheVersion > 0 && remoteCacheVersion > localCacheVersion) {
+      const localVersionToken = String(localCacheVersion || "").trim();
+      const versionChanged =
+        Boolean(localVersionToken) && remoteCacheVersion !== localVersionToken;
+
+      if (versionChanged) {
         console.log(
-          `[CACHE] Version changed: ${localCacheVersion} -> ${remoteCacheVersion}`,
+          `[CACHE] Version changed: ${localVersionToken} -> ${remoteCacheVersion}`,
         );
 
         if (isLeaderTab && typeof leaderElectionChannel !== "undefined") {
@@ -6088,7 +6153,7 @@ async function checkCacheVersionWithETag() {
           }
         }
 
-        // In-memory state re-fetch (no page reload!)
+        // In-memory state re-fetch (no page reload!).
         await reloadAppStateInMemory();
       }
 
