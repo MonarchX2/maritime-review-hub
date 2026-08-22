@@ -310,6 +310,8 @@
   // ===================== REVIEW SETTINGS MODAL =====================
   function openReviewSettingsModal() {
     const modal = document.getElementById("review-settings-modal");
+    if (!modal) return false;
+
     const navigationButton = document.getElementById(
       "toggle-review-navigation-bottom",
     );
@@ -331,12 +333,15 @@
 
   function closeReviewSettingsModal() {
     const modal = document.getElementById("review-settings-modal");
+    if (!modal) return false;
+
     modal.classList.add("opacity-0");
-    modal.querySelector("div").classList.add("scale-95");
+    modal.querySelector("div")?.classList.add("scale-95");
     // Wait for transition to finish before hiding element
     setTimeout(() => {
       modal.classList.add("hidden");
     }, 300);
+    return true;
   }
 
   function handleReviewLayoutChange(layoutType) {
@@ -347,10 +352,12 @@
       "toggle-review-navigation-bottom",
     );
 
-    if (layoutType === "single") {
-      perPageContainer.classList.add("hidden");
-    } else {
-      perPageContainer.classList.remove("hidden");
+    if (perPageContainer) {
+      if (layoutType === "single") {
+        perPageContainer.classList.add("hidden");
+      } else {
+        perPageContainer.classList.remove("hidden");
+      }
     }
 
     if (navigationToggle) {
@@ -403,15 +410,17 @@
     state.prefs.studyFilterMode = nextMode;
     globalScope.saveState();
     updateStudyFilterToggle();
-    if (globalScope.currentReviewSubject) {
+    const currentReviewSubject =
+      globalScope.DeckReviewCore &&
+      typeof globalScope.DeckReviewCore.getCurrentReviewSubject === "function"
+        ? globalScope.DeckReviewCore.getCurrentReviewSubject()
+        : globalScope.currentReviewSubject;
+
+    if (currentReviewSubject) {
       const currentQuestions =
-        globalScope.getQuestionsForSubject(globalScope.currentReviewSubject) ||
-        [];
+        globalScope.getQuestionsForSubject(currentReviewSubject) || [];
       if (currentQuestions.length > 0) {
-        globalScope.renderDeckReview(
-          globalScope.currentReviewSubject,
-          currentQuestions,
-        );
+        globalScope.renderDeckReview(currentReviewSubject, currentQuestions);
       }
     }
   }
@@ -576,4 +585,8 @@
   if (typeof module !== "undefined" && module.exports) {
     module.exports = ModalCore;
   }
-})(globalScope);
+})(typeof globalScope !== "undefined"
+  ? globalScope
+  : typeof globalThis !== "undefined"
+    ? globalThis
+    : this);

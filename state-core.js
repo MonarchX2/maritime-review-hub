@@ -405,4 +405,8 @@
   }
 
   globalScope.StateCore = StateCore;
+
+  // app-core delegates state persistence through the historical AppState
+  // name. Keep that compatibility contract while exposing StateCore.
+  globalScope.AppState = StateCore;
 })(typeof window !== "undefined" ? window : globalThis);

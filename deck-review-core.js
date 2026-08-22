@@ -32,7 +32,12 @@
 
   function renderDeckReview(subject, questions) {
     currentReviewSubject = subject;
-    currentReviewQuestions = questions;
+    currentReviewQuestions = Array.isArray(questions) ? questions : [];
+
+    // Keep the legacy global compatibility surface synchronized. Older UI
+    // code reads these globals directly, while newer code uses the accessors.
+    globalScope.currentReviewSubject = currentReviewSubject;
+    globalScope.currentReviewQuestions = currentReviewQuestions;
 
     if (typeof legacyRenderDeckReview === "function") {
       const activeDeckReview = globalScope.DeckReview;
@@ -79,6 +84,14 @@
         ? questions.filter((question) => favoriteQuestions.has(question.ID))
         : questions;
 
+    if (questions.length === 0) {
+      container.innerHTML =
+        html +
+        `<div class="text-center p-8 text-gray-500">No questions found for this deck.</div>`;
+      navigate("deck-review");
+      return;
+    }
+
     if (filteredQuestions.length === 0) {
       container.innerHTML = `
         <div class="text-center p-8 text-gray-500 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
@@ -90,15 +103,6 @@
       navigate("deck-review");
       return;
     }
-
-    if (questions.length === 0) {
-      container.innerHTML =
-        html +
-        `<div class="text-center p-8 text-gray-500">No questions found for this deck.</div>`;
-      navigate("deck-review");
-      return;
-    }
-
     let displayQuestions = [];
     let totalPages = 1;
 
@@ -308,4 +312,8 @@
   if (typeof module !== "undefined" && module.exports) {
     module.exports = DeckReviewCore;
   }
-})(globalScope);
+})(typeof globalScope !== "undefined"
+  ? globalScope
+  : typeof globalThis !== "undefined"
+    ? globalThis
+    : this);

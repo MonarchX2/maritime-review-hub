@@ -331,4 +331,8 @@
   if (typeof module !== "undefined" && module.exports) {
     module.exports = DeckNavCore;
   }
-})(globalScope);
+})(typeof globalScope !== "undefined"
+  ? globalScope
+  : typeof globalThis !== "undefined"
+    ? globalThis
+    : this);
