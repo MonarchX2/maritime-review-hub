@@ -97,6 +97,7 @@ function restoreNavigationPathFromStorage() {
 let isLeaderTab = false;
 let leaderHeartbeatTimer = null;
 let leaderElectionChannel = null;
+let cacheVersionCheckTimer = null;
 
 // OPTIMIZATION: ETag/Hash headers for 304 responses
 let lastCacheVersionHash = null;
@@ -6132,11 +6133,25 @@ function setupVisibilityChangeHandler() {
 // ============================================
 function scheduleNextPolling() {
   if (!isLeaderTab) {
+    if (
+      typeof clearInterval === "function" &&
+      cacheVersionCheckTimer !== null
+    ) {
+      clearInterval(cacheVersionCheckTimer);
+    }
+    cacheVersionCheckTimer = null;
     console.log("[POLLING] Not leader, skipping poll schedule");
     return;
   }
 
-  clearInterval(cacheVersionCheckTimer);
+  if (typeof clearInterval === "function" && cacheVersionCheckTimer !== null) {
+    clearInterval(cacheVersionCheckTimer);
+  }
+  cacheVersionCheckTimer = null;
+
+  if (typeof setInterval !== "function") {
+    return;
+  }
 
   const nextInterval = getJitteredPollingInterval();
   console.log(
