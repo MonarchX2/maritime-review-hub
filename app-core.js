@@ -3870,7 +3870,10 @@ async function clearAppData() {
       return;
     }
 
-    if (typeof idbKeyval !== "undefined" && typeof idbKeyval.del === "function") {
+    if (
+      typeof idbKeyval !== "undefined" &&
+      typeof idbKeyval.del === "function"
+    ) {
       await idbKeyval.del("mrh_db");
     }
 
@@ -6210,67 +6213,66 @@ function initializeApp() {
   if (__mrhAppInitialized) return false;
   __mrhAppInitialized = true;
 
+  // CRITICAL FIX: Setup cache invalidation listener and version checking
+  setupCacheInvalidationListener();
+  startCacheVersionChecking();
+  initDetailsExclusivity();
 
-    // CRITICAL FIX: Setup cache invalidation listener and version checking
-    setupCacheInvalidationListener();
-    startCacheVersionChecking();
-    initDetailsExclusivity();
+  // CRITICAL: Fetch access metadata early to avoid filtering issues
+  fetchAccessMetadata().catch((err) => {
+    console.warn("Initial access metadata fetch failed, will retry:", err);
+  });
 
-    // CRITICAL: Fetch access metadata early to avoid filtering issues
-    fetchAccessMetadata().catch((err) => {
-      console.warn("Initial access metadata fetch failed, will retry:", err);
+  const mainEl = document.querySelector("main");
+  const headerEl = document.querySelector("header");
+  if (headerEl) headerEl.classList.add("transition-transform", "duration-300");
+
+  if (mainEl && headerEl) {
+    mainEl.addEventListener("scroll", (e) => {
+      if (!isTicking) {
+        window.requestAnimationFrame(() => {
+          const currentScroll = e.target.scrollTop;
+
+          if (currentScroll > lastScrollTop && currentScroll > 50) {
+            headerEl.classList.add("-translate-y-full");
+          } else {
+            headerEl.classList.remove("-translate-y-full");
+          }
+          lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
+
+          if (
+            document
+              .getElementById("view-deck-review")
+              .classList.contains("active") &&
+            currentReviewSubject
+          ) {
+            if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
+            if (!state.prefs.studyProgress[currentReviewSubject]) {
+              state.prefs.studyProgress[currentReviewSubject] = {
+                page: 1,
+                index: 0,
+                scrollY: 0,
+              };
+            }
+            state.prefs.studyProgress[currentReviewSubject].scrollY =
+              currentScroll;
+            clearTimeout(window.scrollSaveTimeout);
+            window.scrollSaveTimeout = setTimeout(() => saveState(), 1000);
+          }
+
+          isTicking = false;
+        });
+
+        isTicking = true;
+      }
     });
+  }
 
-    const mainEl = document.querySelector("main");
-    const headerEl = document.querySelector("header");
-    if (headerEl) headerEl.classList.add("transition-transform", "duration-300");
-
-    if (mainEl && headerEl) {
-      mainEl.addEventListener("scroll", (e) => {
-        if (!isTicking) {
-          window.requestAnimationFrame(() => {
-            const currentScroll = e.target.scrollTop;
-
-            if (currentScroll > lastScrollTop && currentScroll > 50) {
-              headerEl.classList.add("-translate-y-full");
-            } else {
-              headerEl.classList.remove("-translate-y-full");
-            }
-            lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
-
-            if (
-              document
-                .getElementById("view-deck-review")
-                .classList.contains("active") &&
-              currentReviewSubject
-            ) {
-              if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
-              if (!state.prefs.studyProgress[currentReviewSubject]) {
-                state.prefs.studyProgress[currentReviewSubject] = {
-                  page: 1,
-                  index: 0,
-                  scrollY: 0,
-                };
-              }
-              state.prefs.studyProgress[currentReviewSubject].scrollY =
-                currentScroll;
-              clearTimeout(window.scrollSaveTimeout);
-              window.scrollSaveTimeout = setTimeout(() => saveState(), 1000);
-            }
-
-            isTicking = false;
-          });
-
-          isTicking = true;
-        }
-      });
-    }
-
-    // Apply title display mode preference
-    setTimeout(() => {
-      applyTitleMode();
-      updateTitleModeButton();
-    }, 100);
+  // Apply title display mode preference
+  setTimeout(() => {
+    applyTitleMode();
+    updateTitleModeButton();
+  }, 100);
   return true;
 }
 
