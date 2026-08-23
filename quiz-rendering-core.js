@@ -92,12 +92,21 @@
       });
 
     const imgEl = document.getElementById("q-image");
-    if (imgEl && q.ImageURL && String(q.ImageURL).trim() !== "") {
+    if (
+      imgEl &&
+      q.ImageURL &&
+      String(q.ImageURL).trim() !== "" &&
+      typeof isSafeImageURL === "function" &&
+      isSafeImageURL(q.ImageURL)
+    ) {
       imgEl.onload = () => imgEl.classList.remove("hidden");
       imgEl.onerror = () => {
         imgEl.removeAttribute("src");
         imgEl.classList.add("hidden");
       };
+      imgEl.referrerPolicy = "no-referrer";
+      imgEl.loading = "lazy";
+      imgEl.decoding = "async";
       imgEl.src = q.ImageURL;
       imgEl.alt = q.Question
         ? `Reference for: ${String(q.Question).substring(0, 50)}...`

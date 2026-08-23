@@ -71,47 +71,22 @@
   rootScope.loadFeatureScript = loadFeatureScript;
 
   async function loadCoreHelpers() {
+    // The canonical runtime below depends on these shared helpers and the
+    // state module must run before app-core.js evaluates its legacy code.
     const cores = [
       "storage-utils.js",
       "text-utils.js",
-      "network-utils.js",
-      "session-utils.js",
       "debug-utils.js",
       "app-core-state.js",
-      "app-core-network.js",
     ];
 
-    /*
-     * These helpers are intentionally loaded in order. They are global
-     * scripts, so sequential loading guarantees that a later helper sees
-     * everything established by an earlier helper.
-     */
     for (const src of cores) {
       await loadFeatureScript(src);
     }
   }
 
-  async function loadApplicationCores() {
-    const applicationCores = [
-      "state-core.js",
-      "ui-core.js",
-      "session-core.js",
-      "ui-modal-core.js",
-      "deck-nav-core.js",
-      "deck-review-core.js",
-      "analytics-core.js",
-      "quiz-rendering-core.js",
-    ];
-
-    /*
-     * Do not Promise.all() these global scripts. Their implementations may
-     * depend on functions/constants registered by an earlier core. Sequential
-     * loading eliminates nondeterministic initialization races while keeping
-     * the same public script order.
-     */
-    for (const src of applicationCores) {
-      await loadFeatureScript(src);
-    }
+  async function loadApplicationRuntime() {
+    await loadFeatureScript("app-core.js");
   }
 
   function showBootstrapError(error) {
@@ -132,8 +107,7 @@
 
   try {
     await loadCoreHelpers();
-    await loadScript("app-core.js");
-    await loadApplicationCores();
+    await loadApplicationRuntime();
 
     // Dynamic scripts do not participate reliably in the original
     // DOMContentLoaded listener in app-core.js. Explicitly initialize once

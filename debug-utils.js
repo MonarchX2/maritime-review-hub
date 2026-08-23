@@ -32,7 +32,6 @@
       totalAnswered: Math.max(0, finiteNumber(stats.totalAnswered)),
       correct: Math.max(0, finiteNumber(stats.correct)),
       sessionActive: Boolean(session.active),
-      searchQuery: String(prefs.discoverySearch ?? ""),
       darkMode: Boolean(prefs.darkMode),
       layoutMode: String(prefs.layoutMode ?? ""),
     };

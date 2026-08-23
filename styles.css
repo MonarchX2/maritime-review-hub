@@ -170,24 +170,20 @@ body.title-mode-clip {
   max-width: 100%;
 }
 
+/* Keep native scrollbars available for discoverability and keyboard users. */
 html,
 body,
 main {
-  scrollbar-width: none;
-}
-
-html::-webkit-scrollbar,
-body::-webkit-scrollbar,
-main::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
+  scrollbar-width: auto;
 }
 
 button,
 select,
 input {
-  transition: all var(--time-fast) var(--ease-base);
+  transition-property:
+    color, background-color, border-color, box-shadow, transform, opacity;
+  transition-duration: var(--time-fast);
+  transition-timing-function: var(--ease-base);
 }
 
 .math-fallback {
@@ -201,20 +197,6 @@ input {
 
 #header-search-panel {
   min-width: min(20rem, calc(100vw - 1rem));
-}
-
-#header-discovery-input::-webkit-search-cancel-button {
-  -webkit-appearance: none;
-  appearance: none;
-  display: none;
-}
-
-#header-discovery-input::-ms-clear {
-  display: none;
-}
-
-#header-discovery-input::-webkit-search-decoration {
-  display: none;
 }
 
 #resume-container {

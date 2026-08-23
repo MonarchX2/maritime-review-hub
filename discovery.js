@@ -8,6 +8,7 @@ function normalizeDiscoveryText(value) {
 function matchesFavoriteEntry(subject, search, favoriteDecks) {
   const normalizedSubject = String(subject ?? "").trim();
   const normalizedSearch = normalizeDiscoveryText(search);
+  const subjectKey = normalizedSubject.toLocaleLowerCase();
   const favorites = Array.isArray(favoriteDecks) ? favoriteDecks : [];
 
   if (
@@ -19,10 +20,11 @@ function matchesFavoriteEntry(subject, search, favoriteDecks) {
 
   return favorites.some((favorite) => {
     const normalizedFavorite = String(favorite ?? "").trim();
+    const favoriteKey = normalizedFavorite.toLocaleLowerCase();
     return (
-      normalizedFavorite === normalizedSubject ||
-      normalizedSubject.startsWith(`${normalizedFavorite}::`) ||
-      normalizedFavorite.startsWith(`${normalizedSubject}::`)
+      favoriteKey === subjectKey ||
+      subjectKey.startsWith(`${favoriteKey}::`) ||
+      favoriteKey.startsWith(`${subjectKey}::`)
     );
   });
 }
@@ -43,22 +45,37 @@ function buildDiscoveryViewModel(state, categorySummary) {
     ),
   );
   const summaries = Array.isArray(categorySummary) ? categorySummary : [];
+  const isDeleted = (subject) => {
+    const key = String(subject ?? "").trim().toLocaleLowerCase();
+    if (!key) return true;
+    for (const deletedSubject of deleted) {
+      const deletedKey = String(deletedSubject).toLocaleLowerCase();
+      if (
+        key === deletedKey ||
+        key.startsWith(`${deletedKey}::`) ||
+        deletedKey.startsWith(`${key}::`)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const normalizedSearch = normalizeDiscoveryText(prefs.discoverySearch);
   const visibleDecks = summaries.filter((deck) => {
     const subject = String(deck?.Subject ?? "").trim();
     return (
       subject &&
-      !deleted.has(subject) &&
-      normalizeDiscoveryText(subject).includes(
-        normalizeDiscoveryText(prefs.discoverySearch),
-      )
+      !isDeleted(subject) &&
+      normalizeDiscoveryText(subject).includes(normalizedSearch)
     );
   });
   const favoriteDecks = (
     Array.isArray(prefs.favoriteDecks) ? prefs.favoriteDecks : []
-  ).filter((subject) => !deleted.has(String(subject ?? "").trim()));
+  ).filter((subject) => !isDeleted(subject));
   const recentDecks = (
     Array.isArray(prefs.recentDecks) ? prefs.recentDecks : []
-  ).filter((subject) => !deleted.has(String(subject ?? "").trim()));
+  ).filter((subject) => !isDeleted(subject));
 
   return {
     favoriteDecks,

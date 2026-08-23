@@ -332,6 +332,37 @@
     return migrated;
   }
 
+  function clearCurrentNamespace(options = {}) {
+    const localStore = getLocalStorage();
+    const sessionStore = getSessionStorage();
+    const includeLegacy = options.includeLegacy !== false;
+    const currentKeys = [];
+
+    const collectNamespacedKeys = (store, prefix) => {
+      for (let i = 0; i < store.length; i += 1) {
+        const key = safeGetStorageKeyAtIndex(store, i);
+        if (key && key.startsWith(prefix)) currentKeys.push([store, key]);
+      }
+    };
+
+    collectNamespacedKeys(localStore, `${getStorageNamespace()}:`);
+    collectNamespacedKeys(sessionStore, `${getStorageNamespace()}:`);
+
+    let removed = 0;
+    currentKeys.forEach(([store, key]) => {
+      if (safeRemoveItem(store, key)) removed += 1;
+    });
+
+    if (includeLegacy) {
+      LEGACY_KEYS.forEach((key) => {
+        if (safeRemoveItem(localStore, getLegacyStorageKey(key))) removed += 1;
+        if (safeRemoveItem(sessionStore, getLegacyStorageKey(key))) removed += 1;
+      });
+    }
+
+    return removed;
+  }
+
   function purgeOrphanedStorage(identityToKeep = null) {
     const store = getLocalStorage();
     const activeIdentity = normalizeIdentity(
@@ -388,6 +419,7 @@
     setSessionStoredJSON,
     migrateLegacyStorageKeys,
     purgeOrphanedStorage,
+    clearCurrentNamespace,
   };
 
   if (typeof module !== "undefined" && module.exports)

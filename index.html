@@ -2,7 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1e3a8a" />
+    <link rel="manifest" href="manifest.json" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,7 +255,7 @@
                 </button>
               </div>
             </details>
-            <select id="deck-source-filter" class="hidden"></select>
+            <select id="deck-source-filter" aria-label="Deck source filter" class="hidden"></select>
 
             <details id="deck-sort-menu" class="relative">
               <summary
@@ -510,6 +512,10 @@
               id="q-image"
               src=""
               alt="Reference"
+              width="800"
+              height="450"
+              loading="lazy"
+              decoding="async"
               class="hidden w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500 hover:scale-105"
             />
 
@@ -1038,6 +1044,7 @@
               </label>
               <select
                 id="deck-name-mode"
+                aria-label="Deck name display"
                 onchange="changeDeckNameMode(this.value)"
                 class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2 text-sm w-full"
               >
@@ -1195,6 +1202,7 @@
               >
               <select
                 id="report-type"
+                aria-label="Error type"
                 class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-200 outline-none"
               >
                 <option value="" disabled selected>Select an issue...</option>
@@ -1236,6 +1244,7 @@
               >
               <textarea
                 id="report-comments"
+                aria-label="Report comments"
                 rows="3"
                 class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-200 outline-none resize-none"
                 placeholder="Provide details..."
@@ -1406,6 +1415,7 @@
               >
               <select
                 id="toggle-question-type"
+                aria-label="Question type override"
                 onchange="changeQuestionTypeMode(this.value)"
                 class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2.5 text-sm text-gray-700 dark:text-gray-200 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors"
               >
@@ -1577,6 +1587,7 @@
               >
               <select
                 id="review-layout-select"
+                aria-label="Study layout"
                 onchange="handleReviewLayoutChange(this.value)"
                 class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2.5 text-sm text-gray-700 dark:text-gray-200 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors"
               >
@@ -1592,6 +1603,7 @@
               >
               <input
                 id="review-page-size-input"
+                aria-label="Items per page"
                 type="number"
                 min="1"
                 step="1"
@@ -1644,6 +1656,7 @@
             <input
               type="password"
               id="deck-password-input"
+              autocomplete="off"
               class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 pr-12"
               placeholder="Enter Password"
             />
@@ -1708,6 +1721,7 @@
             <input
               type="password"
               id="folder-password-input"
+              autocomplete="off"
               class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 pr-12"
               placeholder="Enter Folder Password"
             />

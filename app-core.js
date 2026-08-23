@@ -23,6 +23,7 @@ let lastSyncAt = 0;
 const SYNC_STATUS_STORAGE_KEY = "mrh_last_sync_status_timestamp";
 const CACHE_VERSION_STORAGE_KEY = "mrh_cache_version";
 const NAVIGATION_PATH_STORAGE_KEY = "mrh_navigation_path"; // Persist user's navigation position
+let __mrhAppInitialized = false;
 
 function readStoredSyncStatusTimestamp() {
   const stored = getStoredItem?.(SYNC_STATUS_STORAGE_KEY, "") || "";
@@ -1648,18 +1649,30 @@ function renderQuestion() {
   });
 
   const imgEl = document.getElementById("q-image");
-  if (q.ImageURL && q.ImageURL.trim() !== "") {
+  if (
+    imgEl &&
+    q.ImageURL &&
+    String(q.ImageURL).trim() !== "" &&
+    typeof isSafeImageURL === "function" &&
+    isSafeImageURL(q.ImageURL)
+  ) {
     imgEl.onload = () => imgEl.classList.remove("hidden");
     imgEl.onerror = () => {
       imgEl.removeAttribute("src");
       imgEl.classList.add("hidden");
     };
+    imgEl.referrerPolicy = "no-referrer";
+    imgEl.loading = "lazy";
+    imgEl.decoding = "async";
     imgEl.src = q.ImageURL;
     imgEl.alt = q.Question
       ? `Reference for: ${q.Question.substring(0, 50)}...`
       : "Question reference image";
     imgEl.classList.remove("hidden");
-  } else {
+  } else if (imgEl) {
+    imgEl.onload = null;
+    imgEl.onerror = null;
+    imgEl.removeAttribute("src");
     imgEl.classList.add("hidden");
   }
 
@@ -2885,10 +2898,20 @@ async function fetchDeckQuestionsFromNetwork(
   }
 
   try {
-    let fetchUrl = `${DB_URL}?subject=${encodeURIComponent(subject)}&_t=${Date.now()}`;
-    if (pass) fetchUrl += `&password=${encodeURIComponent(pass)}`;
-
-    const response = await fetch(fetchUrl, { cache: "no-store" });
+    const response = await fetch(DB_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        type: "get_deck",
+        subject: String(subject || "").trim(),
+        password: String(pass || ""),
+      }),
+      cache: "no-store",
+      redirect: "follow",
+    });
     const text = await response.text();
     let newQuestions;
     try {
@@ -3831,7 +3854,7 @@ async function clearAppData() {
   try {
     if (
       !(await requestConfirmation(
-        "This permanently deletes all locally saved app data, including downloaded questions, progress, preferences, and saved sessions. Continue?",
+        "This permanently deletes this app's locally saved decks, progress, preferences, saved sessions, and app cache. Continue?",
         "Clear App Data",
       ))
     ) {
@@ -3840,54 +3863,29 @@ async function clearAppData() {
 
     if (
       !(await requestConfirmation(
-        "Final confirmation: this will permanently erase your downloaded decks, progress, preferences, saved sessions, and cached data. This cannot be undone.",
+        "Final confirmation: only data owned by this app will be erased. Other same-origin website data will be left untouched.",
         "Confirm Permanent Deletion",
       ))
     ) {
       return;
     }
 
-    if (typeof idbKeyval !== "undefined") {
-      await idbKeyval.clear();
+    if (typeof idbKeyval !== "undefined" && typeof idbKeyval.del === "function") {
+      await idbKeyval.del("mrh_db");
     }
 
-    for (let i = localStorage.length - 1; i >= 0; i--) {
-      const key = localStorage.key(i);
-      if (key) localStorage.removeItem(key);
-    }
-    for (let i = sessionStorage.length - 1; i >= 0; i--) {
-      const key = sessionStorage.key(i);
-      if (key) sessionStorage.removeItem(key);
+    if (
+      typeof StorageUtils !== "undefined" &&
+      typeof StorageUtils.clearCurrentNamespace === "function"
+    ) {
+      StorageUtils.clearCurrentNamespace({ includeLegacy: true });
     }
 
-    if ("caches" in window) {
-      const cacheNames = await caches.keys();
-      await Promise.all(
-        cacheNames.map((cacheName) => caches.delete(cacheName)),
-      );
-    }
-
-    if ("indexedDB" in window && typeof indexedDB.databases === "function") {
-      try {
-        const dbs = await indexedDB.databases();
-        await Promise.all(
-          dbs.map(
-            (db) =>
-              new Promise((resolve) => {
-                const request = indexedDB.deleteDatabase(db.name);
-                request.onsuccess = () => resolve();
-                request.onerror = () => resolve();
-                request.onblocked = () => resolve();
-              }),
-          ),
-        );
-      } catch (error) {
-        console.warn("IndexedDB cleanup could not complete.", error);
-      }
-    }
-
+    // Intentionally do not clear every IndexedDB database, CacheStorage entry,
+    // or service worker on this origin.
     state.db = [];
     state.categorySummary = [];
+    state.accessMetadata = {};
     state.stats = {
       totalAnswered: 0,
       correct: 0,
@@ -3895,34 +3893,6 @@ async function clearAppData() {
       subjectAccuracy: {},
       completedQs: [],
       srsMap: {},
-    };
-    state.prefs = {
-      ...state.prefs,
-      darkMode: true,
-      activeRecall: false,
-      quizNavigationPosition: "top",
-      quizNavigationMode: "manual",
-      reviewNavigationPosition: "top",
-      studySingleNavigationPosition: "top",
-      studyScrollNavigationPosition: "top",
-      databaseUpdateMode: "immediate",
-      layoutMode: "grid",
-      shuffleChoices: true,
-      shuffleQuestions: true,
-      titleMode: "wrap",
-      hideABCD: false,
-      quizHideABCD: false,
-      showWrongChoices: false,
-      clozeEnabled: false,
-      srsEnabled: false,
-      archivedDecks: [],
-      deckSortBy: "letters",
-      deckSortDirection: "asc",
-      deckNameMode: "wrap",
-      favoriteDecks: [],
-      favoriteQuestions: [],
-      recentDecks: [],
-      lastActivity: null,
     };
     state.session = {
       active: false,
@@ -3932,6 +3902,7 @@ async function clearAppData() {
       autoNextTimeout: null,
       revealedCloze: false,
     };
+    state.prefs.lastActivity = null;
     rebuildQuestionIndex();
     window.location.reload();
   } catch (error) {
@@ -3995,17 +3966,6 @@ async function fetchGlobalReports() {
 
 window.onload = async () => {
   await loadState();
-
-  if ("serviceWorker" in navigator) {
-    try {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      for (const registration of registrations) {
-        await registration.unregister();
-      }
-    } catch (e) {
-      console.warn("Unable to clear stale service worker registrations", e);
-    }
-  }
 
   const toggleElement = document.getElementById("globalModeToggle");
   if (toggleElement) {
@@ -5465,9 +5425,20 @@ if (folderPasswordButton) {
 
     await runWithBusyButton(btn, "Verifying...", async () => {
       try {
-        const response = await fetch(
-          `${DB_URL}?subject=${encodeURIComponent(pendingLockedFolderPath || "")}&password=${encodeURIComponent(pass)}&_t=${Date.now()}`,
-        );
+        const response = await fetch(DB_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "text/plain;charset=utf-8",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            type: "verify_folder_access",
+            subject: String(pendingLockedFolderPath || "").trim(),
+            password: String(pass),
+          }),
+          cache: "no-store",
+          redirect: "follow",
+        });
         const text = await response.text();
         let result;
         try {
@@ -6092,37 +6063,22 @@ async function checkCacheVersionWithETag() {
   }
 
   try {
-    const headers = { "Content-Type": "text/plain;charset=utf-8" };
-
-    // Send last known hash to enable 304 responses
-    if (lastCacheVersionHash) {
-      headers["If-None-Match"] = lastCacheVersionHash;
-    }
-
     const response = await fetchWithExponentialBackoff(
       DB_URL,
       {
         method: "POST",
-        headers,
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8",
+          Accept: "application/json",
+        },
         body: JSON.stringify({ type: "get_cache_version" }),
       },
-      2, // Max 2 retries for version check
+      2,
     );
-
-    // 304 Not Modified = cache still valid, nothing to do
-    if (response.status === 304) {
-      console.log("[CACHE] 304 Not Modified, cache is current");
-      failureRetryCount = 0;
-      return;
-    }
 
     if (!response.ok) return;
 
     const data = await response.json();
-
-    // Store ETag for next request
-    const etag = response.headers.get("ETag");
-    if (etag) lastCacheVersionHash = etag;
 
     if (data && data.version !== undefined && data.version !== null) {
       // Backend v8 returns an opaque string version token; compare exact tokens.
@@ -6249,8 +6205,6 @@ function forcePageRefresh() {
     triggerSilentSummaryRefresh("Forcing quiet cache refresh");
   }, 100);
 }
-
-let __mrhAppInitialized = false;
 
 function initializeApp() {
   if (__mrhAppInitialized) return false;
