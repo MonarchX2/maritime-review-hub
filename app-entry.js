@@ -87,6 +87,7 @@
 
   async function loadApplicationRuntime() {
     await loadFeatureScript("app-core.js");
+    await loadFeatureScript("app-core-network.js");
   }
 
   function showBootstrapError(error) {
