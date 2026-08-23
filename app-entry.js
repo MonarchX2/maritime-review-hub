@@ -100,8 +100,7 @@
 
     if (!status) return;
 
-    status.textContent =
-      "Unable to start the app. Please reload the page.";
+    status.textContent = "Unable to start the app. Please reload the page.";
     status.classList.remove("hidden");
     status.setAttribute("role", "alert");
   }
