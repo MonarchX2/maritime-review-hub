@@ -217,7 +217,10 @@ async function staleWhileRevalidateStatic(request) {
     })
     .catch((error) => {
       if (!cached) throw error;
-      console.warn("[SW] Static refresh failed; using cached response:", request.url);
+      console.warn(
+        "[SW] Static refresh failed; using cached response:",
+        request.url,
+      );
       return cached;
     });
 
