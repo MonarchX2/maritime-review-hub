@@ -2014,6 +2014,27 @@ function renderCategoryProgress() {
     }
   });
 
+  const selectedSortBy = state.prefs.deckSortBy || "letters";
+  const selectedSortDirection =
+    state.prefs.deckSortDirection === "desc" ? "desc" : "asc";
+  document
+    .querySelectorAll(".deck-sort-option[data-sort-value]")
+    .forEach((btn) => {
+      const check = btn.querySelector(".sort-check");
+      if (check)
+        check.style.opacity =
+          btn.dataset.sortValue === selectedSortBy ? "1" : "0";
+    });
+  document
+    .querySelectorAll(".deck-sort-option[data-sort-direction]")
+    .forEach((btn) => {
+      const check = btn.querySelector(".sort-direction-check");
+      if (check) {
+        check.style.opacity =
+          btn.dataset.sortDirection === selectedSortDirection ? "1" : "0";
+      }
+    });
+
   const container = document.getElementById("category-list");
   const isGrid = state.prefs.layoutMode === "grid";
   const layoutIcon = document.getElementById("layout-icon");
@@ -3219,6 +3240,8 @@ function renderDeckReview(subject, questions) {
     let correctText = ansStr;
     if (isMultipleChoice) {
       correctText = q[`Choice${ansStr.toUpperCase()}`] || ansStr;
+    } else {
+      correctText = q.ChoiceA || ansStr;
     }
     if (!correctText || correctText.toLowerCase() === "undefined") {
       correctText = "Answer missing from database";
@@ -3801,18 +3824,26 @@ async function resetProgress() {
       "Reset All Progress",
     )
   ) {
+    if (state.session?.autoNextTimeout) {
+      clearTimeout(state.session.autoNextTimeout);
+    }
+    stopVisualTimer();
+
     state.stats = {
       totalAnswered: 0,
       correct: 0,
       mistakes: [],
       subjectAccuracy: {},
       completedQs: [],
+      srsMap: {},
     };
     state.session = {
       active: false,
       questions: [],
       currentIndex: 0,
       userAnswers: {},
+      autoNextTimeout: null,
+      revealedCloze: false,
     };
 
     state.prefs.studyProgress = {};
@@ -3820,7 +3851,8 @@ async function resetProgress() {
     state.prefs.lastActivity = null;
 
     clearSessionProgress();
-    saveState();
+    await saveState();
+    updateDashboard();
     alert("Progress Reset.");
 
     if (document.getElementById("view-stats").classList.contains("active"))
@@ -5882,12 +5914,6 @@ async function reloadAppStateInMemory() {
   try {
     console.log("[STATE] Fetching latest app state in-memory...");
     await triggerSilentSummaryRefresh("Refreshing app state in memory");
-
-    showToastNotification(
-      "Deck settings updated. Latest content loaded.",
-      "info",
-      2500,
-    );
 
     console.log("[STATE] In-memory state refresh complete");
     return true;

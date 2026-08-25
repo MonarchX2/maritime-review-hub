@@ -2,16 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <meta name="theme-color" content="#1e3a8a" />
     <link rel="manifest" href="manifest.json" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
-    <link rel="preconnect" href="https://cdn.tailwindcss.com" />
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" />
     <link rel="preconnect" href="https://cdn.jsdelivr.net" />
-    <link rel="dns-prefetch" href="https://cdn.tailwindcss.com" />
     <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
     <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
 
@@ -45,8 +46,6 @@
       } catch (e) {}
     </script>
 
-    <!-- Tailwind CSS (Development only). For production, use the Tailwind CLI to build a static CSS file. -->
-    <script src="https://cdn.tailwindcss.com"></script>
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
@@ -71,27 +70,9 @@
       defer
     ></script>
 
-    <script>
-      tailwind.config = {
-        darkMode: "class",
-        theme: {
-          extend: {
-            colors: {
-              brand: {
-                50: "#eff6ff",
-                100: "#dbeafe",
-                500: "#3b82f6",
-                600: "#2563eb",
-                700: "#1d4ed8",
-                900: "#1e3a8a",
-              },
-            },
-          },
-        },
-      };
-    </script>
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
+    <link rel="stylesheet" href="tailwind.generated.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body
@@ -104,7 +85,8 @@
         <button
           onclick="navigate('dashboard')"
           class="font-bold text-lg hover:text-brand-200 transition-colors text-left flex items-center transform hover:scale-105 active:scale-95 origin-left"
-         type="button">
+          type="button"
+        >
           <i class="fa-solid fa-anchor mr-2"></i> MRH
         </button>
         <i
@@ -124,7 +106,8 @@
           class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg"
           aria-label="View Reports"
           title="Community Reports"
-         type="button">
+          type="button"
+        >
           <i class="fa-solid fa-flag"></i>
         </button>
         <!-- Theme Toggle Button (Sun/Moon) -->
@@ -134,7 +117,8 @@
           class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg"
           aria-label="Toggle Theme"
           title="Toggle theme"
-         type="button">
+          type="button"
+        >
           <i class="fa-solid fa-sun dark:hidden"></i>
           <i class="fa-solid fa-moon hidden dark:inline"></i>
         </button>
@@ -143,7 +127,8 @@
           onclick="navigate('settings')"
           class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg hover:rotate-90"
           aria-label="Settings"
-         type="button">
+          type="button"
+        >
           <i
             class="fa-solid fa-gear group-hover:rotate-90 transition-transform"
           ></i>
@@ -173,7 +158,8 @@
           <button
             onclick="resumeSession()"
             class="w-full bg-yellow-500 hover:bg-yellow-600 text-white p-6 rounded-2xl shadow-md text-left transition-all duration-300 transform hover:-translate-y-2 hover:shadow-xl hover:shadow-yellow-500/20 active:scale-95"
-           type="button">
+            type="button"
+          >
             <h4 class="text-xl font-bold">
               <i
                 class="fa-solid fa-clock-rotate-left mr-2 animate-spin-slow"
@@ -255,7 +241,11 @@
                 </button>
               </div>
             </details>
-            <select id="deck-source-filter" aria-label="Deck source filter" class="hidden"></select>
+            <select
+              id="deck-source-filter"
+              aria-label="Deck source filter"
+              class="hidden"
+            ></select>
 
             <details id="deck-sort-menu" class="relative">
               <summary
@@ -356,7 +346,8 @@
               aria-label="Toggle subject layout"
               title="Toggle subject layout"
               class="dashboard-control bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-colors"
-             type="button">
+              type="button"
+            >
               <i
                 id="layout-icon"
                 class="fa-solid fa-list text-brand-500 mr-1.5 sm:mr-2"
@@ -410,7 +401,8 @@
             <button
               onclick="initSession()"
               class="w-full mt-6 bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 hover:-translate-y-1 hover:shadow-lg shadow-md transition-all duration-300 active:scale-95 group"
-             type="button">
+              type="button"
+            >
               Start Review
               <i
                 class="fa-solid fa-play ml-2 group-hover:translate-x-1 transition-transform"
@@ -426,7 +418,8 @@
                 onclick="navigate('dashboard')"
                 class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-10 h-10 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95 flex items-center justify-center group text-lg flex-shrink-0"
                 aria-label="Back to dashboard"
-               type="button">
+                type="button"
+              >
                 <i class="fa-solid fa-arrow-left transition-transform"></i>
               </button>
               <div class="min-w-0 overflow-hidden flex-1">
@@ -441,7 +434,8 @@
                 id="btn-session-settings"
                 class="flex-shrink-0 bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-10 h-10 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95 flex items-center justify-center group"
                 title="Quiz Settings"
-               type="button">
+                type="button"
+              >
                 <i
                   class="fa-solid fa-gear group-hover:rotate-90 transition-transform"
                 ></i>
@@ -489,7 +483,8 @@
                   id="btn-favorite-question"
                   class="flex-shrink-0 text-gray-400 hover:text-yellow-500 text-xs font-bold flex items-center justify-center w-7 h-7 transition-all bg-white hover:bg-yellow-50 dark:bg-gray-800 dark:hover:bg-yellow-900/30 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95"
                   title="Add to Favorites"
-                 type="button">
+                  type="button"
+                >
                   <i class="fa-solid fa-star"></i>
                 </button>
 
@@ -498,7 +493,8 @@
                   id="btn-open-report"
                   class="flex-shrink-0 text-gray-400 hover:text-red-500 text-xs font-bold flex items-center justify-center w-7 h-7 transition-all bg-white hover:bg-red-50 dark:bg-gray-800 dark:hover:bg-red-900/30 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95"
                   title="Report Issue"
-                 type="button">
+                  type="button"
+                >
                   <i class="fa-solid fa-triangle-exclamation"></i>
                 </button>
               </div>
@@ -544,7 +540,8 @@
                 id="btn-show-options"
                 onclick="showMCQOptions()"
                 class="w-full py-4 border-t border-gray-200 dark:border-gray-700 font-bold text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-               type="button">
+                type="button"
+              >
                 Show options
               </button>
             </div>
@@ -553,7 +550,8 @@
               <button
                 class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start"
                 data-choice="A"
-               type="button">
+                type="button"
+              >
                 <span class="choice-prefix font-bold mr-2 min-w-[20px]"
                   >A)</span
                 >
@@ -562,7 +560,8 @@
               <button
                 class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start"
                 data-choice="B"
-               type="button">
+                type="button"
+              >
                 <span class="choice-prefix font-bold mr-2 min-w-[20px]"
                   >B)</span
                 >
@@ -571,7 +570,8 @@
               <button
                 class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start"
                 data-choice="C"
-               type="button">
+                type="button"
+              >
                 <span class="choice-prefix font-bold mr-2 min-w-[20px]"
                   >C)</span
                 >
@@ -580,7 +580,8 @@
               <button
                 class="choice-btn text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 font-medium flex items-start"
                 data-choice="D"
-               type="button">
+                type="button"
+              >
                 <span class="choice-prefix font-bold mr-2 min-w-[20px]"
                   >D)</span
                 >
@@ -612,7 +613,8 @@
               id="btn-prev"
               onclick="prevQuestion()"
               class="flex-1 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white py-4 rounded-xl font-bold shadow-md hover:bg-gray-300 hover:-translate-y-1 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 group"
-             type="button">
+              type="button"
+            >
               <i
                 class="fa-solid fa-arrow-left md:mr-2 group-hover:-translate-x-1 transition-transform"
               ></i>
@@ -623,7 +625,8 @@
               id="btn-reveal"
               onclick="revealAnswer()"
               class="flex-1 bg-yellow-500 text-white py-4 rounded-xl font-bold shadow-md hover:bg-yellow-600 hover:-translate-y-1 hover:shadow-yellow-500/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-             type="button">
+              type="button"
+            >
               <i class="fa-solid fa-eye md:mr-2"></i>
               <span class="hidden md:inline">Reveal</span>
             </button>
@@ -632,7 +635,8 @@
               id="btn-next"
               onclick="nextQuestion()"
               class="flex-1 bg-brand-900 text-white py-4 rounded-xl font-bold shadow-md hover:bg-brand-800 hover:-translate-y-1 hover:shadow-brand-500/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 group"
-             type="button">
+              type="button"
+            >
               <span class="hidden md:inline">Next</span>
               <i
                 class="fa-solid fa-arrow-right md:ml-2 group-hover:translate-x-1 transition-transform"
@@ -663,7 +667,8 @@
           <button
             onclick="loadReports()"
             class="text-brand-500 hover:text-brand-600 text-sm font-bold flex items-center gap-1"
-           type="button">
+            type="button"
+          >
             <i class="fa-solid fa-rotate-right"></i> Refresh
           </button>
         </div>
@@ -709,7 +714,8 @@
             <button
               onclick="navigate('dashboard')"
               class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 px-4 py-2 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center shrink-0"
-             type="button">
+              type="button"
+            >
               <i class="fa-solid fa-arrow-left mr-2"></i> Back
             </button>
             <h2
@@ -727,7 +733,8 @@
           <button
             onclick="proceedToReview()"
             class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border-2 border-transparent hover:border-brand-500 dark:hover:border-brand-400 transition-all duration-300 text-left group flex flex-col justify-between"
-           type="button">
+            type="button"
+          >
             <div>
               <div
                 class="w-14 h-14 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform"
@@ -757,7 +764,8 @@
           <button
             onclick="proceedToQuiz()"
             class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border-2 border-transparent hover:border-brand-500 dark:hover:border-brand-400 transition-all duration-300 text-left group flex flex-col justify-between"
-           type="button">
+            type="button"
+          >
             <div>
               <div
                 class="w-14 h-14 rounded-xl bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform"
@@ -796,7 +804,8 @@
             onclick="navigate('dashboard')"
             class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-10 h-10 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center text-lg flex-shrink-0"
             aria-label="Back to dashboard"
-           type="button">
+            type="button"
+          >
             <i class="fa-solid fa-arrow-left"></i>
           </button>
           <div class="min-w-0 overflow-hidden flex-1">
@@ -826,7 +835,8 @@
               class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-11 h-11 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center text-lg"
               title="Study Settings"
               aria-label="Study settings"
-             type="button">
+              type="button"
+            >
               <i
                 class="fa-solid fa-gear group-hover:rotate-90 transition-transform"
               ></i>
@@ -1123,7 +1133,8 @@
                   <button
                     onclick="resetProgress()"
                     class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300"
-                   type="button">
+                    type="button"
+                  >
                     Reset Progress
                   </button>
                 </div>
@@ -1134,7 +1145,8 @@
                   <button
                     onclick="clearDatabase()"
                     class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300"
-                   type="button">
+                    type="button"
+                  >
                     Clear Database
                   </button>
                 </div>
@@ -1143,7 +1155,8 @@
                   <button
                     onclick="clearAppData()"
                     class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300"
-                   type="button">
+                    type="button"
+                  >
                     Clear App Data
                   </button>
                 </div>
@@ -1171,19 +1184,26 @@
       <!-- Edit Report Modal) -->
       <div
         id="report-modal"
-        class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden opacity-0 transition-opacity duration-300 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="report-modal-title"
+        class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden opacity-0 transition-opacity duration-300 flex items-center justify-center p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="report-modal-title"
       >
         <div
           class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 flex flex-col max-h-[90vh]"
         >
           <div class="flex justify-between items-center mb-4">
-            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100" id="report-modal-title">
+            <h3
+              class="text-xl font-bold text-gray-800 dark:text-gray-100"
+              id="report-modal-title"
+            >
               <i class="fa-solid fa-flag text-red-500 mr-2"></i> Report Question
             </h3>
             <button
               onclick="closeReportModal()"
               class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-             type="button">
+              type="button"
+            >
               <i class="fa-solid fa-xmark text-xl"></i>
             </button>
           </div>
@@ -1257,14 +1277,16 @@
             <button
               onclick="closeReportModal()"
               class="px-5 py-2.5 rounded-xl font-bold bg-gray-100 hover:bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300 transition-colors"
-             type="button">
+              type="button"
+            >
               Cancel
             </button>
             <button
               id="btn-submit-report"
               onclick="submitReport()"
               class="px-5 py-2.5 rounded-xl font-bold text-white bg-red-500 hover:bg-red-600 transition-colors shadow-md"
-             type="button">
+              type="button"
+            >
               Submit
             </button>
           </div>
@@ -1277,7 +1299,10 @@
       <!-- Quiz Settings Modal -->
       <div
         id="session-settings-modal"
-        class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300" role="dialog" aria-modal="true" aria-labelledby="session-settings-title"
+        class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="session-settings-title"
       >
         <div
           class="settings-modal-shell bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300"
@@ -1286,14 +1311,18 @@
           <div
             class="settings-modal-header flex justify-between items-center mb-6 pb-3"
           >
-            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100" id="session-settings-title">
+            <h3
+              class="text-xl font-bold text-gray-800 dark:text-gray-100"
+              id="session-settings-title"
+            >
               <i class="fa-solid fa-sliders text-brand-500 mr-2"></i> Quiz
               Settings
             </h3>
             <button
               onclick="closeSessionSettingsModal()"
               class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-             type="button">
+              type="button"
+            >
               <i class="fa-solid fa-xmark text-xl"></i>
             </button>
           </div>
@@ -1434,7 +1463,10 @@
       <!-- About Modal -->
       <div
         id="about-modal"
-        class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300" role="dialog" aria-modal="true" aria-labelledby="about-modal-title"
+        class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="about-modal-title"
       >
         <div
           class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300 border border-gray-200 dark:border-gray-700"
@@ -1442,7 +1474,10 @@
           <div
             class="flex justify-between items-center mb-5 border-b border-gray-100 dark:border-gray-700 pb-3"
           >
-            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100" id="about-modal-title">
+            <h3
+              class="text-xl font-bold text-gray-800 dark:text-gray-100"
+              id="about-modal-title"
+            >
               <i class="fa-solid fa-circle-info text-brand-500 mr-2"></i>
               About MRH
             </h3>
@@ -1479,7 +1514,10 @@
       <!-- Review Settings Modal -->
       <div
         id="review-settings-modal"
-        class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300" role="dialog" aria-modal="true" aria-labelledby="review-settings-title"
+        class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="review-settings-title"
       >
         <div
           class="settings-modal-shell bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300"
@@ -1488,14 +1526,18 @@
           <div
             class="settings-modal-header flex justify-between items-center mb-6 pb-3"
           >
-            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100" id="review-settings-title">
+            <h3
+              class="text-xl font-bold text-gray-800 dark:text-gray-100"
+              id="review-settings-title"
+            >
               <i class="fa-solid fa-sliders text-brand-500 mr-2"></i> Study
               Settings
             </h3>
             <button
               onclick="closeReviewSettingsModal()"
               class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-             type="button">
+              type="button"
+            >
               <i class="fa-solid fa-xmark text-xl"></i>
             </button>
           </div>
@@ -1563,7 +1605,7 @@
                   >
                 </div>
                 <span class="text-xs text-gray-500 block mt-1"
-                  >Default to OFF.</span
+                  >Default to ON.</span
                 >
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
@@ -1625,7 +1667,10 @@
       <!-- NEW: DECK PASSWORD MODAL OVERLAY -->
       <div
         id="deck-password-modal"
-        class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300" role="dialog" aria-modal="true" aria-labelledby="deck-password-title"
+        class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="deck-password-title"
       >
         <div
           class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700"
@@ -1633,14 +1678,18 @@
           <div
             class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3"
           >
-            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100" id="deck-password-title">
+            <h3
+              class="text-xl font-bold text-gray-800 dark:text-gray-100"
+              id="deck-password-title"
+            >
               <i class="fa-solid fa-lock text-brand-500 mr-2"></i> Deck Locked
             </h3>
 
             <button
               onclick="closeDeckPasswordModal()"
               class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-             type="button">
+              type="button"
+            >
               <i class="fa-solid fa-xmark text-xl"></i>
             </button>
           </div>
@@ -1663,7 +1712,8 @@
             <button
               onclick="togglePasswordVisibility('deck-password-input', this)"
               class="absolute right-3 top-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-             type="button">
+              type="button"
+            >
               <i class="fa-solid fa-eye text-lg"></i>
             </button>
           </div>
@@ -1672,13 +1722,15 @@
             <button
               onclick="closeDeckPasswordModal()"
               class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all"
-             type="button">
+              type="button"
+            >
               Cancel
             </button>
             <button
               id="btn-submit-deck-password"
               class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center"
-             type="button">
+              type="button"
+            >
               Unlock Deck
             </button>
           </div>
@@ -1691,7 +1743,10 @@
       <!-- FOLDER PASSWORD MODAL -->
       <div
         id="folder-password-modal"
-        class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300" role="dialog" aria-modal="true" aria-labelledby="folder-password-title"
+        class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="folder-password-title"
       >
         <div
           class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700"
@@ -1699,13 +1754,17 @@
           <div
             class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3"
           >
-            <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100" id="folder-password-title">
+            <h3
+              class="text-xl font-bold text-gray-800 dark:text-gray-100"
+              id="folder-password-title"
+            >
               <i class="fa-solid fa-lock text-brand-500 mr-2"></i> Folder Locked
             </h3>
             <button
               onclick="closeFolderPasswordModal()"
               class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-             type="button">
+              type="button"
+            >
               <i class="fa-solid fa-xmark text-xl"></i>
             </button>
           </div>
@@ -1728,7 +1787,8 @@
             <button
               onclick="togglePasswordVisibility('folder-password-input', this)"
               class="absolute right-3 top-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-             type="button">
+              type="button"
+            >
               <i class="fa-solid fa-eye text-lg"></i>
             </button>
           </div>
@@ -1737,13 +1797,15 @@
             <button
               onclick="closeFolderPasswordModal()"
               class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white py-3 rounded-lg font-bold transition-all"
-             type="button">
+              type="button"
+            >
               Cancel
             </button>
             <button
               id="btn-submit-folder-password"
               class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold transition-all shadow-md active:scale-95 flex items-center justify-center"
-             type="button">
+              type="button"
+            >
               Unlock Folder
             </button>
           </div>
@@ -1755,7 +1817,10 @@
 
     <div
       id="confirm-modal"
-      class="hidden fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300" role="dialog" aria-modal="true" aria-labelledby="confirm-title"
+      class="hidden fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-title"
     >
       <div
         class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-transform duration-300 border border-gray-200 dark:border-gray-700"
@@ -1773,7 +1838,8 @@
           <button
             onclick="closeConfirmModal(false)"
             class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-           type="button">
+            type="button"
+          >
             <i class="fa-solid fa-xmark text-xl"></i>
           </button>
         </div>
@@ -1785,14 +1851,16 @@
           <button
             onclick="closeConfirmModal(false)"
             class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:text-white py-3 rounded-lg font-bold"
-           type="button">
+            type="button"
+          >
             Cancel
           </button>
           <button
             id="confirm-accept"
             onclick="closeConfirmModal(true)"
             class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-lg font-bold"
-           type="button">
+            type="button"
+          >
             Confirm
           </button>
         </div>

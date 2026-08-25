@@ -1,9 +1,10 @@
 const CACHE_PREFIX = "mrh-static";
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 
 const APP_SHELL = [
   "/index.html",
+  "/tailwind.generated.css",
   "/styles.css",
   "/app-entry.js",
   "/app-core-state.js",
@@ -25,7 +26,6 @@ const APP_SHELL = [
 ];
 
 const CDN_ORIGINS = new Set([
-  "https://cdn.tailwindcss.com",
   "https://cdnjs.cloudflare.com",
   "https://cdn.jsdelivr.net",
 ]);
@@ -118,30 +118,34 @@ async function cacheResponse(cache, request, response) {
 async function precacheAppShell() {
   const cache = await getCache();
 
-  for (const url of APP_SHELL) {
-    try {
-      const response = await fetch(
-        new Request(url, {
-          method: "GET",
-          cache: "no-cache",
-          credentials: "same-origin",
-        }),
-      );
+  await Promise.all(
+    APP_SHELL.map(async (url) => {
+      try {
+        const response = await fetch(
+          new Request(url, {
+            method: "GET",
+            cache: "no-cache",
+            credentials: "same-origin",
+          }),
+        );
 
-      if (!response.ok) {
-        throw new Error(`Precache failed with HTTP ${response.status}: ${url}`);
+        if (!response.ok) {
+          throw new Error(
+            `Precache failed with HTTP ${response.status}: ${url}`,
+          );
+        }
+
+        await cache.put(url, response);
+      } catch (error) {
+        console.error("[SW] Failed to precache:", url, error);
+
+        // Abort installation if a required app-shell resource cannot
+        // be cached. This prevents installing a worker that cannot
+        // provide the complete offline shell.
+        throw error;
       }
-
-      await cache.put(url, response);
-    } catch (error) {
-      console.error("[SW] Failed to precache:", url, error);
-
-      // Abort installation if a required app-shell resource cannot
-      // be cached. This prevents installing a worker that cannot
-      // provide the complete offline shell.
-      throw error;
-    }
-  }
+    }),
+  );
 }
 
 async function cleanupOldCaches() {
@@ -201,29 +205,28 @@ async function networkFirstNavigation(event) {
   }
 }
 
-async function networkFirstStatic(request) {
+async function staleWhileRevalidateStatic(request) {
   const cache = await getCache();
-
-  try {
-    const response = await fetch(request);
-
-    if (response && response.ok && response.type !== "opaque") {
-      await cacheResponse(cache, request, response);
-    }
-
-    return response;
-  } catch (error) {
-    const cached = await cache.match(request);
-
-    if (cached) {
+  const cached = await cache.match(request);
+  const refresh = fetch(request)
+    .then(async (response) => {
+      if (response && response.ok && response.type !== "opaque") {
+        await cacheResponse(cache, request, response);
+      }
+      return response;
+    })
+    .catch((error) => {
+      if (!cached) throw error;
+      console.warn("[SW] Static refresh failed; using cached response:", request.url);
       return cached;
-    }
+    });
 
-    // Important:
-    // Do NOT return index.html for a missing JS/CSS/image/font request.
-    // Return an actual network error instead.
-    throw error;
+  if (cached) {
+    return cached;
   }
+
+  // First visits still wait for the network and populate the cache.
+  return refresh;
 }
 
 self.addEventListener("install", (event) => {
@@ -283,14 +286,9 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Static resources:
-  // NETWORK FIRST -> CACHE FALLBACK
-  //
-  // This is the important change from your original implementation.
-  // Online = fresh server files.
-  // Offline = cached files.
+  // Static resources: cached response first, with a background refresh.
   if (isStaticRequest(request)) {
-    event.respondWith(networkFirstStatic(request));
+    event.respondWith(staleWhileRevalidateStatic(request));
     return;
   }
 

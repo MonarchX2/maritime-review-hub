@@ -2,3 +2,4 @@ backend/
 old/
 tests/
 scripts/
+node_modules/

@@ -80,9 +80,8 @@
       "app-core-state.js",
     ];
 
-    for (const src of cores) {
-      await loadFeatureScript(src);
-    }
+    await Promise.all(cores.slice(0, 3).map(loadFeatureScript));
+    await loadFeatureScript(cores[3]);
   }
 
   async function loadApplicationRuntime() {
@@ -105,6 +104,22 @@
     status.setAttribute("role", "alert");
   }
 
+  function registerServiceWorker() {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.serviceWorker ||
+      typeof navigator.serviceWorker.register !== "function"
+    ) {
+      return;
+    }
+
+    navigator.serviceWorker
+      .register("./sw.js", { updateViaCache: "none" })
+      .catch((error) => {
+        console.warn("Service worker registration failed:", error);
+      });
+  }
+
   try {
     await loadCoreHelpers();
     await loadApplicationRuntime();
@@ -115,6 +130,7 @@
     if (typeof rootScope.initializeApp === "function") {
       rootScope.initializeApp();
     }
+    registerServiceWorker();
   } catch (error) {
     showBootstrapError(error);
   }

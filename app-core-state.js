@@ -23,7 +23,7 @@
       shuffleQuestions: true,
       hideABCD: true,
       quizHideABCD: false,
-      showWrongChoices: false,
+      showWrongChoices: true,
       clozeEnabled: false,
       srsEnabled: false,
       archivedDecks: [],
