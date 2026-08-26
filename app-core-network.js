@@ -179,7 +179,8 @@
         options,
       ),
     getCacheVersion: () => callBackend({ type: "get_cache_version" }),
-    getSyncStatus: () => callBackend({ type: "get_sync_status" }),
+    getSyncStatus: (options = {}) =>
+      callBackend({ type: "get_sync_status" }, options),
   };
 
   const AppNetwork = {

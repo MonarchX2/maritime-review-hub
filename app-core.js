@@ -21,11 +21,13 @@ let remoteCacheVersion = "";
 let isInitialSyncComplete = false; // Track if the first sync from startup has completed
 let lastSyncAt = 0;
 let syncInFlightPromise = null;
+let backgroundSyncPromise = null;
 const deckFetchInFlight = new Map();
 const lastDeckRefreshAtBySubject = {};
 const SYNC_STATUS_STORAGE_KEY = "mrh_last_sync_status_timestamp";
 const CACHE_VERSION_STORAGE_KEY = "mrh_cache_version";
 const NAVIGATION_PATH_STORAGE_KEY = "mrh_navigation_path"; // Persist user's navigation position
+const SYNC_REQUEST_TIMEOUT_MS = 60000;
 let __mrhAppInitialized = false;
 let __mrhPollLoopToken = 0;
 
@@ -805,69 +807,84 @@ function hideConnectionStatusAfterDelay(delay = 3000) {
 }
 
 async function optimizedBackgroundSync() {
-  if (
-    typeof AppSync !== "undefined" &&
-    typeof AppSync.optimizedBackgroundSync === "function"
-  ) {
-    return AppSync.optimizedBackgroundSync();
-  }
+  if (backgroundSyncPromise) return backgroundSyncPromise;
 
-  // FIX 4: LIGHTWEIGHT BACKGROUND SYNC POLLING
-  // First check sync status via lightweight endpoint
-  // Only fetch full summary if timestamp changed
-
-  if (!isLeaderTab) {
-    // Only leader tab performs polling
-    scheduleSyncPoll();
-    return;
-  }
-
-  try {
-    const syncStatus = await checkSyncStatusLightweight();
-
-    if (
-      !syncStatus ||
-      typeof syncStatus !== "object" ||
-      syncStatus.status !== "ok"
-    ) {
-      // Lightweight check failed - fall back to full sync attempt
-      // But do it silently if we have cached data
-      if (state.categorySummary.length > 0) {
-        console.log("[SYNC] Lightweight check failed, cached data available");
-      } else {
-        console.log("[SYNC] Lightweight check failed, attempting full sync");
-        await syncDatabase(true, true); // isRetry=true, isBackgroundCheck=true
+  backgroundSyncPromise = (async () => {
+    try {
+      if (
+        typeof AppSync !== "undefined" &&
+        typeof AppSync.optimizedBackgroundSync === "function"
+      ) {
+        return AppSync.optimizedBackgroundSync();
       }
-      return;
-    }
 
-    if (syncStatus.isColdStart === true) {
-      isColdStart = true;
-      showColdStartNotification();
-      return;
-    }
+      // FIX 4: LIGHTWEIGHT BACKGROUND SYNC POLLING
+      // First check sync status via lightweight endpoint
+      // Only fetch full summary if timestamp changed
 
-    // Compare timestamp with what we last stored
-    const storedTimestamp = readStoredSyncStatusTimestamp();
-    const newTimestamp = String(syncStatus.syncTimestamp || "").trim();
+      if (!isLeaderTab) {
+        // Only leader tab performs polling
+        scheduleSyncPoll();
+        return;
+      }
 
-    if (storedTimestamp !== newTimestamp) {
-      // Sync timestamp changed - fetch full summary
-      console.log("[SYNC] Sync timestamp changed, fetching full summary");
-      persistSyncStatusTimestamp(newTimestamp);
-      await syncDatabase(true, true); // isRetry=true, isBackgroundCheck=true
-    } else {
-      // Timestamp unchanged - database is still current
-      console.log("[SYNC] Sync timestamp unchanged, skipping full fetch");
-      // Mark as connected since backend is responding
-      syncConnected = true;
-      isColdStart = false;
+      try {
+        const syncStatus = await checkSyncStatusLightweight();
+
+        if (
+          !syncStatus ||
+          typeof syncStatus !== "object" ||
+          syncStatus.status !== "ok"
+        ) {
+          // Lightweight check failed - fall back to full sync attempt
+          // But do it silently if we have cached data
+          if (state.categorySummary.length > 0) {
+            console.log(
+              "[SYNC] Lightweight check failed, cached data available",
+            );
+          } else {
+            console.log(
+              "[SYNC] Lightweight check failed, attempting full sync",
+            );
+            await syncDatabase(true, true); // isRetry=true, isBackgroundCheck=true
+          }
+          return;
+        }
+
+        if (syncStatus.isColdStart === true) {
+          isColdStart = true;
+          if (state.categorySummary.length === 0) showColdStartNotification();
+          scheduleSyncRetry(state.categorySummary.length === 0);
+          return;
+        }
+
+        // Compare timestamp with what we last stored
+        const storedTimestamp = readStoredSyncStatusTimestamp();
+        const newTimestamp = String(syncStatus.syncTimestamp || "").trim();
+
+        if (storedTimestamp !== newTimestamp) {
+          // Sync timestamp changed - fetch full summary
+          console.log("[SYNC] Sync timestamp changed, fetching full summary");
+          persistSyncStatusTimestamp(newTimestamp);
+          await syncDatabase(true, true); // isRetry=true, isBackgroundCheck=true
+        } else {
+          // Timestamp unchanged - database is still current
+          console.log("[SYNC] Sync timestamp unchanged, skipping full fetch");
+          // Mark as connected since backend is responding
+          syncConnected = true;
+          isColdStart = false;
+        }
+      } catch (err) {
+        console.error("[SYNC] Optimized background sync error:", err);
+        // On error, attempt full sync but with cached data fallback
+        await syncDatabase(true, true);
+      }
+    } finally {
+      backgroundSyncPromise = null;
     }
-  } catch (err) {
-    console.error("[SYNC] Optimized background sync error:", err);
-    // On error, attempt full sync but with cached data fallback
-    await syncDatabase(true, true);
-  }
+  })();
+
+  return backgroundSyncPromise;
 }
 
 function scheduleSyncPoll() {
@@ -887,8 +904,9 @@ function scheduleSyncPoll() {
   clearTimeout(syncPollTimer);
   syncPollTimer = setTimeout(() => {
     if (activeToken !== __mrhPollLoopToken) return;
-    optimizedBackgroundSync();
-    scheduleSyncPoll();
+    optimizedBackgroundSync().finally(() => {
+      if (activeToken === __mrhPollLoopToken) scheduleSyncPoll();
+    });
   }, SYNC_INTERVAL_MS);
 }
 
@@ -1161,7 +1179,7 @@ function showColdStartNotification() {
   if (titleEl) titleEl.textContent = "Cold Start Detected";
   if (detailEl)
     detailEl.textContent =
-      "The database is being rebuilt. Refreshing the website...";
+      "The database is being rebuilt. The app will retry automatically...";
   if (iconEl) {
     iconEl.className =
       "text-3xl fa-solid fa-exclamation-triangle text-yellow-300";
@@ -1169,12 +1187,6 @@ function showColdStartNotification() {
 
   overlay.classList.remove("hidden");
   overlay.setAttribute("aria-hidden", "false");
-
-  // Force refresh after 3 seconds to get fresh cache
-  setTimeout(() => {
-    console.log("[COLD START] Initiating forced page refresh");
-    window.location.reload();
-  }, 3000);
 }
 
 // ============================================
@@ -1243,9 +1255,11 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
     syncAttempt++;
     syncAbortController = new AbortController();
     const requestController = syncAbortController;
+    let requestTimedOut = false;
     const timeoutId = setTimeout(() => {
+      requestTimedOut = true;
       requestController.abort();
-    }, 10000);
+    }, SYNC_REQUEST_TIMEOUT_MS);
 
     const url = `${DB_URL}?_t=${Date.now()}`;
 
@@ -1283,8 +1297,10 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
         clearTimeout(timeoutId);
         console.warn("[COLD START] Detected! Backend is rebuilding cache...");
         isColdStart = true;
-        showColdStartNotification();
-        scheduleSyncRetry(!isBackgroundCheck);
+        if (state.categorySummary.length === 0) showColdStartNotification();
+        scheduleSyncRetry(
+          !isBackgroundCheck && state.categorySummary.length === 0,
+        );
         return false;
       }
 
@@ -1349,6 +1365,17 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
     } catch (err) {
       clearTimeout(timeoutId);
       if (requestController !== syncAbortController) return false;
+
+      if (err?.name === "AbortError") {
+        if (requestTimedOut) {
+          console.warn(
+            `[SYNC] Database response exceeded ${SYNC_REQUEST_TIMEOUT_MS / 1000}s; retrying automatically.`,
+          );
+        }
+        scheduleSyncRetry(!silentSync);
+        return false;
+      }
+
       console.error("[SYNC] Error:", err);
 
       if (isBackgroundCheck && state.categorySummary.length > 0) {
