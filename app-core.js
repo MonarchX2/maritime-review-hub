@@ -1,7 +1,8 @@
 ﻿const DB_URL =
   "https://script.google.com/macros/s/AKfycby4j5hbEWyfqonO9HYKgywo4OAt1NBwerEWWZwLWb1ODbsQGUd-YMMO-H9wX3_C-tBw/exec";
 
-const SYNC_INTERVAL_MS = 15 * 1000;
+const SYNC_INTERVAL_MS = 60 * 1000;
+const SYNC_RETRY_INTERVAL_MS = 3 * 1000;
 const QUIZ_NAVIGATION_BREAKPOINT = 768;
 
 let chartInstance = null;
@@ -1142,7 +1143,7 @@ function scheduleSyncRetry(showOverlay = true) {
 
   clearTimeout(syncRetryTimer);
   clearInterval(syncCountdownTimer);
-  const delay = SYNC_INTERVAL_MS;
+  const delay = SYNC_RETRY_INTERVAL_MS;
   const retryAt = Date.now() + delay;
   const wasConnected = syncConnected;
   const effectiveShowOverlay = showOverlay && !state.session?.active;
@@ -1261,8 +1262,6 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
       requestController.abort();
     }, SYNC_REQUEST_TIMEOUT_MS);
 
-    const url = `${DB_URL}?_t=${Date.now()}`;
-
     if (!(isBackgroundCheck && state.categorySummary.length > 0)) {
       updateSyncStatus(
         `<i class="fa-solid fa-spinner fa-spin mr-1"></i> ${isRetry ? "Checking for database updates" : "Connecting to database"}...`,
@@ -1272,22 +1271,28 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
     }
 
     try {
-      const response = await fetch(url, {
-        signal: requestController.signal,
-        redirect: "follow",
-        cache: "no-store",
-      });
-
-      if (!response.ok) throw new Error("Network response failed");
-      const text = await response.text();
-      let summaryData;
-      try {
-        summaryData = JSON.parse(text);
-      } catch (parseError) {
-        throw new Error(
-          `Invalid backend response while syncing database: ${text.slice(0, 200)}`,
-        );
-      }
+      const summaryData =
+        typeof AppNetwork !== "undefined" &&
+        typeof AppNetwork.getDeckSummary === "function"
+          ? await AppNetwork.getDeckSummary({
+              timeoutMs: 15000,
+              signal: requestController.signal,
+            })
+          : await fetch(`${DB_URL}?_t=${Date.now()}`, {
+              signal: requestController.signal,
+              redirect: "follow",
+              cache: "no-store",
+            }).then(async (response) => {
+              if (!response.ok) throw new Error("Network response failed");
+              const text = await response.text();
+              try {
+                return JSON.parse(text);
+              } catch (parseError) {
+                throw new Error(
+                  `Invalid backend response while syncing database: ${text.slice(0, 200)}`,
+                );
+              }
+            });
 
       if (
         summaryData &&
@@ -2514,7 +2519,7 @@ function renderCategoryProgress() {
                 </div>`
               : ""
           }
-          <div id="${loaderId}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
+          <div id="${loaderId}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex-col items-center justify-center transition-opacity">
             <i class="fa-solid fa-spinner fa-spin text-3xl ${loaderColor} mb-2"></i>
             <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
           </div>
@@ -3026,7 +3031,10 @@ async function fetchDeckQuestions(
       );
       refreshPromise.catch(() => getQuestionsForSubject(subject));
     } else {
-      if (loaderElement) loaderElement.classList.add("hidden");
+      if (loaderElement) {
+        loaderElement.classList.add("hidden");
+        loaderElement.classList.remove("flex");
+      }
     }
 
     return cachedQuestions;
@@ -3052,13 +3060,19 @@ async function fetchDeckQuestionsFromNetwork(
   }
 
   const request = (async () => {
-    if (loaderElement) loaderElement.classList.remove("hidden");
+    if (loaderElement) {
+      loaderElement.classList.remove("hidden");
+      loaderElement.classList.add("flex");
+    }
 
     if (isDeckLocked(subject) && !pass) {
       pendingDeckSubject = subject;
       pendingDeckAction = pendingDeckAction || "continue";
       openDeckPasswordModal(subject, pendingDeckAction || "continue");
-      if (loaderElement) loaderElement.classList.add("hidden");
+      if (loaderElement) {
+        loaderElement.classList.add("hidden");
+        loaderElement.classList.remove("flex");
+      }
       return [];
     }
 
@@ -3159,7 +3173,10 @@ async function fetchDeckQuestionsFromNetwork(
       console.warn("Network fetch failed.", err);
       return getQuestionsForSubject(subject);
     } finally {
-      if (loaderElement) loaderElement.classList.add("hidden");
+      if (loaderElement) {
+        loaderElement.classList.add("hidden");
+        loaderElement.classList.remove("flex");
+      }
     }
   })();
 
@@ -4187,7 +4204,7 @@ function runWindowLoadStartup() {
     }
 
     if (typeof syncDatabase === "function") {
-      syncDatabase(false, true);
+      await syncDatabase(false, false);
     }
     if (typeof fetchGlobalReports === "function") {
       fetchGlobalReports();
@@ -5662,45 +5679,31 @@ if (folderPasswordButton) {
 
     await runWithBusyButton(btn, "Verifying...", async () => {
       try {
-        const response = await fetch(DB_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "text/plain;charset=utf-8",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({
-            type: "verify_folder_access",
-            subject: String(pendingLockedFolderPath || "").trim(),
-            password: String(pass),
-          }),
-          cache: "no-store",
-          redirect: "follow",
-        });
-        const text = await response.text();
-        let result;
-        try {
-          result = JSON.parse(text);
-        } catch (parseError) {
-          throw new Error(
-            `Invalid backend response while verifying folder password: ${text.slice(0, 200)}`,
-          );
+        if (
+          typeof AppNetwork === "undefined" ||
+          typeof AppNetwork.verifyFolderAccess !== "function"
+        ) {
+          throw new Error("Backend network API is unavailable.");
         }
-        if (result.error) {
-          alert(result.error);
-        } else {
-          const folderPath =
-            pendingLockedFolderPath || pendingLockedFolderName || "";
-          setFolderUnlocked(folderPath, true);
-          closeFolderPasswordModal();
-          if (!state.currentPath) state.currentPath = [];
-          if (
-            pendingLockedFolderName &&
-            !state.currentPath.includes(pendingLockedFolderName)
-          ) {
-            state.currentPath.push(pendingLockedFolderName);
-          }
-          renderCategoryProgress();
+
+        await AppNetwork.verifyFolderAccess(
+          String(pendingLockedFolderPath || "").trim(),
+          String(pass),
+          { timeoutMs: 15000 },
+        );
+
+        const folderPath =
+          pendingLockedFolderPath || pendingLockedFolderName || "";
+        setFolderUnlocked(folderPath, true);
+        closeFolderPasswordModal();
+        if (!state.currentPath) state.currentPath = [];
+        if (
+          pendingLockedFolderName &&
+          !state.currentPath.includes(pendingLockedFolderName)
+        ) {
+          state.currentPath.push(pendingLockedFolderName);
         }
+        renderCategoryProgress();
       } catch (error) {
         console.error("Verification failed", error);
         alert("Network error while verifying the folder password.");
