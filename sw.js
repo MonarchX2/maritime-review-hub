@@ -1,29 +1,34 @@
 const CACHE_PREFIX = "mrh-static";
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 
 const APP_SHELL = [
-  "/index.html",
-  "/tailwind.generated.css",
-  "/styles.css",
-  "/app-entry.js",
-  "/app-core-state.js",
-  "/app-core-network.js",
-  "/app-core.js",
-  "/state-core.js",
-  "/session-core.js",
-  "/ui-modal-core.js",
-  "/deck-nav-core.js",
-  "/deck-review-core.js",
-  "/analytics-core.js",
-  "/quiz-rendering-core.js",
-  "/network-utils.js",
-  "/question-compat.js",
-  "/session-utils.js",
-  "/storage-utils.js",
-  "/text-utils.js",
-  "/ui-core.js",
+  "index.html",
+  "tailwind.generated.css",
+  "styles.css",
+  "app-entry.js",
+  "app-core-state.js",
+  "app-core-network.js",
+  "app-core.js",
+  "debug-utils.js",
+  "state-core.js",
+  "session-core.js",
+  "ui-modal-core.js",
+  "deck-nav-core.js",
+  "deck-review-core.js",
+  "analytics-core.js",
+  "quiz-rendering-core.js",
+  "network-utils.js",
+  "question-compat.js",
+  "session-utils.js",
+  "storage-utils.js",
+  "text-utils.js",
+  "ui-core.js",
 ];
+
+function resolveAppUrl(path) {
+  return new URL(path, self.registration.scope).toString();
+}
 
 const CDN_ORIGINS = new Set([
   "https://cdnjs.cloudflare.com",
@@ -88,9 +93,12 @@ function isAppShellNavigation(request) {
 
   const url = new URL(request.url);
 
+  const appRoot = new URL(self.registration.scope);
+  const indexUrl = new URL("index.html", appRoot);
+
   return (
     isSameOrigin(url) &&
-    (url.pathname === "/" || url.pathname === "/index.html")
+    (url.pathname === appRoot.pathname || url.pathname === indexUrl.pathname)
   );
 }
 
@@ -119,7 +127,8 @@ async function precacheAppShell() {
   const cache = await getCache();
 
   await Promise.all(
-    APP_SHELL.map(async (url) => {
+    APP_SHELL.map(async (path) => {
+      const url = resolveAppUrl(path);
       try {
         const response = await fetch(
           new Request(url, {
@@ -172,11 +181,14 @@ async function networkFirstNavigation(event) {
       // dynamic or user-specific HTML.
       const url = new URL(event.request.url);
 
+      const appRoot = new URL(self.registration.scope);
+      const indexUrl = new URL("index.html", appRoot);
       if (
         url.origin === self.location.origin &&
-        (url.pathname === "/" || url.pathname === "/index.html")
+        (url.pathname === appRoot.pathname ||
+          url.pathname === indexUrl.pathname)
       ) {
-        await cache.put("/index.html", response.clone());
+        await cache.put(indexUrl.toString(), response.clone());
       }
     }
 
@@ -185,7 +197,8 @@ async function networkFirstNavigation(event) {
     console.warn("[SW] Navigation network request failed, using cache:", error);
 
     const cached =
-      (await cache.match(event.request)) || (await cache.match("/index.html"));
+      (await cache.match(event.request)) ||
+      (await cache.match(resolveAppUrl("index.html")));
 
     if (cached) {
       return cached;
