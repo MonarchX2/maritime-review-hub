@@ -610,12 +610,20 @@ async function navigate(viewId) {
 
   updateDashboard();
 
+  const viewElement = document.getElementById(`view-${viewId}`);
+  if (!viewElement) {
+    console.warn(`Navigation target not found: ${viewId}`);
+    return;
+  }
+
   document
     .querySelectorAll(".view-section")
     .forEach((el) => el.classList.remove("active"));
-  document.getElementById(`view-${viewId}`).classList.add("active");
+  viewElement.classList.add("active");
 
-  if (viewId === "stats") renderCharts();
+  if (viewId === "stats" && document.getElementById("chart-accuracy")) {
+    renderCharts();
+  }
 }
 
 function getSyncStatusVisualState(tone = "info") {
@@ -3990,8 +3998,11 @@ async function resetProgress() {
     updateDashboard();
     alert("Progress Reset.");
 
-    if (document.getElementById("view-stats").classList.contains("active"))
+    const statsView = document.getElementById("view-stats");
+    const statsChart = document.getElementById("chart-accuracy");
+    if (statsView && statsView.classList.contains("active") && statsChart) {
       renderCharts();
+    }
   }
 }
 
@@ -5402,8 +5413,18 @@ function toggleAppMode() {
 }
 
 function changeDatabaseUpdateMode(mode) {
-  state.prefs.databaseUpdateMode = "immediate";
+  const normalizedMode = ["idle", "immediate"].includes(mode)
+    ? mode
+    : state.prefs.databaseUpdateMode || "idle";
+
+  state.prefs.databaseUpdateMode = normalizedMode;
   saveState();
+
+  const modeControl = document.getElementById("database-update-mode");
+  if (modeControl && modeControl.value !== normalizedMode) {
+    modeControl.value = normalizedMode;
+  }
+
   if (pendingSummaryData && !state.session.active) {
     applySummaryData(pendingSummaryData);
     pendingSummaryData = null;
