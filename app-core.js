@@ -1,7 +1,7 @@
 ﻿const DB_URL =
   "https://script.google.com/macros/s/AKfycby4j5hbEWyfqonO9HYKgywo4OAt1NBwerEWWZwLWb1ODbsQGUd-YMMO-H9wX3_C-tBw/exec";
 
-const SYNC_INTERVAL_MS = 3 * 1000;
+const SYNC_INTERVAL_MS = 15 * 1000;
 const QUIZ_NAVIGATION_BREAKPOINT = 768;
 
 let chartInstance = null;
@@ -20,6 +20,9 @@ let localCacheVersion = "";
 let remoteCacheVersion = "";
 let isInitialSyncComplete = false; // Track if the first sync from startup has completed
 let lastSyncAt = 0;
+let syncInFlightPromise = null;
+const deckFetchInFlight = new Map();
+const lastDeckRefreshAtBySubject = {};
 const SYNC_STATUS_STORAGE_KEY = "mrh_last_sync_status_timestamp";
 const CACHE_VERSION_STORAGE_KEY = "mrh_cache_version";
 const NAVIGATION_PATH_STORAGE_KEY = "mrh_navigation_path"; // Persist user's navigation position
@@ -264,6 +267,48 @@ function setInlineError(element, message) {
   element.classList.toggle("hidden", !message);
 }
 
+async function hydrateDbFromIdb() {
+  if (typeof idbKeyval === "undefined") {
+    console.warn("idbKeyval library not loaded.");
+    return;
+  }
+
+  try {
+    const savedDb = await idbKeyval.get("mrh_db");
+    if (!savedDb || !Array.isArray(savedDb)) return;
+
+    const normalizedDb = savedDb.map((q) => {
+      const normalized = normalizeQuestionRecord(q);
+      if (normalized.ID && !normalized.ID.toString().includes("::")) {
+        let cleanId = normalized.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, "");
+        normalized.ID = `${normalized.Subject}::${cleanId}`;
+      }
+      return normalized;
+    });
+
+    state.db = normalizedDb;
+    rebuildQuestionIndex();
+
+    if (typeof renderCategoryProgress === "function") {
+      renderCategoryProgress();
+    }
+    if (typeof updateDashboard === "function") {
+      updateDashboard();
+    }
+  } catch (err) {
+    console.error("Error loading DB from IndexedDB", err);
+  }
+}
+
+function hydrateDbFromIdbInBackground() {
+  if (typeof idbKeyval === "undefined") return;
+  setTimeout(() => {
+    hydrateDbFromIdb().catch((err) => {
+      console.error("Background IndexedDB hydration failed", err);
+    });
+  }, 150);
+}
+
 async function loadState() {
   if (
     typeof AppState !== "undefined" &&
@@ -281,29 +326,7 @@ async function loadState() {
   const savedSummary =
     getStoredItem("summary") || getAnyNamespaceStoredItem("summary");
 
-  try {
-    if (typeof idbKeyval !== "undefined") {
-      const savedDb = await idbKeyval.get("mrh_db");
-      if (savedDb) {
-        state.db = savedDb.map((q) => {
-          const normalized = normalizeQuestionRecord(q);
-          if (normalized.ID && !normalized.ID.toString().includes("::")) {
-            let cleanId = normalized.ID.toString().replace(
-              /^[a-zA-Z]+[-\s]?/,
-              "",
-            );
-            normalized.ID = `${normalized.Subject}::${cleanId}`;
-          }
-          return normalized;
-        });
-        rebuildQuestionIndex();
-      }
-    } else {
-      console.warn("idbKeyval library not loaded.");
-    }
-  } catch (err) {
-    console.error("Error loading DB from IndexedDB", err);
-  }
+  hydrateDbFromIdbInBackground();
 
   if (savedSummary) {
     try {
@@ -846,11 +869,28 @@ function scheduleSyncPoll() {
     return AppSync.scheduleSyncPoll();
   }
 
+  if (cacheVersionCheckTimer !== null) {
+    clearInterval(cacheVersionCheckTimer);
+    cacheVersionCheckTimer = null;
+  }
+
   clearTimeout(syncPollTimer);
   syncPollTimer = setTimeout(() => {
     optimizedBackgroundSync();
-    scheduleSyncPoll(); // Schedule next poll
+    scheduleSyncPoll();
   }, SYNC_INTERVAL_MS);
+}
+
+function scheduleSinglePollLoop() {
+  if (!isLeaderTab) {
+    if (cacheVersionCheckTimer !== null) {
+      clearInterval(cacheVersionCheckTimer);
+      cacheVersionCheckTimer = null;
+    }
+    return;
+  }
+
+  scheduleSyncPoll();
 }
 
 function stripAccessMetadataFromSummary(summaryData) {
@@ -1130,19 +1170,34 @@ function showColdStartNotification() {
 // LIGHTWEIGHT SYNC STATUS CHECK
 // ============================================
 async function checkSyncStatusLightweight() {
-  // Lightweight version check instead of full MRH_Summary.json
-  // Used for background sync checks to reduce bandwidth
+  // Lightweight version check instead of full MRH_Summary.json.
+  // Keep it on the same timeout and network path as the rest of the app so the
+  // background polling remains predictable and non-overlapping.
   try {
-    const response = await fetch(DB_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ type: "get_sync_status" }),
-      redirect: "follow",
-      cache: "no-store",
-    });
+    if (
+      typeof AppNetwork !== "undefined" &&
+      typeof AppNetwork.getSyncStatus === "function"
+    ) {
+      return await AppNetwork.getSyncStatus({ timeoutMs: 7000 });
+    }
 
-    if (!response.ok) return null;
-    return await response.json();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 7000);
+    try {
+      const response = await fetch(DB_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ type: "get_sync_status" }),
+        redirect: "follow",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+
+      if (!response.ok) return null;
+      return await response.json();
+    } finally {
+      clearTimeout(timer);
+    }
   } catch (err) {
     console.log("[SYNC] Lightweight status check failed:", err);
     return null;
@@ -1160,118 +1215,109 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
     return AppSync.syncDatabase(isRetry, isBackgroundCheck);
   }
 
-  clearTimeout(syncRetryTimer);
-  clearInterval(syncCountdownTimer);
-  clearTimeout(syncPollTimer);
-  if (syncAbortController) {
-    syncAbortController.abort();
+  if (syncInFlightPromise) {
+    return syncInFlightPromise;
   }
 
-  const silentSync = isBackgroundCheck || Boolean(state.session?.active);
-  if (!isRetry) syncAttempt = 0;
-  syncAttempt++;
-  syncAbortController = new AbortController();
-  const requestController = syncAbortController;
-  const timeoutId = setTimeout(() => {
-    // Abort only this request; the global controller may already refer to a newer sync.
-    requestController.abort();
-  }, 10000);
-
-  const url = `${DB_URL}?_t=${Date.now()}`;
-
-  // FIX 3: Don't show overlay for background checks when we have cached data
-  if (!(isBackgroundCheck && state.categorySummary.length > 0)) {
-    updateSyncStatus(
-      `<i class="fa-solid fa-spinner fa-spin mr-1"></i> ${isRetry ? "Checking for database updates" : "Connecting to database"}...`,
-      "info",
-      !isBackgroundCheck,
-    );
-  }
-
-  try {
-    const response = await fetch(url, {
-      signal: requestController.signal,
-      redirect: "follow",
-      cache: "no-store",
-    });
-
-    if (!response.ok) throw new Error("Network response failed");
-    const text = await response.text();
-    let summaryData;
-    try {
-      summaryData = JSON.parse(text);
-    } catch (parseError) {
-      throw new Error(
-        `Invalid backend response while syncing database: ${text.slice(0, 200)}`,
-      );
+  syncInFlightPromise = (async () => {
+    clearTimeout(syncRetryTimer);
+    clearInterval(syncCountdownTimer);
+    clearTimeout(syncPollTimer);
+    if (syncAbortController) {
+      syncAbortController.abort();
     }
 
-    // FIX 2: COLD START DETECTION
-    // Check if backend returned a cold-start signal before applying summary data.
-    if (
-      summaryData &&
-      !Array.isArray(summaryData) &&
-      summaryData.isColdStart === true
-    ) {
-      clearTimeout(timeoutId);
-      console.warn("[COLD START] Detected! Backend is rebuilding cache...");
-      isColdStart = true;
+    const silentSync = isBackgroundCheck || Boolean(state.session?.active);
+    if (!isRetry) syncAttempt = 0;
+    syncAttempt++;
+    syncAbortController = new AbortController();
+    const requestController = syncAbortController;
+    const timeoutId = setTimeout(() => {
+      requestController.abort();
+    }, 10000);
 
-      // Show notification and force refresh
-      showColdStartNotification();
+    const url = `${DB_URL}?_t=${Date.now()}`;
 
-      // Still retry but don't apply empty data
-      scheduleSyncRetry(!isBackgroundCheck);
-      return;
-    }
-
-    // An empty array is a valid public summary when no visible decks exist.
-    if (Array.isArray(summaryData)) {
-      clearTimeout(timeoutId);
-      lastSyncAt = Date.now();
-      const completedAttempt = syncAttempt;
-      const wasConnected = syncConnected;
-      syncAttempt = 0;
-      syncConnected = true;
-      isColdStart = false;
-      sanitizeDeletedDeckReferences();
-
-      // CRITICAL FIX: Backend already filters hidden decks via filterSummaryDataByAccess()
-      // Don't double-filter here - use the response directly
-      // Summary data from backend contains: Subject, QuestionCount, Locked (no Hidden field)
-      const changed =
-        JSON.stringify(state.categorySummary || []) !==
-        JSON.stringify(summaryData);
-      const canApplyNow =
-        state.prefs.databaseUpdateMode === "immediate" || !state.session.active;
-
-      if (canApplyNow && (changed || !wasConnected)) {
-        pendingSummaryData = null;
-        applySummaryData(summaryData);
-        state.accessMetadata = buildAccessMetadataMap(summaryData);
-      } else if (!canApplyNow) {
-        if (changed) pendingSummaryData = summaryData;
-        if (!wasConnected) renderCategoryProgress();
-      }
-
+    if (!(isBackgroundCheck && state.categorySummary.length > 0)) {
       updateSyncStatus(
-        `<i class="fa-solid fa-check mr-1"></i> Connected. ${changed && !canApplyNow ? "Update waiting until your session ends." : `Checked ${summaryData.length} subjects.`}`,
-        "success",
-        !silentSync && !initialSyncSuccessShown,
+        `<i class="fa-solid fa-spinner fa-spin mr-1"></i> ${isRetry ? "Checking for database updates" : "Connecting to database"}...`,
+        "info",
+        !isBackgroundCheck,
       );
-      setGlobalLoadingState(false);
-      if (!silentSync && !initialSyncSuccessShown) {
-        initialSyncSuccessShown = true;
-        hideConnectionStatusAfterDelay();
-      }
-      scheduleSyncPoll();
-    } else {
-      // FIX 3: GRACEFUL FALLBACK FOR CACHED DATA
-      // If background check fails but we have cached data, fail silently
-      clearTimeout(timeoutId);
+    }
 
+    try {
+      const response = await fetch(url, {
+        signal: requestController.signal,
+        redirect: "follow",
+        cache: "no-store",
+      });
+
+      if (!response.ok) throw new Error("Network response failed");
+      const text = await response.text();
+      let summaryData;
+      try {
+        summaryData = JSON.parse(text);
+      } catch (parseError) {
+        throw new Error(
+          `Invalid backend response while syncing database: ${text.slice(0, 200)}`,
+        );
+      }
+
+      if (
+        summaryData &&
+        !Array.isArray(summaryData) &&
+        summaryData.isColdStart === true
+      ) {
+        clearTimeout(timeoutId);
+        console.warn("[COLD START] Detected! Backend is rebuilding cache...");
+        isColdStart = true;
+        showColdStartNotification();
+        scheduleSyncRetry(!isBackgroundCheck);
+        return false;
+      }
+
+      if (Array.isArray(summaryData)) {
+        clearTimeout(timeoutId);
+        lastSyncAt = Date.now();
+        const wasConnected = syncConnected;
+        syncAttempt = 0;
+        syncConnected = true;
+        isColdStart = false;
+        sanitizeDeletedDeckReferences();
+
+        const changed =
+          JSON.stringify(state.categorySummary || []) !==
+          JSON.stringify(summaryData);
+        const canApplyNow =
+          state.prefs.databaseUpdateMode === "immediate" ||
+          !state.session.active;
+
+        if (canApplyNow && (changed || !wasConnected)) {
+          pendingSummaryData = null;
+          applySummaryData(summaryData);
+          state.accessMetadata = buildAccessMetadataMap(summaryData);
+        } else if (!canApplyNow) {
+          if (changed) pendingSummaryData = summaryData;
+          if (!wasConnected) renderCategoryProgress();
+        }
+
+        updateSyncStatus(
+          `<i class="fa-solid fa-check mr-1"></i> Connected. ${changed && !canApplyNow ? "Update waiting until your session ends." : `Checked ${summaryData.length} subjects.`}`,
+          "success",
+          !silentSync && !initialSyncSuccessShown,
+        );
+        setGlobalLoadingState(false);
+        if (!silentSync && !initialSyncSuccessShown) {
+          initialSyncSuccessShown = true;
+          hideConnectionStatusAfterDelay();
+        }
+        scheduleSyncPoll();
+        return true;
+      }
+
+      clearTimeout(timeoutId);
       if (isBackgroundCheck && state.categorySummary.length > 0) {
-        // Background sync failed but we have cached data - continue silently
         console.log(
           "[SYNC] Background check failed but cached data available. Continuing silently.",
         );
@@ -1282,52 +1328,58 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
         );
         syncConnected = false;
         scheduleSyncPoll();
-      } else {
-        // No cached data or not a background check - retry with user visibility
-        scheduleSyncRetry(!silentSync);
-        if (state.categorySummary.length && syncConnected)
-          renderCategoryProgress();
+        return false;
       }
-    }
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (requestController !== syncAbortController) return;
-    console.error("[SYNC] Error:", err);
 
-    // FIX 3: GRACEFUL FALLBACK FOR CACHED DATA ON ERROR
-    if (isBackgroundCheck && state.categorySummary.length > 0) {
-      // Background sync failed but we have cached data - fail silently
-      console.log(
-        "[SYNC] Background check threw error but cached data available. Continuing silently.",
-      );
-      syncConnected = false;
-      updateSyncStatus(
-        `<i class="fa-solid fa-exclamation-triangle mr-1"></i> Database unavailable. Using cached deck list.`,
-        "warning",
-        false,
-      );
-      scheduleSyncPoll();
-      return;
-    }
-
-    // No cached data or not a background check - show retry with overlay
-    scheduleSyncRetry(!silentSync);
-    setGlobalLoadingState(
-      !silentSync,
-      "Database reconnecting",
-      "The app is retrying the connection automatically. This may take a moment.",
-      "warning",
-    );
-
-    const catList = document.getElementById("category-list");
-    if (catList && state.categorySummary.length === 0) {
-      if (typeof renderCategoryProgress === "function") {
+      scheduleSyncRetry(!silentSync);
+      if (state.categorySummary.length && syncConnected)
         renderCategoryProgress();
-      } else {
-        catList.innerHTML = "";
+      return false;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (requestController !== syncAbortController) return false;
+      console.error("[SYNC] Error:", err);
+
+      if (isBackgroundCheck && state.categorySummary.length > 0) {
+        console.log(
+          "[SYNC] Background check threw error but cached data available. Continuing silently.",
+        );
+        syncConnected = false;
+        updateSyncStatus(
+          `<i class="fa-solid fa-exclamation-triangle mr-1"></i> Database unavailable. Using cached deck list.`,
+          "warning",
+          false,
+        );
+        scheduleSyncPoll();
+        return false;
       }
+
+      scheduleSyncRetry(!silentSync);
+      setGlobalLoadingState(
+        !silentSync,
+        "Database reconnecting",
+        "The app is retrying the connection automatically. This may take a moment.",
+        "warning",
+      );
+
+      const catList = document.getElementById("category-list");
+      if (catList && state.categorySummary.length === 0) {
+        if (typeof renderCategoryProgress === "function") {
+          renderCategoryProgress();
+        } else {
+          catList.innerHTML = "";
+        }
+      }
+      return false;
+    } finally {
+      if (requestController === syncAbortController) {
+        syncAbortController = null;
+      }
+      syncInFlightPromise = null;
     }
-  }
+  })();
+
+  return syncInFlightPromise;
 }
 
 function populateFilters() {
@@ -2884,13 +2936,32 @@ async function fetchDeckQuestions(
   loaderElement = null,
   customFilter = null,
 ) {
+  const subjectKey = String(subject || "").trim();
   let cachedQuestions = getQuestionsForSubject(subject);
   if (typeof customFilter === "function") {
     cachedQuestions = cachedQuestions.filter(customFilter);
   }
 
   if (cachedQuestions.length > 0 && !pass) {
-    if (loaderElement) loaderElement.classList.add("hidden");
+    const lastRefresh = Number(lastDeckRefreshAtBySubject[subjectKey] || 0);
+    const staleAfterMs = 10 * 60 * 1000;
+    const shouldRefreshStaleDeck =
+      Date.now() - lastRefresh > staleAfterMs &&
+      (syncConnected || state.categorySummary.length > 0) &&
+      !deckFetchInFlight.has(subjectKey);
+
+    if (shouldRefreshStaleDeck) {
+      const refreshPromise = fetchDeckQuestionsFromNetwork(
+        subject,
+        pass,
+        customFilter,
+        loaderElement,
+      );
+      refreshPromise.catch(() => getQuestionsForSubject(subject));
+    } else {
+      if (loaderElement) loaderElement.classList.add("hidden");
+    }
+
     return cachedQuestions;
   }
 
@@ -2908,96 +2979,128 @@ async function fetchDeckQuestionsFromNetwork(
   customFilter,
   loaderElement = null,
 ) {
-  if (loaderElement) loaderElement.classList.remove("hidden");
-
-  if (isDeckLocked(subject) && !pass) {
-    pendingDeckSubject = subject;
-    pendingDeckAction = pendingDeckAction || "continue";
-    openDeckPasswordModal(subject, pendingDeckAction || "continue");
-    if (loaderElement) loaderElement.classList.add("hidden");
-    return [];
+  const subjectKey = `${String(subject || "").trim()}::${String(pass || "")}::${typeof customFilter === "function" ? "mcq" : "all"}`;
+  if (deckFetchInFlight.has(subjectKey)) {
+    return deckFetchInFlight.get(subjectKey);
   }
 
-  try {
-    const response = await fetch(DB_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        type: "get_deck",
-        subject: String(subject || "").trim(),
-        password: String(pass || ""),
-      }),
-      cache: "no-store",
-      redirect: "follow",
-    });
-    const text = await response.text();
-    let newQuestions;
+  const request = (async () => {
+    if (loaderElement) loaderElement.classList.remove("hidden");
+
+    if (isDeckLocked(subject) && !pass) {
+      pendingDeckSubject = subject;
+      pendingDeckAction = pendingDeckAction || "continue";
+      openDeckPasswordModal(subject, pendingDeckAction || "continue");
+      if (loaderElement) loaderElement.classList.add("hidden");
+      return [];
+    }
+
     try {
-      newQuestions = JSON.parse(text);
-    } catch (parseError) {
-      throw new Error(
-        `Invalid backend response while loading deck: ${text.slice(0, 200)}`,
-      );
-    }
-    if (newQuestions && newQuestions.error) {
-      const errorText = String(newQuestions.error || "").toLowerCase();
-      if (
-        errorText.includes("incorrect password") ||
-        errorText.includes("requires a password") ||
-        errorText.includes("not available")
-      ) {
-        if (!pass) {
-          pendingDeckSubject = subject;
-          pendingDeckAction = pendingDeckAction || "continue";
-          openDeckPasswordModal(subject, pendingDeckAction || "continue");
+      const response = await (typeof AppNetwork !== "undefined" &&
+      typeof AppNetwork.getDeck === "function"
+        ? AppNetwork.getDeck(subject, pass || "", { timeoutMs: 15000 })
+        : fetch(DB_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "text/plain;charset=utf-8",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({
+              type: "get_deck",
+              subject: String(subject || "").trim(),
+              password: String(pass || ""),
+            }),
+            cache: "no-store",
+            redirect: "follow",
+            signal: AbortSignal?.timeout?.(15000),
+          }).then(async (response) => {
+            const text = await response.text();
+            let payload;
+            try {
+              payload = JSON.parse(text);
+            } catch (parseError) {
+              throw new Error(
+                `Invalid backend response while loading deck: ${text.slice(0, 200)}`,
+              );
+            }
+            if (!response.ok) {
+              throw new Error(
+                payload?.message ||
+                  payload?.error ||
+                  `Backend HTTP ${response.status}.`,
+              );
+            }
+            return payload;
+          }));
+
+      let newQuestions = response;
+      if (newQuestions && newQuestions.error) {
+        const errorText = String(newQuestions.error || "").toLowerCase();
+        if (
+          errorText.includes("incorrect password") ||
+          errorText.includes("requires a password") ||
+          errorText.includes("not available")
+        ) {
+          if (!pass) {
+            pendingDeckSubject = subject;
+            pendingDeckAction = pendingDeckAction || "continue";
+            openDeckPasswordModal(subject, pendingDeckAction || "continue");
+          }
+          return [];
         }
-        return [];
+        throw new Error(newQuestions.error);
       }
-      throw new Error(newQuestions.error);
-    }
-    if (!Array.isArray(newQuestions)) {
-      throw new Error("Unexpected backend response format while loading deck.");
-    }
-
-    let validQuestions = newQuestions
-      .map((q) => normalizeQuestionRecord(q, subject))
-      .filter((q) => q.Question && q.Question.trim() !== "");
-    if (typeof customFilter === "function")
-      validQuestions = validQuestions.filter(customFilter);
-
-    validQuestions = validQuestions.map((q) => {
-      let cleanId = q.ID
-        ? q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, "")
-        : Math.random().toString(36).substr(2, 6);
-      q.ID = `${q.Subject}::${cleanId}`;
-      return q;
-    });
-
-    if (validQuestions.length === 0) {
-      const cachedForSubject = getQuestionsForSubject(subject);
-      if (cachedForSubject.length > 0) {
-        return cachedForSubject;
+      if (!Array.isArray(newQuestions)) {
+        throw new Error(
+          "Unexpected backend response format while loading deck.",
+        );
       }
-    }
 
-    const otherQuestions = state.db.filter((q) => q.Subject !== subject);
-    state.db = [...otherQuestions, ...validQuestions];
-    clearLocalDownloadDeleted(subject);
-    rebuildQuestionIndex();
-    await safeIdbSet("mrh_db", state.db);
-    if (typeof renderCategoryProgress === "function") {
-      renderCategoryProgress();
-    }
+      let validQuestions = newQuestions
+        .map((q) => normalizeQuestionRecord(q, subject))
+        .filter((q) => q.Question && q.Question.trim() !== "");
+      if (typeof customFilter === "function")
+        validQuestions = validQuestions.filter(customFilter);
 
-    return validQuestions;
-  } catch (err) {
-    console.warn("Network fetch failed.", err);
-    return getQuestionsForSubject(subject);
+      validQuestions = validQuestions.map((q) => {
+        let cleanId = q.ID
+          ? q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, "")
+          : Math.random().toString(36).substr(2, 6);
+        q.ID = `${q.Subject}::${cleanId}`;
+        return q;
+      });
+
+      if (validQuestions.length === 0) {
+        const cachedForSubject = getQuestionsForSubject(subject);
+        if (cachedForSubject.length > 0) {
+          return cachedForSubject;
+        }
+      }
+
+      const otherQuestions = state.db.filter((q) => q.Subject !== subject);
+      state.db = [...otherQuestions, ...validQuestions];
+      lastDeckRefreshAtBySubject[String(subject || "").trim()] = Date.now();
+      clearLocalDownloadDeleted(subject);
+      rebuildQuestionIndex();
+      await safeIdbSet("mrh_db", state.db);
+      if (typeof renderCategoryProgress === "function") {
+        renderCategoryProgress();
+      }
+
+      return validQuestions;
+    } catch (err) {
+      console.warn("Network fetch failed.", err);
+      return getQuestionsForSubject(subject);
+    } finally {
+      if (loaderElement) loaderElement.classList.add("hidden");
+    }
+  })();
+
+  deckFetchInFlight.set(subjectKey, request);
+  try {
+    return await request;
   } finally {
-    if (loaderElement) loaderElement.classList.add("hidden");
+    deckFetchInFlight.delete(subjectKey);
   }
 }
 
@@ -6082,7 +6185,8 @@ function getJitteredPollingInterval() {
 // OPTIMIZATION: Enhanced Cache Version Check with ETag
 // ============================================
 async function checkCacheVersionWithETag() {
-  // Only leader tab performs polling (reduces traffic 66%)
+  if (syncInFlightPromise || syncPollTimer) return;
+
   if (!isLeaderTab) return;
 
   // Pause polling when tab is hidden
@@ -6182,38 +6286,25 @@ function setupVisibilityChangeHandler() {
 // OPTIMIZATION: Smarter Polling Scheduler with Jitter
 // ============================================
 function scheduleNextPolling() {
-  if (!isLeaderTab) {
-    if (
-      typeof clearInterval === "function" &&
-      cacheVersionCheckTimer !== null
-    ) {
-      clearInterval(cacheVersionCheckTimer);
-    }
+  if (syncPollTimer) {
+    clearTimeout(syncPollTimer);
+    syncPollTimer = null;
+  }
+
+  if (cacheVersionCheckTimer !== null) {
+    clearInterval(cacheVersionCheckTimer);
     cacheVersionCheckTimer = null;
+  }
+
+  if (!isLeaderTab) {
     console.log("[POLLING] Not leader, skipping poll schedule");
     return;
   }
 
-  if (typeof clearInterval === "function" && cacheVersionCheckTimer !== null) {
-    clearInterval(cacheVersionCheckTimer);
-  }
-  cacheVersionCheckTimer = null;
-
-  if (typeof setInterval !== "function") {
-    return;
-  }
-
-  const nextInterval = getJitteredPollingInterval();
   console.log(
-    `[POLLING] Next check in ${Math.round(nextInterval / 1000)}s (jittered)`,
+    "[POLLING] Using single sync scheduler for visibility-aware polling",
   );
-
-  cacheVersionCheckTimer = setInterval(() => {
-    checkCacheVersionWithETag();
-  }, nextInterval);
-
-  // Also check immediately
-  checkCacheVersionWithETag();
+  scheduleSyncPoll();
 }
 
 function startCacheVersionChecking() {
@@ -6223,7 +6314,7 @@ function startCacheVersionChecking() {
   // Setup visibility handler
   setupVisibilityChangeHandler();
 
-  // Start polling with leader election and jitter
+  // Use the single app sync scheduler; keep only one poll loop alive.
   scheduleNextPolling();
 }
 
