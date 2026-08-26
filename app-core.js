@@ -1202,7 +1202,7 @@ async function checkSyncStatusLightweight() {
       typeof AppNetwork !== "undefined" &&
       typeof AppNetwork.getSyncStatus === "function"
     ) {
-      return await AppNetwork.getSyncStatus({ timeoutMs: 7000 });
+      return await AppNetwork.getSyncStatus({ timeoutMs: 20000 });
     }
 
     const controller = new AbortController();
@@ -1275,7 +1275,7 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
         typeof AppNetwork !== "undefined" &&
         typeof AppNetwork.getDeckSummary === "function"
           ? await AppNetwork.getDeckSummary({
-              timeoutMs: 15000,
+              timeoutMs: SYNC_REQUEST_TIMEOUT_MS,
               signal: requestController.signal,
             })
           : await fetch(`${DB_URL}?_t=${Date.now()}`, {
@@ -1371,8 +1371,8 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
       clearTimeout(timeoutId);
       if (requestController !== syncAbortController) return false;
 
-      if (err?.name === "AbortError") {
-        if (requestTimedOut) {
+      if (err?.name === "AbortError" || err?.name === "TimeoutError") {
+        if (requestTimedOut || err?.name === "TimeoutError") {
           console.warn(
             `[SYNC] Database response exceeded ${SYNC_REQUEST_TIMEOUT_MS / 1000}s; retrying automatically.`,
           );

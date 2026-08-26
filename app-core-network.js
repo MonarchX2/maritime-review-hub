@@ -70,7 +70,11 @@
     const controller = new AbortController();
     const externalSignal = options.signal;
     let externalAbortHandler = null;
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let didTimeout = false;
+    const timer = setTimeout(() => {
+      didTimeout = true;
+      controller.abort();
+    }, timeoutMs);
 
     if (externalSignal) {
       externalAbortHandler = () => controller.abort();
@@ -83,6 +87,16 @@
 
     try {
       return await fetch(url, { ...options, signal: controller.signal });
+    } catch (error) {
+      if (didTimeout) {
+        const timeoutError = new Error(
+          `Backend request timed out after ${timeoutMs}ms.`,
+        );
+        timeoutError.name = "TimeoutError";
+        timeoutError.cause = error;
+        throw timeoutError;
+      }
+      throw error;
     } finally {
       clearTimeout(timer);
       if (externalSignal && externalAbortHandler) {
