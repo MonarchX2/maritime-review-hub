@@ -1283,21 +1283,7 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
         syncConnected = false;
         scheduleSyncPoll();
       } else {
-        // Cached data is sufficient for offline startup; keep the app interactive
-        // while retrying the database connection in the background.
-        if (state.categorySummary.length > 0) {
-          syncConnected = false;
-          updateSyncStatus(
-            `<i class="fa-solid fa-triangle-exclamation mr-1"></i> Offline. Using locally cached deck list.`,
-            "warning",
-            false,
-          );
-          setGlobalLoadingState(false);
-          scheduleSyncPoll();
-          return;
-        }
-
-        // No cached data: retry with user visibility.
+        // No cached data or not a background check - retry with user visibility
         scheduleSyncRetry(!silentSync);
         if (state.categorySummary.length && syncConnected)
           renderCategoryProgress();
@@ -1324,21 +1310,7 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
       return;
     }
 
-    // Cached data is sufficient for offline startup; do not leave a blocking
-    // loading overlay over an app that can already be used.
-    if (state.categorySummary.length > 0) {
-      syncConnected = false;
-      updateSyncStatus(
-        `<i class="fa-solid fa-triangle-exclamation mr-1"></i> Offline. Using locally cached deck list.`,
-        "warning",
-        false,
-      );
-      setGlobalLoadingState(false);
-      scheduleSyncPoll();
-      return;
-    }
-
-    // No cached data: show retry with overlay.
+    // No cached data or not a background check - show retry with overlay
     scheduleSyncRetry(!silentSync);
     setGlobalLoadingState(
       !silentSync,
@@ -2421,7 +2393,7 @@ function renderCategoryProgress() {
                     </div>`
                     : ""
                 }
-                <div id="${loaderId}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl [&:not(.hidden)]:flex flex-col items-center justify-center transition-opacity">
+                <div id="${loaderId}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
                     <i class="fa-solid fa-spinner fa-spin text-3xl ${loaderColor} mb-2"></i>
                     <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
                 </div>
