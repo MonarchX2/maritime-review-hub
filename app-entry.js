@@ -120,18 +120,37 @@
       });
   }
 
-  try {
-    await loadCoreHelpers();
-    await loadApplicationRuntime();
+  let bootstrapStarted = false;
+  let bootstrapCompleted = false;
 
-    // Dynamic scripts do not participate reliably in the original
-    // DOMContentLoaded listener in app-core.js. Explicitly initialize once
-    // every runtime module is present.
-    if (typeof rootScope.initializeApp === "function") {
-      rootScope.initializeApp();
+  async function startApplicationBootstrap() {
+    if (bootstrapStarted) {
+      if (bootstrapCompleted && typeof rootScope.initializeApp === "function") {
+        rootScope.initializeApp();
+      }
+      return;
     }
-    registerServiceWorker();
-  } catch (error) {
-    showBootstrapError(error);
+
+    bootstrapStarted = true;
+
+    try {
+      await loadCoreHelpers();
+      await loadApplicationRuntime();
+
+      // Dynamic scripts do not participate reliably in the original
+      // DOMContentLoaded listener in app-core.js. Explicitly initialize once
+      // every runtime module is present.
+      if (typeof rootScope.initializeApp === "function") {
+        rootScope.initializeApp();
+      }
+      bootstrapCompleted = true;
+      registerServiceWorker();
+    } catch (error) {
+      bootstrapCompleted = false;
+      showBootstrapError(error);
+    }
   }
+
+  rootScope.startApplicationBootstrap = startApplicationBootstrap;
+  startApplicationBootstrap();
 })();

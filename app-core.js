@@ -27,6 +27,7 @@ const SYNC_STATUS_STORAGE_KEY = "mrh_last_sync_status_timestamp";
 const CACHE_VERSION_STORAGE_KEY = "mrh_cache_version";
 const NAVIGATION_PATH_STORAGE_KEY = "mrh_navigation_path"; // Persist user's navigation position
 let __mrhAppInitialized = false;
+let __mrhPollLoopToken = 0;
 
 function readStoredSyncStatusTimestamp() {
   const stored = getStoredItem?.(SYNC_STATUS_STORAGE_KEY, "") || "";
@@ -874,8 +875,10 @@ function scheduleSyncPoll() {
     cacheVersionCheckTimer = null;
   }
 
+  const activeToken = ++__mrhPollLoopToken;
   clearTimeout(syncPollTimer);
   syncPollTimer = setTimeout(() => {
+    if (activeToken !== __mrhPollLoopToken) return;
     optimizedBackgroundSync();
     scheduleSyncPoll();
   }, SYNC_INTERVAL_MS);
@@ -4131,17 +4134,36 @@ async function fetchGlobalReports() {
   }
 }
 
-window.onload = async () => {
-  await loadState();
-
-  const toggleElement = document.getElementById("globalModeToggle");
-  if (toggleElement) {
-    currentAppMode = toggleElement.checked ? "review" : "quiz";
+function runWindowLoadStartup() {
+  if (window.__mrhWindowLoadStartupRan) {
+    return;
   }
+  window.__mrhWindowLoadStartupRan = true;
 
-  syncDatabase();
-  fetchGlobalReports();
-};
+  (async () => {
+    await loadState();
+
+    const toggleElement = document.getElementById("globalModeToggle");
+    if (toggleElement) {
+      currentAppMode = toggleElement.checked ? "review" : "quiz";
+    }
+
+    if (typeof syncDatabase === "function") {
+      syncDatabase(false, true);
+    }
+    if (typeof fetchGlobalReports === "function") {
+      fetchGlobalReports();
+    }
+  })().catch((error) => {
+    console.error("Window-load startup failed:", error);
+  });
+}
+
+if (document.readyState === "complete") {
+  runWindowLoadStartup();
+} else {
+  window.addEventListener("load", runWindowLoadStartup, { once: true });
+}
 
 window.addEventListener("resize", () => {
   if (state.session.active && state.prefs.quizNavigationPosition === "auto")

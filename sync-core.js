@@ -159,9 +159,15 @@
   }
 
   function scheduleSyncPoll(delay = globalScope.SYNC_INTERVAL_MS) {
+    const activeToken = (globalScope.__mrhPollLoopToken =
+      Number(globalScope.__mrhPollLoopToken || 0) + 1);
+
     clearTimeout(globalScope.syncPollTimer);
     globalScope.syncPollTimer = setTimeout(
-      () => globalScope.syncDatabase(true, true),
+      () => {
+        if (activeToken !== globalScope.__mrhPollLoopToken) return;
+        globalScope.syncDatabase(true, true);
+      },
       Math.max(250, Number(delay) || 3000),
     );
   }
