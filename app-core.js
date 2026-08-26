@@ -2031,558 +2031,587 @@ function initDetailsExclusivity() {
   });
 }
 
+let categoryProgressRenderScheduled = false;
+let categoryProgressRenderInFlight = false;
+
 function renderCategoryProgress() {
-  // Initialize dropdown exclusivity once
-  if (typeof initDetailsExclusivity !== "undefined") {
-    setTimeout(initDetailsExclusivity, 100);
-  }
-
-  // Initialize deck source filter if not set
-  if (!state.prefs.deckSourceFilter) {
-    state.prefs.deckSourceFilter = "all";
-  }
-
-  // Update UI for deck source filter
-  const sourceLabel = document.getElementById("deck-source-label");
-  if (sourceLabel) {
-    const sourceLabels = {
-      all: "All Decks",
-      favorites: "Favorites",
-      downloaded: "Downloaded",
-      cloud: "Cloud Only",
-      archived: "Archived",
-    };
-    sourceLabel.innerText =
-      sourceLabels[state.prefs.deckSourceFilter] || "All Decks";
-  }
-
-  // Update check marks
-  document.querySelectorAll(".deck-source-option").forEach((btn) => {
-    const check = btn.querySelector(".source-check");
-    if (btn.dataset.sourceValue === state.prefs.deckSourceFilter) {
-      check.style.opacity = "1";
-    } else {
-      check.style.opacity = "0";
-    }
-  });
-
-  const selectedSortBy = state.prefs.deckSortBy || "letters";
-  const selectedSortDirection =
-    state.prefs.deckSortDirection === "desc" ? "desc" : "asc";
-  document
-    .querySelectorAll(".deck-sort-option[data-sort-value]")
-    .forEach((btn) => {
-      const check = btn.querySelector(".sort-check");
-      if (check)
-        check.style.opacity =
-          btn.dataset.sortValue === selectedSortBy ? "1" : "0";
-    });
-  document
-    .querySelectorAll(".deck-sort-option[data-sort-direction]")
-    .forEach((btn) => {
-      const check = btn.querySelector(".sort-direction-check");
-      if (check) {
-        check.style.opacity =
-          btn.dataset.sortDirection === selectedSortDirection ? "1" : "0";
-      }
-    });
-
-  const container = document.getElementById("category-list");
-  const isGrid = state.prefs.layoutMode === "grid";
-  const layoutIcon = document.getElementById("layout-icon");
-  if (layoutIcon) {
-    layoutIcon.className = isGrid
-      ? "fa-solid fa-list text-brand-500"
-      : "fa-solid fa-table-cells text-brand-500";
-  }
-  const completedSet = new Set(state.stats?.completedQs || []);
-  const mistakesSet = new Set(state.stats?.mistakes || []);
-  const subjectIdsBySubject = ensureQuestionIndex().bySubject;
-
-  const visibleSummary = getVisibleCategorySummary();
-
-  let tree = {};
-  if (visibleSummary && visibleSummary.length > 0) {
-    visibleSummary.forEach((cat) => {
-      const parts = cat.Subject.split("::");
-      let currentLevel = tree;
-
-      parts.forEach((part, index) => {
-        part = part.trim();
-        if (!currentLevel[part]) {
-          currentLevel[part] = { _children: {}, _data: null };
+  if (!document.body) {
+    if (!categoryProgressRenderScheduled) {
+      categoryProgressRenderScheduled = true;
+      requestAnimationFrame(() => {
+        categoryProgressRenderScheduled = false;
+        if (document.body && typeof renderCategoryProgress === "function") {
+          renderCategoryProgress();
         }
-        if (index === parts.length - 1) {
-          currentLevel[part]._data = cat;
-        }
-        currentLevel = currentLevel[part]._children;
       });
-    });
-  }
-  if (!Array.isArray(state.currentPath)) state.currentPath = [];
-  const savedPath = readStoredNavigationPath();
-  if (
-    savedPath.length > 0 &&
-    JSON.stringify(savedPath) !== JSON.stringify(state.currentPath)
-  ) {
-    state.currentPath = savedPath;
-  }
-
-  let currentNode = tree;
-  let pathValid = true;
-
-  for (let dir of state.currentPath) {
-    if (currentNode[dir]) {
-      currentNode = currentNode[dir]._children;
-    } else {
-      pathValid = false;
-      break;
     }
+    return;
   }
 
-  if (!pathValid) {
-    state.currentPath = readStoredNavigationPath();
-    currentNode = tree;
-    if (Array.isArray(state.currentPath) && state.currentPath.length > 0) {
-      let restoredNode = tree;
-      let restoredValid = true;
-      for (let dir of state.currentPath) {
-        if (restoredNode[dir]) {
-          restoredNode = restoredNode[dir]._children;
-        } else {
-          restoredValid = false;
-          break;
+  if (categoryProgressRenderInFlight) {
+    if (!categoryProgressRenderScheduled) {
+      categoryProgressRenderScheduled = true;
+      requestAnimationFrame(() => {
+        categoryProgressRenderScheduled = false;
+        if (document.body && typeof renderCategoryProgress === "function") {
+          renderCategoryProgress();
         }
+      });
+    }
+    return;
+  }
+
+  categoryProgressRenderInFlight = true;
+
+  try {
+    // Initialize dropdown exclusivity once
+    if (typeof initDetailsExclusivity !== "undefined") {
+      setTimeout(initDetailsExclusivity, 100);
+    }
+
+    // Initialize deck source filter if not set
+    if (!state.prefs.deckSourceFilter) {
+      state.prefs.deckSourceFilter = "all";
+    }
+
+    const sourceLabel = document.getElementById("deck-source-label");
+    if (sourceLabel) {
+      const sourceLabels = {
+        all: "All Decks",
+        favorites: "Favorites",
+        downloaded: "Downloaded",
+        cloud: "Cloud Only",
+        archived: "Archived",
+      };
+      sourceLabel.innerText =
+        sourceLabels[state.prefs.deckSourceFilter] || "All Decks";
+    }
+
+    document.querySelectorAll(".deck-source-option").forEach((btn) => {
+      const check = btn.querySelector(".source-check");
+      if (btn.dataset.sourceValue === state.prefs.deckSourceFilter) {
+        check.style.opacity = "1";
+      } else {
+        check.style.opacity = "0";
       }
-      if (!restoredValid) {
+    });
+
+    const selectedSortBy = state.prefs.deckSortBy || "letters";
+    const selectedSortDirection =
+      state.prefs.deckSortDirection === "desc" ? "desc" : "asc";
+    document
+      .querySelectorAll(".deck-sort-option[data-sort-value]")
+      .forEach((btn) => {
+        const check = btn.querySelector(".sort-check");
+        if (check)
+          check.style.opacity =
+            btn.dataset.sortValue === selectedSortBy ? "1" : "0";
+      });
+    document
+      .querySelectorAll(".deck-sort-option[data-sort-direction]")
+      .forEach((btn) => {
+        const check = btn.querySelector(".sort-direction-check");
+        if (check) {
+          check.style.opacity =
+            btn.dataset.sortDirection === selectedSortDirection ? "1" : "0";
+        }
+      });
+
+    const container = document.getElementById("category-list");
+    const isGrid = state.prefs.layoutMode === "grid";
+    const layoutIcon = document.getElementById("layout-icon");
+    if (layoutIcon) {
+      layoutIcon.className = isGrid
+        ? "fa-solid fa-list text-brand-500"
+        : "fa-solid fa-table-cells text-brand-500";
+    }
+    const completedSet = new Set(state.stats?.completedQs || []);
+    const mistakesSet = new Set(state.stats?.mistakes || []);
+    const subjectIdsBySubject = ensureQuestionIndex().bySubject;
+
+    const visibleSummary = getVisibleCategorySummary();
+
+    let tree = {};
+    if (visibleSummary && visibleSummary.length > 0) {
+      visibleSummary.forEach((cat) => {
+        const parts = cat.Subject.split("::");
+        let currentLevel = tree;
+
+        parts.forEach((part, index) => {
+          part = part.trim();
+          if (!currentLevel[part]) {
+            currentLevel[part] = { _children: {}, _data: null };
+          }
+          if (index === parts.length - 1) {
+            currentLevel[part]._data = cat;
+          }
+          currentLevel = currentLevel[part]._children;
+        });
+      });
+    }
+
+    if (!Array.isArray(state.currentPath)) state.currentPath = [];
+    const savedPath = readStoredNavigationPath();
+    if (
+      savedPath.length > 0 &&
+      JSON.stringify(savedPath) !== JSON.stringify(state.currentPath)
+    ) {
+      state.currentPath = savedPath;
+    }
+
+    let currentNode = tree;
+    let pathValid = true;
+
+    for (let dir of state.currentPath) {
+      if (currentNode[dir]) {
+        currentNode = currentNode[dir]._children;
+      } else {
+        pathValid = false;
+        break;
+      }
+    }
+
+    if (!pathValid) {
+      state.currentPath = readStoredNavigationPath();
+      currentNode = tree;
+      if (Array.isArray(state.currentPath) && state.currentPath.length > 0) {
+        let restoredNode = tree;
+        let restoredValid = true;
+        for (let dir of state.currentPath) {
+          if (restoredNode[dir]) {
+            restoredNode = restoredNode[dir]._children;
+          } else {
+            restoredValid = false;
+            break;
+          }
+        }
+        if (!restoredValid) {
+          state.currentPath = [];
+          currentNode = tree;
+        } else {
+          currentNode = restoredNode;
+        }
+      } else {
         state.currentPath = [];
         currentNode = tree;
-      } else {
-        currentNode = restoredNode;
       }
-    } else {
-      state.currentPath = [];
-      currentNode = tree;
     }
-  }
-  function getFolderStats(node) {
-    let total = 0;
-    if (node._data) total += node._data.QuestionCount || 0;
-    for (let k in node._children) {
-      total += getFolderStats(node._children[k]);
+
+    function getFolderStats(node) {
+      let total = 0;
+      if (node._data) total += node._data.QuestionCount || 0;
+      for (let k in node._children) {
+        total += getFolderStats(node._children[k]);
+      }
+      return total;
     }
-    return total;
-  }
-  let html = `
-        <div class="flex flex-nowrap items-center gap-2 mb-6 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto pb-2 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
-            <button onclick="goToPath(-1)" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2 flex-shrink-0">
-                <i class="fa-solid fa-folder-open text-brand-500"></i> HOME
-            </button>
-            ${state.currentPath
-              .map(
-                (dir, i) => `
-                <i class="fa-solid fa-chevron-right text-xs text-gray-400 flex-shrink-0"></i>
-                <button onclick="goToPath(${i})" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors whitespace-nowrap flex-shrink-0">${escapeHTML(dir.toUpperCase())}</button>
+
+    let html = `
+      <div class="flex flex-nowrap items-center gap-2 mb-6 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto pb-2 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
+        <button onclick="goToPath(-1)" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2 flex-shrink-0">
+          <i class="fa-solid fa-folder-open text-brand-500"></i> HOME
+        </button>
+        ${state.currentPath
+          .map(
+            (dir, i) => `
+              <i class="fa-solid fa-chevron-right text-xs text-gray-400 flex-shrink-0"></i>
+              <button onclick="goToPath(${i})" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors whitespace-nowrap flex-shrink-0">${escapeHTML(dir.toUpperCase())}</button>
             `,
-              )
-              .join("")}
-        </div>`;
+          )
+          .join("")}
+      </div>`;
 
-  const layoutClass = isGrid
-    ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-6"
-    : "flex flex-col space-y-4";
+    const layoutClass = isGrid
+      ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-6"
+      : "flex flex-col space-y-4";
 
-  html += `<div class="${layoutClass}">`;
-  const sortBy = state.prefs.deckSortBy || "letters";
-  const sortDirection = state.prefs.deckSortDirection === "desc" ? -1 : 1;
-  const keys = Object.keys(currentNode).sort((left, right) => {
-    const leftNode = currentNode[left];
-    const rightNode = currentNode[right];
-    const leftIsFolder =
-      Object.keys(leftNode._children || {}).length > 0 ||
-      leftNode._data?.IsFolder;
-    const rightIsFolder =
-      Object.keys(rightNode._children || {}).length > 0 ||
-      rightNode._data?.IsFolder;
-    if (leftIsFolder !== rightIsFolder) return leftIsFolder ? -1 : 1;
-    if (sortBy === "questions") {
-      const leftCount = getFolderStats(leftNode);
-      const rightCount = getFolderStats(rightNode);
-      return (
-        (leftCount - rightCount) * sortDirection ||
-        TextUtils.naturalSortStrings(left, right) * sortDirection
-      );
-    }
-    return TextUtils.naturalSortStrings(left, right) * sortDirection;
-  });
-  const sourceFilter = state.prefs.deckSourceFilter || "all";
-  const favoriteDecks = Array.isArray(state.prefs.favoriteDecks)
-    ? state.prefs.favoriteDecks
-    : [];
-
-  function matchesFavoriteDeck(node, currentKey) {
-    const subject = node?._data?.Subject || "";
-    const folderKey = String(currentKey || "").trim();
-    const childKeys = Object.keys(node?._children || {});
-
-    const matchesNode = favoriteDecks.some((entry) => {
-      const favoriteText = String(entry || "").trim();
-      if (!favoriteText) return false;
-      if (favoriteText === subject) return true;
-      if (folderKey && favoriteText === folderKey) return true;
-      return (
-        subject.startsWith(favoriteText + "::") ||
-        subject.startsWith(favoriteText + "/")
-      );
+    html += `<div class="${layoutClass}">`;
+    const sortBy = state.prefs.deckSortBy || "letters";
+    const sortDirection = state.prefs.deckSortDirection === "desc" ? -1 : 1;
+    const keys = Object.keys(currentNode).sort((left, right) => {
+      const leftNode = currentNode[left];
+      const rightNode = currentNode[right];
+      const leftIsFolder =
+        Object.keys(leftNode._children || {}).length > 0 ||
+        leftNode._data?.IsFolder;
+      const rightIsFolder =
+        Object.keys(rightNode._children || {}).length > 0 ||
+        rightNode._data?.IsFolder;
+      if (leftIsFolder !== rightIsFolder) return leftIsFolder ? -1 : 1;
+      if (sortBy === "questions") {
+        const leftCount = getFolderStats(leftNode);
+        const rightCount = getFolderStats(rightNode);
+        return (
+          (leftCount - rightCount) * sortDirection ||
+          TextUtils.naturalSortStrings(left, right) * sortDirection
+        );
+      }
+      return TextUtils.naturalSortStrings(left, right) * sortDirection;
     });
-    if (matchesNode) return true;
 
-    return childKeys.some((childKey) =>
-      matchesFavoriteDeck(node._children[childKey], childKey),
-    );
-  }
+    const sourceFilter = state.prefs.deckSourceFilter || "all";
+    const favoriteDecks = Array.isArray(state.prefs.favoriteDecks)
+      ? state.prefs.favoriteDecks
+      : [];
 
-  // CHANGED: Added currentKey and deep folder archive checks
-  function nodeMatchesFilter(node, filter, currentKey = null) {
-    const archivedDecks = state.prefs?.archivedDecks || [];
-    let isArchived = false;
+    function matchesFavoriteDeck(node, currentKey) {
+      const subject = node?._data?.Subject || "";
+      const folderKey = String(currentKey || "").trim();
+      const childKeys = Object.keys(node?._children || {});
 
-    // Check if the specific node/deck is archived
-    if (
-      node._data &&
-      node._data.Subject &&
-      archivedDecks.includes(node._data.Subject)
-    ) {
-      isArchived = true;
+      const matchesNode = favoriteDecks.some((entry) => {
+        const favoriteText = String(entry || "").trim();
+        if (!favoriteText) return false;
+        if (favoriteText === subject) return true;
+        if (folderKey && favoriteText === folderKey) return true;
+        return (
+          subject.startsWith(favoriteText + "::") ||
+          subject.startsWith(favoriteText + "/")
+        );
+      });
+      if (matchesNode) return true;
+
+      return childKeys.some((childKey) =>
+        matchesFavoriteDeck(node._children[childKey], childKey),
+      );
     }
-    // Check if the top-level root folder of this node is archived
-    if (node._data && node._data.Subject) {
-      const topLevel = node._data.Subject.split("::")[0];
-      if (archivedDecks.includes(topLevel)) {
+
+    function nodeMatchesFilter(node, filter, currentKey = null) {
+      const archivedDecks = state.prefs?.archivedDecks || [];
+      let isArchived = false;
+
+      if (
+        node._data &&
+        node._data.Subject &&
+        archivedDecks.includes(node._data.Subject)
+      ) {
         isArchived = true;
       }
-    }
-    // Check if the folder itself is archived while rendering the home view
-    if (currentKey && (!state.currentPath || state.currentPath.length === 0)) {
-      if (archivedDecks.includes(currentKey)) {
+      if (node._data && node._data.Subject) {
+        const topLevel = node._data.Subject.split("::")[0];
+        if (archivedDecks.includes(topLevel)) {
+          isArchived = true;
+        }
+      }
+      if (
+        currentKey &&
+        (!state.currentPath || state.currentPath.length === 0)
+      ) {
+        if (archivedDecks.includes(currentKey)) {
+          isArchived = true;
+        }
+      }
+      if (
+        state.currentPath &&
+        state.currentPath.length > 0 &&
+        archivedDecks.includes(state.currentPath[0])
+      ) {
         isArchived = true;
       }
-    }
-    // Inherit archive state if we are inside a folder whose root is archived
-    if (
-      state.currentPath &&
-      state.currentPath.length > 0 &&
-      archivedDecks.includes(state.currentPath[0])
-    ) {
-      isArchived = true;
-    }
 
-    if (filter === "archived") return isArchived;
-    if (isArchived) return false;
+      if (filter === "archived") return isArchived;
+      if (isArchived) return false;
 
-    if (filter === "all") return true;
-    if (filter === "favorites") {
-      if (matchesFavoriteDeck(node, currentKey)) return true;
+      if (filter === "all") return true;
+      if (filter === "favorites") {
+        if (matchesFavoriteDeck(node, currentKey)) return true;
+        const childKeys = Object.keys(node._children || {});
+        return childKeys.some((childKey) =>
+          nodeMatchesFilter(node._children[childKey], filter, childKey),
+        );
+      }
+
+      if (
+        node._data !== null &&
+        node._data !== undefined &&
+        !node._data.IsFolder
+      ) {
+        const isDownloaded = (state.db || []).some(
+          (q) => q.Subject === node._data.Subject,
+        );
+        if (filter === "downloaded") return isDownloaded;
+        if (filter === "cloud") return !isDownloaded;
+      }
+
       const childKeys = Object.keys(node._children || {});
-      return childKeys.some((childKey) =>
-        nodeMatchesFilter(node._children[childKey], filter, childKey),
-      );
-    }
+      if (childKeys.length > 0) {
+        return childKeys.some((childKey) =>
+          nodeMatchesFilter(node._children[childKey], filter, childKey),
+        );
+      }
 
-    if (
-      node._data !== null &&
-      node._data !== undefined &&
-      !node._data.IsFolder
-    ) {
-      const isDownloaded = (state.db || []).some(
-        (q) => q.Subject === node._data.Subject,
-      );
-      if (filter === "downloaded") return isDownloaded;
-      if (filter === "cloud") return !isDownloaded;
-    }
-
-    const childKeys = Object.keys(node._children || {});
-    if (childKeys.length > 0) {
-      return childKeys.some((childKey) =>
-        nodeMatchesFilter(node._children[childKey], filter, childKey),
-      );
-    }
-
-    return false;
-  }
-
-  // CHANGED: Pass the current key for folder evaluation
-  let visibleKeys = keys.filter((key) => {
-    const item = currentNode[key];
-    if (
-      item._data &&
-      !item._data.IsFolder &&
-      Number(item._data.QuestionCount || 0) === 0
-    ) {
       return false;
     }
-    return nodeMatchesFilter(currentNode[key], sourceFilter, key);
-  });
 
-  if (visibleKeys.length === 0) {
-    html += `<div class="col-span-full text-center py-10 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">No decks match your filter.</div>`;
-  }
-
-  function generateCardHTML(cat, displayName, delay = 0) {
-    const subj = cat.Subject;
-    const safeSubj = escapeHTML(subj);
-    const encodedSubj = encodeHandlerValue(subj);
-    const safeName = escapeHTML(displayName);
-    const loaderId = getDeckLoaderId(subj);
-    const deckNameMode =
-      state.prefs.deckNameMode === "clip" ? "truncate" : "whitespace-normal";
-    const totalQuestionsInDb = cat.QuestionCount;
-    // FEATURE: Dim decks during initial sync only (not background sync)
-    // Decks are dimmed ONLY during the startup phase before isInitialSyncComplete becomes true
-    const databaseUnavailable = !isInitialSyncComplete;
-
-    // CHANGED: Restrict Archive Icon to Root Path only
-    const isRoot = !state.currentPath || state.currentPath.length === 0;
-    const isArchived = (state.prefs?.archivedDecks || []).includes(subj);
-    const archiveIconColor = isArchived
-      ? "text-amber-500 hover:text-amber-600"
-      : "text-gray-400 hover:text-brand-500";
-
-    let archiveBtnHTML = "";
-    if (isRoot) {
-      archiveBtnHTML = `
-                <button onclick="event.stopPropagation(); toggleArchiveDeck('${encodedSubj}')" 
-                        class="transition-all transform hover:scale-110 active:scale-90 ${archiveIconColor} p-1" 
-                        title="${isArchived ? "Unarchive Deck" : "Archive Deck"}">
-                    <i class="fa-solid fa-box-archive"></i>
-                </button>
-            `;
-    }
-
-    const data = state.stats.subjectAccuracy[subj] || { total: 0, correct: 0 };
-    const progressStats = getSubjectProgressStats(
-      subj,
-      subjectIdsBySubject,
-      completedSet,
-      mistakesSet,
-    );
-    const completedCount = progressStats.completedCount;
-    const mistakesCount = progressStats.mistakesCount;
-    const progressPercent = progressStats.progressPercent;
-    const isCompleted = progressStats.isCompleted;
-    const cardClasses = isCompleted
-      ? "bg-green-50 dark:bg-green-900/30 border-green-300"
-      : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700";
-    const availabilityClasses = databaseUnavailable
-      ? "opacity-40 cursor-not-allowed pointer-events-none"
-      : "";
-    const isDownloaded = state.db.some((q) => q.Subject === subj);
-    const statusBadge = isDownloaded
-      ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i></span>`
-      : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i></span>`;
-    const isReview = currentAppMode === "review";
-    const primaryActionText = isReview
-      ? "Review Deck"
-      : completedCount === 0
-        ? "Start Quiz"
-        : "Continue Quiz";
-    const primaryActionIcon = isReview ? "fa-eye" : "fa-play";
-    const primaryActionColor = isReview
-      ? "bg-purple-600 hover:bg-purple-700"
-      : "bg-brand-600 hover:bg-brand-700";
-    const themeColorText = isReview
-      ? "text-purple-600 dark:text-purple-400"
-      : "text-brand-600 dark:text-brand-400";
-    const themeColorBg = isReview ? "bg-purple-500" : "bg-brand-500";
-    const themeShadowHover = isReview
-      ? "hover:shadow-purple-500/10"
-      : "hover:shadow-brand-500/10";
-    const loaderColor = isReview ? "text-purple-500" : "text-brand-500";
-    const isLocked = isDeckLocked(subj) || Boolean(cat?.Locked);
-    const lockIcon = isLocked
-      ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected"></i>`
-      : "";
-
-    let statsHTML = "";
-    let progressBarHTML = "";
-    let countBadgeHTML = "";
-    let resetBtnHTML = "";
-
-    if (!isReview) {
-      countBadgeHTML = `
-                <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
-                    ${databaseUnavailable ? "" : archiveBtnHTML}
-                    ${databaseUnavailable || !isDownloaded ? "" : `<button onclick="event.stopPropagation(); deleteSubjectData('${encodedSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>`}
-                    <span class="text-sm font-black ${themeColorText} transition-colors">${completedCount} / ${totalQuestionsInDb}</span>
-                </div>`;
-      progressBarHTML = `
-                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden">
-                    <div class="${themeColorBg} h-full rounded-full transition-all duration-700 ease-out" style="width: ${progressPercent}%"></div>
-                </div>`;
-
-      if (!databaseUnavailable && (completedCount > 0 || mistakesCount > 0)) {
-        resetBtnHTML = `
-                    <button onclick="resetCategory('${encodedSubj}')" class="w-10 sm:w-12 shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
-                        <i class="fa-solid fa-rotate-left"></i>
-                    </button>`;
+    let visibleKeys = keys.filter((key) => {
+      const item = currentNode[key];
+      if (
+        item._data &&
+        !item._data.IsFolder &&
+        Number(item._data.QuestionCount || 0) === 0
+      ) {
+        return false;
       }
-    } else {
-      countBadgeHTML = `
-                <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
-                    ${databaseUnavailable ? "" : archiveBtnHTML}
-                    ${databaseUnavailable || !isDownloaded ? "" : `<button onclick="event.stopPropagation(); deleteSubjectData('${encodedSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>`}
-                    <span class="text-sm font-black ${themeColorText} transition-colors">${totalQuestionsInDb} cards</span>
-                </div>`;
+      return nodeMatchesFilter(currentNode[key], sourceFilter, key);
+    });
+
+    if (visibleKeys.length === 0) {
+      html += `<div class="col-span-full text-center py-10 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">No decks match your filter.</div>`;
     }
 
-    return `
-        <div onclick="handleDeckClick('${encodedSubj}')" class="cursor-pointer animate-card-in ${cardClasses} ${availabilityClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;" title="${databaseUnavailable ? "Waiting for database connection" : ""}">
-                ${
-                  databaseUnavailable
-                    ? `<div class="absolute inset-0 bg-gray-500/30 dark:bg-gray-900/60 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
-                        <i class="fa-solid fa-lock text-4xl text-gray-600 dark:text-gray-400 mb-2"></i>
-                        <span class="text-sm font-bold text-gray-700 dark:text-gray-300 text-center px-2">Syncing Database...</span>
-                    </div>`
-                    : ""
-                }
-                <div id="${loaderId}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
-                    <i class="fa-solid fa-spinner fa-spin text-3xl ${loaderColor} mb-2"></i>
-                    <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
-                </div>
+    function generateCardHTML(cat, displayName, delay = 0) {
+      const subj = cat.Subject;
+      const safeSubj = escapeHTML(subj);
+      const encodedSubj = encodeHandlerValue(subj);
+      const safeName = escapeHTML(displayName);
+      const loaderId = getDeckLoaderId(subj);
+      const deckNameMode =
+        state.prefs.deckNameMode === "clip" ? "truncate" : "whitespace-normal";
+      const totalQuestionsInDb = cat.QuestionCount;
+      const databaseUnavailable = !isInitialSyncComplete;
 
-                <!-- Card Header -->
-                <div class="flex items-start justify-between mb-4 gap-2">
-                    <div class="min-w-0 flex-1">
-                        <div class="flex items-center gap-2 mb-1 min-w-0">
-                            <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors min-w-0">
-                                <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm flex-shrink-0"></i>
-                                <span class="${deckNameMode} break-words">${safeName}</span> ${lockIcon}
-                            </h3>
-                            <div class="flex-shrink-0">
-                                ${statusBadge}
-                            </div>
-                        </div>
-                        ${statsHTML}
-                    </div>
-                    ${countBadgeHTML}
-                </div>
-                
-                ${progressBarHTML}
-                
-                <div class="flex gap-2 mt-auto w-full" onclick="event.stopPropagation()">
-                    <!-- Primary Action Button -->
-                    <button onclick="handleDeckClick('${encodedSubj}')" class="flex-1 ${primaryActionColor} text-white py-2 px-2 rounded-lg font-bold active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="${primaryActionText}">
-                        <i class="fa-solid ${primaryActionIcon} mr-1 sm:mr-2 group-hover:scale-125 transition-transform flex-shrink-0"></i> 
-                        <span class="truncate">${primaryActionText}</span>
-                    </button>
-                    
-                    <!-- Review Mistakes Button -->
-                    ${
-                      !isReview && mistakesCount > 0
-                        ? `
-                        <button onclick="handleDeckClick('${encodedSubj}', 'mistakes')" class="flex-1 bg-yellow-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-yellow-600 active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="Review Mistakes">
-                            <i class="fa-solid fa-triangle-exclamation mr-1 sm:mr-2 group-hover:scale-125 transition-transform flex-shrink-0"></i> 
-                            <span class="truncate">Review (${mistakesCount})</span>
-                        </button>
-                    `
-                        : ""
-                    }
+      const isRoot = !state.currentPath || state.currentPath.length === 0;
+      const isArchived = (state.prefs?.archivedDecks || []).includes(subj);
+      const archiveIconColor = isArchived
+        ? "text-amber-500 hover:text-amber-600"
+        : "text-gray-400 hover:text-brand-500";
 
-                    <!-- Reset Button -->
-                    ${resetBtnHTML}
-                </div>
-            </div>
+      let archiveBtnHTML = "";
+      if (isRoot) {
+        archiveBtnHTML = `
+          <button onclick="event.stopPropagation(); toggleArchiveDeck('${encodedSubj}')" 
+            class="transition-all transform hover:scale-110 active:scale-90 ${archiveIconColor} p-1" 
+            title="${isArchived ? "Unarchive Deck" : "Archive Deck"}">
+            <i class="fa-solid fa-box-archive"></i>
+          </button>
         `;
-  }
+      }
 
-  visibleKeys.forEach((key, index) => {
-    const item = currentNode[key];
-    const hasChildren = Object.keys(item._children).length > 0;
-    const hasData = item._data !== null;
-
-    const isExplicitFolder = hasData && item._data.IsFolder === true;
-    const delay = index * 0.05;
-
-    if (hasChildren || isExplicitFolder) {
-      const totalCards = getFolderStats(item);
-      const folderClass = isGrid ? "h-full min-h-[140px]" : "h-auto";
-
+      const data = state.stats.subjectAccuracy[subj] || {
+        total: 0,
+        correct: 0,
+      };
+      const progressStats = getSubjectProgressStats(
+        subj,
+        subjectIdsBySubject,
+        completedSet,
+        mistakesSet,
+      );
+      const completedCount = progressStats.completedCount;
+      const mistakesCount = progressStats.mistakesCount;
+      const progressPercent = progressStats.progressPercent;
+      const isCompleted = progressStats.isCompleted;
+      const cardClasses = isCompleted
+        ? "bg-green-50 dark:bg-green-900/30 border-green-300"
+        : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700";
+      const availabilityClasses = databaseUnavailable
+        ? "opacity-40 cursor-not-allowed pointer-events-none"
+        : "";
+      const isDownloaded = state.db.some((q) => q.Subject === subj);
+      const statusBadge = isDownloaded
+        ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i></span>`
+        : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i></span>`;
       const isReview = currentAppMode === "review";
-      const folderColorClass = isReview
-        ? "bg-purple-500 dark:bg-purple-700 group-hover:bg-purple-600 dark:group-hover:bg-purple-600"
-        : "bg-brand-500 dark:bg-brand-700 group-hover:bg-brand-600 dark:group-hover:bg-brand-600";
-      const folderTextHover = isReview
-        ? "group-hover:text-purple-600 dark:group-hover:text-purple-400"
-        : "group-hover:text-brand-600 dark:group-hover:text-brand-400";
-
-      const folderSubject =
-        (state.currentPath || []).concat(key).join("::") || key;
-      const isLocked =
-        isDeckLocked(folderSubject) || Boolean(item?._data?.Locked);
+      const primaryActionText = isReview
+        ? "Review Deck"
+        : completedCount === 0
+          ? "Start Quiz"
+          : "Continue Quiz";
+      const primaryActionIcon = isReview ? "fa-eye" : "fa-play";
+      const primaryActionColor = isReview
+        ? "bg-purple-600 hover:bg-purple-700"
+        : "bg-brand-600 hover:bg-brand-700";
+      const themeColorText = isReview
+        ? "text-purple-600 dark:text-purple-400"
+        : "text-brand-600 dark:text-brand-400";
+      const themeColorBg = isReview ? "bg-purple-500" : "bg-brand-500";
+      const themeShadowHover = isReview
+        ? "hover:shadow-purple-500/10"
+        : "hover:shadow-brand-500/10";
+      const loaderColor = isReview ? "text-purple-500" : "text-brand-500";
+      const isLocked = isDeckLocked(subj) || Boolean(cat?.Locked);
       const lockIcon = isLocked
-        ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected Folder"></i>`
+        ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected"></i>`
         : "";
 
-      // CHANGED: Support Archiving Folders at the Root layer
-      const isRoot = !state.currentPath || state.currentPath.length === 0;
-      let archiveBtnHtml = "";
-      let favoriteBtnHtml = "";
+      let statsHTML = "";
+      let progressBarHTML = "";
+      let countBadgeHTML = "";
+      let resetBtnHTML = "";
 
-      if (isRoot) {
-        const isArchived = (state.prefs?.archivedDecks || []).includes(key);
-        const isFavorite = (state.prefs?.favoriteDecks || []).includes(key);
-        const archiveIconColor = isArchived
-          ? "text-amber-500 hover:text-amber-600"
-          : "text-gray-400 hover:text-brand-500";
-        const favoriteIconColor = isFavorite
-          ? "text-yellow-500 hover:text-yellow-600"
-          : "text-gray-400 hover:text-brand-500";
-        archiveBtnHtml = `
-                    <button onclick="event.stopPropagation(); toggleArchiveDeck('${encodeHandlerValue(key)}')"
-                            class="transition-all transform hover:scale-110 active:scale-90 ${archiveIconColor} p-1 z-10"
-                            title="${isArchived ? "Unarchive Folder" : "Archive Folder"}">
-                        <i class="fa-solid fa-box-archive text-lg"></i>
-                    </button>
-                `;
-        favoriteBtnHtml = `
-                    <button onclick="event.stopPropagation(); toggleFavoriteDeck('${encodeHandlerValue(key)}')"
-                            class="transition-all transform hover:scale-110 active:scale-90 ${favoriteIconColor} p-1 z-10"
-                            title="${isFavorite ? "Remove from Favorites" : "Add to Favorites"}">
-                        <i class="fa-solid fa-star text-lg"></i>
-                    </button>
-                `;
+      if (!isReview) {
+        countBadgeHTML = `
+          <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
+            ${databaseUnavailable ? "" : archiveBtnHTML}
+            ${databaseUnavailable || !isDownloaded ? "" : `<button onclick="event.stopPropagation(); deleteSubjectData('${encodedSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>`}
+            <span class="text-sm font-black ${themeColorText} transition-colors">${completedCount} / ${totalQuestionsInDb}</span>
+          </div>`;
+        progressBarHTML = `
+          <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden">
+            <div class="${themeColorBg} h-full rounded-full transition-all duration-700 ease-out" style="width: ${progressPercent}%"></div>
+          </div>`;
+
+        if (!databaseUnavailable && (completedCount > 0 || mistakesCount > 0)) {
+          resetBtnHTML = `
+            <button onclick="resetCategory('${encodedSubj}')" class="w-10 sm:w-12 shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
+              <i class="fa-solid fa-rotate-left"></i>
+            </button>`;
+        }
+      } else {
+        countBadgeHTML = `
+          <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
+            ${databaseUnavailable ? "" : archiveBtnHTML}
+            ${databaseUnavailable || !isDownloaded ? "" : `<button onclick="event.stopPropagation(); deleteSubjectData('${encodedSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>`}
+            <span class="text-sm font-black ${themeColorText} transition-colors">${totalQuestionsInDb} cards</span>
+          </div>`;
       }
 
-      html += `
-                <div onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
-                    <div class="h-12 ${folderColorClass} transition-colors relative">                        
-                        <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
-                    </div>
-                    <div class="p-4 flex-1 flex flex-col justify-between">
-                        <div class="flex justify-between items-start w-full gap-2">
-                            <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg flex items-center min-w-0">
-                                <span class="${state.prefs.deckNameMode === "clip" ? "truncate" : "whitespace-normal break-words"}">${escapeHTML(key)}</span> ${lockIcon}
-                            </h3>
-                            <div class="flex items-center gap-1.5">
-                                ${favoriteBtnHtml}
-                                ${archiveBtnHtml}
-                            </div>
-                        </div>
-                        <div class="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400 mt-2">
-                            <span>${totalCards} cards</span>
-                        </div>
-                    </div>
-                </div>`;
-    } else if (hasData && !isExplicitFolder) {
-      html += generateCardHTML(item._data, key, delay);
+      return `
+        <div onclick="handleDeckClick('${encodedSubj}')" class="cursor-pointer animate-card-in ${cardClasses} ${availabilityClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;" title="${databaseUnavailable ? "Waiting for database connection" : ""}">
+          ${
+            databaseUnavailable
+              ? `<div class="absolute inset-0 bg-gray-500/30 dark:bg-gray-900/60 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
+                  <i class="fa-solid fa-lock text-4xl text-gray-600 dark:text-gray-400 mb-2"></i>
+                  <span class="text-sm font-bold text-gray-700 dark:text-gray-300 text-center px-2">Syncing Database...</span>
+                </div>`
+              : ""
+          }
+          <div id="${loaderId}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
+            <i class="fa-solid fa-spinner fa-spin text-3xl ${loaderColor} mb-2"></i>
+            <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Fetching Latest...</span>
+          </div>
+
+          <div class="flex items-start justify-between mb-4 gap-2">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2 mb-1 min-w-0">
+                <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors min-w-0">
+                  <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm flex-shrink-0"></i>
+                  <span class="${deckNameMode} break-words">${safeName}</span> ${lockIcon}
+                </h3>
+                <div class="flex-shrink-0">${statusBadge}</div>
+              </div>
+              ${statsHTML}
+            </div>
+            ${countBadgeHTML}
+          </div>
+
+          ${progressBarHTML}
+
+          <div class="flex gap-2 mt-auto w-full" onclick="event.stopPropagation()">
+            <button onclick="handleDeckClick('${encodedSubj}')" class="flex-1 ${primaryActionColor} text-white py-2 px-2 rounded-lg font-bold active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="${primaryActionText}">
+              <i class="fa-solid ${primaryActionIcon} mr-1 sm:mr-2 group-hover:scale-125 transition-transform flex-shrink-0"></i>
+              <span class="truncate">${primaryActionText}</span>
+            </button>
+
+            ${
+              !isReview && mistakesCount > 0
+                ? `
+                  <button onclick="handleDeckClick('${encodedSubj}', 'mistakes')" class="flex-1 bg-yellow-500 text-white py-2 px-2 rounded-lg font-bold hover:bg-yellow-600 active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="Review Mistakes">
+                    <i class="fa-solid fa-triangle-exclamation mr-1 sm:mr-2 group-hover:scale-125 transition-transform flex-shrink-0"></i>
+                    <span class="truncate">Review (${mistakesCount})</span>
+                  </button>
+                `
+                : ""
+            }
+
+            ${resetBtnHTML}
+          </div>
+        </div>
+      `;
     }
-  });
 
-  html += `</div>`;
-  container.className = "transition-all duration-500";
-  container.innerHTML = html;
+    visibleKeys.forEach((key, index) => {
+      const item = currentNode[key];
+      const hasChildren = Object.keys(item._children).length > 0;
+      const hasData = item._data !== null;
 
-  applyTitleMode();
+      const isExplicitFolder = hasData && item._data.IsFolder === true;
+      const delay = index * 0.05;
+
+      if (hasChildren || isExplicitFolder) {
+        const totalCards = getFolderStats(item);
+        const folderClass = isGrid ? "h-full min-h-[140px]" : "h-auto";
+
+        const isReview = currentAppMode === "review";
+        const folderColorClass = isReview
+          ? "bg-purple-500 dark:bg-purple-700 group-hover:bg-purple-600 dark:group-hover:bg-purple-600"
+          : "bg-brand-500 dark:bg-brand-700 group-hover:bg-brand-600 dark:group-hover:bg-brand-600";
+        const folderTextHover = isReview
+          ? "group-hover:text-purple-600 dark:group-hover:text-purple-400"
+          : "group-hover:text-brand-600 dark:group-hover:text-brand-400";
+
+        const folderSubject =
+          (state.currentPath || []).concat(key).join("::") || key;
+        const isLocked =
+          isDeckLocked(folderSubject) || Boolean(item?._data?.Locked);
+        const lockIcon = isLocked
+          ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected Folder"></i>`
+          : "";
+
+        const isRoot = !state.currentPath || state.currentPath.length === 0;
+        let archiveBtnHtml = "";
+        let favoriteBtnHtml = "";
+
+        if (isRoot) {
+          const isArchived = (state.prefs?.archivedDecks || []).includes(key);
+          const isFavorite = (state.prefs?.favoriteDecks || []).includes(key);
+          const archiveIconColor = isArchived
+            ? "text-amber-500 hover:text-amber-600"
+            : "text-gray-400 hover:text-brand-500";
+          const favoriteIconColor = isFavorite
+            ? "text-yellow-500 hover:text-yellow-600"
+            : "text-gray-400 hover:text-brand-500";
+          archiveBtnHtml = `
+            <button onclick="event.stopPropagation(); toggleArchiveDeck('${encodeHandlerValue(key)}')"
+              class="transition-all transform hover:scale-110 active:scale-90 ${archiveIconColor} p-1 z-10"
+              title="${isArchived ? "Unarchive Folder" : "Archive Folder"}">
+              <i class="fa-solid fa-box-archive text-lg"></i>
+            </button>
+          `;
+          favoriteBtnHtml = `
+            <button onclick="event.stopPropagation(); toggleFavoriteDeck('${encodeHandlerValue(key)}')"
+              class="transition-all transform hover:scale-110 active:scale-90 ${favoriteIconColor} p-1 z-10"
+              title="${isFavorite ? "Remove from Favorites" : "Add to Favorites"}">
+              <i class="fa-solid fa-star text-lg"></i>
+            </button>
+          `;
+        }
+
+        html += `
+          <div onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
+            <div class="h-12 ${folderColorClass} transition-colors relative">
+              <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
+            </div>
+            <div class="p-4 flex-1 flex flex-col justify-between">
+              <div class="flex justify-between items-start w-full gap-2">
+                <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg flex items-center min-w-0">
+                  <span class="${state.prefs.deckNameMode === "clip" ? "truncate" : "whitespace-normal break-words"}">${escapeHTML(key)}</span> ${lockIcon}
+                </h3>
+                <div class="flex items-center gap-1.5">
+                  ${favoriteBtnHtml}
+                  ${archiveBtnHtml}
+                </div>
+              </div>
+              <div class="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400 mt-2">
+                <span>${totalCards} cards</span>
+              </div>
+            </div>
+          </div>`;
+      } else if (hasData && !isExplicitFolder) {
+        html += generateCardHTML(item._data, key, delay);
+      }
+    });
+
+    html += `</div>`;
+    if (container) {
+      container.className = "transition-all duration-500";
+      container.innerHTML = html;
+    }
+
+    applyTitleMode();
+  } finally {
+    categoryProgressRenderInFlight = false;
+  }
 }
 
 async function fetchAndStartCategory(subject, mode, pass = null) {

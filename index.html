@@ -25,30 +25,58 @@
     </script>
 
     <script>
-      try {
-        const storageIdentity = (() => {
-          try {
-            const stored = localStorage.getItem("mrh_storage_identity");
-            if (stored) return stored;
-          } catch (e) {}
-          const generated = `device_${Math.random().toString(36).slice(2, 10)}`;
-          try {
-            localStorage.setItem("mrh_storage_identity", generated);
-          } catch (e) {}
-          return generated;
-        })();
-        const prefs = JSON.parse(
-          localStorage.getItem(`mrh_${storageIdentity}:prefs`) ||
-            localStorage.getItem("mrh_prefs") ||
-            '{"darkMode":true}',
-        );
-        if (prefs.darkMode) document.documentElement.classList.add("dark");
-      } catch (e) {}
+      (function () {
+        try {
+          const storageIdentity = (() => {
+            try {
+              const stored = localStorage.getItem("mrh_storage_identity");
+              if (stored) return stored;
+            } catch (e) {}
+            const generated = `device_${Math.random().toString(36).slice(2, 10)}`;
+            try {
+              localStorage.setItem("mrh_storage_identity", generated);
+            } catch (e) {}
+            return generated;
+          })();
+
+          const storedPrefs = localStorage.getItem(
+            `mrh_${storageIdentity}:prefs`,
+          );
+          const legacyPrefs = localStorage.getItem("mrh_prefs");
+          const prefs = JSON.parse(
+            storedPrefs || legacyPrefs || '{"darkMode":true}',
+          );
+          const darkMode = prefs.darkMode !== false;
+          const root = document.documentElement;
+          root.classList.toggle("dark", darkMode);
+          root.style.colorScheme = darkMode ? "dark" : "light";
+        } catch (e) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        }
+      })();
     </script>
+
+    <style>
+      html {
+        background-color: #111827;
+      }
+      html:not(.dark) {
+        background-color: #f8fafc;
+      }
+      body {
+        background: transparent;
+      }
+    </style>
 
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      media="print"
+      onload="
+        this.media = 'all';
+        this.setAttribute('data-loaded', 'true');
+      "
     />
 
     <!-- Deferred Chart.js for faster initial paint -->
@@ -58,6 +86,11 @@
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css"
+      media="print"
+      onload="
+        this.media = 'all';
+        this.setAttribute('data-loaded', 'true');
+      "
     />
     <script
       src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"
@@ -72,8 +105,24 @@
 
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="tailwind.generated.css" />
-    <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="stylesheet"
+      href="tailwind.generated.css"
+      media="print"
+      onload="
+        this.media = 'all';
+        this.setAttribute('data-loaded', 'true');
+      "
+    />
+    <link
+      rel="stylesheet"
+      href="styles.css"
+      media="print"
+      onload="
+        this.media = 'all';
+        this.setAttribute('data-loaded', 'true');
+      "
+    />
   </head>
   <body
     class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col transition-colors duration-500"
@@ -1878,7 +1927,7 @@
         panel.setAttribute("aria-hidden", String(isHidden));
       }
     </script>
-    <script src="question-compat.js"></script>
+    <script src="question-compat.js" defer></script>
     <script src="app-entry.js" defer></script>
 
     <div
