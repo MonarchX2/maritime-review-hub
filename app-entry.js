@@ -85,8 +85,10 @@
   }
 
   async function loadApplicationRuntime() {
-    await loadFeatureScript("app-core.js");
-    await loadFeatureScript("app-core-network.js");
+    await Promise.all([
+      loadFeatureScript("app-core.js"),
+      loadFeatureScript("app-core-network.js"),
+    ]);
   }
 
   function showBootstrapError(error) {

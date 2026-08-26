@@ -877,8 +877,19 @@ async function optimizedBackgroundSync() {
         }
       } catch (err) {
         console.error("[SYNC] Optimized background sync error:", err);
-        // On error, attempt full sync but with cached data fallback
-        await syncDatabase(true, true);
+        // Cached decks remain usable; avoid a full payload request after a
+        // lightweight check failure unless there is no local summary.
+        if (state.categorySummary.length > 0) {
+          syncConnected = false;
+          updateSyncStatus(
+            '<i class="fa-solid fa-exclamation-triangle mr-1"></i> Database unavailable. Using cached deck list.',
+            "warning",
+            false,
+          );
+          scheduleSyncPoll();
+        } else {
+          await syncDatabase(true, true);
+        }
       }
     } finally {
       backgroundSyncPromise = null;
@@ -905,6 +916,7 @@ function scheduleSyncPoll() {
   clearTimeout(syncPollTimer);
   syncPollTimer = setTimeout(() => {
     if (activeToken !== __mrhPollLoopToken) return;
+    if (typeof document !== "undefined" && document.hidden) return;
     optimizedBackgroundSync().finally(() => {
       if (activeToken === __mrhPollLoopToken) scheduleSyncPoll();
     });
@@ -1143,7 +1155,11 @@ function scheduleSyncRetry(showOverlay = true) {
 
   clearTimeout(syncRetryTimer);
   clearInterval(syncCountdownTimer);
-  const delay = SYNC_RETRY_INTERVAL_MS;
+  const retryCount = Math.max(0, Number(syncAttempt || 1) - 1);
+  const delay = Math.min(
+    60000,
+    Math.max(SYNC_RETRY_INTERVAL_MS, calculateBackoffDelay(retryCount)),
+  );
   const retryAt = Date.now() + delay;
   const wasConnected = syncConnected;
   const effectiveShowOverlay = showOverlay && !state.session?.active;
@@ -6372,14 +6388,14 @@ function setupVisibilityChangeHandler() {
 
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
-      console.log("[VISIBILITY] Tab became visible, checking cache version");
-      // Immediately check cache when tab becomes visible
-      checkCacheVersionWithETag();
-
-      // Reset polling to random interval
-      scheduleNextPolling();
+      console.log("[VISIBILITY] Tab became visible, checking sync status");
+      clearTimeout(syncPollTimer);
+      syncPollTimer = null;
+      optimizedBackgroundSync().finally(() => scheduleNextPolling());
     } else {
       console.log("[VISIBILITY] Tab hidden, will pause polling");
+      clearTimeout(syncPollTimer);
+      syncPollTimer = null;
     }
   });
 }
