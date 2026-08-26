@@ -50,12 +50,19 @@
 
   async function parseJsonResponse(response) {
     const text = await response.text();
-    if (!text) return {};
+    const trimmed = String(text || "").trim();
+    if (!trimmed) {
+      const emptyError = new Error("Backend returned an empty response body.");
+      emptyError.status = response.status;
+      throw emptyError;
+    }
     try {
-      return JSON.parse(text);
+      return JSON.parse(trimmed);
     } catch (error) {
-      const preview = text.replace(/\s+/g, " ").slice(0, 240);
-      const parseError = new Error(`Invalid backend JSON response: ${preview}`);
+      const preview = trimmed.replace(/\s+/g, " ").slice(0, 240);
+      const parseError = new Error(
+        `Invalid backend JSON response: ${preview || "empty or non-JSON body"}`,
+      );
       parseError.cause = error;
       parseError.status = response.status;
       throw parseError;

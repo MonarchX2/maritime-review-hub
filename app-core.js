@@ -3186,8 +3186,24 @@ async function fetchDeckQuestionsFromNetwork(
 
       return validQuestions;
     } catch (err) {
+      const cachedQuestions = getQuestionsForSubject(subject);
+      const message =
+        err && err.message
+          ? err.message
+          : "Unable to load deck data from the backend.";
       console.warn("Network fetch failed.", err);
-      return getQuestionsForSubject(subject);
+      if (cachedQuestions.length > 0) {
+        showToast(
+          `Unable to load "${subject}" from the database. Showing the cached version instead.`,
+          "error",
+        );
+        return cachedQuestions;
+      }
+      showToast(
+        `Unable to load "${subject}" from the database. ${message}`,
+        "error",
+      );
+      return [];
     } finally {
       if (loaderElement) {
         loaderElement.classList.add("hidden");
@@ -6513,8 +6529,15 @@ function initializeApp() {
 
 window.initializeApp = initializeApp;
 
+function initializeAppOnce() {
+  if (__mrhAppInitialized) return false;
+  return initializeApp();
+}
+
 if (document.readyState === "loading") {
-  window.addEventListener("DOMContentLoaded", initializeApp, { once: true });
+  window.addEventListener("DOMContentLoaded", initializeAppOnce, {
+    once: true,
+  });
 } else {
-  initializeApp();
+  initializeAppOnce();
 }
