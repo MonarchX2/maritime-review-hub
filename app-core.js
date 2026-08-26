@@ -2488,6 +2488,7 @@ function renderCategoryProgress() {
         ? "hover:shadow-purple-500/10"
         : "hover:shadow-brand-500/10";
       const loaderColor = isReview ? "text-purple-500" : "text-brand-500";
+      const isDeckInteractionBusy = deckInteractionLocked;
       const isLocked = isDeckLocked(subj) || Boolean(cat?.Locked);
       const lockIcon = isLocked
         ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected"></i>`
@@ -2526,7 +2527,7 @@ function renderCategoryProgress() {
       }
 
       return `
-        <div onclick="handleDeckClick('${encodedSubj}')" class="cursor-pointer animate-card-in ${cardClasses} ${availabilityClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;" title="${databaseUnavailable ? "Waiting for database connection" : ""}">
+        <div onclick="handleDeckClick('${encodedSubj}')" class="${isDeckInteractionBusy ? "pointer-events-none opacity-60 cursor-wait" : "cursor-pointer"} animate-card-in ${cardClasses} ${availabilityClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;" title="${databaseUnavailable ? "Waiting for database connection" : ""}" aria-busy="${isDeckInteractionBusy}">
           ${
             databaseUnavailable
               ? `<div class="absolute inset-0 bg-gray-500/30 dark:bg-gray-900/60 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
@@ -5513,6 +5514,8 @@ function changeDatabaseUpdateMode(mode) {
 
 let pendingDeckSubject = null;
 let pendingDeckAction = null;
+let deckInteractionLocked = false;
+let activeDeckInteractionKey = null;
 
 function updateRecentDecks(subj) {
   if (!subj) return;
@@ -5527,6 +5530,24 @@ function handleDeckClick(subj, action = "continue") {
   subj = decodeHandlerValue(subj);
   if (!subj) return;
 
+  const nextKey = `${String(subj).trim()}|${String(action || "continue")}`;
+  if (deckInteractionLocked) {
+    if (activeDeckInteractionKey === nextKey) {
+      return;
+    }
+    return;
+  }
+
+  deckInteractionLocked = true;
+  activeDeckInteractionKey = nextKey;
+
+  const finishDeckInteraction = () => {
+    if (activeDeckInteractionKey === nextKey) {
+      deckInteractionLocked = false;
+      activeDeckInteractionKey = null;
+    }
+  };
+
   // If deck was locally deleted, clear it from deleted list so we fetch fresh
   if ((state.prefs.localDownloadDeletedDecks || []).includes(subj)) {
     clearLocalDownloadDeleted(subj);
@@ -5540,6 +5561,7 @@ function handleDeckClick(subj, action = "continue") {
       '<i class="fa-solid fa-xmark mr-1"></i> Decks are temporarily unavailable while the database reconnects.',
       "warning",
     );
+    finishDeckInteraction();
     return;
   }
 
@@ -5557,19 +5579,27 @@ function handleDeckClick(subj, action = "continue") {
   const deckInfo = state.categorySummary.find((c) => c.Subject === subj);
   if (isDeckHidden(subj) || (deckInfo && deckInfo.Hidden)) {
     showToast("This deck is hidden and not available.", "warning");
+    finishDeckInteraction();
     return;
   }
   if (isDeckLocked(subj) || (deckInfo && deckInfo.Locked)) {
     pendingDeckSubject = subj;
     pendingDeckAction = action;
     openDeckPasswordModal(subj, action);
+    finishDeckInteraction();
     return;
   }
-  if (currentAppMode === "review") {
-    reviewDeck(subj, null);
-  } else {
-    fetchAndStartCategory(subj, action, null);
-  }
+
+  const startPromise =
+    currentAppMode === "review"
+      ? reviewDeck(subj, null)
+      : fetchAndStartCategory(subj, action, null);
+
+  Promise.resolve(startPromise)
+    .catch(() => {})
+    .finally(() => {
+      finishDeckInteraction();
+    });
 }
 
 function toggleShuffleChoices(source) {
