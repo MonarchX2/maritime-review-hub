@@ -19,15 +19,28 @@
     isDeckPasswordProtected,
     applyTitleMode,
   } = globalScope;
-  const legacyRenderDeckReview = globalScope.renderDeckReview;
+  const renderDeckReviewImplementation =
+    globalScope.renderDeckReviewImplementation;
 
   // ===================== STATE VARIABLES =====================
   let currentReviewSubject = null;
   let currentReviewQuestions = [];
+  let reviewRenderFrame = null;
 
   // ===================== DECK REVIEW RENDERING =====================
   function reRenderDeckReview() {
-    renderDeckReview(currentReviewSubject, currentReviewQuestions);
+    if (reviewRenderFrame !== null) return;
+
+    const render = () => {
+      reviewRenderFrame = null;
+      renderDeckReview(currentReviewSubject, currentReviewQuestions);
+    };
+
+    if (typeof requestAnimationFrame === "function") {
+      reviewRenderFrame = requestAnimationFrame(render);
+    } else {
+      reviewRenderFrame = setTimeout(render, 0);
+    }
   }
 
   function renderDeckReview(subject, questions) {
@@ -39,14 +52,8 @@
     globalScope.currentReviewSubject = currentReviewSubject;
     globalScope.currentReviewQuestions = currentReviewQuestions;
 
-    if (typeof legacyRenderDeckReview === "function") {
-      const activeDeckReview = globalScope.DeckReview;
-      globalScope.DeckReview = undefined;
-      try {
-        return legacyRenderDeckReview(subject, questions);
-      } finally {
-        globalScope.DeckReview = activeDeckReview;
-      }
+    if (typeof renderDeckReviewImplementation === "function") {
+      return renderDeckReviewImplementation(subject, questions);
     }
 
     const container = document.getElementById("deck-review-list");
@@ -312,8 +319,10 @@
   if (typeof module !== "undefined" && module.exports) {
     module.exports = DeckReviewCore;
   }
-})(typeof globalScope !== "undefined"
-  ? globalScope
-  : typeof globalThis !== "undefined"
-    ? globalThis
-    : this);
+})(
+  typeof globalScope !== "undefined"
+    ? globalScope
+    : typeof globalThis !== "undefined"
+      ? globalThis
+      : this,
+);

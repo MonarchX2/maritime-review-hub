@@ -475,7 +475,12 @@
     }
   }
 
-  async function saveState() {
+  let stateSavePromise = null;
+  let resolveStateSave = null;
+  let stateSaveQueued = false;
+
+  function flushStateSave() {
+    stateSaveQueued = false;
     try {
       if (typeof globalScope.emitDebugState === "function") {
         globalScope.emitDebugState("save_state:begin", {
@@ -506,6 +511,34 @@
         summaryCount: state.categorySummary.length,
       });
     }
+
+    const resolve = resolveStateSave;
+    stateSavePromise = null;
+    resolveStateSave = null;
+    if (resolve) resolve();
+  }
+
+  function saveState() {
+    if (!stateSavePromise) {
+      stateSavePromise = new Promise((resolve) => {
+        resolveStateSave = resolve;
+      });
+    }
+
+    if (!stateSaveQueued) {
+      stateSaveQueued = true;
+      const scheduleFlush = () => {
+        if (typeof requestIdleCallback === "function") {
+          requestIdleCallback(flushStateSave, { timeout: 250 });
+        } else {
+          setTimeout(flushStateSave, 0);
+        }
+      };
+      if (typeof queueMicrotask === "function") queueMicrotask(scheduleFlush);
+      else Promise.resolve().then(scheduleFlush);
+    }
+
+    return stateSavePromise;
   }
 
   globalScope.state = state;

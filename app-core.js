@@ -2864,6 +2864,7 @@ async function reviewDeck(subject, pass = null) {
 
 let currentReviewSubject = "";
 let currentReviewQuestions = [];
+let reviewRenderLimit = 50;
 
 function reRenderDeckReview() {
   if (
@@ -2877,11 +2878,16 @@ function reRenderDeckReview() {
 
 function renderDeckReview(subject, questions) {
   if (
-    typeof DeckReview !== "undefined" &&
-    typeof DeckReview.renderDeckReview === "function"
+    typeof DeckReviewCore !== "undefined" &&
+    typeof DeckReviewCore.renderDeckReview === "function"
   ) {
-    return DeckReview.renderDeckReview(subject, questions);
+    return DeckReviewCore.renderDeckReview(subject, questions);
   }
+  return renderDeckReviewImplementation(subject, questions);
+}
+
+function renderDeckReviewImplementation(subject, questions) {
+  if (currentReviewSubject !== subject) reviewRenderLimit = 50;
   currentReviewSubject = subject;
   currentReviewQuestions = questions;
 
@@ -2961,7 +2967,7 @@ function renderDeckReview(subject, questions) {
     displayQuestions = [filteredQuestions[currentIndex]];
   } else {
     if (pageSize === "All") {
-      displayQuestions = filteredQuestions;
+      displayQuestions = filteredQuestions.slice(0, reviewRenderLimit);
     } else {
       totalPages = Math.ceil(filteredQuestions.length / pageSize);
       if (currentPage < 1) currentPage = 1;
@@ -3110,7 +3116,7 @@ function renderDeckReview(subject, questions) {
         : "text-gray-400 bg-white dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-500";
 
     html += `
-            <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 animate-card-in">
+            <div class="review-question-card bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 animate-card-in">
                 <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 dark:border-gray-700">
                     <span class="bg-brand-50 text-brand-600 text-xs px-2 py-1 rounded font-bold dark:bg-brand-900/30 dark:text-brand-400">Question ${originalIndex + 1}</span>
                     
@@ -3160,6 +3166,19 @@ function renderDeckReview(subject, questions) {
 
   if (showBottomNavigation) html += navigationHTML;
 
+  if (
+    pageSize === "All" &&
+    displayQuestions.length < filteredQuestions.length
+  ) {
+    html += `
+      <div class="flex justify-center py-4">
+        <button type="button" onclick="loadMoreReviewQuestions()" class="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors">
+          Load more questions (${filteredQuestions.length - displayQuestions.length} remaining)
+        </button>
+      </div>
+    `;
+  }
+
   container.innerHTML = html;
   navigate("deck-review");
 
@@ -3170,6 +3189,16 @@ function renderDeckReview(subject, questions) {
     }
     applyTitleMode();
   }, 100);
+}
+
+function loadMoreReviewQuestions() {
+  reviewRenderLimit += 50;
+  renderDeckReview(currentReviewSubject, currentReviewQuestions);
+}
+
+if (typeof globalThis !== "undefined") {
+  globalThis.renderDeckReviewImplementation = renderDeckReviewImplementation;
+  globalThis.loadMoreReviewQuestions = loadMoreReviewQuestions;
 }
 
 function toggleHideABCD() {
@@ -3766,9 +3795,9 @@ document.addEventListener("keydown", (e) => {
   const settingsModal = document.getElementById("session-settings-modal");
 
   const isReportModalOpen =
-    reportModal && !reportModal.classList.contains("hidden");
+    reportModal && reportModal.getAttribute("aria-hidden") !== "true";
   const isSettingsModalOpen =
-    settingsModal && !settingsModal.classList.contains("hidden");
+    settingsModal && settingsModal.getAttribute("aria-hidden") !== "true";
 
   if (!state.session.active || isReportModalOpen || isSettingsModalOpen) return;
 
@@ -4451,16 +4480,17 @@ function toggleModal(modalId, isVisible) {
   const inner = modal.querySelector("div");
 
   if (isVisible) {
-    modal.classList.remove("hidden");
+    modal.setAttribute("aria-hidden", "false");
     setTimeout(() => {
       modal.classList.remove("opacity-0");
       if (inner) inner.classList.remove("scale-95", "opacity-0");
     }, 10);
   } else {
+    modal.setAttribute("aria-hidden", "true");
     modal.classList.add("opacity-0");
     if (inner) inner.classList.add("scale-95");
     setTimeout(() => {
-      modal.classList.add("hidden");
+      modal.setAttribute("aria-hidden", "true");
     }, 300);
   }
 }
@@ -4645,7 +4675,7 @@ function openReviewSettingsModal() {
     );
   }
   updateStudyFilterToggle();
-  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
   // Small delay allows the browser to render 'block' before applying opacity for the transition
   setTimeout(() => {
     modal.classList.remove("opacity-0");
@@ -4666,7 +4696,7 @@ function closeReviewSettingsModal() {
   modal.querySelector("div").classList.add("scale-95");
   // Wait for transition to finish before hiding element
   setTimeout(() => {
-    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
   }, 300);
 }
 
@@ -5005,14 +5035,26 @@ async function loadReports() {
   }
 }
 
-function showToast(message, type = "success") {
+function showToast(message, type = "success", duration = 3000) {
   const container = document.getElementById("toast-container");
+  if (!container) return;
   const toast = document.createElement("div");
   const colors =
     type === "error"
       ? "bg-red-500 text-white"
-      : "bg-gray-800 dark:bg-gray-100 text-white dark:text-gray-900";
-  const icon = type === "error" ? "fa-circle-exclamation" : "fa-circle-check";
+      : type === "warning"
+        ? "bg-yellow-500 text-white"
+        : type === "info"
+          ? "bg-blue-500 text-white"
+          : "bg-gray-800 dark:bg-gray-100 text-white dark:text-gray-900";
+  const icon =
+    type === "error"
+      ? "fa-circle-exclamation"
+      : type === "warning"
+        ? "fa-triangle-exclamation"
+        : type === "info"
+          ? "fa-circle-info"
+          : "fa-circle-check";
 
   toast.className = `toast-enter ${colors} px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 font-medium text-sm`;
   toast.innerHTML = `<i class="fa-solid ${icon}"></i> ${escapeHTML(message)}`;
@@ -5023,7 +5065,7 @@ function showToast(message, type = "success") {
     toast.style.transform = "translateX(100%)";
     toast.style.transition = "all 0.3s ease";
     setTimeout(() => toast.remove(), 300);
-  }, 3000);
+  }, duration);
 }
 
 function toggleActiveRecall() {
@@ -5409,39 +5451,7 @@ function togglePasswordVisibility(inputId, btnElement) {
 }
 
 function formatQuestionText(text, options = {}) {
-  if (!text) return "";
-
-  const revealCloze = Boolean(options.revealCloze);
-  const clozeEnabled =
-    options.clozeEnabled ?? state.prefs.clozeEnabled !== false;
-  let formatted = escapeHTML(TextUtils.stripQuestionNumberPrefix(text));
-
-  if (clozeEnabled) {
-    const clozeRegex = /\{\{c\d+::([^{}]+)\}\}/g;
-    formatted = formatted.replace(clozeRegex, (match, innerText) => {
-      const safeInner = escapeHTML(String(innerText || "").trim());
-      const safeInnerValue = safeInner || "••••";
-      const clozeVisual = revealCloze
-        ? `<span class="cloze-answer text-brand-700 dark:text-brand-300">${safeInnerValue}</span>`
-        : `<span class="cloze-answer hidden">${safeInnerValue}</span>`;
-      return `<span class="cloze-token inline-flex items-center">
-        <button type="button" class="cloze-trigger rounded border border-dashed border-brand-500 px-2 py-0.5 text-xs font-bold bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-200 ${revealCloze ? "cloze-visible" : ""}" onclick="event.preventDefault(); event.stopPropagation(); revealClozeAnswer(this)">
-          <span class="cloze-mask">${revealCloze ? safeInnerValue : "□ □ □"}</span>
-          ${clozeVisual}
-        </button>
-      </span>`;
-    });
-  }
-
-  const listRegex = /(?:\s|^)((?:\d+|[A-Za-z]|[IVXLCDMivxlcdm]{1,4})\.)\s/g;
-
-  formatted = formatted.replace(listRegex, "<br><br>$1 ");
-
-  if (formatted.startsWith("<br><br>")) {
-    formatted = formatted.substring(8);
-  }
-
-  return formatted;
+  return TextUtils.formatQuestionText(text, options);
 }
 
 function revealClozeAnswer(trigger) {
@@ -5725,42 +5735,7 @@ function handleCacheInvalidation() {
 // OPTIMIZATION: Toast Notification System
 // ============================================
 function showToastNotification(message, type = "info", duration = 3500) {
-  if (typeof document === "undefined") return;
-
-  const toastContainer =
-    document.getElementById("app-toast-container") || createToastContainer();
-  if (!toastContainer) return;
-
-  const toast = document.createElement("div");
-  const toastId = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  toast.id = toastId;
-
-  const bgClass =
-    {
-      info: "bg-blue-500",
-      success: "bg-green-500",
-      warning: "bg-yellow-500",
-      error: "bg-red-500",
-    }[type] || "bg-blue-500";
-
-  toast.className = `fixed bottom-4 right-4 ${bgClass} text-white px-4 py-3 rounded-lg shadow-lg animate-fade-in transition-all duration-300 z-50 max-w-sm text-sm font-medium`;
-  toast.textContent = message;
-
-  toastContainer.appendChild(toast);
-
-  setTimeout(() => {
-    toast.classList.add("opacity-0");
-    setTimeout(() => toast.remove(), 300);
-  }, duration);
-}
-
-function createToastContainer() {
-  if (typeof document === "undefined") return null;
-  const container = document.createElement("div");
-  container.id = "app-toast-container";
-  container.className = "fixed bottom-0 right-0 z-50 pointer-events-none";
-  document.body.appendChild(container);
-  return container;
+  showToast(message, type, duration);
 }
 
 // ============================================

@@ -22,18 +22,19 @@
     }
 
     if (isVisible) {
-      modal.classList.remove("hidden");
+      modal.setAttribute("aria-hidden", "false");
       const show = setTimeout(() => {
-        if (modal.classList.contains("hidden")) return;
+        if (modal.getAttribute("aria-hidden") === "true") return;
         modal.classList.remove("opacity-0");
         if (inner) inner.classList.remove("scale-95", "opacity-0");
       }, 10);
       modalTimers.set(modal, { show, hide: null });
     } else {
+      modal.setAttribute("aria-hidden", "true");
       modal.classList.add("opacity-0");
       if (inner) inner.classList.add("scale-95", "opacity-0");
       const hide = setTimeout(() => {
-        modal.classList.add("hidden");
+        modal.setAttribute("aria-hidden", "true");
       }, 300);
       modalTimers.set(modal, { show: null, hide });
     }
@@ -323,7 +324,7 @@
       );
     }
     updateStudyFilterToggle();
-    modal.classList.remove("hidden");
+    modal.setAttribute("aria-hidden", "false");
     // Small delay allows the browser to render 'block' before applying opacity for the transition
     setTimeout(() => {
       modal.classList.remove("opacity-0");
@@ -339,7 +340,7 @@
     modal.querySelector("div")?.classList.add("scale-95");
     // Wait for transition to finish before hiding element
     setTimeout(() => {
-      modal.classList.add("hidden");
+      modal.setAttribute("aria-hidden", "true");
     }, 300);
     return true;
   }
@@ -585,8 +586,10 @@
   if (typeof module !== "undefined" && module.exports) {
     module.exports = ModalCore;
   }
-})(typeof globalScope !== "undefined"
-  ? globalScope
-  : typeof globalThis !== "undefined"
-    ? globalThis
-    : this);
+})(
+  typeof globalScope !== "undefined"
+    ? globalScope
+    : typeof globalThis !== "undefined"
+      ? globalThis
+      : this,
+);

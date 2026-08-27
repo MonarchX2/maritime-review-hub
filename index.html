@@ -645,7 +645,7 @@
 
             <div
               id="active-recall-mask"
-              class="hidden border border-gray-200 dark:border-gray-700 rounded-xl mt-6 bg-white dark:bg-gray-800 flex flex-col overflow-hidden animate-card-in shadow-sm"
+              class="hidden border border-gray-200 dark:border-gray-700 rounded-xl mt-6 bg-white dark:bg-gray-800 overflow-hidden animate-card-in shadow-sm"
             >
               <div
                 class="p-8 flex flex-col items-center justify-center text-center"
@@ -1251,7 +1251,7 @@
               </button>
               <div
                 id="danger-zone-panel"
-                class="hidden mt-4 flex flex-col gap-4"
+                class="hidden mt-4 gap-4"
                 aria-hidden="true"
               >
                 <div class="flex justify-between items-center">
@@ -1312,7 +1312,8 @@
       <!-- Edit Report Modal) -->
       <div
         id="report-modal"
-        class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden opacity-0 transition-opacity duration-300 flex items-center justify-center p-4"
+        class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] opacity-0 transition-opacity duration-300 modal-layout items-center justify-center p-4"
+        aria-hidden="true"
         role="dialog"
         aria-modal="true"
         aria-labelledby="report-modal-title"
@@ -1427,7 +1428,8 @@
       <!-- Quiz Settings Modal -->
       <div
         id="session-settings-modal"
-        class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+        class="fixed inset-0 z-[100] modal-layout items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+        aria-hidden="true"
         role="dialog"
         aria-modal="true"
         aria-labelledby="session-settings-title"
@@ -1591,7 +1593,8 @@
       <!-- About Modal -->
       <div
         id="about-modal"
-        class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+        class="fixed inset-0 z-[100] modal-layout items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+        aria-hidden="true"
         role="dialog"
         aria-modal="true"
         aria-labelledby="about-modal-title"
@@ -1642,7 +1645,8 @@
       <!-- Review Settings Modal -->
       <div
         id="review-settings-modal"
-        class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+        class="fixed inset-0 z-[100] modal-layout items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+        aria-hidden="true"
         role="dialog"
         aria-modal="true"
         aria-labelledby="review-settings-title"
@@ -1795,7 +1799,8 @@
       <!-- NEW: DECK PASSWORD MODAL OVERLAY -->
       <div
         id="deck-password-modal"
-        class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+        class="fixed inset-0 z-[100] modal-layout items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+        aria-hidden="true"
         role="dialog"
         aria-modal="true"
         aria-labelledby="deck-password-title"
@@ -1871,7 +1876,8 @@
       <!-- FOLDER PASSWORD MODAL -->
       <div
         id="folder-password-modal"
-        class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+        class="fixed inset-0 z-[100] modal-layout items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+        aria-hidden="true"
         role="dialog"
         aria-modal="true"
         aria-labelledby="folder-password-title"
@@ -1945,7 +1951,8 @@
 
     <div
       id="confirm-modal"
-      class="hidden fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+      class="fixed inset-0 z-[120] modal-layout items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+      aria-hidden="true"
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-title"

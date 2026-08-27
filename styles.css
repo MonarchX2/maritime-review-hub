@@ -34,6 +34,27 @@
   --time-med: 0.5s;
   --time-slow: 0.6s;
 }
+
+.modal-layout[aria-hidden="false"],
+#active-recall-mask:not(.hidden),
+#danger-zone-panel:not(.hidden) {
+  display: flex;
+}
+
+.modal-layout[aria-hidden="true"] {
+  display: none;
+}
+
+#active-recall-mask:not(.hidden),
+#danger-zone-panel:not(.hidden) {
+  flex-direction: column;
+}
+
+#deck-review-list > .review-question-card {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 420px;
+}
+
 /* --------------------------------------------------------------------------
    02. BASE / DOCUMENT STYLES
    -------------------------------------------------------------------------- */
