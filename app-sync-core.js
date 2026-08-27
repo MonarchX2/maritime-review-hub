@@ -10,7 +10,8 @@
     scheduleSyncPoll: globalScope.scheduleSyncPoll,
     applySummaryData: globalScope.applySummaryData,
     scheduleSyncRetry: globalScope.scheduleSyncRetry,
-    syncDatabase: globalScope.syncDatabase,
+    syncDatabase:
+      globalScope.syncDatabaseImplementation || globalScope.syncDatabase,
     showColdStartNotification: globalScope.showColdStartNotification,
   };
 

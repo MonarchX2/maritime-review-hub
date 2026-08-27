@@ -17,8 +17,6 @@ let pendingSummaryData = null;
 let syncConnected = false;
 let isColdStart = false;
 let lastSyncStatusTimestamp = "";
-let localCacheVersion = "";
-let remoteCacheVersion = "";
 let isInitialSyncComplete = false; // Track if the first sync from startup has completed
 let lastSyncAt = 0;
 let syncInFlightPromise = null;
@@ -26,7 +24,6 @@ let backgroundSyncPromise = null;
 const deckFetchInFlight = new Map();
 const lastDeckRefreshAtBySubject = {};
 const SYNC_STATUS_STORAGE_KEY = "mrh_last_sync_status_timestamp";
-const CACHE_VERSION_STORAGE_KEY = "mrh_cache_version";
 const SYNC_REQUEST_TIMEOUT_MS = 60000;
 let __mrhAppInitialized = false;
 let __mrhPollLoopToken = 0;
@@ -45,29 +42,10 @@ function persistSyncStatusTimestamp(timestamp) {
   }
 }
 
-function readStoredCacheVersion() {
-  return String(getStoredItem?.(CACHE_VERSION_STORAGE_KEY, "") || "").trim();
-}
-
-function persistLocalCacheVersion(version) {
-  const nextVersion = String(version ?? "").trim();
-  localCacheVersion = nextVersion;
-  try {
-    setStoredItem?.(CACHE_VERSION_STORAGE_KEY, nextVersion);
-  } catch (e) {
-    console.warn("Unable to persist cache version locally.", e);
-  }
-}
-
 // OPTIMIZATION: Leader election pattern - only one tab polls
 let isLeaderTab = false;
 let leaderHeartbeatTimer = null;
 let leaderElectionChannel = null;
-let cacheVersionCheckTimer = null;
-
-// OPTIMIZATION: Exponential backoff retry tracking
-let failureRetryCount = 0;
-let maxRetryAttempts = 5;
 
 const debugLogger =
   typeof DebugUtils !== "undefined" && DebugUtils.createDebugLogger
@@ -568,11 +546,6 @@ function scheduleSyncPoll() {
     return AppSync.scheduleSyncPoll();
   }
 
-  if (cacheVersionCheckTimer !== null) {
-    clearInterval(cacheVersionCheckTimer);
-    cacheVersionCheckTimer = null;
-  }
-
   const activeToken = ++__mrhPollLoopToken;
   clearTimeout(syncPollTimer);
   syncPollTimer = setTimeout(() => {
@@ -586,10 +559,6 @@ function scheduleSyncPoll() {
 
 function scheduleSinglePollLoop() {
   if (!isLeaderTab) {
-    if (cacheVersionCheckTimer !== null) {
-      clearInterval(cacheVersionCheckTimer);
-      cacheVersionCheckTimer = null;
-    }
     return;
   }
 
@@ -730,6 +699,17 @@ function buildAccessMetadataMap(accessData) {
   return map;
 }
 
+function getSummarySignature(summaryData) {
+  if (!Array.isArray(summaryData)) return "";
+  return summaryData
+    .map((deck) =>
+      [deck?.Subject, deck?.QuestionCount, deck?.Locked]
+        .map((value) => String(value ?? ""))
+        .join("\u001f"),
+    )
+    .join("\u001e");
+}
+
 // REMOVED: mergeAccessMetadataIntoSummary - NOT USED
 // Backend handles all access control in filterSummaryDataByAccess()
 // Frontend should never merge or modify backend response
@@ -793,8 +773,8 @@ function applySummaryData(summaryData, knownChanged = null) {
   // Only use the data as-is from the backend response
   const changed =
     knownChanged === null
-      ? JSON.stringify(state.categorySummary || []) !==
-        JSON.stringify(summaryData || [])
+      ? getSummarySignature(state.categorySummary || []) !==
+        getSummarySignature(summaryData || [])
       : Boolean(knownChanged);
 
   state.categorySummary = summaryData || [];
@@ -895,7 +875,10 @@ async function checkSyncStatusLightweight() {
 // ============================================
 // ENHANCED SYNC DATABASE WITH ALL FIXES
 // ============================================
-async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
+async function syncDatabaseImplementation(
+  isRetry = false,
+  isBackgroundCheck = false,
+) {
   if (
     typeof AppSync !== "undefined" &&
     !AppSync.__legacyBridge &&
@@ -972,8 +955,8 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
         sanitizeDeletedDeckReferences();
 
         const changed =
-          JSON.stringify(state.categorySummary || []) !==
-          JSON.stringify(summaryData);
+          getSummarySignature(state.categorySummary || []) !==
+          getSummarySignature(summaryData);
         const canApplyNow =
           state.prefs.databaseUpdateMode === "immediate" ||
           !state.session.active;
@@ -1076,6 +1059,17 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
   })();
 
   return syncInFlightPromise;
+}
+
+async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
+  if (
+    typeof AppSync !== "undefined" &&
+    typeof AppSync.syncDatabase === "function" &&
+    AppSync.syncDatabase !== syncDatabase
+  ) {
+    return AppSync.syncDatabase(isRetry, isBackgroundCheck);
+  }
+  return syncDatabaseImplementation(isRetry, isBackgroundCheck);
 }
 
 let filterModelSource = null;
@@ -1574,19 +1568,6 @@ function renderQuestion() {
     );
   }
 
-  const nextIndex = state.session.currentIndex + 1;
-  const upcomingQuestions = state.session.questions.slice(
-    nextIndex,
-    nextIndex + 2,
-  );
-
-  upcomingQuestions.forEach((nextQ) => {
-    if (nextQ && nextQ.ImageURL) {
-      const imgPreload = new Image();
-      imgPreload.src = nextQ.ImageURL;
-    }
-  });
-
   applyTitleMode();
 }
 
@@ -1725,8 +1706,25 @@ function initDetailsExclusivity() {
 
 let categoryProgressRenderScheduled = false;
 let categoryProgressRenderInFlight = false;
+let categoryProgressRenderQueued = false;
 
 function renderCategoryProgress() {
+  if (categoryProgressRenderQueued) return;
+  categoryProgressRenderQueued = true;
+
+  const render = () => {
+    categoryProgressRenderQueued = false;
+    renderCategoryProgressNow();
+  };
+
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(render);
+  } else {
+    setTimeout(render, 0);
+  }
+}
+
+function renderCategoryProgressNow() {
   if (!document.body) {
     if (!categoryProgressRenderScheduled) {
       categoryProgressRenderScheduled = true;
@@ -2083,7 +2081,7 @@ function renderCategoryProgress() {
       const availabilityClasses = databaseUnavailable
         ? "opacity-40 cursor-not-allowed pointer-events-none"
         : "";
-      const isDownloaded = state.db.some((q) => q.Subject === subj);
+      const isDownloaded = downloadedSubjects.has(subj);
       const statusBadge = isDownloaded
         ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i></span>`
         : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i></span>`;
@@ -5800,11 +5798,8 @@ function setupLeaderElection() {
         console.log(
           `[LEADER] ${isLeaderTab ? "Became" : "Yielded"} leadership: ${nextLeader}`,
         );
-        if (!isLeaderTab && cacheVersionCheckTimer !== null) {
-          clearInterval(cacheVersionCheckTimer);
-          cacheVersionCheckTimer = null;
-        } else if (isLeaderTab && typeof scheduleNextPolling === "function") {
-          // Reclaiming leadership must restart cache-version polling.
+        if (isLeaderTab && typeof scheduleNextPolling === "function") {
+          // Reclaiming leadership must restart sync polling.
           scheduleNextPolling();
         }
       }
@@ -5820,17 +5815,6 @@ function setupLeaderElection() {
           electLeader();
         }
         return;
-      }
-
-      if (data.type === "cache_version_updated" && data.newVersion != null) {
-        const newVersion = String(data.newVersion).trim();
-        const currentVersion = String(localCacheVersion || "").trim();
-        if (newVersion && newVersion !== currentVersion) {
-          persistLocalCacheVersion(newVersion);
-          reloadAppStateInMemory().catch((error) => {
-            console.warn("[CACHE] Cross-tab state refresh failed:", error);
-          });
-        }
       }
     };
 
@@ -5856,138 +5840,12 @@ function setupLeaderElection() {
   }
 }
 
-// ============================================
-// OPTIMIZATION: Exponential Backoff with Jitter
-// ============================================
 function calculateBackoffDelay(retryCount) {
   // Exponential: 2^retryCount seconds
   // Jitter: add random 0-50% to avoid thundering herd
   const baseDelay = Math.pow(2, Math.min(retryCount, 5)) * 1000; // Cap at 32 seconds
   const jitter = Math.random() * baseDelay * 0.5;
   return baseDelay + jitter;
-}
-
-async function fetchWithExponentialBackoff(url, options = {}, maxRetries = 3) {
-  let lastError = null;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const response = await fetch(url, options);
-      if (response.ok || response.status === 304) {
-        failureRetryCount = 0; // Reset on success
-        return response;
-      }
-
-      // Rate limited or server error?
-      if (response.status === 429 || response.status >= 500) {
-        throw new Error(`Server error: ${response.status}`);
-      }
-
-      return response;
-    } catch (error) {
-      lastError = error;
-
-      if (attempt < maxRetries) {
-        const delay = calculateBackoffDelay(attempt);
-        console.log(
-          `[BACKOFF] Retry ${attempt + 1}/${maxRetries} after ${Math.round(delay)}ms`,
-        );
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-  }
-
-  throw lastError || new Error("Max retries exceeded");
-}
-
-// ============================================
-// OPTIMIZATION: Jittered Polling Interval
-// ============================================
-function getJitteredPollingInterval() {
-  // Poll frequently enough to feel realtime while still staggering clients.
-  const jitter = (Math.random() - 0.5) * 6000; // ±3 seconds
-  return Math.max(8000, Math.min(18000, 12000 + jitter));
-}
-
-// ============================================
-// OPTIMIZATION: Enhanced Cache Version Check with ETag
-// ============================================
-async function checkCacheVersionWithETag() {
-  if (syncInFlightPromise || syncPollTimer) return;
-
-  if (!isLeaderTab) return;
-
-  // Pause polling when tab is hidden
-  if (typeof document !== "undefined" && document.hidden) {
-    console.log("[CACHE] Tab hidden, skipping version check");
-    return;
-  }
-
-  try {
-    const response = await fetchWithExponentialBackoff(
-      DB_URL,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/plain;charset=utf-8",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({ type: "get_cache_version" }),
-      },
-      2,
-    );
-
-    if (!response.ok) return;
-
-    const data = await response.json();
-
-    if (data && data.version !== undefined && data.version !== null) {
-      // Backend v8 returns an opaque string version token; compare exact tokens.
-      remoteCacheVersion = String(data.version).trim();
-
-      const storedLocalCacheVersion = readStoredCacheVersion();
-      if (!String(localCacheVersion || "").trim() && storedLocalCacheVersion) {
-        localCacheVersion = storedLocalCacheVersion;
-      }
-
-      const localVersionToken = String(localCacheVersion || "").trim();
-      const versionChanged =
-        Boolean(localVersionToken) && remoteCacheVersion !== localVersionToken;
-
-      if (versionChanged) {
-        console.log(
-          `[CACHE] Version changed: ${localVersionToken} -> ${remoteCacheVersion}`,
-        );
-
-        if (isLeaderTab && typeof leaderElectionChannel !== "undefined") {
-          try {
-            leaderElectionChannel.postMessage({
-              type: "cache_version_updated",
-              newVersion: remoteCacheVersion,
-            });
-          } catch (e) {
-            console.log("[CACHE] Could not broadcast version update");
-          }
-        }
-
-        // In-memory state re-fetch (no page reload!).
-        await reloadAppStateInMemory();
-      }
-
-      persistLocalCacheVersion(remoteCacheVersion);
-      failureRetryCount = 0;
-    }
-  } catch (e) {
-    failureRetryCount++;
-    console.error("[CACHE] Version check failed:", e);
-
-    if (failureRetryCount > maxRetryAttempts) {
-      console.warn(
-        "[CACHE] Max retry attempts exceeded, giving up temporarily",
-      );
-      failureRetryCount = 0;
-    }
-  }
 }
 
 // ============================================
@@ -6017,11 +5875,6 @@ function scheduleNextPolling() {
   if (syncPollTimer) {
     clearTimeout(syncPollTimer);
     syncPollTimer = null;
-  }
-
-  if (cacheVersionCheckTimer !== null) {
-    clearInterval(cacheVersionCheckTimer);
-    cacheVersionCheckTimer = null;
   }
 
   if (!isLeaderTab) {

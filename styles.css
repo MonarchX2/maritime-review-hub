@@ -5,7 +5,7 @@
    03. Title/wrapping modes
    04. Modals and overlays
    05. Application shell and main layout
-   06. Search/discovery UI
+  06. Search UI
    07. Dashboard controls, filters, and sorting
    08. View states
    09. Quiz/answer-choice states
@@ -266,8 +266,8 @@ input {
 }
 
 /* --------------------------------------------------------------------------
-   06. SEARCH / DISCOVERY UI
-   -------------------------------------------------------------------------- */
+  06. SEARCH UI
+  -------------------------------------------------------------------------- */
 #header-search-results .search-result-item {
   border: 1px solid transparent;
 }

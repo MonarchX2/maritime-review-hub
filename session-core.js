@@ -2,6 +2,7 @@
   const CHOICE_KEYS = ["A", "B", "C", "D"];
   const DAY_MS = 24 * 60 * 60 * 1000;
   const HOUR_MS = 60 * 60 * 1000;
+  const preloadedImageUrls = new Set();
 
   function getElement(id) {
     return typeof document !== "undefined" ? document.getElementById(id) : null;
@@ -503,10 +504,10 @@
     if (typeof Image === "function") {
       upcomingQuestions.forEach((nextQ) => {
         const nextImageUrl = normalizeText(nextQ?.ImageURL);
-        if (nextImageUrl) {
-          const imgPreload = new Image();
-          imgPreload.src = nextImageUrl;
-        }
+        if (!nextImageUrl || preloadedImageUrls.has(nextImageUrl)) return;
+        preloadedImageUrls.add(nextImageUrl);
+        const imgPreload = new Image();
+        imgPreload.src = nextImageUrl;
       });
     }
   }
