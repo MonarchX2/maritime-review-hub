@@ -89,6 +89,14 @@
       loadFeatureScript("app-core.js"),
       loadFeatureScript("app-core-network.js"),
     ]);
+    await loadFeatureScript("app-sync-core.js");
+
+    await Promise.all([
+      loadFeatureScript("ui-modal-core.js"),
+      loadFeatureScript("deck-nav-core.js"),
+      loadFeatureScript("deck-review-core.js"),
+      loadFeatureScript("quiz-rendering-core.js"),
+    ]);
   }
 
   function showBootstrapError(error) {

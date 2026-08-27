@@ -226,6 +226,11 @@
         state.prefs.studyScrollNavigationPosition === "bottom",
       "toggle-session-navigation-bottom":
         state.prefs.quizNavigationPosition === "bottom",
+      "toggle-review-navigation-bottom":
+        typeof globalScope.getStudyNavigationPosition === "function" &&
+        globalScope.getStudyNavigationPosition(
+          state.prefs.studyLayout || "scroll",
+        ) === "bottom",
       globalModeToggle: state.prefs.lastActivity?.mode === "review",
     };
 
@@ -250,6 +255,45 @@
     if (modeLabel) {
       modeLabel.innerText = controls.globalModeToggle ? "Study" : "Quiz";
     }
+
+    const navigationSelect = document.getElementById(
+      "navigation-position-select",
+    );
+    if (navigationSelect) {
+      const reviewIsActive = document
+        .getElementById("view-deck-review")
+        ?.classList.contains("active");
+      const navigationPosition = reviewIsActive
+        ? globalScope.getStudyNavigationPosition?.(
+            state.prefs.studyLayout || "scroll",
+          )
+        : globalScope.getQuizNavigationPosition?.();
+      if (navigationPosition) navigationSelect.value = navigationPosition;
+    }
+
+    const sortBy = state.prefs.deckSortBy || "letters";
+    const sortDirection =
+      state.prefs.deckSortDirection === "desc" ? "desc" : "asc";
+    const deckSortIcon = document.getElementById("deck-sort-icon");
+    if (deckSortIcon) {
+      deckSortIcon.className = `fa-solid fa-arrow-${sortDirection === "desc" ? "down" : "up"}`;
+    }
+    document
+      .querySelectorAll(".deck-sort-option[data-sort-value]")
+      .forEach((option) => {
+        const check = option.querySelector(".sort-check");
+        if (check)
+          check.style.opacity = option.dataset.sortValue === sortBy ? "1" : "0";
+      });
+    document
+      .querySelectorAll(".deck-sort-option[data-sort-direction]")
+      .forEach((option) => {
+        const check = option.querySelector(".sort-direction-check");
+        if (check) {
+          check.style.opacity =
+            option.dataset.sortDirection === sortDirection ? "1" : "0";
+        }
+      });
 
     const warning = document.getElementById("shuffle-warning");
     if (warning) {
@@ -456,10 +500,6 @@
       console.error(e);
     }
 
-    syncPreferenceControls();
-    if (typeof globalScope.updateDashboard === "function") {
-      globalScope.updateDashboard();
-    }
     if (typeof globalScope.emitDebugState === "function") {
       globalScope.emitDebugState("save_state:complete", {
         dbCount: state.db.length,

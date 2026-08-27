@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "mrh-static";
-const CACHE_VERSION = "v9";
+const CACHE_VERSION = "v10";
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -7,22 +7,17 @@ const APP_SHELL = [
   "/tailwind.generated.css",
   "/styles.css",
   "/app-entry.js",
+  "/app-core.js",
   "/app-core-state.js",
   "/app-core-network.js",
-  "/app-core.js",
-  "/state-core.js",
-  "/session-core.js",
+  "/app-sync-core.js",
   "/ui-modal-core.js",
   "/deck-nav-core.js",
   "/deck-review-core.js",
-  "/analytics-core.js",
   "/quiz-rendering-core.js",
-  "/network-utils.js",
-  "/question-compat.js",
-  "/session-utils.js",
+  "/debug-utils.js",
   "/storage-utils.js",
   "/text-utils.js",
-  "/ui-core.js",
 ];
 
 const CDN_ORIGINS = new Set([

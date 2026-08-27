@@ -194,6 +194,7 @@
       callBackend(
         {
           type: "get_reports",
+          ...(options.role !== undefined ? { role: options.role } : {}),
           ...(options.page !== undefined ? { page: options.page } : {}),
           ...(options.limit !== undefined ? { limit: options.limit } : {}),
         },

@@ -27,7 +27,6 @@ const deckFetchInFlight = new Map();
 const lastDeckRefreshAtBySubject = {};
 const SYNC_STATUS_STORAGE_KEY = "mrh_last_sync_status_timestamp";
 const CACHE_VERSION_STORAGE_KEY = "mrh_cache_version";
-const NAVIGATION_PATH_STORAGE_KEY = "mrh_navigation_path"; // Persist user's navigation position
 const SYNC_REQUEST_TIMEOUT_MS = 60000;
 let __mrhAppInitialized = false;
 let __mrhPollLoopToken = 0;
@@ -60,56 +59,11 @@ function persistLocalCacheVersion(version) {
   }
 }
 
-function persistNavigationPath(pathArray) {
-  try {
-    const normalized = Array.isArray(pathArray)
-      ? pathArray
-          .filter((part) => typeof part === "string" && part.trim())
-          .map((part) => String(part).trim())
-      : [];
-    const pathStr = JSON.stringify(normalized);
-    setStoredItem?.(NAVIGATION_PATH_STORAGE_KEY, pathStr);
-    if (state && typeof state === "object") {
-      state.currentPath = normalized;
-    }
-  } catch (e) {
-    console.warn("Unable to persist navigation path.", e);
-  }
-}
-
-function readStoredNavigationPath() {
-  try {
-    const stored = getStoredItem?.(NAVIGATION_PATH_STORAGE_KEY, "") || "";
-    if (!stored) return [];
-    const parsed = JSON.parse(stored);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((part) => typeof part === "string" && part.trim())
-      .map((part) => String(part).trim());
-  } catch (e) {
-    console.warn("Unable to read navigation path from storage.", e);
-    return [];
-  }
-}
-
-function restoreNavigationPathFromStorage() {
-  const savedPath = readStoredNavigationPath();
-  if (Array.isArray(savedPath) && savedPath.length > 0) {
-    state.currentPath = savedPath;
-    return savedPath;
-  }
-  state.currentPath = [];
-  return [];
-}
-
 // OPTIMIZATION: Leader election pattern - only one tab polls
 let isLeaderTab = false;
 let leaderHeartbeatTimer = null;
 let leaderElectionChannel = null;
 let cacheVersionCheckTimer = null;
-
-// OPTIMIZATION: ETag/Hash headers for 304 responses
-let lastCacheVersionHash = null;
 
 // OPTIMIZATION: Exponential backoff retry tracking
 let failureRetryCount = 0;
@@ -155,59 +109,29 @@ if (typeof window !== "undefined") {
   };
 }
 
-function firstAvailableValue(...values) {
-  for (const value of values) {
-    if (value === null || value === undefined) continue;
-    if (typeof value === "string" && value.trim() === "") continue;
-    return value;
-  }
-  return "";
-}
-
 function normalizeQuestionRecord(question, subjectOverride = null) {
-  if (!question || typeof question !== "object") return {};
-
-  const source = { ...question };
-  const normalized = {
-    Subject: firstAvailableValue(subjectOverride, source.Subject, source.s),
-    ID: firstAvailableValue(source.ID, source.i),
-    Question: firstAvailableValue(source.Question, source.q),
-    ChoiceA: firstAvailableValue(source.ChoiceA, source.c?.[0]),
-    ChoiceB: firstAvailableValue(source.ChoiceB, source.c?.[1]),
-    ChoiceC: firstAvailableValue(source.ChoiceC, source.c?.[2]),
-    ChoiceD: firstAvailableValue(source.ChoiceD, source.c?.[3]),
-    Answer: firstAvailableValue(source.Answer, source.a),
-    Explanation: firstAvailableValue(source.Explanation, source.e),
-    ImageURL: firstAvailableValue(source.ImageURL, source.u),
-    Tags: firstAvailableValue(source.Tags, source.t),
-  };
-
-  if (typeof normalized.Answer === "number") {
-    normalized.Answer = ["A", "B", "C", "D"][normalized.Answer] || "";
+  if (
+    typeof AppState !== "undefined" &&
+    typeof AppState.normalizeQuestionRecord === "function"
+  ) {
+    return AppState.normalizeQuestionRecord(question, subjectOverride);
   }
-
-  if (normalized.Answer) {
-    normalized.Answer = String(normalized.Answer).trim().toUpperCase();
-  }
-
-  return normalized;
+  throw new Error(
+    "AppState is required before normalizing application questions.",
+  );
 }
 
-function escapeHTML(value) {
-  return TextUtils.escapeHTML(value);
-}
+const {
+  escapeHTML,
+  renderMathExpression,
+  encodeHandlerValue,
+  decodeHandlerValue,
+} = TextUtils;
 
-function renderMathExpression(rawExpression, displayMode) {
-  return TextUtils.renderMathExpression(rawExpression, displayMode);
-}
-
-function encodeHandlerValue(value) {
-  return TextUtils.encodeHandlerValue(value);
-}
-
-function decodeHandlerValue(value) {
-  return TextUtils.decodeHandlerValue(value);
-}
+Object.assign(
+  typeof globalThis !== "undefined" ? globalThis : window,
+  TextUtils,
+);
 
 function sanitizeDeletedDeckReferences() {
   const deletedSet = new Set(
@@ -271,48 +195,6 @@ function setInlineError(element, message) {
   element.classList.toggle("hidden", !message);
 }
 
-async function hydrateDbFromIdb() {
-  if (typeof idbKeyval === "undefined") {
-    console.warn("idbKeyval library not loaded.");
-    return;
-  }
-
-  try {
-    const savedDb = await idbKeyval.get("mrh_db");
-    if (!savedDb || !Array.isArray(savedDb)) return;
-
-    const normalizedDb = savedDb.map((q) => {
-      const normalized = normalizeQuestionRecord(q);
-      if (normalized.ID && !normalized.ID.toString().includes("::")) {
-        let cleanId = normalized.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, "");
-        normalized.ID = `${normalized.Subject}::${cleanId}`;
-      }
-      return normalized;
-    });
-
-    state.db = normalizedDb;
-    rebuildQuestionIndex();
-
-    if (typeof renderCategoryProgress === "function") {
-      renderCategoryProgress();
-    }
-    if (typeof updateDashboard === "function") {
-      updateDashboard();
-    }
-  } catch (err) {
-    console.error("Error loading DB from IndexedDB", err);
-  }
-}
-
-function hydrateDbFromIdbInBackground() {
-  if (typeof idbKeyval === "undefined") return;
-  setTimeout(() => {
-    hydrateDbFromIdb().catch((err) => {
-      console.error("Background IndexedDB hydration failed", err);
-    });
-  }, 150);
-}
-
 async function loadState() {
   if (
     typeof AppState !== "undefined" &&
@@ -320,113 +202,7 @@ async function loadState() {
   ) {
     return AppState.loadState();
   }
-
-  emitDebugState("load_state:start");
-  migrateLegacyStorageKeys();
-  localCacheVersion = readStoredCacheVersion();
-  lastSyncStatusTimestamp = readStoredSyncStatusTimestamp();
-  const savedStats = getStoredItem("stats");
-  const savedPrefs = getStoredItem("prefs");
-  const savedSummary =
-    getStoredItem("summary") || getAnyNamespaceStoredItem("summary");
-
-  hydrateDbFromIdbInBackground();
-
-  if (savedSummary) {
-    try {
-      state.categorySummary = stripAccessMetadataFromSummary(
-        JSON.parse(savedSummary),
-      );
-    } catch (e) {
-      console.error("Summary corrupted, resetting.", e);
-      state.categorySummary = [];
-    }
-  }
-
-  ensureQuestionIndex();
-
-  if (savedStats) {
-    try {
-      state.stats = JSON.parse(savedStats);
-    } catch (e) {
-      console.error("Stats corrupted, resetting to default.", e);
-      state.stats = {
-        totalAnswered: 0,
-        correct: 0,
-        mistakes: [],
-        subjectAccuracy: {},
-      };
-    }
-  }
-
-  if (savedPrefs) {
-    try {
-      const prefs = JSON.parse(savedPrefs);
-      state.prefs = {
-        ...state.prefs,
-        ...prefs,
-      };
-      state.prefs.favoriteDecks = Array.isArray(state.prefs.favoriteDecks)
-        ? state.prefs.favoriteDecks
-        : [];
-      state.prefs.recentDecks = Array.isArray(state.prefs.recentDecks)
-        ? state.prefs.recentDecks
-        : [];
-      const canonicalDeckNameMode = ["wrap", "clip"].includes(
-        state.prefs.deckNameMode,
-      )
-        ? state.prefs.deckNameMode
-        : ["wrap", "clip"].includes(state.prefs.titleMode)
-          ? state.prefs.titleMode
-          : "wrap";
-      state.prefs.deckNameMode = canonicalDeckNameMode;
-      state.prefs.titleMode = canonicalDeckNameMode;
-      if (!Object.prototype.hasOwnProperty.call(prefs, "activeRecall")) {
-        state.prefs.activeRecall = false;
-      }
-      if (!Object.prototype.hasOwnProperty.call(prefs, "quizNavigationMode")) {
-        state.prefs.quizNavigationMode = "manual";
-      }
-      if (
-        !Object.prototype.hasOwnProperty.call(prefs, "quizNavigationPosition")
-      ) {
-        state.prefs.quizNavigationPosition = "top";
-      }
-    } catch (e) {
-      console.error("Invalid preferences.", e);
-    }
-  }
-
-  if (!["top", "bottom", "auto"].includes(state.prefs.quizNavigationPosition))
-    state.prefs.quizNavigationPosition = "top";
-  if (!["top", "bottom"].includes(state.prefs.reviewNavigationPosition))
-    state.prefs.reviewNavigationPosition = "top";
-  if (state.prefs.lastActivity?.mode) {
-    currentAppMode = state.prefs.lastActivity.mode;
-  }
-
-  if (!state.stats.subjectAccuracy) state.stats.subjectAccuracy = {};
-  sanitizeDeletedDeckReferences();
-  if (!["idle", "immediate"].includes(state.prefs.databaseUpdateMode))
-    state.prefs.databaseUpdateMode = "idle";
-  if (state.prefs?.darkMode) document.documentElement.classList.add("dark");
-
-  const dbSizeEl = document.getElementById("db-size-display");
-  if (dbSizeEl) {
-    dbSizeEl.innerText = state.db ? state.db.length : 0;
-  }
-
-  // FEATURE: Restore user's navigation position from previous visit
-  restoreNavigationPathFromStorage();
-
-  populateFilters();
-  updateDashboard();
-  updateThemeButton();
-  syncPreferenceControls();
-  emitDebugState("load_state:complete", {
-    dbCount: state.db.length,
-    summaryCount: state.categorySummary.length,
-  });
+  throw new Error("AppState is required before loading application state.");
 }
 
 async function saveState() {
@@ -436,125 +212,19 @@ async function saveState() {
   ) {
     return AppState.saveState();
   }
-
-  try {
-    emitDebugState("save_state:begin", {
-      dbCount: state.db.length,
-      summaryCount: state.categorySummary.length,
-    });
-    setStoredJSON("stats", state.stats);
-    setStoredJSON("prefs", state.prefs);
-    setStoredJSON(
-      "summary",
-      stripAccessMetadataFromSummary(state.categorySummary || []),
-    );
-    persistNavigationPath(state.currentPath || []);
-  } catch (e) {
-    console.error(e);
-  }
-
-  syncPreferenceControls();
-  updateDashboard();
-  emitDebugState("save_state:complete", {
-    dbCount: state.db.length,
-    summaryCount: state.categorySummary.length,
-  });
-}
-
-function updateShuffleWarning() {
-  const warning = document.getElementById("shuffle-warning");
-  if (!warning) return;
-
-  const shouldShowWarning =
-    state.prefs.shuffleChoices === false ||
-    state.prefs.shuffleQuestions === false;
-
-  warning.classList.toggle("hidden", !shouldShowWarning);
-  warning.setAttribute("aria-hidden", String(!shouldShowWarning));
+  throw new Error("AppState is required before saving application state.");
 }
 
 function syncPreferenceControls() {
-  const values = {
-    "toggle-active-recall": state.prefs.activeRecall === true,
-    "toggle-shuffle-choices": state.prefs.shuffleChoices !== false,
-    "toggle-modal-shuffle-choices": state.prefs.shuffleChoices !== false,
-    "toggle-shuffle-questions": state.prefs.shuffleQuestions !== false,
-    "toggle-hide-abcd": state.prefs.hideABCD === true,
-    "toggle-quiz-hide-abcd": state.prefs.quizHideABCD === true,
-    "toggle-cloze-mode": state.prefs.clozeEnabled === true,
-    "toggle-main-cloze-mode": state.prefs.clozeEnabled === true,
-    "toggle-srs-mode": state.prefs.srsEnabled === true,
-    "toggle-main-srs-mode": state.prefs.srsEnabled === true,
-    "toggle-wrong-choices": state.prefs.showWrongChoices !== false,
-    "toggle-main-navigation-quiz":
-      state.prefs.quizNavigationPosition === "bottom",
-    "toggle-main-navigation-single":
-      state.prefs.studySingleNavigationPosition === "bottom",
-    "toggle-main-navigation-scroll":
-      state.prefs.studyScrollNavigationPosition === "bottom",
-    "toggle-session-navigation-bottom":
-      state.prefs.quizNavigationPosition === "bottom",
-    "toggle-review-navigation-bottom":
-      getStudyNavigationPosition(state.prefs.studyLayout || "scroll") ===
-      "bottom",
-    globalModeToggle: state.prefs.lastActivity?.mode === "review",
-  };
-
-  Object.entries(values).forEach(([id, checked]) => {
-    const control = document.getElementById(id);
-    if (control) control.checked = checked;
-  });
-
-  updateShuffleWarning();
-
-  const databaseUpdateMode = document.getElementById("database-update-mode");
-  if (databaseUpdateMode)
-    databaseUpdateMode.value = state.prefs.databaseUpdateMode || "idle";
-
-  const deckNameMode = document.getElementById("deck-name-mode");
-  if (deckNameMode) {
-    deckNameMode.value = ["wrap", "clip"].includes(state.prefs.deckNameMode)
-      ? state.prefs.deckNameMode
-      : "wrap";
+  if (
+    typeof AppState !== "undefined" &&
+    typeof AppState.syncPreferenceControls === "function"
+  ) {
+    return AppState.syncPreferenceControls();
   }
-
-  const modeLabel = document.getElementById("modeLabel");
-  if (modeLabel)
-    modeLabel.innerText = values.globalModeToggle ? "Study" : "Quiz";
-  const navigationSelect = document.getElementById(
-    "navigation-position-select",
+  throw new Error(
+    "AppState is required before synchronizing preference controls.",
   );
-  if (navigationSelect) {
-    navigationSelect.value = document
-      .getElementById("view-deck-review")
-      ?.classList.contains("active")
-      ? getStudyNavigationPosition(state.prefs.studyLayout || "scroll")
-      : getQuizNavigationPosition();
-  }
-  const sortBy = state.prefs.deckSortBy || "letters";
-  const sortDirection =
-    state.prefs.deckSortDirection === "desc" ? "desc" : "asc";
-  const deckSortIcon = document.getElementById("deck-sort-icon");
-  if (deckSortIcon) {
-    deckSortIcon.className = `fa-solid fa-arrow-${sortDirection === "desc" ? "down" : "up"}`;
-  }
-  document
-    .querySelectorAll(".deck-sort-option[data-sort-value]")
-    .forEach((option) => {
-      const check = option.querySelector(".sort-check");
-      if (check) {
-        check.style.opacity = option.dataset.sortValue === sortBy ? "1" : "0";
-      }
-    });
-  document
-    .querySelectorAll(".deck-sort-option[data-sort-direction]")
-    .forEach((option) => {
-      const check = option.querySelector(".sort-direction-check");
-      if (check) {
-        check.style.opacity =
-          option.dataset.sortDirection === sortDirection ? "1" : "0";
-      }
-    });
 }
 
 async function safeIdbSet(key, value) {
@@ -572,20 +242,6 @@ async function safeIdbDel(key) {
       key.includes(":") || key.startsWith("mrh_") ? key : getStorageKey(key),
     );
   }
-}
-
-async function updateDashboard() {
-  const statTotal = document.getElementById("stat-total");
-  if (statTotal) statTotal.innerText = state.stats.totalAnswered;
-
-  const statCorrect = document.getElementById("stat-correct");
-  if (statCorrect) statCorrect.innerText = state.stats.correct;
-
-  const dbSize = document.getElementById("db-size-display");
-  if (dbSize) dbSize.innerText = state.db.length;
-
-  if (typeof checkSavedSession === "function") checkSavedSession();
-  if (typeof renderCategoryProgress === "function") renderCategoryProgress();
 }
 
 async function navigate(viewId) {
@@ -632,6 +288,7 @@ async function navigate(viewId) {
 function getSyncStatusVisualState(tone = "info") {
   if (
     typeof AppSync !== "undefined" &&
+    !AppSync.__legacyBridge &&
     typeof AppSync.getSyncStatusVisualState === "function"
   ) {
     return AppSync.getSyncStatusVisualState(tone);
@@ -682,6 +339,7 @@ function setGlobalLoadingState(
 ) {
   if (
     typeof AppSync !== "undefined" &&
+    !AppSync.__legacyBridge &&
     typeof AppSync.setGlobalLoadingState === "function"
   ) {
     return AppSync.setGlobalLoadingState(isLoading, title, detail, tone);
@@ -717,6 +375,7 @@ function setGlobalLoadingState(
 function updateSyncStatus(message, tone = "info", showOverlay = true) {
   if (
     typeof AppSync !== "undefined" &&
+    !AppSync.__legacyBridge &&
     typeof AppSync.updateSyncStatus === "function"
   ) {
     return AppSync.updateSyncStatus(message, tone, showOverlay);
@@ -814,6 +473,7 @@ async function optimizedBackgroundSync() {
     try {
       if (
         typeof AppSync !== "undefined" &&
+        !AppSync.__legacyBridge &&
         typeof AppSync.optimizedBackgroundSync === "function"
       ) {
         return AppSync.optimizedBackgroundSync();
@@ -902,6 +562,7 @@ async function optimizedBackgroundSync() {
 function scheduleSyncPoll() {
   if (
     typeof AppSync !== "undefined" &&
+    !AppSync.__legacyBridge &&
     typeof AppSync.scheduleSyncPoll === "function"
   ) {
     return AppSync.scheduleSyncPoll();
@@ -1119,9 +780,10 @@ function isDeckLocked(subject) {
   return Boolean(access.Locked) || Boolean(access.Password);
 }
 
-function applySummaryData(summaryData) {
+function applySummaryData(summaryData, knownChanged = null) {
   if (
     typeof AppSync !== "undefined" &&
+    !AppSync.__legacyBridge &&
     typeof AppSync.applySummaryData === "function"
   ) {
     return AppSync.applySummaryData(summaryData);
@@ -1129,9 +791,11 @@ function applySummaryData(summaryData) {
 
   // CRITICAL FIX: Don't double-filter - backend already filters hidden decks
   // Only use the data as-is from the backend response
-  const previousSummary = JSON.stringify(state.categorySummary || []);
-  const nextSummary = JSON.stringify(summaryData || []);
-  const changed = previousSummary !== nextSummary;
+  const changed =
+    knownChanged === null
+      ? JSON.stringify(state.categorySummary || []) !==
+        JSON.stringify(summaryData || [])
+      : Boolean(knownChanged);
 
   state.categorySummary = summaryData || [];
   syncConnected = true;
@@ -1148,6 +812,7 @@ function applySummaryData(summaryData) {
 function scheduleSyncRetry(showOverlay = true) {
   if (
     typeof AppSync !== "undefined" &&
+    !AppSync.__legacyBridge &&
     typeof AppSync.scheduleSyncRetry === "function"
   ) {
     return AppSync.scheduleSyncRetry(showOverlay);
@@ -1220,24 +885,7 @@ async function checkSyncStatusLightweight() {
     ) {
       return await AppNetwork.getSyncStatus({ timeoutMs: 20000 });
     }
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 7000);
-    try {
-      const response = await fetch(DB_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ type: "get_sync_status" }),
-        redirect: "follow",
-        cache: "no-store",
-        signal: controller.signal,
-      });
-
-      if (!response.ok) return null;
-      return await response.json();
-    } finally {
-      clearTimeout(timer);
-    }
+    throw new Error("AppNetwork sync status API is unavailable.");
   } catch (err) {
     console.log("[SYNC] Lightweight status check failed:", err);
     return null;
@@ -1250,6 +898,7 @@ async function checkSyncStatusLightweight() {
 async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
   if (
     typeof AppSync !== "undefined" &&
+    !AppSync.__legacyBridge &&
     typeof AppSync.syncDatabase === "function"
   ) {
     return AppSync.syncDatabase(isRetry, isBackgroundCheck);
@@ -1287,28 +936,16 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
     }
 
     try {
-      const summaryData =
-        typeof AppNetwork !== "undefined" &&
-        typeof AppNetwork.getDeckSummary === "function"
-          ? await AppNetwork.getDeckSummary({
-              timeoutMs: SYNC_REQUEST_TIMEOUT_MS,
-              signal: requestController.signal,
-            })
-          : await fetch(`${DB_URL}?_t=${Date.now()}`, {
-              signal: requestController.signal,
-              redirect: "follow",
-              cache: "no-store",
-            }).then(async (response) => {
-              if (!response.ok) throw new Error("Network response failed");
-              const text = await response.text();
-              try {
-                return JSON.parse(text);
-              } catch (parseError) {
-                throw new Error(
-                  `Invalid backend response while syncing database: ${text.slice(0, 200)}`,
-                );
-              }
-            });
+      if (
+        typeof AppNetwork === "undefined" ||
+        typeof AppNetwork.getDeckSummary !== "function"
+      ) {
+        throw new Error("AppNetwork summary API is unavailable.");
+      }
+      const summaryData = await AppNetwork.getDeckSummary({
+        timeoutMs: SYNC_REQUEST_TIMEOUT_MS,
+        signal: requestController.signal,
+      });
 
       if (
         summaryData &&
@@ -1343,7 +980,7 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
 
         if (canApplyNow && (changed || !wasConnected)) {
           pendingSummaryData = null;
-          applySummaryData(summaryData);
+          applySummaryData(summaryData, changed);
           state.accessMetadata = buildAccessMetadataMap(summaryData);
         } else if (!canApplyNow) {
           if (changed) pendingSummaryData = summaryData;
@@ -1441,23 +1078,32 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
   return syncInFlightPromise;
 }
 
+let filterModelSource = null;
+let filterModel = { subjects: [], tags: [] };
+
 function populateFilters() {
+  if (filterModelSource !== state.db) {
+    const subjectIndex = ensureQuestionIndex();
+    const subjects = [...subjectIndex.bySubject.keys()];
+    const tagSet = new Set();
+
+    (state.db || []).forEach((q) => {
+      if (!q || !q.Tags) return;
+      q.Tags.split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+        .forEach((tag) => tagSet.add(tag));
+    });
+
+    filterModelSource = state.db;
+    filterModel = { subjects, tags: [...tagSet] };
+  }
+
+  const { subjects, tags } = filterModel;
+
   // Update old select element if it exists (for backward compatibility)
   const select = document.getElementById("filter-subject");
   if (select) {
-    const subjectIndex = ensureQuestionIndex();
-    const subjects = [...subjectIndex.bySubject.keys()];
-
-    let tags = new Set();
-    (state.db || []).forEach((q) => {
-      if (q && q.Tags) {
-        q.Tags.split(",")
-          .map((t) => t.trim())
-          .forEach((t) => tags.add(t));
-      }
-    });
-    tags = [...tags];
-
     let html = '<option value="ALL">All Subjects (Randomized)</option>';
     if (subjects.length > 0) {
       html += '<optgroup label="Subjects">';
@@ -1486,19 +1132,6 @@ function populateFilters() {
   // Populate new dropdown filter menu
   const filterListContainer = document.getElementById("quiz-filter-list");
   if (filterListContainer) {
-    const subjectIndex = ensureQuestionIndex();
-    const subjects = [...subjectIndex.bySubject.keys()];
-
-    let tags = new Set();
-    (state.db || []).forEach((q) => {
-      if (q && q.Tags) {
-        q.Tags.split(",")
-          .map((t) => t.trim())
-          .forEach((t) => tags.add(t));
-      }
-    });
-    tags = [...tags];
-
     let html = "";
 
     // Add subjects
@@ -2123,11 +1756,6 @@ function renderCategoryProgress() {
   categoryProgressRenderInFlight = true;
 
   try {
-    // Initialize dropdown exclusivity once
-    if (typeof initDetailsExclusivity !== "undefined") {
-      setTimeout(initDetailsExclusivity, 100);
-    }
-
     // Initialize deck source filter if not set
     if (!state.prefs.deckSourceFilter) {
       state.prefs.deckSourceFilter = "all";
@@ -2187,6 +1815,9 @@ function renderCategoryProgress() {
     const completedSet = new Set(state.stats?.completedQs || []);
     const mistakesSet = new Set(state.stats?.mistakes || []);
     const subjectIdsBySubject = ensureQuestionIndex().bySubject;
+    const downloadedSubjects = new Set(
+      (state.db || []).map((question) => question?.Subject).filter(Boolean),
+    );
 
     const visibleSummary = getVisibleCategorySummary();
 
@@ -2210,14 +1841,6 @@ function renderCategoryProgress() {
     }
 
     if (!Array.isArray(state.currentPath)) state.currentPath = [];
-    const savedPath = readStoredNavigationPath();
-    if (
-      savedPath.length > 0 &&
-      JSON.stringify(savedPath) !== JSON.stringify(state.currentPath)
-    ) {
-      state.currentPath = savedPath;
-    }
-
     let currentNode = tree;
     let pathValid = true;
 
@@ -2231,37 +1854,20 @@ function renderCategoryProgress() {
     }
 
     if (!pathValid) {
-      state.currentPath = readStoredNavigationPath();
+      state.currentPath = [];
       currentNode = tree;
-      if (Array.isArray(state.currentPath) && state.currentPath.length > 0) {
-        let restoredNode = tree;
-        let restoredValid = true;
-        for (let dir of state.currentPath) {
-          if (restoredNode[dir]) {
-            restoredNode = restoredNode[dir]._children;
-          } else {
-            restoredValid = false;
-            break;
-          }
-        }
-        if (!restoredValid) {
-          state.currentPath = [];
-          currentNode = tree;
-        } else {
-          currentNode = restoredNode;
-        }
-      } else {
-        state.currentPath = [];
-        currentNode = tree;
-      }
     }
 
+    const folderStatsCache = new WeakMap();
     function getFolderStats(node) {
+      if (folderStatsCache.has(node)) return folderStatsCache.get(node);
+
       let total = 0;
       if (node._data) total += node._data.QuestionCount || 0;
       for (let k in node._children) {
         total += getFolderStats(node._children[k]);
       }
+      folderStatsCache.set(node, total);
       return total;
     }
 
@@ -2312,11 +1918,16 @@ function renderCategoryProgress() {
     const favoriteDecks = Array.isArray(state.prefs.favoriteDecks)
       ? state.prefs.favoriteDecks
       : [];
+    const favoriteMatchCache = new WeakMap();
 
     function matchesFavoriteDeck(node, currentKey) {
       const subject = node?._data?.Subject || "";
       const folderKey = String(currentKey || "").trim();
       const childKeys = Object.keys(node?._children || {});
+      const cachedMatches = favoriteMatchCache.get(node);
+      if (cachedMatches?.has(folderKey)) {
+        return cachedMatches.get(folderKey);
+      }
 
       const matchesNode = favoriteDecks.some((entry) => {
         const favoriteText = String(entry || "").trim();
@@ -2328,11 +1939,19 @@ function renderCategoryProgress() {
           subject.startsWith(favoriteText + "/")
         );
       });
-      if (matchesNode) return true;
+      if (matchesNode) {
+        const matches = true;
+        if (!cachedMatches) favoriteMatchCache.set(node, new Map());
+        (favoriteMatchCache.get(node) || cachedMatches).set(folderKey, matches);
+        return matches;
+      }
 
-      return childKeys.some((childKey) =>
+      const matches = childKeys.some((childKey) =>
         matchesFavoriteDeck(node._children[childKey], childKey),
       );
+      if (!cachedMatches) favoriteMatchCache.set(node, new Map());
+      (favoriteMatchCache.get(node) || cachedMatches).set(folderKey, matches);
+      return matches;
     }
 
     function nodeMatchesFilter(node, filter, currentKey = null) {
@@ -2385,9 +2004,7 @@ function renderCategoryProgress() {
         node._data !== undefined &&
         !node._data.IsFolder
       ) {
-        const isDownloaded = (state.db || []).some(
-          (q) => q.Subject === node._data.Subject,
-        );
+        const isDownloaded = downloadedSubjects.has(node._data.Subject);
         if (filter === "downloaded") return isDownloaded;
         if (filter === "cloud") return !isDownloaded;
       }
@@ -3094,42 +2711,15 @@ async function fetchDeckQuestionsFromNetwork(
     }
 
     try {
-      const response = await (typeof AppNetwork !== "undefined" &&
-      typeof AppNetwork.getDeck === "function"
-        ? AppNetwork.getDeck(subject, pass || "", { timeoutMs: 15000 })
-        : fetch(DB_URL, {
-            method: "POST",
-            headers: {
-              "Content-Type": "text/plain;charset=utf-8",
-              Accept: "application/json",
-            },
-            body: JSON.stringify({
-              type: "get_deck",
-              subject: String(subject || "").trim(),
-              password: String(pass || ""),
-            }),
-            cache: "no-store",
-            redirect: "follow",
-            signal: AbortSignal?.timeout?.(15000),
-          }).then(async (response) => {
-            const text = await response.text();
-            let payload;
-            try {
-              payload = JSON.parse(text);
-            } catch (parseError) {
-              throw new Error(
-                `Invalid backend response while loading deck: ${text.slice(0, 200)}`,
-              );
-            }
-            if (!response.ok) {
-              throw new Error(
-                payload?.message ||
-                  payload?.error ||
-                  `Backend HTTP ${response.status}.`,
-              );
-            }
-            return payload;
-          }));
+      if (
+        typeof AppNetwork === "undefined" ||
+        typeof AppNetwork.getDeck !== "function"
+      ) {
+        throw new Error("AppNetwork deck API is unavailable.");
+      }
+      const response = await AppNetwork.getDeck(subject, pass || "", {
+        timeoutMs: 15000,
+      });
 
       let newQuestions = response;
       if (newQuestions && newQuestions.error) {
@@ -4214,7 +3804,7 @@ let globallyReportedQs = new Set();
 
 async function fetchGlobalReports() {
   try {
-    const reports = await callBackend({ type: "get_reports", role: "user" });
+    const reports = await AppNetwork.getReports({ role: "user" });
     if (Array.isArray(reports))
       globallyReportedQs = new Set(reports.map((r) => r.questionId));
   } catch (e) {
@@ -5291,8 +4881,7 @@ async function submitReport() {
   }
 
   try {
-    const result = await callBackend({
-      type: "submit_report",
+    const result = await AppNetwork.submitReport({
       questionId: q.ID,
       subject: q.Subject,
       questionText: q.Question,
@@ -5348,7 +4937,7 @@ async function loadReports() {
     pendingContainer.innerHTML = `<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500"></i><p class="mt-2 text-gray-500">Fetching community reports...</p></div>`;
 
   try {
-    const reports = await callBackend({ type: "get_reports", role: "user" });
+    const reports = await AppNetwork.getReports({ role: "user" });
     if (!Array.isArray(reports) || reports.length === 0) {
       if (pendingContainer)
         pendingContainer.innerHTML = `<p class="text-center text-gray-500 py-4">No pending reports.</p>`;

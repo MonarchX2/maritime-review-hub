@@ -84,6 +84,16 @@
   }
 
   function normalizeQuestionRecord(question, subjectOverride = null) {
+    if (
+      globalScope.AppState &&
+      typeof globalScope.AppState.normalizeQuestionRecord === "function"
+    ) {
+      return globalScope.AppState.normalizeQuestionRecord(
+        question,
+        subjectOverride,
+      );
+    }
+
     if (!isObject(question) || Array.isArray(question)) return {};
 
     const source = question;
