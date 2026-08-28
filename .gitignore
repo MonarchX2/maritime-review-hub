@@ -2,4 +2,7 @@ backend/
 old/
 tests/
 scripts/
+!scripts/
+!scripts/frontend-architecture-check.js
+!scripts/browser-performance-check.js
 node_modules/

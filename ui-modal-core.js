@@ -412,10 +412,7 @@
     globalScope.saveState();
     updateStudyFilterToggle();
     const currentReviewSubject =
-      globalScope.DeckReviewCore &&
-      typeof globalScope.DeckReviewCore.getCurrentReviewSubject === "function"
-        ? globalScope.DeckReviewCore.getCurrentReviewSubject()
-        : globalScope.currentReviewSubject;
+      globalScope.DeckReviewCore?.getCurrentReviewSubject?.() || "";
 
     if (currentReviewSubject) {
       const currentQuestions =
@@ -550,12 +547,8 @@
     },
   };
 
-  // Alias for backward compatibility and dual exports
-  const UIModal = ModalCore;
-
   // Export to global scope
   globalScope.ModalCore = ModalCore;
-  globalScope.UIModal = UIModal;
 
   // Export individual functions for backward compatibility
   globalScope.toggleModal = toggleModal;

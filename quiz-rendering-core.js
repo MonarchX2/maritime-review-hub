@@ -99,7 +99,6 @@
   };
 
   globalScope.QuizRenderingCore = QuizRenderingCore;
-  globalScope.QuizRendering = QuizRenderingCore;
   Object.assign(globalScope, QuizRenderingCore);
 
   if (typeof module !== "undefined" && module.exports) {

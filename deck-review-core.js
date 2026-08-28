@@ -31,15 +31,6 @@
         : setTimeout(render, 0);
   }
 
-  function ensureVirtualReviewScrollListener() {
-    const main = document.querySelector("main");
-    if (!main || main.dataset.reviewVirtualized === "true") return;
-    main.dataset.reviewVirtualized = "true";
-    main.addEventListener("scroll", scheduleVirtualReviewRender, {
-      passive: true,
-    });
-  }
-
   function reRenderDeckReview() {
     if (reviewRenderFrame !== null) return;
 
@@ -156,7 +147,6 @@
       displayQuestions = [filteredQuestions[currentIndex]];
     } else {
       if (pageSize === "All") {
-        ensureVirtualReviewScrollListener();
         const main = document.querySelector("main");
         const containerTop = main && container ? container.offsetTop : 0;
         const viewportTop = Math.max(0, (main?.scrollTop || 0) - containerTop);
@@ -330,7 +320,7 @@
       html += `
             <div class="review-question-card bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 animate-card-in">
                 <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 dark:border-gray-700">
-                    <span class="bg-brand-50 text-brand-600 text-xs px-2 py-1 rounded font-bold dark:bg-brand-900/30 dark:text-brand-400">Question ${originalIndex + 1}</span>
+                    <span class="bg-brand-50 text-brand-600 text-xs px-2 py-1 rounded font-bold dark:bg-brand-900/30 dark:text-white">Question ${originalIndex + 1}</span>
 
                     <div class="flex gap-2 items-center">
                         <!-- Feature 16: Individual Toggle Button -->
@@ -395,14 +385,11 @@
   }
 
   if (typeof globalThis !== "undefined") {
-    globalThis.renderDeckReviewImplementation = renderDeckReviewImplementation;
   }
 
   function renderDeckReview(subject, questions) {
     currentReviewSubject = subject;
     currentReviewQuestions = Array.isArray(questions) ? questions : [];
-    globalScope.currentReviewSubject = currentReviewSubject;
-    globalScope.currentReviewQuestions = currentReviewQuestions;
 
     return renderDeckReviewImplementation(subject, currentReviewQuestions);
   }
@@ -471,6 +458,7 @@
   const DeckReviewCore = {
     renderDeckReview,
     reRenderDeckReview,
+    scheduleVirtualReviewRender,
     changeStudyLayout,
     changeStudyPageSize,
     changeStudyPage,
@@ -482,24 +470,18 @@
     getCurrentReviewQuestions: () => currentReviewQuestions,
   };
 
-  // Alias for backward compatibility
-  const DeckReview = DeckReviewCore;
-
   // Export to global scope
   globalScope.DeckReviewCore = DeckReviewCore;
-  globalScope.DeckReview = DeckReview;
 
   // Export individual functions for backward compatibility
   globalScope.renderDeckReview = renderDeckReview;
   globalScope.reRenderDeckReview = reRenderDeckReview;
+  globalScope.scheduleVirtualReviewRender = scheduleVirtualReviewRender;
   globalScope.changeStudyLayout = changeStudyLayout;
   globalScope.changeStudyPageSize = changeStudyPageSize;
   globalScope.changeStudyPage = changeStudyPage;
   globalScope.changeStudyIndex = changeStudyIndex;
   globalScope.jumpToStudyPage = jumpToStudyPage;
-  globalScope.renderDeckReviewImplementation = renderDeckReviewImplementation;
-  globalScope.currentReviewSubject = currentReviewSubject;
-  globalScope.currentReviewQuestions = currentReviewQuestions;
 
   // For Node.js testing - export as CommonJS if in test environment
   if (typeof module !== "undefined" && module.exports) {

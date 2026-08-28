@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "mrh-static";
-const CACHE_VERSION = "v13";
+const CACHE_VERSION = "v15";
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 
 const APP_SHELL = [

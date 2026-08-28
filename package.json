@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "build:css": "tailwindcss -c tailwind.config.js -i tailwind.input.css -o tailwind.generated.css --minify"
+    "build:css": "tailwindcss -c tailwind.config.js -i tailwind.input.css -o tailwind.generated.css --minify",
+    "check:architecture": "node scripts/frontend-architecture-check.js"
   },
   "devDependencies": {
     "@types/google-apps-script": "^2.0.12",

@@ -21,6 +21,10 @@
 
   // ===================== VIEW NAVIGATION =====================
   async function navigate(viewId) {
+    const viewElement = document.getElementById(`view-${viewId}`);
+    if (!viewElement) return false;
+    if (viewElement.classList.contains("active")) return true;
+
     if (
       state.session.active &&
       viewId !== "practice" &&
@@ -40,8 +44,6 @@
     document
       .querySelectorAll(".view-section")
       .forEach((el) => el.classList.remove("active"));
-    const viewElement = document.getElementById(`view-${viewId}`);
-    if (!viewElement) return false;
     viewElement.classList.add("active");
     globalScope.updateDashboard();
     if (viewId === "stats") globalScope.renderCharts();
@@ -310,12 +312,8 @@
     resetCategory,
   };
 
-  // Alias for backward compatibility
-  const DeckNav = DeckNavCore;
-
   // Export to global scope
   globalScope.DeckNavCore = DeckNavCore;
-  globalScope.DeckNav = DeckNav;
 
   // Export individual functions for backward compatibility
   globalScope.navigate = navigate;

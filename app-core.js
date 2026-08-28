@@ -466,16 +466,36 @@ async function optimizedBackgroundSync() {
 }
 
 function scheduleSyncPoll() {
-  const activeToken = ++__mrhPollLoopToken;
-  clearTimeout(syncPollTimer);
-  syncPollTimer = setTimeout(() => {
-    if (activeToken !== __mrhPollLoopToken) return;
-    if (typeof document !== "undefined" && document.hidden) return;
-    optimizedBackgroundSync().finally(() => {
-      if (activeToken === __mrhPollLoopToken) scheduleSyncPoll();
-    });
-  }, SYNC_INTERVAL_MS);
+  syncScheduler.schedule();
 }
+
+const syncScheduler = {
+  schedule() {
+    const activeToken = ++__mrhPollLoopToken;
+    this.cancel();
+    syncPollTimer = setTimeout(() => {
+      if (activeToken !== __mrhPollLoopToken) return;
+      if (typeof document !== "undefined" && document.hidden) return;
+      optimizedBackgroundSync().finally(() => {
+        if (activeToken === __mrhPollLoopToken) this.schedule();
+      });
+    }, SYNC_INTERVAL_MS);
+  },
+  cancel() {
+    clearTimeout(syncPollTimer);
+    syncPollTimer = null;
+  },
+  scheduleForLeader() {
+    this.cancel();
+    if (isLeaderTab) this.schedule();
+  },
+  handleVisibility(isHidden) {
+    this.cancel();
+    if (!isHidden) {
+      optimizedBackgroundSync().finally(() => this.scheduleForLeader());
+    }
+  },
+};
 
 function scheduleSinglePollLoop() {
   if (!isLeaderTab) {
@@ -1124,17 +1144,11 @@ function getShortSubjectLabel(subject, fallback = "General") {
 }
 
 function enterFolder(folderName, isLockedFolder) {
-  if (typeof DeckNav === "undefined" || typeof DeckNav.enterFolder !== "function") {
-    throw new Error("DeckNav is required before entering a folder.");
-  }
-  return DeckNav.enterFolder(folderName, isLockedFolder);
+  return DeckNavCore.enterFolder(folderName, isLockedFolder);
 }
 
 function goToPath(index) {
-  if (typeof DeckNav === "undefined" || typeof DeckNav.goToPath !== "function") {
-    throw new Error("DeckNav is required before changing folder paths.");
-  }
-  return DeckNav.goToPath(index);
+  return DeckNavCore.goToPath(index);
 }
 
 function getSubjectProgressStats(
@@ -1174,10 +1188,10 @@ function getDeckLoaderId(subject) {
 
 function getVisibleCategorySummary() {
   if (
-    typeof DeckNav !== "undefined" &&
-    typeof DeckNav.getVisibleCategorySummary === "function"
+    typeof DeckNavCore !== "undefined" &&
+    typeof DeckNavCore.getVisibleCategorySummary === "function"
   ) {
-    return DeckNav.getVisibleCategorySummary();
+    return DeckNavCore.getVisibleCategorySummary();
   }
   // CRITICAL: Backend already filters ALL hidden decks in filterSummaryDataByAccess()
   // Frontend must NEVER filter again - return categorySummary as-is
@@ -1185,48 +1199,11 @@ function getVisibleCategorySummary() {
 }
 
 function closeAllDropdownMenus(exceptElement = null) {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.closeAllDropdownMenus === "function"
-  ) {
-    return UIModal.closeAllDropdownMenus(exceptElement);
-  }
-  document
-    .querySelectorAll("#deck-source-menu, #deck-sort-menu, #quiz-filter-menu")
-    .forEach((menu) => {
-      if (menu !== exceptElement) menu.open = false;
-    });
+  return ModalCore.closeAllDropdownMenus(exceptElement);
 }
 
 function initDetailsExclusivity() {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.initDetailsExclusivity === "function"
-  ) {
-    return UIModal.initDetailsExclusivity();
-  }
-  const detailsElements = document.querySelectorAll(
-    "#deck-source-menu, #deck-sort-menu, #quiz-filter-menu",
-  );
-
-  detailsElements.forEach((details) => {
-    details.addEventListener("toggle", (e) => {
-      if (e.target.open) {
-        detailsElements.forEach((other) => {
-          if (other !== e.target && other.open) {
-            other.open = false;
-          }
-        });
-      }
-    });
-  });
-
-  document.addEventListener("click", (event) => {
-    const clickedInsideDetails = event.target.closest("details");
-    if (!clickedInsideDetails) {
-      closeAllDropdownMenus();
-    }
-  });
+  return ModalCore.initDetailsExclusivity();
 }
 
 let categoryProgressRenderScheduled = false;
@@ -1892,24 +1869,15 @@ function renderCategoryProgressNow() {
 }
 
 async function fetchAndStartCategory(subject, mode, pass = null) {
-  if (typeof DeckNav === "undefined" || typeof DeckNav.fetchAndStartCategory !== "function") {
-    throw new Error("DeckNav is required before starting a category.");
-  }
-  return DeckNav.fetchAndStartCategory(subject, mode, pass);
+  return DeckNavCore.fetchAndStartCategory(subject, mode, pass);
 }
 
 function startCustomSession(pool) {
-  if (typeof DeckNav === "undefined" || typeof DeckNav.startCustomSession !== "function") {
-    throw new Error("DeckNav is required before starting a custom session.");
-  }
-  return DeckNav.startCustomSession(pool);
+  return DeckNavCore.startCustomSession(pool);
 }
 
 async function resetCategory(subject) {
-  if (typeof DeckNav === "undefined" || typeof DeckNav.resetCategory !== "function") {
-    throw new Error("DeckNav is required before resetting a category.");
-  }
-  return DeckNav.resetCategory(subject);
+  return DeckNavCore.resetCategory(subject);
 }
 
 function markLocalDownloadDeleted(subject) {
@@ -2352,168 +2320,105 @@ async function toggleArchiveDeck(subjectId) {
 }
 
 function submitPracticeAnswer(selected, correct) {
-  if (typeof SessionCore === "undefined" || typeof SessionCore.submitPracticeAnswer !== "function") {
+  if (
+    typeof SessionCore === "undefined" ||
+    typeof SessionCore.submitPracticeAnswer !== "function"
+  ) {
     throw new Error("SessionCore is required before submitting an answer.");
   }
   return SessionCore.submitPracticeAnswer(selected, correct);
 }
 
 function showExplanation(q) {
-  if (typeof SessionCore === "undefined" || typeof SessionCore.showExplanation !== "function") {
+  if (
+    typeof SessionCore === "undefined" ||
+    typeof SessionCore.showExplanation !== "function"
+  ) {
     throw new Error("SessionCore is required before showing an explanation.");
   }
   return SessionCore.showExplanation(q);
 }
 
 function nextQuestion() {
-  if (typeof SessionCore === "undefined" || typeof SessionCore.nextQuestion !== "function") {
+  if (
+    typeof SessionCore === "undefined" ||
+    typeof SessionCore.nextQuestion !== "function"
+  ) {
     throw new Error("SessionCore is required before navigating questions.");
   }
   return SessionCore.nextQuestion();
 }
 
 function prevQuestion() {
-  if (typeof SessionCore === "undefined" || typeof SessionCore.prevQuestion !== "function") {
+  if (
+    typeof SessionCore === "undefined" ||
+    typeof SessionCore.prevQuestion !== "function"
+  ) {
     throw new Error("SessionCore is required before navigating questions.");
   }
   return SessionCore.prevQuestion();
 }
 
 function getDefaultSrsEntry(qId) {
-  if (typeof SessionCore === "undefined" || typeof SessionCore.getDefaultSrsEntry !== "function") {
+  if (
+    typeof SessionCore === "undefined" ||
+    typeof SessionCore.getDefaultSrsEntry !== "function"
+  ) {
     throw new Error("SessionCore is required before creating SRS entries.");
   }
   return SessionCore.getDefaultSrsEntry(qId);
 }
 
 function updateSrsForQuestion(q, isCorrect) {
-  if (typeof SessionCore === "undefined" || typeof SessionCore.updateSrsForQuestion !== "function") {
+  if (
+    typeof SessionCore === "undefined" ||
+    typeof SessionCore.updateSrsForQuestion !== "function"
+  ) {
     throw new Error("SessionCore is required before updating SRS data.");
   }
   return SessionCore.updateSrsForQuestion(q, isCorrect);
 }
 
 function computeSrsInterval(step, ease) {
-  if (typeof SessionCore === "undefined" || typeof SessionCore.computeSrsInterval !== "function") {
+  if (
+    typeof SessionCore === "undefined" ||
+    typeof SessionCore.computeSrsInterval !== "function"
+  ) {
     throw new Error("SessionCore is required before computing SRS intervals.");
   }
   return SessionCore.computeSrsInterval(step, ease);
 }
 
 function trackStats(q, isCorrect) {
-  if (typeof SessionCore === "undefined" || typeof SessionCore.trackStats !== "function") {
+  if (
+    typeof SessionCore === "undefined" ||
+    typeof SessionCore.trackStats !== "function"
+  ) {
     throw new Error("SessionCore is required before tracking statistics.");
   }
   return SessionCore.trackStats(q, isCorrect);
 }
 
 function endSession(silent = false) {
-  if (typeof SessionCore === "undefined" || typeof SessionCore.endSession !== "function") {
+  if (
+    typeof SessionCore === "undefined" ||
+    typeof SessionCore.endSession !== "function"
+  ) {
     throw new Error("SessionCore is required before ending a session.");
   }
   return SessionCore.endSession(silent);
 }
 
-let chartRetryCount = 0;
-
 function renderCharts() {
-  if (
-    typeof Analytics !== "undefined" &&
-    typeof Analytics.renderCharts === "function"
-  ) {
-    return Analytics.renderCharts();
-  }
-  if (typeof Chart === "undefined") {
-    console.warn("Chart.js is still loading...");
-    if (chartRetryCount < 10) {
-      // Retries every 500ms for up to 5 seconds
-      chartRetryCount++;
-      setTimeout(renderCharts, 500);
-    } else {
-      console.error("Chart.js failed to load entirely.");
-    }
-    return;
-  }
-
-  chartRetryCount = 0; // Reset counter on successful load
-
-  const canvas = document.getElementById("chart-accuracy");
-  if (!canvas) return; // Guard against running when element is missing
-
-  if (typeof chartInstance !== "undefined" && chartInstance) {
-    chartInstance.destroy();
-  }
-
-  const ctx = canvas.getContext("2d");
-  const accuracyMap = state.stats?.subjectAccuracy || {};
-  let labels = Object.keys(accuracyMap);
-  let data = [];
-
-  if (labels.length === 0) {
-    labels = ["COLREG", "Navigation", "Meteorology"];
-    data = [0, 0, 0];
-  } else {
-    data = labels.map((s) => {
-      const d = accuracyMap[s];
-      if (!d || !d.total) return 0;
-      return Math.round((d.correct / d.total) * 100);
-    });
-  }
-
-  chartInstance = new Chart(ctx, {
-    type: "radar",
-    data: {
-      labels: labels,
-      datasets: [
-        {
-          label: "Accuracy %",
-          data: data,
-          backgroundColor: "rgba(59, 130, 246, 0.2)",
-          borderColor: "rgba(59, 130, 246, 1)",
-          pointBackgroundColor: "rgba(59, 130, 246, 1)",
-          borderWidth: 2,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: { r: { beginAtZero: true, max: 100, ticks: { stepSize: 20 } } },
-      plugins: { legend: { display: false } },
-      animation: {
-        duration: 1500,
-        easing: "easeOutQuart",
-      },
-    },
-  });
+  return Analytics.renderCharts();
 }
 
 function toggleTheme() {
-  if (
-    typeof Analytics !== "undefined" &&
-    typeof Analytics.toggleTheme === "function"
-  ) {
-    return Analytics.toggleTheme();
-  }
-  state.prefs.darkMode = !state.prefs.darkMode;
-  document.documentElement.classList.toggle("dark", state.prefs.darkMode);
-  saveState();
-  updateThemeButton();
+  return Analytics.toggleTheme();
 }
 
 function updateThemeButton() {
-  if (
-    typeof Analytics !== "undefined" &&
-    typeof Analytics.updateThemeButton === "function"
-  ) {
-    return Analytics.updateThemeButton();
-  }
-  const btn = document.getElementById("btn-theme-toggle");
-  if (btn) {
-    btn.innerHTML = state.prefs.darkMode
-      ? '<i class="fa-solid fa-sun transition-transform transform hover:rotate-180 duration-500"></i>'
-      : '<i class="fa-solid fa-moon transition-transform transform hover:rotate-12 duration-300"></i>';
-  }
+  return Analytics.updateThemeButton();
 }
 
 async function resetProgress() {
@@ -2707,14 +2612,20 @@ window.addEventListener("resize", () => {
 });
 
 function saveSessionProgress() {
-  if (typeof SessionCore === "undefined" || typeof SessionCore.saveSessionProgress !== "function") {
+  if (
+    typeof SessionCore === "undefined" ||
+    typeof SessionCore.saveSessionProgress !== "function"
+  ) {
     throw new Error("SessionCore is required before saving session progress.");
   }
   return SessionCore.saveSessionProgress();
 }
 
 function checkSavedSession() {
-  if (typeof SessionCore === "undefined" || typeof SessionCore.checkSavedSession !== "function") {
+  if (
+    typeof SessionCore === "undefined" ||
+    typeof SessionCore.checkSavedSession !== "function"
+  ) {
     throw new Error("SessionCore is required before checking saved sessions.");
   }
   return SessionCore.checkSavedSession();
@@ -2820,8 +2731,13 @@ async function resumeSession(password = null) {
 }
 
 function clearSessionProgress() {
-  if (typeof SessionCore === "undefined" || typeof SessionCore.clearSessionProgress !== "function") {
-    throw new Error("SessionCore is required before clearing session progress.");
+  if (
+    typeof SessionCore === "undefined" ||
+    typeof SessionCore.clearSessionProgress !== "function"
+  ) {
+    throw new Error(
+      "SessionCore is required before clearing session progress.",
+    );
   }
   return SessionCore.clearSessionProgress();
 }
@@ -2840,22 +2756,35 @@ function showMCQOptions() {
 }
 
 function revealAnswer() {
-  if (typeof SessionCore === "undefined" || typeof SessionCore.revealAnswer !== "function") {
+  if (
+    typeof SessionCore === "undefined" ||
+    typeof SessionCore.revealAnswer !== "function"
+  ) {
     throw new Error("SessionCore is required before revealing an answer.");
   }
   return SessionCore.revealAnswer();
 }
 
 function startVisualTimer() {
-  if (typeof SessionCore === "undefined" || typeof SessionCore.startVisualTimer !== "function") {
-    throw new Error("SessionCore is required before starting the visual timer.");
+  if (
+    typeof SessionCore === "undefined" ||
+    typeof SessionCore.startVisualTimer !== "function"
+  ) {
+    throw new Error(
+      "SessionCore is required before starting the visual timer.",
+    );
   }
   return SessionCore.startVisualTimer();
 }
 
 function stopVisualTimer() {
-  if (typeof SessionCore === "undefined" || typeof SessionCore.stopVisualTimer !== "function") {
-    throw new Error("SessionCore is required before stopping the visual timer.");
+  if (
+    typeof SessionCore === "undefined" ||
+    typeof SessionCore.stopVisualTimer !== "function"
+  ) {
+    throw new Error(
+      "SessionCore is required before stopping the visual timer.",
+    );
   }
   return SessionCore.stopVisualTimer();
 }
@@ -2866,7 +2795,25 @@ function toggleLayout() {
   renderCategoryProgress();
 }
 
-function getQuizNavigationPosition(subject = currentReviewSubject) {
+function getCurrentReviewSubject() {
+  return DeckReviewCore?.getCurrentReviewSubject?.() || "";
+}
+
+function getNavigationContextSubject() {
+  if (
+    document.getElementById("view-deck-review")?.classList.contains("active")
+  ) {
+    return getCurrentReviewSubject();
+  }
+
+  if (state.session?.active) {
+    return state.session.questions?.[state.session.currentIndex]?.Subject || "";
+  }
+
+  return "";
+}
+
+function getQuizNavigationPosition(subject = getNavigationContextSubject()) {
   const deckKey = String(subject || "").trim();
   const override = deckKey ? getDeckNavigationOverride(deckKey, "quiz") : null;
   if (override) {
@@ -2878,7 +2825,7 @@ function getQuizNavigationPosition(subject = currentReviewSubject) {
 }
 
 function getDeckNavigationOverride(subject, type) {
-  const deckKey = String(subject || currentReviewSubject || "").trim();
+  const deckKey = String(subject || "").trim();
   if (!deckKey) return null;
   const overrides = state.prefs.deckNavigationOverrides || {};
   const deckOverrides = overrides[deckKey];
@@ -2887,7 +2834,7 @@ function getDeckNavigationOverride(subject, type) {
 }
 
 function setDeckNavigationOverride(subject, type, value) {
-  const deckKey = String(subject || currentReviewSubject || "").trim();
+  const deckKey = String(subject || "").trim();
   if (!deckKey) return;
   state.prefs.deckNavigationOverrides =
     state.prefs.deckNavigationOverrides || {};
@@ -2899,7 +2846,7 @@ function setDeckNavigationOverride(subject, type, value) {
 
 function getStudyNavigationPosition(
   layoutType = state.prefs.studyLayout || "scroll",
-  subject = currentReviewSubject,
+  subject = getNavigationContextSubject(),
 ) {
   const normalizedLayout = layoutType === "single" ? "single" : "scroll";
   const overrideKey =
@@ -2933,7 +2880,7 @@ function getStudyNavigationPosition(
 function setStudyNavigationPosition(
   layoutType,
   position,
-  subject = currentReviewSubject,
+  subject = getNavigationContextSubject(),
 ) {
   const normalized =
     position === "bottom" ? "bottom" : position === "both" ? "both" : "top";
@@ -2988,10 +2935,7 @@ function cycleNavigationModeButton(mode, button) {
   };
   const order = orderByMode[layoutType] || ["top", "bottom"];
 
-  const subject =
-    currentReviewSubject ||
-    state.session?.questions?.[state.session.currentIndex]?.Subject ||
-    null;
+  const subject = getNavigationContextSubject() || null;
 
   let current = "top";
   if (layoutType === "quiz") {
@@ -3699,40 +3643,55 @@ if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
 if (!state.prefs.qToggles) state.prefs.qToggles = {};
 
 function changeStudyLayout(layout) {
-  if (typeof DeckReview === "undefined" || typeof DeckReview.changeStudyLayout !== "function") {
+  if (
+    typeof DeckReviewCore === "undefined" ||
+    typeof DeckReviewCore.changeStudyLayout !== "function"
+  ) {
     throw new Error("DeckReview is required before changing study layout.");
   }
-  return DeckReview.changeStudyLayout(layout);
+  return DeckReviewCore.changeStudyLayout(layout);
 }
 
 if (!state.prefs.studyFilterMode) state.prefs.studyFilterMode = "all";
 
 function changeStudyPageSize(size) {
-  if (typeof DeckReview === "undefined" || typeof DeckReview.changeStudyPageSize !== "function") {
+  if (
+    typeof DeckReviewCore === "undefined" ||
+    typeof DeckReviewCore.changeStudyPageSize !== "function"
+  ) {
     throw new Error("DeckReview is required before changing study page size.");
   }
-  return DeckReview.changeStudyPageSize(size);
+  return DeckReviewCore.changeStudyPageSize(size);
 }
 
 function changeStudyPage(delta) {
-  if (typeof DeckReview === "undefined" || typeof DeckReview.changeStudyPage !== "function") {
+  if (
+    typeof DeckReviewCore === "undefined" ||
+    typeof DeckReviewCore.changeStudyPage !== "function"
+  ) {
     throw new Error("DeckReview is required before changing study page.");
   }
-  return DeckReview.changeStudyPage(delta);
+  return DeckReviewCore.changeStudyPage(delta);
 }
 
 function jumpToStudyPage(pageNumber) {
-  if (typeof DeckReview === "undefined" || typeof DeckReview.jumpToStudyPage !== "function") {
+  if (
+    typeof DeckReviewCore === "undefined" ||
+    typeof DeckReviewCore.jumpToStudyPage !== "function"
+  ) {
     throw new Error("DeckReview is required before jumping to a study page.");
   }
-  return DeckReview.jumpToStudyPage(pageNumber);
+  return DeckReviewCore.jumpToStudyPage(pageNumber);
 }
 
 function changeStudyIndex(delta) {
-  if (typeof DeckReview === "undefined" || typeof DeckReview.changeStudyIndex !== "function") {
+  if (
+    typeof DeckReviewCore === "undefined" ||
+    typeof DeckReviewCore.changeStudyIndex !== "function"
+  ) {
     throw new Error("DeckReview is required before changing study index.");
   }
-  return DeckReview.changeStudyIndex(delta);
+  return DeckReviewCore.changeStudyIndex(delta);
 }
 
 function toggleSpecificChoices(qId) {
@@ -4014,13 +3973,10 @@ function setupVisibilityChangeHandler() {
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
       console.log("[VISIBILITY] Tab became visible, checking sync status");
-      clearTimeout(syncPollTimer);
-      syncPollTimer = null;
-      optimizedBackgroundSync().finally(() => scheduleNextPolling());
+      syncScheduler.handleVisibility(false);
     } else {
       console.log("[VISIBILITY] Tab hidden, will pause polling");
-      clearTimeout(syncPollTimer);
-      syncPollTimer = null;
+      syncScheduler.handleVisibility(true);
     }
   });
 }
@@ -4029,12 +3985,8 @@ function setupVisibilityChangeHandler() {
 // OPTIMIZATION: Smarter Polling Scheduler with Jitter
 // ============================================
 function scheduleNextPolling() {
-  if (syncPollTimer) {
-    clearTimeout(syncPollTimer);
-    syncPollTimer = null;
-  }
-
   if (!isLeaderTab) {
+    syncScheduler.cancel();
     console.log("[POLLING] Not leader, skipping poll schedule");
     return;
   }
@@ -4042,7 +3994,7 @@ function scheduleNextPolling() {
   console.log(
     "[POLLING] Using single sync scheduler for visibility-aware polling",
   );
-  scheduleSyncPoll();
+  syncScheduler.scheduleForLeader();
 }
 
 function startCacheVersionChecking() {
@@ -4109,22 +4061,26 @@ function initializeApp() {
           }
           lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
 
+          if (typeof globalThis.scheduleVirtualReviewRender === "function") {
+            globalThis.scheduleVirtualReviewRender();
+          }
+
+          const reviewSubject = getCurrentReviewSubject();
           if (
             document
               .getElementById("view-deck-review")
               .classList.contains("active") &&
-            currentReviewSubject
+            reviewSubject
           ) {
             if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
-            if (!state.prefs.studyProgress[currentReviewSubject]) {
-              state.prefs.studyProgress[currentReviewSubject] = {
+            if (!state.prefs.studyProgress[reviewSubject]) {
+              state.prefs.studyProgress[reviewSubject] = {
                 page: 1,
                 index: 0,
                 scrollY: 0,
               };
             }
-            state.prefs.studyProgress[currentReviewSubject].scrollY =
-              currentScroll;
+            state.prefs.studyProgress[reviewSubject].scrollY = currentScroll;
             clearTimeout(window.scrollSaveTimeout);
             window.scrollSaveTimeout = setTimeout(() => saveState(), 1000);
           }
