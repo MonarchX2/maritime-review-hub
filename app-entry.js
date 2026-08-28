@@ -92,8 +92,10 @@
     await loadFeatureScript("session-core.js");
     await loadFeatureScript("analytics-core.js");
 
+    // deck-nav-core captures modal dependencies during evaluation, so its
+    // prerequisite must be loaded before it rather than in a race.
+    await loadFeatureScript("ui-modal-core.js");
     await Promise.all([
-      loadFeatureScript("ui-modal-core.js"),
       loadFeatureScript("deck-nav-core.js"),
       loadFeatureScript("deck-review-core.js"),
       loadFeatureScript("quiz-rendering-core.js"),
