@@ -5,7 +5,6 @@ const SYNC_INTERVAL_MS = 60 * 1000;
 const SYNC_RETRY_INTERVAL_MS = 3 * 1000;
 const QUIZ_NAVIGATION_BREAKPOINT = 768;
 
-let chartInstance = null;
 let syncAbortController = null;
 let syncRetryTimer = null;
 let syncCountdownTimer = null;

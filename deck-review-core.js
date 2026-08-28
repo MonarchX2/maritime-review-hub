@@ -8,6 +8,7 @@
   let derivedQuestionsCache = null;
   let reviewRenderFrame = null;
   let virtualReviewScrollFrame = null;
+  let lastVirtualRenderKey = null;
   const REVIEW_ESTIMATED_CARD_HEIGHT = 420;
   const REVIEW_VIRTUAL_OVERSCAN = 4;
 
@@ -22,7 +23,7 @@
         globalScope.state?.prefs?.studyLayout !== "single" &&
         globalScope.state?.prefs?.studyPageSize === "All"
       ) {
-        reRenderDeckReview();
+        reRenderDeckReview(true);
       }
     };
     virtualReviewScrollFrame =
@@ -31,12 +32,16 @@
         : setTimeout(render, 0);
   }
 
-  function reRenderDeckReview() {
+  function reRenderDeckReview(isVirtualScroll = false) {
     if (reviewRenderFrame !== null) return;
 
     const render = () => {
       reviewRenderFrame = null;
-      renderDeckReview(currentReviewSubject, currentReviewQuestions);
+      renderDeckReview(
+        currentReviewSubject,
+        currentReviewQuestions,
+        isVirtualScroll,
+      );
     };
 
     if (typeof requestAnimationFrame === "function") {
@@ -46,7 +51,11 @@
     }
   }
 
-  function renderDeckReviewImplementation(subject, questions) {
+  function renderDeckReviewImplementation(
+    subject,
+    questions,
+    isVirtualScroll = false,
+  ) {
     currentReviewSubject = subject;
     currentReviewQuestions = questions;
 
@@ -108,8 +117,13 @@
         favoriteSignature,
         filteredQuestions,
         sortedQuestions,
+        questionIndexById: new Map(
+          filteredQuestions.map((question, index) => [question.ID, index]),
+        ),
       };
     }
+
+    const questionIndexById = derivedQuestionsCache.questionIndexById;
 
     if (filteredQuestions.length === 0) {
       container.innerHTML = `
@@ -177,6 +191,16 @@
       }
     }
 
+    const virtualRenderKey = `${subject}|${layout}|${pageSize}|${virtualStartIndex}|${virtualEndIndex}`;
+    if (
+      isVirtualScroll &&
+      pageSize === "All" &&
+      lastVirtualRenderKey === virtualRenderKey
+    ) {
+      return;
+    }
+    lastVirtualRenderKey = pageSize === "All" ? virtualRenderKey : null;
+
     const pageCount = document.getElementById("review-page-count");
     const pageSizeInput = document.getElementById("review-page-size-input");
     if (pageSizeInput) pageSizeInput.value = pageSize === "All" ? "" : pageSize;
@@ -239,10 +263,6 @@
     if (pageSize === "All" && virtualStartIndex > 0) {
       html += `<div aria-hidden="true" style="height: ${virtualStartIndex * REVIEW_ESTIMATED_CARD_HEIGHT}px"></div>`;
     }
-
-    const questionIndexById = new Map(
-      filteredQuestions.map((question, index) => [question.ID, index]),
-    );
 
     displayQuestions.forEach((q, displayIndex) => {
       const originalIndex = questionIndexById.get(q.ID) ?? displayIndex;
@@ -318,7 +338,7 @@
           : "text-gray-400 bg-white dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-500";
 
       html += `
-            <div class="review-question-card bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 animate-card-in">
+            <div data-question-id="${escapeHTML(String(q.ID))}" class="review-question-card bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 animate-card-in">
                 <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 dark:border-gray-700">
                     <span class="bg-brand-50 text-brand-600 text-xs px-2 py-1 rounded font-bold dark:bg-brand-900/30 dark:text-white">Question ${originalIndex + 1}</span>
 
@@ -372,7 +392,27 @@
       html += `<div aria-hidden="true" style="height: ${(filteredQuestions.length - virtualEndIndex) * REVIEW_ESTIMATED_CARD_HEIGHT}px"></div>`;
     }
 
-    container.innerHTML = html;
+    if (pageSize === "All") {
+      const template = document.createElement("template");
+      template.innerHTML = html;
+
+      const existingCards = new Map(
+        Array.from(container.querySelectorAll(".review-question-card"))
+          .filter((card) => card.dataset.questionId)
+          .map((card) => [card.dataset.questionId, card]),
+      );
+
+      template.content
+        .querySelectorAll(".review-question-card")
+        .forEach((card) => {
+          const existingCard = existingCards.get(card.dataset.questionId);
+          if (existingCard) card.replaceWith(existingCard);
+        });
+
+      container.replaceChildren(...Array.from(template.content.childNodes));
+    } else {
+      container.innerHTML = html;
+    }
     navigate("deck-review");
 
     setTimeout(() => {
@@ -387,11 +427,15 @@
   if (typeof globalThis !== "undefined") {
   }
 
-  function renderDeckReview(subject, questions) {
+  function renderDeckReview(subject, questions, isVirtualScroll = false) {
     currentReviewSubject = subject;
     currentReviewQuestions = Array.isArray(questions) ? questions : [];
 
-    return renderDeckReviewImplementation(subject, currentReviewQuestions);
+    return renderDeckReviewImplementation(
+      subject,
+      currentReviewQuestions,
+      isVirtualScroll,
+    );
   }
 
   const state = globalScope.state;

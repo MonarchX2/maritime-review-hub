@@ -921,63 +921,6 @@
     bar.classList.remove("animate-timer-bar");
   }
 
-  function getQuizNavigationPosition() {
-    const prefs = getPrefs();
-    const configured = prefs.quizNavigationPosition;
-    if (configured !== "auto") return configured === "top" ? "top" : "bottom";
-    const breakpoint = Number(globalScope.QUIZ_NAVIGATION_BREAKPOINT);
-    const threshold = Number.isFinite(breakpoint) ? breakpoint : 768;
-    return typeof window !== "undefined" && window.innerWidth <= threshold
-      ? "top"
-      : "bottom";
-  }
-
-  function applyNavigationPosition() {
-    const navigation = getElement("quiz-navigation");
-    const topAnchor = getElement("quiz-navigation-top");
-    const bottomAnchor = getElement("quiz-navigation-bottom");
-    if (!navigation || !topAnchor || !bottomAnchor) return;
-
-    const session = getSession();
-    const prefs = getPrefs();
-    const savedPosition = session?.active
-      ? getQuizNavigationPosition()
-      : prefs.reviewNavigationPosition;
-    const position = savedPosition === "top" ? "top" : "bottom";
-    (position === "top" ? topAnchor : bottomAnchor).appendChild(navigation);
-    topAnchor.classList.toggle("hidden", position !== "top");
-    bottomAnchor.classList.toggle("hidden", position !== "bottom");
-  }
-
-  function changeNavigationPosition(position) {
-    const normalized = position === "top" ? "top" : "bottom";
-    const state = getState();
-    if (!state.prefs || typeof state.prefs !== "object") state.prefs = {};
-
-    if (getElement("view-deck-review")?.classList.contains("active")) {
-      state.prefs.reviewNavigationPosition = normalized;
-    } else {
-      state.prefs.quizNavigationPosition = normalized;
-      state.prefs.quizNavigationMode = "manual";
-    }
-
-    if (typeof globalScope.saveState === "function") globalScope.saveState();
-    applyNavigationPosition();
-    const select = getElement("navigation-position-select");
-    if (select) select.value = normalized;
-  }
-
-  function toggleNavigationPosition(source) {
-    if (!source) return;
-    changeNavigationPosition(source.checked ? "bottom" : "top");
-    if (
-      getElement("view-deck-review")?.classList.contains("active") &&
-      typeof globalScope.reRenderDeckReview === "function"
-    ) {
-      globalScope.reRenderDeckReview();
-    }
-  }
-
   const SessionCore = {
     prepareSessionPool,
     initSession,
@@ -997,10 +940,6 @@
     revealAnswer,
     startVisualTimer,
     stopVisualTimer,
-    getQuizNavigationPosition,
-    applyNavigationPosition,
-    changeNavigationPosition,
-    toggleNavigationPosition,
   };
 
   if (typeof module !== "undefined" && module.exports) {

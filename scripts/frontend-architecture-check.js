@@ -9,6 +9,7 @@ const navCore = read("deck-nav-core.js");
 const modalCore = read("ui-modal-core.js");
 const sessionCore = read("session-core.js");
 const quizCore = read("quiz-rendering-core.js");
+const compatibilityCore = read("compatibility-core.js");
 
 const checks = [
   [
@@ -30,8 +31,9 @@ const checks = [
   ],
   [
     "no chart fallback implementation",
-    (appCore.match(/function renderCharts\(\)/g) || []).length === 1 &&
-      appCore.includes("return Analytics.renderCharts();"),
+    !appCore.includes("function renderCharts()") &&
+      compatibilityCore.includes("function renderCharts()") &&
+      compatibilityCore.includes('"Analytics"'),
   ],
   [
     "private review state and canonical namespaces",
