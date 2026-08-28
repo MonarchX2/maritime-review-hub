@@ -623,7 +623,16 @@ function getSummarySignature(summaryData) {
   if (!Array.isArray(summaryData)) return "";
   return summaryData
     .map((deck) =>
-      [deck?.Subject, deck?.QuestionCount, deck?.Locked]
+      [
+        deck?.Subject,
+        deck?.QuestionCount,
+        deck?.Locked,
+        deck?.Hidden,
+        deck?.IsFolder,
+        deck?.Downloaded,
+        deck?.IsDownloaded,
+        deck?.LocalQuestionCount,
+      ]
         .map((value) => String(value ?? ""))
         .join("\u001f"),
     )
@@ -1115,44 +1124,17 @@ function getShortSubjectLabel(subject, fallback = "General") {
 }
 
 function enterFolder(folderName, isLockedFolder) {
-  if (
-    typeof DeckNav !== "undefined" &&
-    typeof DeckNav.enterFolder === "function"
-  ) {
-    return DeckNav.enterFolder(folderName, isLockedFolder);
+  if (typeof DeckNav === "undefined" || typeof DeckNav.enterFolder !== "function") {
+    throw new Error("DeckNav is required before entering a folder.");
   }
-  const fullPath =
-    state.currentPath && state.currentPath.length > 0
-      ? state.currentPath.join("::") + "::" + folderName
-      : folderName;
-
-  const isUnlockedByUi = isFolderUnlocked(fullPath);
-  if (isLockedFolder && !isUnlockedByUi) {
-    openFolderPasswordModal(fullPath, folderName);
-    return;
-  }
-
-  if (!state.currentPath) state.currentPath = [];
-  state.currentPath.push(folderName);
-  persistNavigationPath(state.currentPath); // FEATURE: Save navigation position
-  renderCategoryProgress();
+  return DeckNav.enterFolder(folderName, isLockedFolder);
 }
 
 function goToPath(index) {
-  if (
-    typeof DeckNav !== "undefined" &&
-    typeof DeckNav.goToPath === "function"
-  ) {
-    return DeckNav.goToPath(index);
+  if (typeof DeckNav === "undefined" || typeof DeckNav.goToPath !== "function") {
+    throw new Error("DeckNav is required before changing folder paths.");
   }
-  if (!state.currentPath) state.currentPath = [];
-  if (index === -1) {
-    state.currentPath = [];
-  } else {
-    state.currentPath = state.currentPath.slice(0, index + 1);
-  }
-  persistNavigationPath(state.currentPath); // FEATURE: Save navigation position
-  renderCategoryProgress();
+  return DeckNav.goToPath(index);
 }
 
 function getSubjectProgressStats(
@@ -1251,24 +1233,57 @@ let categoryProgressRenderScheduled = false;
 let categoryProgressRenderInFlight = false;
 let categoryProgressRenderQueued = false;
 let categoryProgressLastRenderSignature = "";
+let categoryTreeCache = null;
+
+function getCollectionSignature(values) {
+  return Array.isArray(values)
+    ? values.map((value) => String(value ?? "")).join("\u001f")
+    : "";
+}
+
+function getLocalDeckSignature() {
+  const localSubjects = Array.isArray(state.db)
+    ? state.db.map((question) => question?.Subject).filter(Boolean)
+    : [];
+  return getCollectionSignature([...new Set(localSubjects)].sort());
+}
+
+function getAccessMetadataSignature() {
+  const accessMetadata = state.accessMetadata || {};
+  return Object.keys(accessMetadata)
+    .sort()
+    .map((subject) => {
+      const access = accessMetadata[subject] || {};
+      return [
+        subject,
+        access.Hidden,
+        access.Locked,
+        access.Password ? "protected" : "",
+      ]
+        .map((value) => String(value ?? ""))
+        .join("\u001f");
+    })
+    .join("\u001e");
+}
 
 function getCategoryProgressRenderSignature() {
-  return JSON.stringify({
-    summary: getSummarySignature(state.categorySummary || []),
-    path: state.currentPath || [],
-    layout: state.prefs.layoutMode,
-    source: state.prefs.deckSourceFilter,
-    sort: state.prefs.deckSortBy,
-    direction: state.prefs.deckSortDirection,
-    nameMode: state.prefs.deckNameMode,
-    mode: currentAppMode,
-    completed: state.stats?.completedQs || [],
-    mistakes: state.stats?.mistakes || [],
-    favoriteDecks: state.prefs.favoriteDecks || [],
-    archivedDecks: state.prefs.archivedDecks || [],
-    access: state.accessMetadata || {},
-    syncComplete: isInitialSyncComplete,
-  });
+  return [
+    getSummarySignature(state.categorySummary || []),
+    getLocalDeckSignature(),
+    getCollectionSignature(state.currentPath),
+    state.prefs.layoutMode,
+    state.prefs.deckSourceFilter,
+    state.prefs.deckSortBy,
+    state.prefs.deckSortDirection,
+    state.prefs.deckNameMode,
+    currentAppMode,
+    getCollectionSignature(state.stats?.completedQs),
+    getCollectionSignature(state.stats?.mistakes),
+    getCollectionSignature(state.prefs.favoriteDecks),
+    getCollectionSignature(state.prefs.archivedDecks),
+    getAccessMetadataSignature(),
+    isInitialSyncComplete,
+  ].join("\u001e");
 }
 
 function renderCategoryProgress() {
@@ -1394,23 +1409,33 @@ function renderCategoryProgressNow() {
 
     const visibleSummary = getVisibleCategorySummary();
 
-    let tree = {};
-    if (visibleSummary && visibleSummary.length > 0) {
-      visibleSummary.forEach((cat) => {
-        const parts = cat.Subject.split("::");
-        let currentLevel = tree;
+    const visibleSummarySignature = getSummarySignature(visibleSummary);
+    let tree;
+    if (
+      categoryTreeCache &&
+      categoryTreeCache.summarySignature === visibleSummarySignature
+    ) {
+      tree = categoryTreeCache.tree;
+    } else {
+      tree = {};
+      if (visibleSummary && visibleSummary.length > 0) {
+        visibleSummary.forEach((cat) => {
+          const parts = cat.Subject.split("::");
+          let currentLevel = tree;
 
-        parts.forEach((part, index) => {
-          part = part.trim();
-          if (!currentLevel[part]) {
-            currentLevel[part] = { _children: {}, _data: null };
-          }
-          if (index === parts.length - 1) {
-            currentLevel[part]._data = cat;
-          }
-          currentLevel = currentLevel[part]._children;
+          parts.forEach((part, index) => {
+            part = part.trim();
+            if (!currentLevel[part]) {
+              currentLevel[part] = { _children: {}, _data: null };
+            }
+            if (index === parts.length - 1) {
+              currentLevel[part]._data = cat;
+            }
+            currentLevel = currentLevel[part]._children;
+          });
         });
-      });
+      }
+      categoryTreeCache = { summarySignature: visibleSummarySignature, tree };
     }
 
     if (!Array.isArray(state.currentPath)) state.currentPath = [];
@@ -1867,185 +1892,24 @@ function renderCategoryProgressNow() {
 }
 
 async function fetchAndStartCategory(subject, mode, pass = null) {
-  if (
-    typeof DeckNav !== "undefined" &&
-    typeof DeckNav.fetchAndStartCategory === "function"
-  ) {
-    return DeckNav.fetchAndStartCategory(subject, mode, pass);
+  if (typeof DeckNav === "undefined" || typeof DeckNav.fetchAndStartCategory !== "function") {
+    throw new Error("DeckNav is required before starting a category.");
   }
-  const loader = document.getElementById(getDeckLoaderId(subject));
-  if (isDeckHidden(subject)) {
-    showToast("This deck is hidden and not available.", "warning");
-    return;
-  }
-  if (isDeckLocked(subject)) {
-    if (!pass) {
-      pendingDeckSubject = subject;
-      pendingDeckAction = mode;
-      openDeckPasswordModal(subject, mode);
-      return;
-    }
-  }
-  // Define strict MCQ filter condition conditionally based on user preference
-  const isForcedMCQ = state.prefs.qTypeOverride === "mcq";
-  const customFilter = isForcedMCQ
-    ? (q) =>
-        q.ChoiceA &&
-        q.ChoiceA.trim() !== "" &&
-        q.ChoiceB &&
-        q.ChoiceB.trim() !== ""
-    : null;
-
-  // Always attempt to fetch fresh data for gameplay sessions
-  let validQuestions = await fetchDeckQuestions(
-    subject,
-    pass,
-    loader,
-    customFilter,
-  );
-
-  // Fallback check if offline and fetch returned empty
-  if (validQuestions.length === 0) {
-    if (isDeckLocked(subject)) {
-      pendingDeckSubject = subject;
-      pendingDeckAction = mode;
-      openDeckPasswordModal(subject, mode);
-      return;
-    }
-    alert(
-      `Cannot start session. You are offline and "${subject}" has not been downloaded to your device yet.`,
-    );
-    return;
-  }
-
-  if (!state.stats.completedQs) state.stats.completedQs = [];
-  if (!state.stats.srsMap) state.stats.srsMap = {};
-
-  let pool = [];
-  if (mode === "continue") {
-    pool = validQuestions.filter(
-      (q) => !state.stats.completedQs.includes(q.ID),
-    );
-
-    if (state.prefs.srsEnabled === true) {
-      const now = Date.now();
-      const duePool = pool.filter((q) => {
-        const srs = state.stats.srsMap?.[q.ID];
-        if (!srs) return true;
-        return Number(srs.due || 0) <= now;
-      });
-
-      if (duePool.length > 0) {
-        pool = duePool;
-      } else {
-        const retryQueue = pool.slice(0);
-        if (retryQueue.length > 0) {
-          pool = retryQueue;
-        }
-      }
-    }
-
-    if (pool.length === 0) {
-      if (state.prefs.srsEnabled === true) {
-        const queue = validQuestions.filter(
-          (q) => !state.stats.completedQs.includes(q.ID),
-        );
-        if (queue.length > 0) {
-          pool = queue;
-        } else {
-          alert(
-            `You have answered all available questions for ${subject}! Reset the category to start over.`,
-          );
-          return;
-        }
-      } else {
-        alert(
-          `You have answered all available questions for ${subject}! Reset the category to start over.`,
-        );
-        return;
-      }
-    }
-  } else if (mode === "mistakes") {
-    pool = validQuestions.filter((q) => state.stats.mistakes.includes(q.ID));
-    if (pool.length === 0) {
-      alert(`No mistakes to review for ${subject}! Great job.`);
-      return;
-    }
-  }
-
-  startCustomSession(pool);
+  return DeckNav.fetchAndStartCategory(subject, mode, pass);
 }
 
 function startCustomSession(pool) {
-  if (
-    typeof DeckNav !== "undefined" &&
-    typeof DeckNav.startCustomSession === "function"
-  ) {
-    return DeckNav.startCustomSession(pool);
+  if (typeof DeckNav === "undefined" || typeof DeckNav.startCustomSession !== "function") {
+    throw new Error("DeckNav is required before starting a custom session.");
   }
-  navigate("practice");
-  document.getElementById("session-setup").classList.add("hidden");
-  document.getElementById("session-active").classList.remove("hidden");
-
-  pool = prepareSessionPool(pool);
-
-  state.session = {
-    active: true,
-    questions: pool,
-    currentIndex: 0,
-    userAnswers: {},
-    mode: "quiz",
-    revealedCloze: false,
-  };
-
-  renderQuestion();
-  saveSessionProgress();
+  return DeckNav.startCustomSession(pool);
 }
 
 async function resetCategory(subject) {
-  if (
-    typeof DeckNav !== "undefined" &&
-    typeof DeckNav.resetCategory === "function"
-  ) {
-    return DeckNav.resetCategory(subject);
+  if (typeof DeckNav === "undefined" || typeof DeckNav.resetCategory !== "function") {
+    throw new Error("DeckNav is required before resetting a category.");
   }
-  subject = decodeHandlerValue(subject);
-  if (
-    await requestConfirmation(
-      `Are you sure you want to reset your accuracy and progress statistics for "${subject}"? This cannot be undone.`,
-      "Reset Progress",
-    )
-  ) {
-    if (state.stats.subjectAccuracy[subject]) {
-      state.stats.subjectAccuracy[subject] = { total: 0, correct: 0 };
-    }
-
-    const subjectQIDs = getQuestionsForSubject(subject).map((q) => q.ID);
-
-    if (state.stats.completedQs) {
-      state.stats.completedQs = state.stats.completedQs.filter(
-        (id) => !subjectQIDs.includes(id),
-      );
-    }
-
-    if (state.stats.mistakes) {
-      state.stats.mistakes = state.stats.mistakes.filter(
-        (id) => !subjectQIDs.includes(id),
-      );
-    }
-
-    if (state.stats.srsMap) {
-      state.stats.srsMap = Object.fromEntries(
-        Object.entries(state.stats.srsMap || {}).filter(
-          ([qId]) => !subjectQIDs.includes(qId),
-        ),
-      );
-    }
-
-    saveState();
-    renderCategoryProgress();
-    if (chartInstance) renderCharts();
-  }
+  return DeckNav.resetCategory(subject);
 }
 
 function markLocalDownloadDeleted(subject) {
@@ -2488,222 +2352,66 @@ async function toggleArchiveDeck(subjectId) {
 }
 
 function submitPracticeAnswer(selected, correct) {
-  if (
-    typeof SessionCore !== "undefined" &&
-    typeof SessionCore.submitPracticeAnswer === "function"
-  ) {
-    return SessionCore.submitPracticeAnswer(selected, correct);
+  if (typeof SessionCore === "undefined" || typeof SessionCore.submitPracticeAnswer !== "function") {
+    throw new Error("SessionCore is required before submitting an answer.");
   }
-
-  const q = state.session.questions[state.session.currentIndex];
-  state.session.userAnswers[state.session.currentIndex] = selected;
-
-  trackStats(q, selected === correct);
-  document
-    .getElementById("q-choices")
-    .querySelectorAll(".choice-btn")
-    .forEach((btn) => {
-      btn.onclick = null;
-      if (btn.dataset.choice === correct) btn.classList.add("selected-correct");
-      else if (btn.dataset.choice === selected)
-        btn.classList.add("selected-wrong");
-      else btn.classList.add("dimmed");
-    });
-
-  showExplanation(q);
-
-  document.getElementById("btn-next").disabled = false;
-  document.getElementById("btn-reveal").disabled = true;
-  document.getElementById("session-progress").style.width =
-    `${((state.session.currentIndex + 1) / state.session.questions.length) * 100}%`;
-
-  startVisualTimer();
-  if (state.session.autoNextTimeout)
-    clearTimeout(state.session.autoNextTimeout);
-  state.session.autoNextTimeout = setTimeout(() => {
-    nextQuestion();
-  }, 2000);
+  return SessionCore.submitPracticeAnswer(selected, correct);
 }
 
 function showExplanation(q) {
-  if (
-    typeof QuizRendering !== "undefined" &&
-    typeof QuizRendering.showExplanation === "function"
-  ) {
-    return QuizRendering.showExplanation(q);
+  if (typeof SessionCore === "undefined" || typeof SessionCore.showExplanation !== "function") {
+    throw new Error("SessionCore is required before showing an explanation.");
   }
-  if (
-    typeof SessionCore !== "undefined" &&
-    typeof SessionCore.showExplanation === "function"
-  ) {
-    return SessionCore.showExplanation(q);
-  }
-
-  const expBox = document.getElementById("q-explanation-box");
-
-  if (q.Explanation && q.Explanation.trim() !== "") {
-    document.getElementById("q-explanation-text").innerHTML =
-      formatQuestionText(q.Explanation);
-    expBox.classList.remove("hidden");
-  } else {
-    expBox.classList.add("hidden");
-  }
+  return SessionCore.showExplanation(q);
 }
 
 function nextQuestion() {
-  if (
-    typeof SessionCore !== "undefined" &&
-    typeof SessionCore.nextQuestion === "function"
-  ) {
-    return SessionCore.nextQuestion();
+  if (typeof SessionCore === "undefined" || typeof SessionCore.nextQuestion !== "function") {
+    throw new Error("SessionCore is required before navigating questions.");
   }
-
-  if (state.session.autoNextTimeout)
-    clearTimeout(state.session.autoNextTimeout);
-  stopVisualTimer();
-
-  if (state.session.currentIndex < state.session.questions.length - 1) {
-    const skipped = !state.session.userAnswers[state.session.currentIndex];
-    state.session.currentIndex++;
-    renderQuestion();
-    saveSessionProgress();
-  } else {
-    alert("Practice Session Complete! Great job.");
-    clearSessionProgress();
-    endSession(false);
-  }
+  return SessionCore.nextQuestion();
 }
 
 function prevQuestion() {
-  if (
-    typeof SessionCore !== "undefined" &&
-    typeof SessionCore.prevQuestion === "function"
-  ) {
-    return SessionCore.prevQuestion();
+  if (typeof SessionCore === "undefined" || typeof SessionCore.prevQuestion !== "function") {
+    throw new Error("SessionCore is required before navigating questions.");
   }
-
-  if (state.session.autoNextTimeout)
-    clearTimeout(state.session.autoNextTimeout);
-  stopVisualTimer();
-
-  if (state.session.currentIndex > 0) {
-    state.session.currentIndex--;
-    renderQuestion();
-  }
-  saveSessionProgress();
+  return SessionCore.prevQuestion();
 }
 
 function getDefaultSrsEntry(qId) {
-  return {
-    qId,
-    ease: 2.5,
-    interval: 0,
-    due: 0,
-    reps: 0,
-    lapses: 0,
-    step: 0,
-    lastScore: null,
-    lastAnsweredAt: 0,
-  };
+  if (typeof SessionCore === "undefined" || typeof SessionCore.getDefaultSrsEntry !== "function") {
+    throw new Error("SessionCore is required before creating SRS entries.");
+  }
+  return SessionCore.getDefaultSrsEntry(qId);
 }
 
 function updateSrsForQuestion(q, isCorrect) {
-  if (state.prefs.srsEnabled !== true) return;
-
-  const qId = q?.ID || q?.Question || "";
-  if (!qId) return;
-
-  if (!state.stats.srsMap) state.stats.srsMap = {};
-
-  const existing = state.stats.srsMap[qId] || getDefaultSrsEntry(qId);
-  const next = {
-    ...existing,
-    qId,
-    reps: Number(existing.reps || 0) + 1,
-    lastAnsweredAt: Date.now(),
-  };
-
-  if (isCorrect) {
-    next.lastScore = "correct";
-    next.step = Math.max(1, Number(existing.step || 0) + 1);
-    next.ease = Math.max(1.3, Number(existing.ease || 2.5) + 0.1);
-    next.interval = computeSrsInterval(next.step, next.ease);
-    next.due = Date.now() + next.interval * 24 * 60 * 60 * 1000;
-  } else {
-    next.lastScore = "wrong";
-    next.step = 0;
-    next.lapses = Number(existing.lapses || 0) + 1;
-    next.ease = Math.max(1.3, Number(existing.ease || 2.5) - 0.2);
-    next.interval = 1;
-    next.due = Date.now() + 60 * 60 * 1000;
+  if (typeof SessionCore === "undefined" || typeof SessionCore.updateSrsForQuestion !== "function") {
+    throw new Error("SessionCore is required before updating SRS data.");
   }
-
-  state.stats.srsMap[qId] = next;
+  return SessionCore.updateSrsForQuestion(q, isCorrect);
 }
 
 function computeSrsInterval(step, ease) {
-  if (step <= 0) return 1;
-  if (step === 1) return 1;
-  if (step === 2) return 2;
-  if (step === 3) return 4;
-  return Math.max(1, Math.round((step - 1) * (ease || 2.5) * 2));
+  if (typeof SessionCore === "undefined" || typeof SessionCore.computeSrsInterval !== "function") {
+    throw new Error("SessionCore is required before computing SRS intervals.");
+  }
+  return SessionCore.computeSrsInterval(step, ease);
 }
 
 function trackStats(q, isCorrect) {
-  state.stats.totalAnswered++;
-
-  const subj = q.Subject || "General";
-  if (!state.stats.subjectAccuracy[subj])
-    state.stats.subjectAccuracy[subj] = { total: 0, correct: 0 };
-  state.stats.subjectAccuracy[subj].total++;
-
-  if (!state.stats.completedQs) state.stats.completedQs = [];
-  if (!state.stats.completedQs.includes(q.ID)) {
-    state.stats.completedQs.push(q.ID);
+  if (typeof SessionCore === "undefined" || typeof SessionCore.trackStats !== "function") {
+    throw new Error("SessionCore is required before tracking statistics.");
   }
-
-  if (isCorrect) {
-    state.stats.correct++;
-    state.stats.subjectAccuracy[subj].correct++;
-    state.stats.mistakes = state.stats.mistakes.filter((id) => id !== q.ID);
-  } else {
-    if (!state.stats.mistakes.includes(q.ID)) state.stats.mistakes.push(q.ID);
-  }
-
-  updateSrsForQuestion(q, isCorrect);
-  saveState();
+  return SessionCore.trackStats(q, isCorrect);
 }
 
 function endSession(silent = false) {
-  if (
-    typeof SessionCore !== "undefined" &&
-    typeof SessionCore.endSession === "function"
-  ) {
-    return SessionCore.endSession(silent);
+  if (typeof SessionCore === "undefined" || typeof SessionCore.endSession !== "function") {
+    throw new Error("SessionCore is required before ending a session.");
   }
-
-  const isLastQuestion =
-    state.session.currentIndex >= state.session.questions.length - 1;
-  const isAnswered =
-    state.session.userAnswers &&
-    state.session.userAnswers[state.session.currentIndex];
-
-  if (isLastQuestion && isAnswered) {
-    clearSessionProgress();
-  } else {
-    saveSessionProgress();
-  }
-
-  state.session.active = false;
-  if (pendingSummaryData) {
-    applySummaryData(pendingSummaryData);
-    pendingSummaryData = null;
-    updateSyncStatus(
-      '<i class="fa-solid fa-check mr-1"></i> Database update applied after your session.',
-      "success",
-    );
-  }
-  if (!silent) navigate("dashboard");
+  return SessionCore.endSession(silent);
 }
 
 let chartRetryCount = 0;
@@ -2993,115 +2701,23 @@ async function fetchGlobalReports() {
   }
 }
 
-function runWindowLoadStartup() {
-  if (window.__mrhWindowLoadStartupRan) {
-    return;
-  }
-  window.__mrhWindowLoadStartupRan = true;
-
-  (async () => {
-    await loadState();
-
-    const toggleElement = document.getElementById("globalModeToggle");
-    if (toggleElement) {
-      currentAppMode = toggleElement.checked ? "review" : "quiz";
-    }
-
-    if (typeof syncDatabase === "function") {
-      await syncDatabase(false, false);
-    }
-    if (typeof fetchGlobalReports === "function") {
-      fetchGlobalReports();
-    }
-  })().catch((error) => {
-    console.error("Window-load startup failed:", error);
-  });
-}
-
-if (document.readyState === "complete") {
-  runWindowLoadStartup();
-} else {
-  window.addEventListener("load", runWindowLoadStartup, { once: true });
-}
-
 window.addEventListener("resize", () => {
   if (state.session.active && state.prefs.quizNavigationPosition === "auto")
     applyNavigationPosition();
 });
 
 function saveSessionProgress() {
-  if (
-    typeof SessionCore !== "undefined" &&
-    typeof SessionCore.saveSessionProgress === "function"
-  ) {
-    return SessionCore.saveSessionProgress();
+  if (typeof SessionCore === "undefined" || typeof SessionCore.saveSessionProgress !== "function") {
+    throw new Error("SessionCore is required before saving session progress.");
   }
-
-  if (!state.session.active) return;
-
-  try {
-    setStoredJSON("saved_session", state.session);
-    state.prefs.lastActivity = {
-      mode: "quiz",
-      subject:
-        state.session.questions[state.session.currentIndex]?.Subject || null,
-      updatedAt: new Date().toISOString(),
-    };
-    setStoredJSON("prefs", state.prefs);
-  } catch (e) {
-    console.warn("Storage quota exceeded. Could not save session progress.", e);
-    showToast("Storage full. Progress won't be saved.", "error");
-  }
+  return SessionCore.saveSessionProgress();
 }
 
 function checkSavedSession() {
-  if (
-    typeof SessionCore !== "undefined" &&
-    typeof SessionCore.checkSavedSession === "function"
-  ) {
-    return SessionCore.checkSavedSession();
+  if (typeof SessionCore === "undefined" || typeof SessionCore.checkSavedSession !== "function") {
+    throw new Error("SessionCore is required before checking saved sessions.");
   }
-
-  const saved = getStoredItem("saved_session");
-  const resumeContainer = document.getElementById("resume-container");
-  const activity = state.prefs.lastActivity;
-  const contextEl = document.getElementById("resume-context");
-
-  if (contextEl && activity) {
-    const modeLabel = activity.mode === "review" ? "Study" : "Quiz";
-    contextEl.innerText = activity.subject
-      ? `${modeLabel} mode: ${activity.subject}`
-      : `${modeLabel} mode`;
-  }
-
-  if (
-    (saved || (activity?.mode === "review" && activity.subject)) &&
-    resumeContainer
-  ) {
-    try {
-      const session = saved ? JSON.parse(saved) : null;
-      if (!session) {
-        resumeContainer.classList.remove("hidden");
-        return;
-      }
-      const isLastQuestion =
-        session.currentIndex >= session.questions.length - 1;
-      const isAnswered =
-        session.userAnswers && session.userAnswers[session.currentIndex];
-
-      if (isLastQuestion && isAnswered) {
-        removeStoredItem("saved_session");
-        resumeContainer.classList.add("hidden");
-        return;
-      }
-    } catch (e) {
-      console.error("Error checking session", e);
-    }
-
-    resumeContainer.classList.remove("hidden");
-  } else if (resumeContainer) {
-    resumeContainer.classList.add("hidden");
-  }
+  return SessionCore.checkSavedSession();
 }
 
 let pendingResumeSession = null;
@@ -3204,13 +2820,10 @@ async function resumeSession(password = null) {
 }
 
 function clearSessionProgress() {
-  removeStoredItem("saved_session");
-  state.prefs.lastActivity = null;
-  setStoredJSON("prefs", state.prefs);
-  const resumeContainer = document.getElementById("resume-container");
-  if (resumeContainer) {
-    resumeContainer.classList.add("hidden");
+  if (typeof SessionCore === "undefined" || typeof SessionCore.clearSessionProgress !== "function") {
+    throw new Error("SessionCore is required before clearing session progress.");
   }
+  return SessionCore.clearSessionProgress();
 }
 
 function shuffleArray(array) {
@@ -3227,73 +2840,24 @@ function showMCQOptions() {
 }
 
 function revealAnswer() {
-  if (
-    typeof QuizRendering !== "undefined" &&
-    typeof QuizRendering.revealAnswer === "function"
-  ) {
-    return QuizRendering.revealAnswer();
+  if (typeof SessionCore === "undefined" || typeof SessionCore.revealAnswer !== "function") {
+    throw new Error("SessionCore is required before revealing an answer.");
   }
-  if (!state.session.active) return;
-
-  const q = state.session.questions[state.session.currentIndex];
-  state.session.userAnswers[state.session.currentIndex] = "REVEALED";
-  state.session.revealedCloze = true;
-
-  // Use the helper function here too!
-  const { isIdent: isPureIdent } = getQuestionTypeMode(q);
-
-  trackStats(q, isPureIdent);
-
-  document.getElementById("q-choices").classList.remove("hidden");
-  const activeRecallMask = document.getElementById("active-recall-mask");
-  if (activeRecallMask) activeRecallMask.classList.add("hidden");
-
-  renderQuestion();
-  saveSessionProgress();
-  startVisualTimer();
-
-  if (state.session.autoNextTimeout)
-    clearTimeout(state.session.autoNextTimeout);
-  state.session.autoNextTimeout = setTimeout(() => {
-    nextQuestion();
-  }, 2000);
+  return SessionCore.revealAnswer();
 }
 
 function startVisualTimer() {
-  if (
-    typeof QuizRendering !== "undefined" &&
-    typeof QuizRendering.startVisualTimer === "function"
-  ) {
-    return QuizRendering.startVisualTimer();
+  if (typeof SessionCore === "undefined" || typeof SessionCore.startVisualTimer !== "function") {
+    throw new Error("SessionCore is required before starting the visual timer.");
   }
-  const container = document.getElementById("auto-next-timer-container");
-  const bar = document.getElementById("auto-next-timer-bar");
-
-  container.classList.remove("hidden");
-
-  bar.classList.remove("animate-timer-bar");
-  void bar.offsetWidth;
-  bar.classList.add("animate-timer-bar");
+  return SessionCore.startVisualTimer();
 }
 
 function stopVisualTimer() {
-  if (
-    typeof QuizRendering !== "undefined" &&
-    typeof QuizRendering.stopVisualTimer === "function"
-  ) {
-    return QuizRendering.stopVisualTimer();
+  if (typeof SessionCore === "undefined" || typeof SessionCore.stopVisualTimer !== "function") {
+    throw new Error("SessionCore is required before stopping the visual timer.");
   }
-  if (
-    typeof QuizRendering !== "undefined" &&
-    typeof QuizRendering.stopVisualTimer === "function"
-  ) {
-    return QuizRendering.stopVisualTimer();
-  }
-  const container = document.getElementById("auto-next-timer-container");
-  const bar = document.getElementById("auto-next-timer-bar");
-
-  container.classList.add("hidden");
-  bar.classList.remove("animate-timer-bar");
+  return SessionCore.stopVisualTimer();
 }
 
 function toggleLayout() {
@@ -4135,108 +3699,40 @@ if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
 if (!state.prefs.qToggles) state.prefs.qToggles = {};
 
 function changeStudyLayout(layout) {
-  if (
-    typeof DeckReview !== "undefined" &&
-    typeof DeckReview.changeStudyLayout === "function"
-  ) {
-    return DeckReview.changeStudyLayout(layout);
+  if (typeof DeckReview === "undefined" || typeof DeckReview.changeStudyLayout !== "function") {
+    throw new Error("DeckReview is required before changing study layout.");
   }
-  state.prefs.studyLayout = layout;
-  saveState();
-  reRenderDeckReview();
+  return DeckReview.changeStudyLayout(layout);
 }
 
 if (!state.prefs.studyFilterMode) state.prefs.studyFilterMode = "all";
 
 function changeStudyPageSize(size) {
-  if (
-    typeof DeckReview !== "undefined" &&
-    typeof DeckReview.changeStudyPageSize === "function"
-  ) {
-    return DeckReview.changeStudyPageSize(size);
+  if (typeof DeckReview === "undefined" || typeof DeckReview.changeStudyPageSize !== "function") {
+    throw new Error("DeckReview is required before changing study page size.");
   }
-  const parsedSize = parseInt(size, 10);
-  if (!Number.isFinite(parsedSize) || parsedSize < 1) return;
-
-  // Auto-switch to Single Flashcard layout if user enters 1 in Scroll List mode
-  const currentLayout = state.prefs.studyLayout || "scroll";
-  if (currentLayout === "scroll" && parsedSize === 1) {
-    state.prefs.studyLayout = "single";
-    const layoutSelect = document.getElementById("review-layout-select");
-    if (layoutSelect) layoutSelect.value = "single";
-    const perPageContainer = document.getElementById(
-      "review-per-page-container",
-    );
-    if (perPageContainer) perPageContainer.classList.add("hidden");
-  }
-
-  state.prefs.studyPageSize = parsedSize;
-  let subject = currentReviewSubject;
-  if (!state.prefs.studyProgress[subject])
-    state.prefs.studyProgress[subject] = { page: 1, index: 0, scrollY: 0 };
-  state.prefs.studyProgress[subject].page = 1;
-  saveState();
-  reRenderDeckReview();
+  return DeckReview.changeStudyPageSize(size);
 }
 
 function changeStudyPage(delta) {
-  if (
-    typeof DeckReview !== "undefined" &&
-    typeof DeckReview.changeStudyPage === "function"
-  ) {
-    return DeckReview.changeStudyPage(delta);
+  if (typeof DeckReview === "undefined" || typeof DeckReview.changeStudyPage !== "function") {
+    throw new Error("DeckReview is required before changing study page.");
   }
-  let subject = currentReviewSubject;
-  state.prefs.studyProgress[subject].page += delta;
-  saveState();
-  reRenderDeckReview();
-  const scrollContainer = document.querySelector("main");
-  if (scrollContainer) scrollContainer.scrollTop = 0;
+  return DeckReview.changeStudyPage(delta);
 }
 
 function jumpToStudyPage(pageNumber) {
-  if (
-    typeof DeckReview !== "undefined" &&
-    typeof DeckReview.jumpToStudyPage === "function"
-  ) {
-    return DeckReview.jumpToStudyPage(pageNumber);
+  if (typeof DeckReview === "undefined" || typeof DeckReview.jumpToStudyPage !== "function") {
+    throw new Error("DeckReview is required before jumping to a study page.");
   }
-  const subject = currentReviewSubject;
-  if (!subject || !state.prefs.studyProgress[subject]) return;
-
-  const parsed = Number.parseInt(pageNumber, 10);
-  if (!Number.isFinite(parsed)) return;
-
-  const favoriteSet = new Set(
-    Array.isArray(state.prefs.favoriteQuestions)
-      ? state.prefs.favoriteQuestions.filter(Boolean)
-      : [],
-  );
-  const studyFilterMode = state.prefs.studyFilterMode || "all";
-  const visibleQuestions =
-    studyFilterMode === "favorites"
-      ? (currentReviewQuestions || []).filter((q) => favoriteSet.has(q.ID))
-      : currentReviewQuestions || [];
-
-  const totalPages = Math.max(
-    1,
-    Math.ceil(visibleQuestions.length / (state.prefs.studyPageSize || 50)),
-  );
-
-  const safePage = Math.min(Math.max(parsed, 1), totalPages);
-
-  state.prefs.studyProgress[subject].page = safePage;
-  saveState();
-  reRenderDeckReview();
-  const scrollContainer = document.querySelector("main");
-  if (scrollContainer) scrollContainer.scrollTop = 0;
+  return DeckReview.jumpToStudyPage(pageNumber);
 }
 
 function changeStudyIndex(delta) {
-  let subject = currentReviewSubject;
-  state.prefs.studyProgress[subject].index += delta;
-  saveState();
-  reRenderDeckReview();
+  if (typeof DeckReview === "undefined" || typeof DeckReview.changeStudyIndex !== "function") {
+    throw new Error("DeckReview is required before changing study index.");
+  }
+  return DeckReview.changeStudyIndex(delta);
 }
 
 function toggleSpecificChoices(qId) {
@@ -4572,6 +4068,20 @@ function initializeApp() {
   if (__mrhAppInitialized) return false;
   __mrhAppInitialized = true;
 
+  (async () => {
+    await loadState();
+
+    const toggleElement = document.getElementById("globalModeToggle");
+    if (toggleElement) {
+      currentAppMode = toggleElement.checked ? "review" : "quiz";
+    }
+
+    await syncDatabase(false, false);
+    fetchGlobalReports();
+  })().catch((error) => {
+    console.error("Application data initialization failed:", error);
+  });
+
   // CRITICAL FIX: Setup cache invalidation listener and version checking
   setupCacheInvalidationListener();
   startCacheVersionChecking();
@@ -4636,16 +4146,3 @@ function initializeApp() {
 }
 
 window.initializeApp = initializeApp;
-
-function initializeAppOnce() {
-  if (__mrhAppInitialized) return false;
-  return initializeApp();
-}
-
-if (document.readyState === "loading") {
-  window.addEventListener("DOMContentLoaded", initializeAppOnce, {
-    once: true,
-  });
-} else {
-  initializeAppOnce();
-}

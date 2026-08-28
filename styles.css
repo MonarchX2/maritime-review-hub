@@ -236,7 +236,11 @@ input {
 }
 
 #resume-container {
-  transition: all var(--time-fast) var(--ease-base);
+  transition:
+    background-color var(--time-fast) var(--ease-base),
+    border-color var(--time-fast) var(--ease-base),
+    color var(--time-fast) var(--ease-base),
+    box-shadow var(--time-fast) var(--ease-base);
 }
 
 #resume-container button {
@@ -465,7 +469,11 @@ button:active:not(:disabled) {
    09. QUIZ / ANSWER CHOICE STATES
    -------------------------------------------------------------------------- */
 .choice-btn {
-  transition: all var(--time-fast) var(--ease-bounce);
+  transition:
+    background-color var(--time-fast) var(--ease-bounce),
+    border-color var(--time-fast) var(--ease-bounce),
+    color var(--time-fast) var(--ease-bounce),
+    transform var(--time-fast) var(--ease-bounce);
   /* Prevents layout jumping when border-width changes later */
   border: 2px solid transparent;
 }

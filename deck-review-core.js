@@ -5,6 +5,7 @@
 (function (globalScope) {
   let currentReviewSubject = null;
   let currentReviewQuestions = [];
+  let derivedQuestionsCache = null;
   let reviewRenderFrame = null;
   let virtualReviewScrollFrame = null;
   const REVIEW_ESTIMATED_CARD_HEIGHT = 420;
@@ -88,10 +89,36 @@
     );
 
     const studyFilterMode = state.prefs.studyFilterMode || "all";
-    const filteredQuestions =
-      studyFilterMode === "favorites"
-        ? questions.filter((question) => favoriteQuestions.has(question.ID))
-        : questions;
+    const favoriteSignature = [...favoriteQuestions].join("\u001f");
+    const canReuseCache =
+      derivedQuestionsCache &&
+      derivedQuestionsCache.questions === questions &&
+      derivedQuestionsCache.filterMode === studyFilterMode &&
+      derivedQuestionsCache.favoriteSignature === favoriteSignature;
+
+    let filteredQuestions;
+    let sortedQuestions;
+    if (canReuseCache) {
+      ({ filteredQuestions, sortedQuestions } = derivedQuestionsCache);
+    } else {
+      filteredQuestions =
+        studyFilterMode === "favorites"
+          ? questions.filter((question) => favoriteQuestions.has(question.ID))
+          : questions;
+      sortedQuestions = [...filteredQuestions].sort((a, b) => {
+        const aFav = favoriteQuestions.has(a.ID) ? 1 : 0;
+        const bFav = favoriteQuestions.has(b.ID) ? 1 : 0;
+        if (aFav !== bFav) return bFav - aFav;
+        return 0;
+      });
+      derivedQuestionsCache = {
+        questions,
+        filterMode: studyFilterMode,
+        favoriteSignature,
+        filteredQuestions,
+        sortedQuestions,
+      };
+    }
 
     if (filteredQuestions.length === 0) {
       container.innerHTML = `
@@ -118,12 +145,7 @@
     let virtualEndIndex = filteredQuestions.length;
     let totalPages = 1;
 
-    displayQuestions = [...filteredQuestions].sort((a, b) => {
-      const aFav = favoriteQuestions.has(a.ID) ? 1 : 0;
-      const bFav = favoriteQuestions.has(b.ID) ? 1 : 0;
-      if (aFav !== bFav) return bFav - aFav;
-      return 0;
-    });
+    displayQuestions = sortedQuestions;
 
     if (layout === "single") {
       if (currentIndex < 0) currentIndex = 0;
