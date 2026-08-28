@@ -1009,6 +1009,7 @@
 
   globalScope.SessionCore = SessionCore;
   globalScope.AppSession = SessionCore;
+  globalScope.prepareSessionPool = prepareSessionPool;
   globalScope.initSession = initSession;
   globalScope.renderQuestion = renderQuestion;
   globalScope.submitPracticeAnswer = submitPracticeAnswer;

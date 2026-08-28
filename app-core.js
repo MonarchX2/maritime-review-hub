@@ -1,4 +1,4 @@
-﻿const DB_URL =
+const DB_URL =
   "https://script.google.com/macros/s/AKfycby4j5hbEWyfqonO9HYKgywo4OAt1NBwerEWWZwLWb1ODbsQGUd-YMMO-H9wX3_C-tBw/exec";
 
 const SYNC_INTERVAL_MS = 60 * 1000;
@@ -222,56 +222,7 @@ async function safeIdbDel(key) {
   }
 }
 
-async function navigate(viewId) {
-  if (
-    typeof DeckNav !== "undefined" &&
-    typeof DeckNav.navigate === "function"
-  ) {
-    return DeckNav.navigate(viewId);
-  }
-  if (
-    state.session.active &&
-    viewId !== "practice" &&
-    !(await requestConfirmation(
-      "You have an active session. Do you want to pause and return? Your progress will be saved.",
-      "Pause Session",
-    ))
-  )
-    return;
-
-  if (state.session.active && viewId !== "practice") {
-    saveSessionProgress();
-    state.session.active = false;
-    saveState();
-  }
-
-  updateDashboard();
-
-  const viewElement = document.getElementById(`view-${viewId}`);
-  if (!viewElement) {
-    console.warn(`Navigation target not found: ${viewId}`);
-    return;
-  }
-
-  document
-    .querySelectorAll(".view-section")
-    .forEach((el) => el.classList.remove("active"));
-  viewElement.classList.add("active");
-
-  if (viewId === "stats" && document.getElementById("chart-accuracy")) {
-    renderCharts();
-  }
-}
-
 function getSyncStatusVisualState(tone = "info") {
-  if (
-    typeof AppSync !== "undefined" &&
-    !AppSync.__legacyBridge &&
-    typeof AppSync.getSyncStatusVisualState === "function"
-  ) {
-    return AppSync.getSyncStatusVisualState(tone);
-  }
-
   const byTone = {
     info: {
       panelClass:
@@ -315,14 +266,6 @@ function setGlobalLoadingState(
   detail = "Preparing the latest data...",
   tone = "info",
 ) {
-  if (
-    typeof AppSync !== "undefined" &&
-    !AppSync.__legacyBridge &&
-    typeof AppSync.setGlobalLoadingState === "function"
-  ) {
-    return AppSync.setGlobalLoadingState(isLoading, title, detail, tone);
-  }
-
   if (typeof document === "undefined") return false;
   const overlay = document.getElementById("app-loading-overlay");
   if (!overlay) return false;
@@ -351,13 +294,6 @@ function setGlobalLoadingState(
 }
 
 function updateSyncStatus(message, tone = "info", showOverlay = true) {
-  if (
-    typeof AppSync !== "undefined" &&
-    !AppSync.__legacyBridge &&
-    typeof AppSync.updateSyncStatus === "function"
-  ) {
-    return AppSync.updateSyncStatus(message, tone, showOverlay);
-  }
   const visualState = getSyncStatusVisualState(tone);
   const activeSessionBlocking = Boolean(state.session?.active);
   const shouldSuppressOverlay =
@@ -449,14 +385,6 @@ async function optimizedBackgroundSync() {
 
   backgroundSyncPromise = (async () => {
     try {
-      if (
-        typeof AppSync !== "undefined" &&
-        !AppSync.__legacyBridge &&
-        typeof AppSync.optimizedBackgroundSync === "function"
-      ) {
-        return AppSync.optimizedBackgroundSync();
-      }
-
       // FIX 4: LIGHTWEIGHT BACKGROUND SYNC POLLING
       // First check sync status via lightweight endpoint
       // Only fetch full summary if timestamp changed
@@ -538,14 +466,6 @@ async function optimizedBackgroundSync() {
 }
 
 function scheduleSyncPoll() {
-  if (
-    typeof AppSync !== "undefined" &&
-    !AppSync.__legacyBridge &&
-    typeof AppSync.scheduleSyncPoll === "function"
-  ) {
-    return AppSync.scheduleSyncPoll();
-  }
-
   const activeToken = ++__mrhPollLoopToken;
   clearTimeout(syncPollTimer);
   syncPollTimer = setTimeout(() => {
@@ -761,14 +681,6 @@ function isDeckLocked(subject) {
 }
 
 function applySummaryData(summaryData, knownChanged = null) {
-  if (
-    typeof AppSync !== "undefined" &&
-    !AppSync.__legacyBridge &&
-    typeof AppSync.applySummaryData === "function"
-  ) {
-    return AppSync.applySummaryData(summaryData);
-  }
-
   // CRITICAL FIX: Don't double-filter - backend already filters hidden decks
   // Only use the data as-is from the backend response
   const changed =
@@ -790,14 +702,6 @@ function applySummaryData(summaryData, knownChanged = null) {
 }
 
 function scheduleSyncRetry(showOverlay = true) {
-  if (
-    typeof AppSync !== "undefined" &&
-    !AppSync.__legacyBridge &&
-    typeof AppSync.scheduleSyncRetry === "function"
-  ) {
-    return AppSync.scheduleSyncRetry(showOverlay);
-  }
-
   clearTimeout(syncRetryTimer);
   clearInterval(syncCountdownTimer);
   const retryCount = Math.max(0, Number(syncAttempt || 1) - 1);
@@ -879,14 +783,6 @@ async function syncDatabaseImplementation(
   isRetry = false,
   isBackgroundCheck = false,
 ) {
-  if (
-    typeof AppSync !== "undefined" &&
-    !AppSync.__legacyBridge &&
-    typeof AppSync.syncDatabase === "function"
-  ) {
-    return AppSync.syncDatabase(isRetry, isBackgroundCheck);
-  }
-
   if (syncInFlightPromise) {
     return syncInFlightPromise;
   }
@@ -1062,13 +958,6 @@ async function syncDatabaseImplementation(
 }
 
 async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
-  if (
-    typeof AppSync !== "undefined" &&
-    typeof AppSync.syncDatabase === "function" &&
-    AppSync.syncDatabase !== syncDatabase
-  ) {
-    return AppSync.syncDatabase(isRetry, isBackgroundCheck);
-  }
   return syncDatabaseImplementation(isRetry, isBackgroundCheck);
 }
 
@@ -1160,70 +1049,6 @@ function populateFilters() {
   }
 }
 
-function prepareSessionPool(pool) {
-  let randomizedPool = [...pool];
-  if (state.prefs.shuffleQuestions !== false) {
-    randomizedPool = shuffleArray(randomizedPool);
-  }
-  randomizedPool.sort((a, b) => {
-    const aIsMistake = state.stats.mistakes.includes(a.ID);
-    const bIsMistake = state.stats.mistakes.includes(b.ID);
-    if (aIsMistake && !bIsMistake) return Math.random() > 0.3 ? -1 : 1;
-    if (!aIsMistake && bIsMistake) return Math.random() > 0.3 ? 1 : -1;
-    return 0;
-  });
-
-  return randomizedPool.map((originalQ) => {
-    let q = { ...originalQ };
-    let validChoices = [];
-    const rawChoices = [q.ChoiceA, q.ChoiceB, q.ChoiceC, q.ChoiceD];
-    rawChoices.forEach((c) => {
-      if (
-        c !== undefined &&
-        c !== null &&
-        String(c).trim() !== "" &&
-        String(c).trim().toLowerCase() !== "undefined"
-      ) {
-        validChoices.push(String(c).trim());
-      }
-    });
-
-    let originalAns = String(q.Answer || "")
-      .trim()
-      .toUpperCase();
-    let correctText = "";
-
-    if (["A", "B", "C", "D"].includes(originalAns)) {
-      correctText = String(originalQ[`Choice${originalAns}`] || "")
-        .trim()
-        .toLowerCase();
-    } else {
-      correctText = String(q.Answer || "")
-        .trim()
-        .toLowerCase();
-    }
-
-    if (validChoices.length > 0) {
-      if (state.prefs.shuffleChoices !== false) {
-        validChoices = shuffleArray(validChoices);
-      }
-
-      q.ChoiceA = validChoices[0] || "";
-      q.ChoiceB = validChoices[1] || "";
-      q.ChoiceC = validChoices[2] || "";
-      q.ChoiceD = validChoices[3] || "";
-
-      if (q.ChoiceA.trim().toLowerCase() === correctText) q.Answer = "A";
-      else if (q.ChoiceB.trim().toLowerCase() === correctText) q.Answer = "B";
-      else if (q.ChoiceC.trim().toLowerCase() === correctText) q.Answer = "C";
-      else if (q.ChoiceD.trim().toLowerCase() === correctText) q.Answer = "D";
-      else if (validChoices.length === 1) q.Answer = "A";
-      else q.Answer = "A";
-    }
-    return q;
-  });
-}
-
 function changeQuizFilter(filterValue) {
   // Update the display text
   const displayEl = document.getElementById("filter-subject-display");
@@ -1277,57 +1102,6 @@ function changeQuizFilter(filterValue) {
   if (menu) menu.open = false;
 }
 
-function initSession() {
-  if (
-    typeof SessionCore !== "undefined" &&
-    typeof SessionCore.initSession === "function"
-  ) {
-    return SessionCore.initSession();
-  }
-
-  let filterVal = document.getElementById("filter-subject")?.value || "ALL";
-  let pool = [];
-
-  if (filterVal === "MISTAKES") {
-    pool = state.db.filter((q) => state.stats.mistakes.includes(q.ID));
-  } else if (filterVal.startsWith("SUBJ:")) {
-    const subj = filterVal.replace("SUBJ:", "");
-    pool = getQuestionsForSubject(subj);
-  } else if (filterVal.startsWith("TAG:")) {
-    const tag = filterVal.replace("TAG:", "");
-    pool = state.db.filter((q) => q.Tags && q.Tags.includes(tag));
-  } else {
-    pool = state.db;
-  }
-
-  if (pool.length === 0) {
-    alert("No questions found for this filter.");
-    return;
-  }
-  pool = prepareSessionPool(pool);
-
-  clearTimeout(state.session.autoNextTimeout);
-
-  if (typeof stopVisualTimer === "function") {
-    stopVisualTimer();
-  }
-
-  state.session = {
-    active: true,
-    questions: pool,
-    currentIndex: 0,
-    userAnswers: {},
-    mode: "quiz",
-    revealedCloze: false,
-  };
-
-  document.getElementById("session-setup").classList.add("hidden");
-  document.getElementById("session-active").classList.remove("hidden");
-
-  renderQuestion();
-  saveSessionProgress();
-}
-
 function getShortSubjectLabel(subject, fallback = "General") {
   const raw = String(subject ?? "").trim();
   if (!raw) return fallback;
@@ -1338,237 +1112,6 @@ function getShortSubjectLabel(subject, fallback = "General") {
     .filter(Boolean);
 
   return parts.length >= 2 ? parts.slice(-2).join(" :: ") : raw;
-}
-
-function renderQuestion() {
-  if (
-    typeof QuizRendering !== "undefined" &&
-    typeof QuizRendering.renderQuestion === "function"
-  ) {
-    return QuizRendering.renderQuestion();
-  }
-  if (
-    typeof SessionCore !== "undefined" &&
-    typeof SessionCore.renderQuestion === "function"
-  ) {
-    return SessionCore.renderQuestion();
-  }
-
-  stopVisualTimer();
-  applyNavigationPosition();
-  const q = state.session.questions[state.session.currentIndex];
-  const userAnswer = state.session.userAnswers[state.session.currentIndex];
-
-  const currentCard = state.session.currentIndex + 1;
-  const totalCards = state.session.questions.length;
-  document.getElementById("session-progress-text").innerText =
-    `${currentCard} / ${totalCards}`;
-  document.getElementById("session-progress").style.width =
-    `${((state.session.currentIndex + 1) / totalCards) * 100}%`;
-
-  const fullSubject = q.Subject || "General";
-  document.getElementById("q-subject").innerText = getShortSubjectLabel(
-    fullSubject,
-    "General",
-  );
-
-  let displayId = q.ID ?? `Q-${state.session.currentIndex + 1}`;
-  if (displayId.includes("::")) {
-    const match = displayId.match(/::.*?\b(\d+)\s*$/);
-    displayId = match ? match[1] : displayId.split("::").pop();
-  }
-  document.getElementById("q-id").innerText = "Question " + displayId;
-  const clozeEnabled = state.prefs.clozeEnabled !== false;
-  const shouldRevealCloze =
-    Boolean(userAnswer) || Boolean(state.session.revealedCloze);
-  document.getElementById("q-text").innerHTML = formatQuestionText(q.Question, {
-    revealCloze: shouldRevealCloze && clozeEnabled,
-    clozeEnabled,
-  });
-
-  const imgEl = document.getElementById("q-image");
-  if (
-    imgEl &&
-    q.ImageURL &&
-    String(q.ImageURL).trim() !== "" &&
-    typeof isSafeImageURL === "function" &&
-    isSafeImageURL(q.ImageURL)
-  ) {
-    imgEl.onload = () => imgEl.classList.remove("hidden");
-    imgEl.onerror = () => {
-      imgEl.removeAttribute("src");
-      imgEl.classList.add("hidden");
-    };
-    imgEl.referrerPolicy = "no-referrer";
-    imgEl.loading = "lazy";
-    imgEl.decoding = "async";
-    imgEl.src = q.ImageURL;
-    imgEl.alt = q.Question
-      ? `Reference for: ${q.Question.substring(0, 50)}...`
-      : "Question reference image";
-    imgEl.classList.remove("hidden");
-  } else if (imgEl) {
-    imgEl.onload = null;
-    imgEl.onerror = null;
-    imgEl.removeAttribute("src");
-    imgEl.classList.add("hidden");
-  }
-
-  const { isIdent: isPureIdent } = getQuestionTypeMode(q);
-  const isForcedMCQ = state.prefs.qTypeOverride === "mcq";
-  const hideABCD = state.prefs.quizHideABCD === true || isPureIdent;
-
-  const choices = ["A", "B", "C", "D"];
-  choices.forEach((ch) => {
-    const choiceText = q[`Choice${ch}`];
-    const btn = document.querySelector(`.choice-btn[data-choice="${ch}"]`);
-    let cleanChoice = String(choiceText ?? "").trim();
-
-    btn.classList.remove("selected-correct", "selected-wrong", "dimmed");
-    btn.onclick = null;
-
-    if (isForcedMCQ && cleanChoice === "") {
-      cleanChoice = "undefined";
-    }
-
-    if (
-      !isForcedMCQ &&
-      (cleanChoice === "" || cleanChoice.toLowerCase() === "undefined")
-    ) {
-      btn.classList.add("hidden");
-    } else {
-      btn.classList.remove("hidden");
-      const prefixRegex = new RegExp(`^${ch}[\\.\\)\\-]\\s*`, "i");
-      const displayText = cleanChoice.replace(prefixRegex, "");
-      const safeDisplayText = escapeHTML(displayText);
-
-      if (hideABCD) {
-        btn.innerHTML = safeDisplayText;
-      } else {
-        btn.innerHTML = `<span class="choice-letter font-bold mr-2 whitespace-nowrap">${ch})</span> ${safeDisplayText}`;
-      }
-
-      if (!userAnswer) {
-        btn.onclick = () => submitPracticeAnswer(ch, q.Answer);
-      }
-    }
-  });
-
-  const qChoicesContainer = document.getElementById("q-choices");
-  const activeRecallMask = document.getElementById("active-recall-mask");
-  const expBox = document.getElementById("q-explanation-box");
-  const btnNext = document.getElementById("btn-next");
-  const btnPrev = document.getElementById("btn-prev");
-  const btnReveal = document.getElementById("btn-reveal");
-
-  btnPrev.disabled = state.session.currentIndex <= 0;
-
-  if (userAnswer) {
-    if (activeRecallMask) activeRecallMask.classList.add("hidden");
-    qChoicesContainer.classList.remove("hidden");
-    showExplanation(q);
-
-    qChoicesContainer.querySelectorAll(".choice-btn").forEach((btn) => {
-      btn.onclick = null;
-      const choice = btn.dataset.choice;
-
-      if (choice === q.Answer) {
-        btn.classList.add("selected-correct");
-        btn.classList.remove("hidden");
-      } else {
-        if (isPureIdent) {
-          btn.classList.add("hidden");
-        } else {
-          if (choice === userAnswer) {
-            btn.classList.add("selected-wrong");
-          } else {
-            btn.classList.add("dimmed");
-          }
-        }
-      }
-    });
-
-    btnNext.disabled = false;
-    btnReveal.disabled = true;
-  } else {
-    expBox.classList.add("hidden");
-    btnNext.disabled = false;
-    btnReveal.disabled = false;
-
-    if (isPureIdent) {
-      if (activeRecallMask) activeRecallMask.classList.add("hidden");
-      qChoicesContainer.classList.add("hidden");
-    } else {
-      const activeRecallEnabled = Boolean(state.prefs.activeRecall);
-      if (activeRecallEnabled) {
-        if (activeRecallMask) activeRecallMask.classList.remove("hidden");
-        qChoicesContainer.classList.add("hidden");
-      } else {
-        if (activeRecallMask) activeRecallMask.classList.add("hidden");
-        qChoicesContainer.classList.remove("hidden");
-      }
-    }
-  }
-
-  const favBtn = document.getElementById("btn-favorite-question");
-  if (favBtn) {
-    const isFavorite = Array.isArray(state.prefs.favoriteQuestions)
-      ? state.prefs.favoriteQuestions.includes(q.ID)
-      : false;
-
-    favBtn.classList.toggle("text-yellow-500", isFavorite);
-    favBtn.classList.toggle("text-gray-400", !isFavorite);
-    favBtn.title = isFavorite ? "Remove from Favorites" : "Add to Favorites";
-  }
-
-  const activeRecallToggle = document.getElementById("toggle-active-recall");
-  const shuffleChoicesToggle = document.getElementById(
-    "toggle-shuffle-choices",
-  );
-  const hideABCDToggle = document.getElementById("toggle-quiz-hide-abcd");
-
-  if (activeRecallToggle) {
-    activeRecallToggle.disabled = isPureIdent;
-    activeRecallToggle.parentElement.classList.toggle(
-      "opacity-50",
-      isPureIdent,
-    );
-    activeRecallToggle.parentElement.classList.toggle(
-      "cursor-not-allowed",
-      isPureIdent,
-    );
-    activeRecallToggle.parentElement.classList.toggle(
-      "pointer-events-none",
-      isPureIdent,
-    );
-  }
-
-  if (shuffleChoicesToggle) {
-    shuffleChoicesToggle.disabled = isPureIdent;
-    shuffleChoicesToggle.parentElement.classList.toggle(
-      "opacity-50",
-      isPureIdent,
-    );
-    shuffleChoicesToggle.parentElement.classList.toggle(
-      "cursor-not-allowed",
-      isPureIdent,
-    );
-  }
-
-  if (hideABCDToggle) {
-    hideABCDToggle.disabled = isPureIdent;
-    hideABCDToggle.parentElement.classList.toggle("opacity-50", isPureIdent);
-    hideABCDToggle.parentElement.classList.toggle(
-      "cursor-not-allowed",
-      isPureIdent,
-    );
-    hideABCDToggle.parentElement.classList.toggle(
-      "pointer-events-none",
-      isPureIdent,
-    );
-  }
-
-  applyTitleMode();
 }
 
 function enterFolder(folderName, isLockedFolder) {
@@ -1707,6 +1250,26 @@ function initDetailsExclusivity() {
 let categoryProgressRenderScheduled = false;
 let categoryProgressRenderInFlight = false;
 let categoryProgressRenderQueued = false;
+let categoryProgressLastRenderSignature = "";
+
+function getCategoryProgressRenderSignature() {
+  return JSON.stringify({
+    summary: getSummarySignature(state.categorySummary || []),
+    path: state.currentPath || [],
+    layout: state.prefs.layoutMode,
+    source: state.prefs.deckSourceFilter,
+    sort: state.prefs.deckSortBy,
+    direction: state.prefs.deckSortDirection,
+    nameMode: state.prefs.deckNameMode,
+    mode: currentAppMode,
+    completed: state.stats?.completedQs || [],
+    mistakes: state.stats?.mistakes || [],
+    favoriteDecks: state.prefs.favoriteDecks || [],
+    archivedDecks: state.prefs.archivedDecks || [],
+    access: state.accessMetadata || {},
+    syncComplete: isInitialSyncComplete,
+  });
+}
 
 function renderCategoryProgress() {
   if (categoryProgressRenderQueued) return;
@@ -1735,6 +1298,18 @@ function renderCategoryProgressNow() {
         }
       });
     }
+    return;
+  }
+
+  const dashboardView = document.getElementById("view-dashboard");
+  if (dashboardView && !dashboardView.classList.contains("active")) {
+    categoryProgressRenderQueued = false;
+    return;
+  }
+
+  const renderSignature = getCategoryProgressRenderSignature();
+  if (renderSignature === categoryProgressLastRenderSignature) {
+    categoryProgressRenderQueued = false;
     return;
   }
 
@@ -2282,6 +1857,8 @@ function renderCategoryProgressNow() {
       container.className = "transition-all duration-500";
       container.innerHTML = html;
     }
+
+    categoryProgressLastRenderSignature = renderSignature;
 
     applyTitleMode();
   } finally {
@@ -2858,429 +2435,6 @@ async function reviewDeck(subject, pass = null) {
   };
   saveState();
   renderDeckReview(subject, validQuestions);
-}
-
-let currentReviewSubject = "";
-let currentReviewQuestions = [];
-let reviewRenderLimit = 50;
-
-function reRenderDeckReview() {
-  if (
-    typeof DeckReview !== "undefined" &&
-    typeof DeckReview.reRenderDeckReview === "function"
-  ) {
-    return DeckReview.reRenderDeckReview();
-  }
-  renderDeckReview(currentReviewSubject, currentReviewQuestions);
-}
-
-function renderDeckReview(subject, questions) {
-  if (
-    typeof DeckReviewCore !== "undefined" &&
-    typeof DeckReviewCore.renderDeckReview === "function"
-  ) {
-    return DeckReviewCore.renderDeckReview(subject, questions);
-  }
-  return renderDeckReviewImplementation(subject, questions);
-}
-
-function renderDeckReviewImplementation(subject, questions) {
-  if (currentReviewSubject !== subject) reviewRenderLimit = 50;
-  currentReviewSubject = subject;
-  currentReviewQuestions = questions;
-
-  const container = document.getElementById("deck-review-list");
-  document.getElementById("deck-review-title").innerText = getShortSubjectLabel(
-    subject,
-    "General",
-  );
-
-  const globalShowWrong = state.prefs.showWrongChoices !== false;
-  const hideABCD = state.prefs.hideABCD === true;
-  let layout = state.prefs.studyLayout || "scroll";
-  let pageSize = state.prefs.studyPageSize || 50;
-  const reviewNavigationPosition = getStudyNavigationPosition(layout);
-
-  if (!state.prefs.studyProgress[subject]) {
-    state.prefs.studyProgress[subject] = { page: 1, index: 0, scrollY: 0 };
-  }
-  let progress = state.prefs.studyProgress[subject];
-  let currentPage = progress.page || 1;
-  let currentIndex = progress.index || 0;
-
-  const wrongToggle = document.getElementById("toggle-wrong-choices");
-  if (wrongToggle) wrongToggle.checked = globalShowWrong;
-  const hideABCDToggle = document.getElementById("toggle-hide-abcd");
-  if (hideABCDToggle) hideABCDToggle.checked = hideABCD;
-
-  let html = "";
-  const favoriteQuestions = new Set(
-    Array.isArray(state.prefs.favoriteQuestions)
-      ? state.prefs.favoriteQuestions.filter(Boolean)
-      : [],
-  );
-
-  const studyFilterMode = state.prefs.studyFilterMode || "all";
-  const filteredQuestions =
-    studyFilterMode === "favorites"
-      ? questions.filter((question) => favoriteQuestions.has(question.ID))
-      : questions;
-
-  if (filteredQuestions.length === 0) {
-    container.innerHTML = `
-      <div class="text-center p-8 text-gray-500 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-        <i class="fa-solid fa-star text-yellow-500 text-2xl mb-3"></i>
-        <p class="font-bold text-lg">No favorite questions in this deck.</p>
-        <p class="text-sm mt-1">Switch the study filter to All to see every question.</p>
-      </div>
-    `;
-    navigate("deck-review");
-    return;
-  }
-
-  if (questions.length === 0) {
-    container.innerHTML =
-      html +
-      `<div class="text-center p-8 text-gray-500">No questions found for this deck.</div>`;
-    navigate("deck-review");
-    return;
-  }
-
-  let displayQuestions = [];
-  let totalPages = 1;
-
-  displayQuestions = [...filteredQuestions].sort((a, b) => {
-    const aFav = favoriteQuestions.has(a.ID) ? 1 : 0;
-    const bFav = favoriteQuestions.has(b.ID) ? 1 : 0;
-    if (aFav !== bFav) return bFav - aFav;
-    return 0;
-  });
-
-  if (layout === "single") {
-    if (currentIndex < 0) currentIndex = 0;
-    if (currentIndex >= filteredQuestions.length)
-      currentIndex = filteredQuestions.length - 1;
-    progress.index = currentIndex;
-
-    displayQuestions = [filteredQuestions[currentIndex]];
-  } else {
-    if (pageSize === "All") {
-      displayQuestions = filteredQuestions.slice(0, reviewRenderLimit);
-    } else {
-      totalPages = Math.ceil(filteredQuestions.length / pageSize);
-      if (currentPage < 1) currentPage = 1;
-      if (currentPage > totalPages) currentPage = totalPages;
-      progress.page = currentPage;
-
-      let start = (currentPage - 1) * pageSize;
-      displayQuestions = filteredQuestions.slice(start, start + pageSize);
-    }
-  }
-
-  const pageCount = document.getElementById("review-page-count");
-  const pageSizeInput = document.getElementById("review-page-size-input");
-  if (pageSizeInput) pageSizeInput.value = pageSize === "All" ? "" : pageSize;
-  if (pageCount)
-    pageCount.innerText = pageSize === "All" ? "1" : Math.max(1, totalPages);
-
-  let navigationHTML = "";
-  if (layout === "single") {
-    navigationHTML = `
-        <div class="flex justify-between items-center mb-6 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 sticky top-4 z-20 gap-2">
-            <button onclick="changeStudyIndex(-1)" ${currentIndex === 0 ? "disabled" : ""} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
-                <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Prev</span>
-            </button>
-            
-            <span class="text-sm font-bold text-gray-600 dark:text-gray-300 flex-1 text-center">Card ${currentIndex + 1} / ${questions.length}</span>
-            
-            <button onclick="changeStudyIndex(1)" ${currentIndex === questions.length - 1 ? "disabled" : ""} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
-                <span class="hidden sm:inline mr-1">Next</span> <i class="fa-solid fa-arrow-right"></i>
-            </button>
-        </div>
-    `;
-  } else if (pageSize !== "All" && totalPages > 1) {
-    navigationHTML = `
-            <div class="flex justify-between items-center mt-6 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 sticky bottom-4 z-10 gap-2">
-                <button onclick="changeStudyPage(-1)" ${currentPage === 1 ? "disabled" : ""} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
-                    <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Prev</span>
-                </button>
-                <div class="flex-1 flex items-center justify-center gap-1 text-sm font-bold text-gray-600 dark:text-gray-300">
-                    <span>Page</span>
-                    <label class="sr-only" for="study-page-input">Go to page</label>
-                    <input
-                        id="study-page-input"
-                        type="text"
-                        inputmode="numeric"
-                        pattern="[0-9]*"
-                        min="1"
-                        max="${totalPages}"
-                        value="${currentPage}"
-                        onchange="jumpToStudyPage(this.value)"
-                        oninput="this.style.width = Math.max(1.8, (this.value.length || String(${currentPage}).length) + 1.2) + 'ch';"
-                        class="border-0 border-b border-gray-300 dark:border-gray-600 bg-transparent px-0 py-0 text-center text-sm font-bold text-gray-800 dark:text-gray-100 outline-none focus:border-brand-500 focus:ring-0 [-moz-appearance:textfield]"
-                        style="width: ${Math.max(1.8, String(currentPage).length + 1.2)}ch;"
-                    />
-                    <span>of ${totalPages}</span>
-                </div>
-                <button onclick="changeStudyPage(1)" ${currentPage === totalPages ? "disabled" : ""} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
-                    <span class="hidden sm:inline mr-1">Next</span> <i class="fa-solid fa-arrow-right"></i>
-                </button>
-            </div>
-        `;
-  }
-
-  const showTopNavigation = ["top", "both"].includes(reviewNavigationPosition);
-  const showBottomNavigation = ["bottom", "both"].includes(
-    reviewNavigationPosition,
-  );
-
-  if (showTopNavigation) html += navigationHTML;
-
-  const questionIndexById = new Map(
-    filteredQuestions.map((question, index) => [question.ID, index]),
-  );
-
-  displayQuestions.forEach((q, displayIndex) => {
-    const originalIndex = questionIndexById.get(q.ID) ?? displayIndex;
-    const isQuestionFavorite = favoriteQuestions.has(q.ID);
-
-    let rawQuestionText = q.Question ? String(q.Question) : "";
-    let cleanQuestionText = rawQuestionText.replace(/^\s*\d+\.\s*/, "");
-
-    let ansStr = q.Answer ? String(q.Answer).trim() : "";
-    const { isIdent: isPureIdent } = getQuestionTypeMode(q);
-    let isMultipleChoice = !isPureIdent;
-
-    let correctText = ansStr;
-    if (isMultipleChoice) {
-      correctText = q[`Choice${ansStr.toUpperCase()}`] || ansStr;
-    } else {
-      correctText = q.ChoiceA || ansStr;
-    }
-    if (!correctText || correctText.toLowerCase() === "undefined") {
-      correctText = "Answer missing from database";
-    }
-
-    let showWrongForThisQ = state.prefs.qToggles?.[q.ID];
-    if (showWrongForThisQ === undefined) showWrongForThisQ = globalShowWrong;
-
-    let choicesHTML = "";
-    if (isMultipleChoice && showWrongForThisQ) {
-      const letters = ["A", "B", "C", "D"];
-      choicesHTML = `<div class="mt-4 flex flex-col gap-2">`;
-      letters.forEach((letter) => {
-        let choiceText = q[`Choice${letter}`];
-        let prefix = hideABCD ? "" : `${letter}. `;
-
-        if (choiceText) {
-          let isCorrect = letter === ansStr.toUpperCase();
-          if (isCorrect) {
-            choicesHTML += `
-                            <div class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 p-3 rounded-r-lg">
-                                <p class="text-sm font-bold text-green-700 dark:text-green-400">
-                                    ${prefix}${escapeHTML(choiceText)}
-                                </p>
-                            </div>`;
-          } else {
-            choicesHTML += `
-                            <div class="bg-gray-50 dark:bg-gray-800/50 border-l-4 border-gray-300 dark:border-gray-600 p-3 rounded-r-lg opacity-70">
-                                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                    ${prefix}${escapeHTML(choiceText)}
-                                </p>
-                            </div>`;
-          }
-        }
-      });
-      choicesHTML += `</div>`;
-    } else {
-      let prefix = hideABCD
-        ? ""
-        : isMultipleChoice
-          ? `${ansStr.toUpperCase()}. `
-          : "";
-      choicesHTML = `
-                <div class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 p-3 rounded-r-lg mt-4">
-                    <p class="text-sm font-bold text-green-700 dark:text-green-400">
-                        ${prefix}${escapeHTML(correctText)} <!-- Feature #22: Removed check icon -->
-                    </p>
-                </div>`;
-    }
-
-    const isProtectedDeck = isDeckPasswordProtected(q.Subject);
-    let reportClass = globallyReportedQs.has(q.ID)
-      ? "text-red-500 bg-red-50 dark:bg-red-900/30"
-      : isProtectedDeck
-        ? "text-gray-300 bg-gray-100 dark:bg-gray-700/40 cursor-not-allowed opacity-60"
-        : "text-gray-400 bg-white dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-500";
-
-    html += `
-            <div class="review-question-card bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 animate-card-in">
-                <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 dark:border-gray-700">
-                    <span class="bg-brand-50 text-brand-600 text-xs px-2 py-1 rounded font-bold dark:bg-brand-900/30 dark:text-brand-400">Question ${originalIndex + 1}</span>
-                    
-                    <div class="flex gap-2 items-center">
-                        <!-- Feature 16: Individual Toggle Button -->
-                        ${
-                          isMultipleChoice
-                            ? `<button onclick="toggleSpecificChoices('${encodeHandlerValue(q.ID)}')" class="text-xs font-bold px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded transition-colors">
-                          ${showWrongForThisQ ? '<i class="fa-solid fa-eye-slash mr-1"></i> Hide Choices' : '<i class="fa-solid fa-eye mr-1"></i> Show Choices'}
-                        </button>`
-                            : ""
-                        }
-
-                        <button onclick="event.stopPropagation(); toggleQuestionFavorite('${encodeHandlerValue(q.ID)}')" class="${isQuestionFavorite ? "text-yellow-500" : "text-gray-400 hover:text-yellow-500"} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95 transition-all" title="${isQuestionFavorite ? "Remove from Favorites" : "Add to Favorites"}">
-                            <i class="fa-solid fa-star"></i>
-                        </button>
-
-                        ${
-                          isProtectedDeck
-                            ? `<button type="button" class="${reportClass} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm transition-all" title="Reporting disabled for password-protected decks" disabled>
-                                <i class="fa-solid fa-triangle-exclamation"></i>
-                            </button>`
-                            : `<button onclick="openReportModalFromStudy('${encodeHandlerValue(q.ID)}')" class="${reportClass} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95 transition-all" title="${globallyReportedQs.has(q.ID) ? "Active Community Report" : "Report Issue"}">
-                                <i class="fa-solid fa-triangle-exclamation"></i>
-                            </button>`
-                        }
-                    </div>
-                </div>
-                
-                <p class="font-medium text-gray-800 dark:text-gray-100 mb-2 text-lg">${formatQuestionText(cleanQuestionText)}</p>
-                
-                ${q.ImageURL ? `<img src="${escapeHTML(q.ImageURL)}" alt="Reference" class="w-full max-w-md mx-auto rounded-lg mb-4 shadow-sm border transition-all duration-500">` : ""}                        
-                ${choicesHTML}
-                
-                ${
-                  q.Explanation && q.Explanation.trim() !== ""
-                    ? `
-                    <div class="mt-4 text-sm text-gray-700 dark:text-gray-300 bg-blue-50 dark:bg-gray-900/50 p-3 rounded-lg border border-blue-100 dark:border-gray-700">
-                        <strong class="text-blue-800 dark:text-blue-400"><i class="fa-solid fa-lightbulb mr-1"></i> Explanation:</strong> ${escapeHTML(q.Explanation)}
-                    </div>
-                `
-                    : ""
-                }
-            </div>
-        `;
-  });
-
-  if (showBottomNavigation) html += navigationHTML;
-
-  if (
-    pageSize === "All" &&
-    displayQuestions.length < filteredQuestions.length
-  ) {
-    html += `
-      <div class="flex justify-center py-4">
-        <button type="button" onclick="loadMoreReviewQuestions()" class="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors">
-          Load more questions (${filteredQuestions.length - displayQuestions.length} remaining)
-        </button>
-      </div>
-    `;
-  }
-
-  container.innerHTML = html;
-  navigate("deck-review");
-
-  setTimeout(() => {
-    const scrollContainer = document.querySelector("main");
-    if (scrollContainer && layout === "scroll") {
-      scrollContainer.scrollTop = progress.scrollY || 0;
-    }
-    applyTitleMode();
-  }, 100);
-}
-
-function loadMoreReviewQuestions() {
-  reviewRenderLimit += 50;
-  renderDeckReview(currentReviewSubject, currentReviewQuestions);
-}
-
-if (typeof globalThis !== "undefined") {
-  globalThis.renderDeckReviewImplementation = renderDeckReviewImplementation;
-  globalThis.loadMoreReviewQuestions = loadMoreReviewQuestions;
-}
-
-function toggleHideABCD() {
-  if (
-    typeof QuizRendering !== "undefined" &&
-    typeof QuizRendering.toggleHideABCD === "function"
-  ) {
-    return QuizRendering.toggleHideABCD();
-  }
-  const isHidden = document.getElementById("toggle-hide-abcd").checked;
-  state.prefs.hideABCD = isHidden;
-  saveState();
-
-  reRenderDeckReview();
-}
-
-function toggleQuizHideABCD() {
-  if (
-    typeof QuizRendering !== "undefined" &&
-    typeof QuizRendering.toggleQuizHideABCD === "function"
-  ) {
-    return QuizRendering.toggleQuizHideABCD();
-  }
-  const hideToggle = document.getElementById("toggle-quiz-hide-abcd");
-  if (!hideToggle || hideToggle.disabled) return;
-
-  const isHidden = hideToggle.checked;
-
-  if (!state.prefs) state.prefs = {};
-  state.prefs.quizHideABCD = isHidden;
-  saveState();
-
-  if (document.getElementById("view-practice").classList.contains("active")) {
-    renderQuestion();
-  }
-}
-
-function toggleShowWrongChoices() {
-  if (
-    typeof QuizRendering !== "undefined" &&
-    typeof QuizRendering.toggleShowWrongChoices === "function"
-  ) {
-    return QuizRendering.toggleShowWrongChoices();
-  }
-  const isChecked = document.getElementById("toggle-wrong-choices").checked;
-  state.prefs.showWrongChoices = isChecked;
-  saveState();
-  reRenderDeckReview();
-}
-
-function toggleClozeMode(source) {
-  if (
-    typeof QuizRendering !== "undefined" &&
-    typeof QuizRendering.toggleClozeMode === "function"
-  ) {
-    return QuizRendering.toggleClozeMode(source);
-  }
-  const element = source || document.getElementById("toggle-cloze-mode");
-  state.prefs.clozeEnabled = element ? Boolean(element.checked) : false;
-  saveState();
-
-  if (state.session.active) {
-    renderQuestion();
-  }
-}
-
-function toggleSrsMode(source) {
-  if (
-    typeof QuizRendering !== "undefined" &&
-    typeof QuizRendering.toggleSrsMode === "function"
-  ) {
-    return QuizRendering.toggleSrsMode(source);
-  }
-  const element = source || document.getElementById("toggle-srs-mode");
-  state.prefs.srsEnabled = element ? Boolean(element.checked) : false;
-  saveState();
-
-  if (state.session.active) {
-    const activeQuestions = state.session.questions || [];
-    const current = activeQuestions[state.session.currentIndex] || null;
-    if (current) {
-      renderQuestion();
-    }
-  }
 }
 
 function toggleFavoriteDeck(subjectId) {
@@ -4462,499 +3616,6 @@ function toggleNavigationPosition(source) {
     document.getElementById("view-deck-review")?.classList.contains("active")
   ) {
     reRenderDeckReview();
-  }
-}
-
-function toggleModal(modalId, isVisible) {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.toggleModal === "function"
-  ) {
-    return UIModal.toggleModal(modalId, isVisible);
-  }
-
-  const modal = document.getElementById(modalId);
-  if (!modal) return;
-  const inner = modal.querySelector("div");
-
-  if (isVisible) {
-    modal.setAttribute("aria-hidden", "false");
-    setTimeout(() => {
-      modal.classList.remove("opacity-0");
-      if (inner) inner.classList.remove("scale-95", "opacity-0");
-    }, 10);
-  } else {
-    modal.setAttribute("aria-hidden", "true");
-    modal.classList.add("opacity-0");
-    if (inner) inner.classList.add("scale-95");
-    setTimeout(() => {
-      modal.setAttribute("aria-hidden", "true");
-    }, 300);
-  }
-}
-
-function openAboutModal() {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.openAboutModal === "function"
-  ) {
-    return UIModal.openAboutModal();
-  }
-  toggleModal("about-modal", true);
-}
-
-function closeAboutModal() {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.closeAboutModal === "function"
-  ) {
-    return UIModal.closeAboutModal();
-  }
-  toggleModal("about-modal", false);
-}
-
-let confirmResolver = null;
-
-function requestConfirmation(message, title = "Confirm Action") {
-  return new Promise((resolve) => {
-    confirmResolver = resolve;
-    const modal = document.getElementById("confirm-modal");
-    if (!modal) {
-      resolve(window.confirm(message));
-      return;
-    }
-    if (modal.parentElement !== document.body) document.body.appendChild(modal);
-    document.getElementById("confirm-title").innerHTML =
-      `<i class="fa-solid fa-circle-question text-brand-500 mr-2"></i>${escapeHTML(title)}`;
-    document.getElementById("confirm-message").innerText = message;
-    toggleModal("confirm-modal", true);
-  });
-}
-
-function closeConfirmModal(confirmed) {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.closeConfirmModal === "function"
-  ) {
-    return UIModal.closeConfirmModal(confirmed);
-  }
-  toggleModal("confirm-modal", false);
-  if (confirmResolver) {
-    const resolve = confirmResolver;
-    confirmResolver = null;
-    setTimeout(() => resolve(confirmed), 320);
-  }
-}
-
-function openReportModal() {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.openReportModal === "function"
-  ) {
-    return UIModal.openReportModal();
-  }
-  const q = state.session?.questions?.[state.session?.currentIndex];
-  if (!q) return;
-
-  let reportedQs = [];
-  try {
-    reportedQs = JSON.parse(getStoredItem("reported_qs", "[]"));
-  } catch (e) {
-    console.warn("Reported QS array corrupted. Resetting.", e);
-    setStoredItem("reported_qs", "[]");
-  }
-
-  if (reportedQs.includes(q.ID)) {
-    alert(
-      "You have already reported this question. Thank you for your feedback!",
-    );
-    return;
-  }
-
-  state.reportQuestion = q;
-
-  const reportType = document.getElementById("report-type");
-  const reportLesson = document.getElementById("report-lesson");
-  const reportComments = document.getElementById("report-comments");
-  if (reportType) reportType.value = "";
-  if (reportLesson) reportLesson.value = "";
-  if (reportComments) reportComments.value = "";
-
-  toggleModal("report-modal", true);
-}
-
-function closeReportModal() {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.closeReportModal === "function"
-  ) {
-    return UIModal.closeReportModal();
-  }
-  state.reportQuestion = null;
-  toggleModal("report-modal", false);
-}
-function openSessionSettingsModal() {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.openSessionSettingsModal === "function"
-  ) {
-    return UIModal.openSessionSettingsModal();
-  }
-  const recallToggle = document.getElementById("toggle-active-recall");
-  if (recallToggle) recallToggle.checked = state.prefs.activeRecall === true;
-
-  const choicesToggle = document.getElementById("toggle-shuffle-choices");
-  if (choicesToggle)
-    choicesToggle.checked = state.prefs.shuffleChoices !== false;
-  const modalChoicesToggle = document.getElementById(
-    "toggle-modal-shuffle-choices",
-  );
-  if (modalChoicesToggle)
-    modalChoicesToggle.checked = state.prefs.shuffleChoices !== false;
-
-  const questionsToggle = document.getElementById("toggle-shuffle-questions");
-  if (questionsToggle)
-    questionsToggle.checked = state.prefs.shuffleQuestions !== false;
-
-  const quizHideToggle = document.getElementById("toggle-quiz-hide-abcd");
-  if (quizHideToggle)
-    quizHideToggle.checked = state.prefs.quizHideABCD === true;
-
-  const clozeToggle = document.getElementById("toggle-cloze-mode");
-  if (clozeToggle) clozeToggle.checked = state.prefs.clozeEnabled !== false;
-
-  const srsToggle = document.getElementById("toggle-srs-mode");
-  if (srsToggle) srsToggle.checked = state.prefs.srsEnabled === true;
-
-  const qTypeSelect = document.getElementById("toggle-question-type");
-  if (qTypeSelect) qTypeSelect.value = state.prefs.qTypeOverride || "auto";
-
-  const navigationSelect = document.getElementById(
-    "navigation-position-select",
-  );
-  if (navigationSelect) navigationSelect.value = getQuizNavigationPosition();
-  const navigationButton = document.getElementById(
-    "toggle-session-navigation-bottom",
-  );
-  if (navigationButton) {
-    navigationButton.textContent = getScrollNavigationButtonLabel(
-      state.prefs.quizNavigationPosition || "top",
-    );
-  }
-
-  toggleModal("session-settings-modal", true);
-}
-
-function closeSessionSettingsModal() {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.closeSessionSettingsModal === "function"
-  ) {
-    return UIModal.closeSessionSettingsModal();
-  }
-  toggleModal("session-settings-modal", false);
-}
-
-// Open Review Settings Modal
-function openReviewSettingsModal() {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.openReviewSettingsModal === "function"
-  ) {
-    return UIModal.openReviewSettingsModal();
-  }
-  const modal = document.getElementById("review-settings-modal");
-  const navigationButton = document.getElementById(
-    "toggle-review-navigation-bottom",
-  );
-  if (navigationButton) {
-    navigationButton.textContent = getScrollNavigationButtonLabel(
-      getStudyNavigationPosition(state.prefs.studyLayout || "scroll"),
-    );
-  }
-  updateStudyFilterToggle();
-  modal.setAttribute("aria-hidden", "false");
-  // Small delay allows the browser to render 'block' before applying opacity for the transition
-  setTimeout(() => {
-    modal.classList.remove("opacity-0");
-    modal.querySelector("div").classList.remove("scale-95");
-  }, 10);
-}
-
-// Close Review Settings Modal
-function closeReviewSettingsModal() {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.closeReviewSettingsModal === "function"
-  ) {
-    return UIModal.closeReviewSettingsModal();
-  }
-  const modal = document.getElementById("review-settings-modal");
-  modal.classList.add("opacity-0");
-  modal.querySelector("div").classList.add("scale-95");
-  // Wait for transition to finish before hiding element
-  setTimeout(() => {
-    modal.setAttribute("aria-hidden", "true");
-  }, 300);
-}
-
-// Handle layout changes directly from the modal
-function handleReviewLayoutChange(layoutType) {
-  const perPageContainer = document.getElementById("review-per-page-container");
-  const navigationToggle = document.getElementById(
-    "toggle-review-navigation-bottom",
-  );
-
-  if (layoutType === "single") {
-    perPageContainer.classList.add("hidden");
-  } else {
-    perPageContainer.classList.remove("hidden");
-  }
-
-  if (navigationToggle) {
-    navigationToggle.textContent = getScrollNavigationButtonLabel(
-      getStudyNavigationPosition(layoutType),
-    );
-  }
-
-  changeStudyLayout(layoutType);
-}
-
-function updateStudyFilterToggle() {
-  const toggle = document.getElementById("study-filter-toggle");
-  const icon = document.getElementById("study-filter-icon");
-  if (!toggle || !icon) return;
-
-  const isFavorites = (state.prefs.studyFilterMode || "all") === "favorites";
-  toggle.setAttribute("aria-pressed", String(isFavorites));
-  toggle.setAttribute(
-    "aria-label",
-    isFavorites ? "Favorites mode enabled" : "All items mode enabled",
-  );
-  toggle.title = isFavorites ? "Favorites only" : "All items";
-  icon.className = isFavorites ? "fa-solid fa-star" : "fa-solid fa-list";
-
-  toggle.classList.toggle("bg-yellow-100", isFavorites);
-  toggle.classList.toggle("text-yellow-600", isFavorites);
-  toggle.classList.toggle("dark:bg-yellow-900/30", isFavorites);
-  toggle.classList.toggle("dark:text-yellow-300", isFavorites);
-
-  toggle.classList.toggle("bg-gray-200", !isFavorites);
-  toggle.classList.toggle("text-gray-700", !isFavorites);
-  toggle.classList.toggle("dark:bg-gray-700", !isFavorites);
-  toggle.classList.toggle("dark:text-gray-200", !isFavorites);
-}
-
-function toggleStudyFilterMode() {
-  const nextMode =
-    (state.prefs.studyFilterMode || "all") === "favorites"
-      ? "all"
-      : "favorites";
-  changeStudyFilterMode(nextMode);
-}
-
-function changeStudyFilterMode(mode) {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.changeStudyFilterMode === "function"
-  ) {
-    return UIModal.changeStudyFilterMode(mode);
-  }
-  const nextMode = mode === "favorites" ? "favorites" : "all";
-  state.prefs.studyFilterMode = nextMode;
-  saveState();
-  updateStudyFilterToggle();
-  if (currentReviewSubject) {
-    const currentQuestions = getQuestionsForSubject(currentReviewSubject) || [];
-    if (currentQuestions.length > 0) {
-      renderDeckReview(currentReviewSubject, currentQuestions);
-    }
-  }
-}
-
-let pendingLockedFolderPath = null;
-let pendingLockedFolderName = null;
-
-function openFolderPasswordModal(fullPath, folderName) {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.openFolderPasswordModal === "function"
-  ) {
-    return UIModal.openFolderPasswordModal(fullPath, folderName);
-  }
-  pendingLockedFolderPath = fullPath;
-  pendingLockedFolderName = folderName;
-
-  document.getElementById("folder-password-message").innerText =
-    `The folder "${folderName}" requires a password to view its contents.`;
-
-  toggleModal("folder-password-modal", true);
-}
-
-function closeFolderPasswordModal() {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.closeFolderPasswordModal === "function"
-  ) {
-    return UIModal.closeFolderPasswordModal();
-  }
-  toggleModal("folder-password-modal", false);
-  const inputEl = document.getElementById("folder-password-input");
-  if (inputEl) inputEl.value = "";
-}
-
-function openDeckPasswordModal(subject, action) {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.openDeckPasswordModal === "function"
-  ) {
-    return UIModal.openDeckPasswordModal(subject, action);
-  }
-  pendingDeckSubject = subject;
-  pendingDeckAction = action;
-
-  const messageEl = document.getElementById("deck-password-message");
-  if (messageEl) {
-    const shortName = subject.split("::").pop();
-    messageEl.innerText = `The deck "${escapeHTML(shortName)}" requires a password.`;
-  }
-
-  toggleModal("deck-password-modal", true);
-}
-
-function closeDeckPasswordModal() {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.closeDeckPasswordModal === "function"
-  ) {
-    return UIModal.closeDeckPasswordModal();
-  }
-  toggleModal("deck-password-modal", false);
-  const inputEl = document.getElementById("deck-password-input");
-  if (inputEl) inputEl.value = "";
-}
-
-function openReportModalFromStudy(questionId) {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.openReportModalFromStudy === "function"
-  ) {
-    return UIModal.openReportModalFromStudy(questionId);
-  }
-  questionId = decodeHandlerValue(questionId);
-  const q = (state.db || []).find((item) => item.ID === questionId);
-  if (!q) return;
-
-  let reportedQs = [];
-  try {
-    reportedQs = JSON.parse(getStoredItem("reported_qs", "[]"));
-  } catch (e) {
-    console.warn("Reported QS array corrupted. Resetting.", e);
-    setStoredItem("reported_qs", "[]");
-  }
-
-  if (reportedQs.includes(q.ID)) {
-    alert(
-      "You have already reported this question. Thank you for your feedback!",
-    );
-    return;
-  }
-
-  state.reportQuestion = q;
-
-  const reportType = document.getElementById("report-type");
-  const reportComments = document.getElementById("report-comments");
-  if (reportType) reportType.value = "";
-  if (reportComments) reportComments.value = "";
-
-  toggleModal("report-modal", true);
-}
-
-async function submitReport() {
-  if (
-    typeof UIModal !== "undefined" &&
-    typeof UIModal.submitReport === "function"
-  ) {
-    return UIModal.submitReport();
-  }
-  const typeEl = document.getElementById("report-type");
-  const lesson = document.getElementById("report-lesson").value.trim();
-  const comments = document.getElementById("report-comments").value.trim();
-
-  if (!typeEl.value) {
-    alert("Please select an Error Type.");
-    return;
-  }
-
-  const btn = document.getElementById("btn-submit-report");
-  const originalText = btn.innerHTML;
-  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Sending...';
-  btn.disabled = true;
-
-  const q =
-    state.reportQuestion || state.session.questions[state.session.currentIndex];
-
-  if (!q) {
-    alert("Error: No question found to report.");
-    btn.innerHTML = originalText;
-    btn.disabled = false;
-    return;
-  }
-
-  if (isDeckPasswordProtected(q.Subject)) {
-    alert("Reporting is disabled for password-protected decks.");
-    btn.innerHTML = originalText;
-    btn.disabled = false;
-    return;
-  }
-
-  try {
-    const result = await AppNetwork.submitReport({
-      questionId: q.ID,
-      subject: q.Subject,
-      questionText: q.Question,
-      errorType: typeEl.value,
-      lesson: lesson,
-      comments: comments,
-      choices: { A: q.ChoiceA, B: q.ChoiceB, C: q.ChoiceC, D: q.ChoiceD },
-      correctAnswer: q.Answer,
-    });
-
-    if (result.status === "success") {
-      const reportedQs = JSON.parse(getStoredItem("reported_qs", "[]"));
-      reportedQs.push(q.ID);
-      setStoredItem("reported_qs", JSON.stringify(reportedQs));
-
-      btn.innerHTML =
-        '<i class="fa-solid fa-check mr-2"></i> Report Submitted!';
-      btn.classList.remove("bg-red-500", "hover:bg-red-600");
-      btn.classList.add("bg-green-500", "hover:bg-green-600");
-
-      setTimeout(() => {
-        closeReportModal();
-        setTimeout(() => {
-          btn.innerHTML = originalText;
-          btn.disabled = false;
-          btn.classList.remove("bg-green-500", "hover:bg-green-600");
-          btn.classList.add("bg-red-500", "hover:bg-red-600");
-        }, 500);
-
-        if (!state.reportQuestion) {
-          if (state.session.userAnswers[state.session.currentIndex]) {
-            nextQuestion();
-          } else {
-            revealAnswer();
-          }
-        }
-
-        state.reportQuestion = null;
-      }, 1500);
-    }
-  } catch (err) {
-    console.error(err);
-    alert("Network error. Please try again.");
-    btn.innerHTML = originalText;
-    btn.disabled = false;
   }
 }
 

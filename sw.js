@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "mrh-static";
-const CACHE_VERSION = "v12";
+const CACHE_VERSION = "v13";
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -12,7 +12,6 @@ const APP_SHELL = [
   "/app-core-network.js",
   "/session-core.js",
   "/analytics-core.js",
-  "/app-sync-core.js",
   "/ui-modal-core.js",
   "/deck-nav-core.js",
   "/deck-review-core.js",

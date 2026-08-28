@@ -91,7 +91,6 @@
     ]);
     await loadFeatureScript("session-core.js");
     await loadFeatureScript("analytics-core.js");
-    await loadFeatureScript("app-sync-core.js");
 
     await Promise.all([
       loadFeatureScript("ui-modal-core.js"),

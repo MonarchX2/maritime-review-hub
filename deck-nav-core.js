@@ -37,14 +37,13 @@
       saveState();
     }
 
-    globalScope.updateDashboard();
-
     document
       .querySelectorAll(".view-section")
       .forEach((el) => el.classList.remove("active"));
     const viewElement = document.getElementById(`view-${viewId}`);
     if (!viewElement) return false;
     viewElement.classList.add("active");
+    globalScope.updateDashboard();
     if (viewId === "stats") globalScope.renderCharts();
   }
 
@@ -331,8 +330,10 @@
   if (typeof module !== "undefined" && module.exports) {
     module.exports = DeckNavCore;
   }
-})(typeof globalScope !== "undefined"
-  ? globalScope
-  : typeof globalThis !== "undefined"
-    ? globalThis
-    : this);
+})(
+  typeof globalScope !== "undefined"
+    ? globalScope
+    : typeof globalThis !== "undefined"
+      ? globalThis
+      : this,
+);

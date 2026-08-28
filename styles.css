@@ -55,6 +55,21 @@
   contain-intrinsic-size: 0 420px;
 }
 
+#deck-review-list > .review-question-card:nth-child(n + 21) {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* --------------------------------------------------------------------------
    02. BASE / DOCUMENT STYLES
    -------------------------------------------------------------------------- */
