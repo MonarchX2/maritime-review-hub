@@ -1835,11 +1835,6 @@ function renderCategoryProgressNow() {
         state.prefs.deckNameMode === "clip" ? "truncate" : "whitespace-normal";
       const totalQuestionsInDb = cat.QuestionCount;
       const databaseUnavailable = !isInitialSyncComplete;
-      const freshness = getDeckDataFreshnessState();
-      const staleBadgeHtml =
-        freshness.isStale && !databaseUnavailable
-          ? `<span class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-700 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-300"><i class="fa-solid fa-clock-rotate-left"></i> Cached</span>`
-          : "";
 
       const isRoot = !state.currentPath || state.currentPath.length === 0;
       const isArchived = (state.prefs?.archivedDecks || []).includes(subj);
@@ -1960,7 +1955,7 @@ function renderCategoryProgressNow() {
                   <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm flex-shrink-0"></i>
                   <span class="${deckNameMode} break-words">${safeName}</span> ${lockIcon}
                 </h3>
-                <div class="flex-shrink-0 flex items-center gap-1.5">${statusBadge}${staleBadgeHtml}</div>
+                <div class="flex-shrink-0 flex items-center gap-1.5">${statusBadge}</div>
               </div>
               ${statsHTML}
             </div>
