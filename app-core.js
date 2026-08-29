@@ -990,6 +990,21 @@ async function checkSyncStatusLightweight() {
 // ============================================
 // ENHANCED SYNC DATABASE WITH ALL FIXES
 // ============================================
+function getSummarySyncDecision(summaryData, wasConnected) {
+  const changed =
+    getSummarySignature(state.categorySummary || []) !==
+    getSummarySignature(summaryData);
+  const canApplyNow =
+    state.prefs.databaseUpdateMode === "immediate" || !state.session.active;
+
+  return {
+    changed,
+    canApplyNow,
+    shouldApply: canApplyNow && (changed || !wasConnected),
+    shouldQueue: !canApplyNow && changed,
+  };
+}
+
 async function syncDatabaseImplementation(
   isRetry = false,
   isBackgroundCheck = false,
@@ -1061,24 +1076,19 @@ async function syncDatabaseImplementation(
         isColdStart = false;
         sanitizeDeletedDeckReferences();
 
-        const changed =
-          getSummarySignature(state.categorySummary || []) !==
-          getSummarySignature(summaryData);
-        const canApplyNow =
-          state.prefs.databaseUpdateMode === "immediate" ||
-          !state.session.active;
+        const syncDecision = getSummarySyncDecision(summaryData, wasConnected);
 
-        if (canApplyNow && (changed || !wasConnected)) {
+        if (syncDecision.shouldApply) {
           pendingSummaryData = null;
-          applySummaryData(summaryData, changed);
+          applySummaryData(summaryData, syncDecision.changed);
           state.accessMetadata = buildAccessMetadataMap(summaryData);
-        } else if (!canApplyNow) {
-          if (changed) pendingSummaryData = summaryData;
+        } else if (!syncDecision.canApplyNow) {
+          if (syncDecision.shouldQueue) pendingSummaryData = summaryData;
           if (!wasConnected) renderCategoryProgress();
         }
 
         updateSyncStatus(
-          `<i class="fa-solid fa-check mr-1"></i> Connected. ${changed && !canApplyNow ? "Update waiting until your session ends." : `Checked ${summaryData.length} subjects.`}`,
+          `<i class="fa-solid fa-check mr-1"></i> Connected. ${syncDecision.changed && !syncDecision.canApplyNow ? "Update waiting until your session ends." : `Checked ${summaryData.length} subjects.`}`,
           "success",
           !silentSync && !initialSyncSuccessShown,
         );
@@ -2472,8 +2482,10 @@ async function reviewDeck(subject, pass = null) {
       if (loader) loader.classList.add("hidden");
       return;
     }
-    alert(
+    showToast(
       `Cannot review deck. You are offline and "${subject}" has not been downloaded yet.`,
+      "warning",
+      5000,
     );
     if (loader) loader.classList.add("hidden");
     return;
@@ -2677,7 +2689,7 @@ async function resetProgress() {
     clearSessionProgress();
     await saveState();
     updateDashboard();
-    alert("Progress Reset.");
+    showToast("Progress Reset.", "success");
 
     const statsView = document.getElementById("view-stats");
     const statsChart = document.getElementById("chart-accuracy");
@@ -2769,7 +2781,7 @@ async function clearAppData() {
     window.location.reload();
   } catch (error) {
     console.error("Unable to clear app data.", error);
-    alert("Some app data could not be cleared. Please try again.");
+    showToast("Some app data could not be cleared. Please try again.", "error");
   } finally {
     clearAppDataInProgress = false;
   }
