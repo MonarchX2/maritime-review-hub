@@ -527,12 +527,7 @@ function getDeckDataFreshnessBannerHtml() {
   }
 
   if (freshness.isHealthy) {
-    return `
-      <div class="mb-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-300">
-        <i class="fa-solid fa-circle-check"></i>
-        <span>Live data • Updated ${formatCacheAge(freshness.cacheAgeMs)}</span>
-      </div>
-    `;
+    return "";
   }
 
   if (freshness.isColdStart) {
