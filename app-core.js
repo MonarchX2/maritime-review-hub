@@ -548,12 +548,7 @@ function getDeckDataFreshnessBannerHtml() {
     `;
   }
 
-  return `
-    <div class="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-300">
-      <i class="fa-solid fa-database"></i>
-      <span>Using cached deck data • Last synced ${formatCacheAge(freshness.cacheAgeMs)}. This list may be stale.</span>
-    </div>
-  `;
+  return "";
 }
 
 async function optimizedBackgroundSync() {
