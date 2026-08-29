@@ -115,8 +115,9 @@
     const reportedQs = readReportedQuestionIds();
 
     if (reportedQs.includes(String(q.ID))) {
-      alert(
+      globalScope.showToast?.(
         "You have already reported this question. Thank you for your feedback!",
+        "info",
       );
       return;
     }
@@ -126,9 +127,11 @@
     const reportType = document.getElementById("report-type");
     const reportLesson = document.getElementById("report-lesson");
     const reportComments = document.getElementById("report-comments");
+    const reportTypeError = document.getElementById("report-type-error");
     if (reportType) reportType.value = "";
     if (reportLesson) reportLesson.value = "";
     if (reportComments) reportComments.value = "";
+    if (reportTypeError) setInlineError(reportTypeError, "");
 
     toggleModal("report-modal", true);
   }
@@ -148,8 +151,9 @@
     const reportedQs = readReportedQuestionIds();
 
     if (reportedQs.includes(String(q.ID))) {
-      alert(
+      globalScope.showToast?.(
         "You have already reported this question. Thank you for your feedback!",
+        "info",
       );
       return;
     }
@@ -158,8 +162,10 @@
 
     const reportType = document.getElementById("report-type");
     const reportComments = document.getElementById("report-comments");
+    const reportTypeError = document.getElementById("report-type-error");
     if (reportType) reportType.value = "";
     if (reportComments) reportComments.value = "";
+    if (reportTypeError) setInlineError(reportTypeError, "");
 
     toggleModal("report-modal", true);
   }
@@ -173,8 +179,11 @@
     const lesson = String(lessonEl?.value || "").trim();
     const comments = String(commentsEl?.value || "").trim();
 
+    const typeErrorEl = document.getElementById("report-type-error");
+    setInlineError(typeErrorEl, "");
     if (!typeEl.value) {
-      alert("Please select an Error Type.");
+      setInlineError(typeErrorEl, "Please select an error type.");
+      typeEl.focus();
       return;
     }
 
@@ -190,7 +199,7 @@
       state.session?.questions?.[state.session.currentIndex];
 
     if (!q) {
-      alert("Error: No question found to report.");
+      globalScope.showToast?.("Error: No question found to report.", "error");
       btn.innerHTML = originalText;
       btn.disabled = false;
       return;
@@ -200,7 +209,10 @@
       typeof globalScope.isDeckPasswordProtected === "function" &&
       globalScope.isDeckPasswordProtected(q.Subject)
     ) {
-      alert("Reporting is disabled for password-protected decks.");
+      globalScope.showToast?.(
+        "Reporting is disabled for password-protected decks.",
+        "warning",
+      );
       btn.innerHTML = originalText;
       btn.disabled = false;
       return;
@@ -249,7 +261,7 @@
       }
     } catch (err) {
       console.error(err);
-      alert("Network error. Please try again.");
+      globalScope.showToast?.("Network error. Please try again.", "error");
       btn.innerHTML = originalText;
       btn.disabled = false;
     }
@@ -435,6 +447,14 @@
     if (messageEl)
       messageEl.textContent = `The folder "${folderName}" requires a password to view its contents.`;
 
+    const inputEl = document.getElementById("folder-password-input");
+    if (inputEl) {
+      inputEl.value = "";
+      inputEl.setAttribute("aria-invalid", "false");
+      inputEl.classList.remove("border-red-500", "focus:ring-red-500");
+    }
+    setInlineError(document.getElementById("folder-password-input-error"), "");
+
     toggleModal("folder-password-modal", true);
   }
 
@@ -442,6 +462,11 @@
     toggleModal("folder-password-modal", false);
     const inputEl = document.getElementById("folder-password-input");
     if (inputEl) inputEl.value = "";
+    setInlineError(document.getElementById("folder-password-input-error"), "");
+    if (inputEl) {
+      inputEl.setAttribute("aria-invalid", "false");
+      inputEl.classList.remove("border-red-500", "focus:ring-red-500");
+    }
   }
 
   let pendingDeckSubject = null;
@@ -457,6 +482,14 @@
       messageEl.innerText = `The deck "${shortName}" requires a password.`;
     }
 
+    const inputEl = document.getElementById("deck-password-input");
+    if (inputEl) {
+      inputEl.value = "";
+      inputEl.setAttribute("aria-invalid", "false");
+      inputEl.classList.remove("border-red-500", "focus:ring-red-500");
+    }
+    setInlineError(document.getElementById("deck-password-input-error"), "");
+
     toggleModal("deck-password-modal", true);
   }
 
@@ -464,6 +497,11 @@
     toggleModal("deck-password-modal", false);
     const inputEl = document.getElementById("deck-password-input");
     if (inputEl) inputEl.value = "";
+    setInlineError(document.getElementById("deck-password-input-error"), "");
+    if (inputEl) {
+      inputEl.setAttribute("aria-invalid", "false");
+      inputEl.classList.remove("border-red-500", "focus:ring-red-500");
+    }
   }
 
   // ===================== DROPDOWN MENU MANAGEMENT =====================

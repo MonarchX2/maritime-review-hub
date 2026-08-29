@@ -1,25 +1,56 @@
 const CACHE_PREFIX = "mrh-static";
-const CACHE_VERSION = "v17";
+const FALLBACK_CACHE_VERSION = "v2";
+
+function getServiceWorkerUrl() {
+  return new URL(self.location.href);
+}
+
+function getRuntimeCacheVersion() {
+  const version = getServiceWorkerUrl().searchParams.get("v");
+  return version || FALLBACK_CACHE_VERSION;
+}
+
+const CACHE_VERSION = getRuntimeCacheVersion();
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 
+function getAppBaseUrl() {
+  return new URL("./", self.location.href);
+}
+
+function resolveAppUrl(pathname) {
+  return new URL(pathname, getAppBaseUrl()).toString();
+}
+
+function getAppBasePath() {
+  const basePath = getAppBaseUrl().pathname;
+  return basePath.endsWith("/") ? basePath : `${basePath}/`;
+}
+
 const APP_SHELL = [
-  "/index.html",
-  "/tailwind.generated.css",
-  "/styles.css",
-  "/app-entry.js",
-  "/app-core.js",
-  "/app-core-state.js",
-  "/app-core-network.js",
-  "/session-core.js",
-  "/analytics-core.js",
-  "/ui-modal-core.js",
-  "/deck-nav-core.js",
-  "/deck-review-core.js",
-  "/quiz-rendering-core.js",
-  "/debug-utils.js",
-  "/storage-utils.js",
-  "/text-utils.js",
-];
+  "./index.html",
+  "./tailwind.generated.css",
+  "./styles.css",
+  "./app-entry.js",
+  "./app-core.js",
+  "./app-core-state.js",
+  "./app-core-network.js",
+  "./session-core.js",
+  "./analytics-core.js",
+  "./ui-modal-core.js",
+  "./deck-nav-core.js",
+  "./deck-review-core.js",
+  "./quiz-rendering-core.js",
+  "./debug-utils.js",
+  "./storage-utils.js",
+  "./text-utils.js",
+].map(resolveAppUrl);
+
+self.__MRH_SW__ = {
+  getRuntimeCacheVersion,
+  getAppBasePath,
+  resolveAppUrl,
+  CACHE_NAME,
+};
 
 const CDN_ORIGINS = new Set([
   "https://cdnjs.cloudflare.com",
@@ -83,10 +114,15 @@ function isAppShellNavigation(request) {
   }
 
   const url = new URL(request.url);
+  const appBasePath = getAppBasePath();
+  const appEntryPath = `${appBasePath}index.html`;
 
   return (
     isSameOrigin(url) &&
-    (url.pathname === "/" || url.pathname === "/index.html")
+    (url.pathname === appBasePath ||
+      url.pathname === appEntryPath ||
+      (appBasePath === "/" &&
+        (url.pathname === "/" || url.pathname === "/index.html")))
   );
 }
 
@@ -168,11 +204,14 @@ async function networkFirstNavigation(event) {
       // dynamic or user-specific HTML.
       const url = new URL(event.request.url);
 
+      const appBasePath = getAppBasePath();
+      const appEntryPath = `${appBasePath}index.html`;
+
       if (
         url.origin === self.location.origin &&
-        (url.pathname === "/" || url.pathname === "/index.html")
+        (url.pathname === appBasePath || url.pathname === appEntryPath)
       ) {
-        await cache.put("/index.html", response.clone());
+        await cache.put(resolveAppUrl("./index.html"), response.clone());
       }
     }
 
@@ -180,8 +219,9 @@ async function networkFirstNavigation(event) {
   } catch (error) {
     console.warn("[SW] Navigation network request failed, using cache:", error);
 
+    const appEntryUrl = resolveAppUrl("./index.html");
     const cached =
-      (await cache.match(event.request)) || (await cache.match("/index.html"));
+      (await cache.match(event.request)) || (await cache.match(appEntryUrl));
 
     if (cached) {
       return cached;

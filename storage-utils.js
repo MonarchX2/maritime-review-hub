@@ -159,6 +159,34 @@
     return `mrh_${getSafeStorageIdentity()}`;
   }
 
+  const STORAGE_SCHEMA_VERSION = 2;
+  const STORAGE_SCHEMA_KEY = "__mrh_storage_schema_version";
+  const MAX_JSON_PAYLOAD_BYTES = 250000;
+
+  function isPlainObject(value) {
+    return !!value && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function safeParseJSON(value, fallback = null) {
+    if (value === null || value === undefined) return fallback;
+    if (typeof value !== "string") {
+      const coerced = String(value);
+      if (!coerced.trim()) return fallback;
+      try {
+        return JSON.parse(coerced);
+      } catch (error) {
+        return fallback;
+      }
+    }
+
+    if (!value.trim()) return fallback;
+    try {
+      return JSON.parse(value);
+    } catch (error) {
+      return fallback;
+    }
+  }
+
   function getStorageKey(key) {
     return `${getStorageNamespace()}:${normalizeStorageKey(key)}`;
   }
@@ -241,17 +269,16 @@
 
   function getStoredJSON(key, fallback = null) {
     const stored = getStoredItem(key);
-    if (stored === null || stored === undefined) return fallback;
-    try {
-      return JSON.parse(stored);
-    } catch (error) {
-      return fallback;
-    }
+    return safeParseJSON(stored, fallback);
   }
 
   function setStoredJSON(key, value) {
     try {
-      return setStoredItem(key, JSON.stringify(value));
+      const serialized = JSON.stringify(value);
+      if (serialized.length > MAX_JSON_PAYLOAD_BYTES) {
+        return false;
+      }
+      return setStoredItem(key, serialized);
     } catch (error) {
       return false;
     }
@@ -281,17 +308,16 @@
 
   function getSessionStoredJSON(key, fallback = null) {
     const stored = getSessionStoredItem(key);
-    if (stored === null || stored === undefined) return fallback;
-    try {
-      return JSON.parse(stored);
-    } catch (error) {
-      return fallback;
-    }
+    return safeParseJSON(stored, fallback);
   }
 
   function setSessionStoredJSON(key, value) {
     try {
-      return setSessionStoredItem(key, JSON.stringify(value));
+      const serialized = JSON.stringify(value);
+      if (serialized.length > MAX_JSON_PAYLOAD_BYTES) {
+        return false;
+      }
+      return setSessionStoredItem(key, serialized);
     } catch (error) {
       return false;
     }
@@ -312,6 +338,8 @@
 
   function migrateLegacyStorageKeys() {
     const store = getLocalStorage();
+    const schemaVersionValue = safeGetItem(store, STORAGE_SCHEMA_KEY);
+    const schemaVersion = Number(schemaVersionValue || 0);
     let migrated = 0;
 
     LEGACY_KEYS.forEach((key) => {
@@ -327,7 +355,22 @@
       ) {
         migrated += 1;
       }
+
+      if (safeGetItem(store, legacyKey) !== null) {
+        safeRemoveItem(store, legacyKey);
+      }
     });
+
+    if (
+      !Number.isFinite(schemaVersion) ||
+      schemaVersion < STORAGE_SCHEMA_VERSION
+    ) {
+      try {
+        store.setItem(STORAGE_SCHEMA_KEY, String(STORAGE_SCHEMA_VERSION));
+      } catch (error) {
+        // Ignore quota or storage exceptions while migrating the schema version.
+      }
+    }
 
     return migrated;
   }
@@ -356,7 +399,8 @@
     if (includeLegacy) {
       LEGACY_KEYS.forEach((key) => {
         if (safeRemoveItem(localStore, getLegacyStorageKey(key))) removed += 1;
-        if (safeRemoveItem(sessionStore, getLegacyStorageKey(key))) removed += 1;
+        if (safeRemoveItem(sessionStore, getLegacyStorageKey(key)))
+          removed += 1;
       });
     }
 
@@ -406,6 +450,8 @@
     getStorageNamespace,
     getStorageKey,
     getLegacyStorageKey,
+    safeParseJSON,
+    isPlainObject,
     getStoredItem,
     getAnyNamespaceStoredItem,
     setStoredItem,
@@ -431,6 +477,8 @@
   root.getStorageKey = getStorageKey;
   root.getLegacyStorageKey = getLegacyStorageKey;
   root.getStorageNamespace = getStorageNamespace;
+  root.safeParseJSON = safeParseJSON;
+  root.isPlainObject = isPlainObject;
 })(
   typeof window !== "undefined"
     ? window

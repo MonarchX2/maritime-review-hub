@@ -1372,6 +1372,10 @@
                 </option>
                 <option value="Other">Other</option>
               </select>
+              <p
+                id="report-type-error"
+                class="hidden mt-2 text-xs font-medium text-red-600 dark:text-red-400"
+              ></p>
             </div>
             <div>
               <label
@@ -1834,7 +1838,7 @@
             This deck requires a password to access.
           </p>
 
-          <div class="relative w-full mb-6">
+          <div class="relative w-full mb-2">
             <input
               type="password"
               id="deck-password-input"
@@ -1850,6 +1854,10 @@
               <i class="fa-solid fa-eye text-lg"></i>
             </button>
           </div>
+          <p
+            id="deck-password-input-error"
+            class="hidden mb-4 text-xs font-medium text-red-600 dark:text-red-400"
+          ></p>
 
           <div class="flex gap-3">
             <button
@@ -1910,7 +1918,7 @@
             This folder requires a password to view its contents.
           </p>
 
-          <div class="relative w-full mb-6">
+          <div class="relative w-full mb-2">
             <input
               type="password"
               id="folder-password-input"
@@ -1926,6 +1934,10 @@
               <i class="fa-solid fa-eye text-lg"></i>
             </button>
           </div>
+          <p
+            id="folder-password-input-error"
+            class="hidden mb-4 text-xs font-medium text-red-600 dark:text-red-400"
+          ></p>
 
           <div class="flex gap-3">
             <button

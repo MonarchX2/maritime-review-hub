@@ -79,7 +79,11 @@
   }
 
   function setStoredJSON(key, value) {
-    return setStoredItem(key, JSON.stringify(value));
+    try {
+      return StorageUtils.setStoredJSON(key, value);
+    } catch (error) {
+      return false;
+    }
   }
 
   function getSessionStoredItem(key, fallback = null) {
@@ -201,6 +205,175 @@
   function normalizeCacheVersion(value) {
     if (value === null || value === undefined) return "";
     return String(value).trim();
+  }
+
+  function coerceBoolean(value, fallback = false) {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (["true", "1", "yes", "on"].includes(normalized)) return true;
+      if (["false", "0", "no", "off"].includes(normalized)) return false;
+    }
+    return fallback;
+  }
+
+  function normalizeCategorySummary(rawSummary) {
+    if (!Array.isArray(rawSummary)) return [];
+    return rawSummary
+      .filter((entry) => entry && typeof entry === "object")
+      .slice(0, 2000);
+  }
+
+  function normalizeStats(rawStats) {
+    const source =
+      rawStats && typeof rawStats === "object" && !Array.isArray(rawStats)
+        ? rawStats
+        : {};
+
+    const subjectAccuracy =
+      source.subjectAccuracy &&
+      typeof source.subjectAccuracy === "object" &&
+      !Array.isArray(source.subjectAccuracy)
+        ? Object.fromEntries(
+            Object.entries(source.subjectAccuracy)
+              .filter(
+                ([key, value]) =>
+                  typeof key === "string" &&
+                  (typeof value === "number" || typeof value === "string"),
+              )
+              .map(([key, value]) => [key, Number(value) || 0]),
+          )
+        : {};
+
+    return {
+      totalAnswered: Number.isFinite(Number(source.totalAnswered))
+        ? Number(source.totalAnswered)
+        : 0,
+      correct: Number.isFinite(Number(source.correct))
+        ? Number(source.correct)
+        : 0,
+      mistakes: Array.isArray(source.mistakes)
+        ? source.mistakes.filter(
+            (entry) => entry !== null && entry !== undefined,
+          )
+        : [],
+      subjectAccuracy,
+      completedQs: Array.isArray(source.completedQs)
+        ? source.completedQs.filter(
+            (entry) => entry !== null && entry !== undefined,
+          )
+        : [],
+      srsMap:
+        source.srsMap &&
+        typeof source.srsMap === "object" &&
+        !Array.isArray(source.srsMap)
+          ? source.srsMap
+          : {},
+    };
+  }
+
+  function normalizePrefs(rawPrefs) {
+    const source =
+      rawPrefs && typeof rawPrefs === "object" && !Array.isArray(rawPrefs)
+        ? rawPrefs
+        : {};
+
+    const normalized = {
+      ...state.prefs,
+      ...source,
+    };
+
+    normalized.darkMode = coerceBoolean(normalized.darkMode, true);
+    normalized.activeRecall = coerceBoolean(normalized.activeRecall, false);
+    normalized.shuffleChoices = coerceBoolean(normalized.shuffleChoices, true);
+    normalized.shuffleQuestions = coerceBoolean(
+      normalized.shuffleQuestions,
+      true,
+    );
+    normalized.hideABCD = coerceBoolean(normalized.hideABCD, true);
+    normalized.quizHideABCD = coerceBoolean(normalized.quizHideABCD, false);
+    normalized.showWrongChoices = coerceBoolean(
+      normalized.showWrongChoices,
+      true,
+    );
+    normalized.clozeEnabled = coerceBoolean(normalized.clozeEnabled, false);
+    normalized.srsEnabled = coerceBoolean(normalized.srsEnabled, false);
+
+    normalized.archivedDecks = Array.isArray(normalized.archivedDecks)
+      ? normalized.archivedDecks.filter((entry) => typeof entry === "string")
+      : [];
+    normalized.favoriteDecks = Array.isArray(normalized.favoriteDecks)
+      ? normalized.favoriteDecks.filter((entry) => typeof entry === "string")
+      : [];
+    normalized.favoriteQuestions = Array.isArray(normalized.favoriteQuestions)
+      ? normalized.favoriteQuestions.filter(
+          (entry) => typeof entry === "string",
+        )
+      : [];
+    normalized.recentDecks = Array.isArray(normalized.recentDecks)
+      ? normalized.recentDecks.filter((entry) => typeof entry === "string")
+      : [];
+    normalized.deletedDecks = Array.isArray(normalized.deletedDecks)
+      ? normalized.deletedDecks.filter((entry) => typeof entry === "string")
+      : [];
+    normalized.localDownloadDeletedDecks = Array.isArray(
+      normalized.localDownloadDeletedDecks,
+    )
+      ? normalized.localDownloadDeletedDecks.filter(
+          (entry) => typeof entry === "string",
+        )
+      : [];
+
+    const canonicalDeckNameMode = ["wrap", "clip"].includes(
+      normalized.deckNameMode,
+    )
+      ? normalized.deckNameMode
+      : ["wrap", "clip"].includes(normalized.titleMode)
+        ? normalized.titleMode
+        : "wrap";
+
+    normalized.deckNameMode = canonicalDeckNameMode;
+    normalized.titleMode = canonicalDeckNameMode;
+    normalized.databaseUpdateMode = ["idle", "immediate"].includes(
+      normalized.databaseUpdateMode,
+    )
+      ? normalized.databaseUpdateMode
+      : "idle";
+    normalized.quizNavigationPosition = ["top", "bottom", "auto"].includes(
+      normalized.quizNavigationPosition,
+    )
+      ? normalized.quizNavigationPosition
+      : "top";
+    normalized.reviewNavigationPosition = ["top", "bottom"].includes(
+      normalized.reviewNavigationPosition,
+    )
+      ? normalized.reviewNavigationPosition
+      : "top";
+    normalized.quizNavigationMode = ["manual", "auto"].includes(
+      normalized.quizNavigationMode,
+    )
+      ? normalized.quizNavigationMode
+      : "manual";
+    normalized.studySingleNavigationPosition = [
+      "top",
+      "bottom",
+      "auto",
+    ].includes(normalized.studySingleNavigationPosition)
+      ? normalized.studySingleNavigationPosition
+      : "top";
+    normalized.studyScrollNavigationPosition = [
+      "top",
+      "bottom",
+      "both",
+    ].includes(normalized.studyScrollNavigationPosition)
+      ? normalized.studyScrollNavigationPosition
+      : "both";
+    normalized.lastActivity =
+      normalized.lastActivity && typeof normalized.lastActivity === "object"
+        ? normalized.lastActivity
+        : null;
+
+    return normalized;
   }
 
   function syncPreferenceControls() {
@@ -362,10 +535,11 @@
     }
 
     if (savedSummary) {
-      try {
-        state.categorySummary = JSON.parse(savedSummary);
-      } catch (e) {
-        console.error("Summary corrupted, resetting.", e);
+      const parsedSummary = StorageUtils.safeParseJSON(savedSummary, null);
+      if (Array.isArray(parsedSummary)) {
+        state.categorySummary = normalizeCategorySummary(parsedSummary);
+      } else {
+        console.error("Summary corrupted, resetting.");
         state.categorySummary = [];
       }
     }
@@ -373,56 +547,31 @@
     ensureQuestionIndex();
 
     if (savedStats) {
-      try {
-        state.stats = JSON.parse(savedStats);
-      } catch (e) {
-        console.error("Stats corrupted, resetting to default.", e);
+      const parsedStats = StorageUtils.safeParseJSON(savedStats, null);
+      if (parsedStats && typeof parsedStats === "object") {
+        state.stats = normalizeStats(parsedStats);
+      } else {
+        console.error("Stats corrupted, resetting to default.");
         state.stats = {
           totalAnswered: 0,
           correct: 0,
           mistakes: [],
           subjectAccuracy: {},
+          completedQs: [],
+          srsMap: {},
         };
       }
     }
 
     if (savedPrefs) {
-      try {
-        const prefs = JSON.parse(savedPrefs);
-        state.prefs = {
+      const parsedPrefs = StorageUtils.safeParseJSON(savedPrefs, null);
+      if (parsedPrefs && typeof parsedPrefs === "object") {
+        state.prefs = normalizePrefs({
           ...state.prefs,
-          ...prefs,
-        };
-        state.prefs.favoriteDecks = Array.isArray(state.prefs.favoriteDecks)
-          ? state.prefs.favoriteDecks
-          : [];
-        state.prefs.recentDecks = Array.isArray(state.prefs.recentDecks)
-          ? state.prefs.recentDecks
-          : [];
-        const canonicalDeckNameMode = ["wrap", "clip"].includes(
-          state.prefs.deckNameMode,
-        )
-          ? state.prefs.deckNameMode
-          : ["wrap", "clip"].includes(state.prefs.titleMode)
-            ? state.prefs.titleMode
-            : "wrap";
-        state.prefs.deckNameMode = canonicalDeckNameMode;
-        state.prefs.titleMode = canonicalDeckNameMode;
-        if (!Object.prototype.hasOwnProperty.call(prefs, "activeRecall")) {
-          state.prefs.activeRecall = false;
-        }
-        if (
-          !Object.prototype.hasOwnProperty.call(prefs, "quizNavigationMode")
-        ) {
-          state.prefs.quizNavigationMode = "manual";
-        }
-        if (
-          !Object.prototype.hasOwnProperty.call(prefs, "quizNavigationPosition")
-        ) {
-          state.prefs.quizNavigationPosition = "top";
-        }
-      } catch (e) {
-        console.error("Invalid preferences.", e);
+          ...parsedPrefs,
+        });
+      } else {
+        console.error("Invalid preferences.");
       }
     }
 
@@ -488,6 +637,13 @@
           summaryCount: state.categorySummary.length,
         });
       }
+
+      state.stats = normalizeStats(state.stats);
+      state.prefs = normalizePrefs(state.prefs);
+      state.categorySummary = normalizeCategorySummary(
+        state.categorySummary || [],
+      );
+
       setStoredJSON("stats", state.stats);
       setStoredJSON("prefs", state.prefs);
       setStoredJSON("summary", state.categorySummary || []);
@@ -529,13 +685,18 @@
       stateSaveQueued = true;
       const scheduleFlush = () => {
         if (typeof requestIdleCallback === "function") {
-          requestIdleCallback(flushStateSave, { timeout: 250 });
+          requestIdleCallback(flushStateSave, { timeout: 300 });
         } else {
-          setTimeout(flushStateSave, 0);
+          setTimeout(flushStateSave, 150);
         }
       };
-      if (typeof queueMicrotask === "function") queueMicrotask(scheduleFlush);
-      else Promise.resolve().then(scheduleFlush);
+      if (typeof setTimeout === "function") {
+        setTimeout(scheduleFlush, 0);
+      } else if (typeof queueMicrotask === "function") {
+        queueMicrotask(scheduleFlush);
+      } else {
+        Promise.resolve().then(scheduleFlush);
+      }
     }
 
     return stateSavePromise;

@@ -4,6 +4,8 @@ const DB_URL =
 const SYNC_INTERVAL_MS = 60 * 1000;
 const SYNC_RETRY_INTERVAL_MS = 3 * 1000;
 const QUIZ_NAVIGATION_BREAKPOINT = 768;
+const STALE_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
+const DATA_CACHE_TIMESTAMP_KEY = "mrh_last_sync_complete_ms";
 
 let syncAbortController = null;
 let syncRetryTimer = null;
@@ -25,7 +27,44 @@ const lastDeckRefreshAtBySubject = {};
 const SYNC_STATUS_STORAGE_KEY = "mrh_last_sync_status_timestamp";
 const SYNC_REQUEST_TIMEOUT_MS = 60000;
 let __mrhAppInitialized = false;
+let __mrhAppReady = false;
+let __mrhInitializationTimer = null;
 let __mrhPollLoopToken = 0;
+
+function ensureAppReady() {
+  const bootstrapStatus =
+    typeof window !== "undefined" ? window.__MRH_BOOTSTRAP__?.status : null;
+
+  if (bootstrapStatus !== "ready" && !__mrhAppReady) {
+    throw new Error("App bootstrap not complete yet.");
+  }
+}
+
+function hasRequiredAppRuntime() {
+  if (typeof document === "undefined") {
+    return false;
+  }
+
+  return ["StorageUtils", "TextUtils", "AppState", "AppNetwork"].every(
+    (name) => typeof globalThis[name] !== "undefined",
+  );
+}
+
+function scheduleDeferredInitialization() {
+  if (__mrhInitializationTimer !== null) return false;
+
+  __mrhInitializationTimer = setTimeout(() => {
+    __mrhInitializationTimer = null;
+    if (
+      typeof window !== "undefined" &&
+      typeof window.initializeApp === "function"
+    ) {
+      window.initializeApp();
+    }
+  }, 50);
+
+  return true;
+}
 
 function readStoredSyncStatusTimestamp() {
   const stored = getStoredItem?.(SYNC_STATUS_STORAGE_KEY, "") || "";
@@ -170,6 +209,23 @@ function setInlineError(element, message) {
   if (!element) return;
   element.textContent = message || "";
   element.classList.toggle("hidden", !message);
+}
+
+function setFormError(inputId, message) {
+  const input = inputId ? document.getElementById(inputId) : null;
+  const errorElement = inputId
+    ? document.getElementById(`${inputId}-error`)
+    : null;
+
+  if (errorElement) {
+    setInlineError(errorElement, message);
+  }
+
+  if (input) {
+    input.setAttribute("aria-invalid", message ? "true" : "false");
+    input.classList.toggle("border-red-500", Boolean(message));
+    input.classList.toggle("focus:ring-red-500", Boolean(message));
+  }
 }
 
 async function loadState() {
@@ -379,71 +435,149 @@ function hideConnectionStatusAfterDelay(delay = 3000) {
   }, delay);
 }
 
+function formatCacheAge(ageMs) {
+  const ageValue = Number(ageMs || 0);
+  if (!Number.isFinite(ageValue) || ageValue <= 0) return "just now";
+  const minutes = Math.floor(ageValue / 60000);
+  if (minutes <= 0) return "under a minute ago";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function readStoredDeckCacheTimestamp() {
+  const raw = getStoredItem?.(DATA_CACHE_TIMESTAMP_KEY, "0") || "0";
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function persistDeckCacheTimestamp(timestampMs = Date.now()) {
+  const normalized = Number(timestampMs) || Date.now();
+  lastSyncAt = normalized;
+  try {
+    setStoredItem?.(DATA_CACHE_TIMESTAMP_KEY, String(normalized));
+  } catch (error) {
+    console.warn("Unable to persist deck cache timestamp.", error);
+  }
+}
+
+function getDeckDataFreshnessState() {
+  const summaryCount = Array.isArray(state.categorySummary)
+    ? state.categorySummary.length
+    : 0;
+  const hasCachedData = summaryCount > 0;
+  const lastSuccessfulSyncMs = Number(
+    lastSyncAt || readStoredDeckCacheTimestamp(),
+  );
+  const cacheAgeMs =
+    lastSuccessfulSyncMs > 0 ? Date.now() - lastSuccessfulSyncMs : Infinity;
+  const isEmpty = !hasCachedData;
+  const coldStartState = Boolean(isColdStart && isEmpty);
+  const isStale =
+    hasCachedData &&
+    (!syncConnected ||
+      !Number.isFinite(lastSuccessfulSyncMs) ||
+      cacheAgeMs >= STALE_CACHE_MAX_AGE_MS ||
+      lastSuccessfulSyncMs <= 0);
+  const isHealthy =
+    syncConnected &&
+    hasCachedData &&
+    Number.isFinite(lastSuccessfulSyncMs) &&
+    lastSuccessfulSyncMs > 0 &&
+    cacheAgeMs < STALE_CACHE_MAX_AGE_MS;
+
+  return {
+    hasCachedData,
+    isEmpty,
+    isColdStart: coldStartState,
+    isStale,
+    isHealthy,
+    cacheAgeMs: Number.isFinite(cacheAgeMs) ? cacheAgeMs : 0,
+    lastUpdatedAt: lastSuccessfulSyncMs > 0 ? lastSuccessfulSyncMs : 0,
+    summaryCount,
+  };
+}
+
+function getDeckDataReadinessState() {
+  const freshness = getDeckDataFreshnessState();
+  const isOffline = !syncConnected;
+  const isBlocked = isOffline && freshness.isColdStart && freshness.isEmpty;
+  const shouldPromptForCachedData =
+    isOffline && freshness.isStale && freshness.hasCachedData;
+  const isUsingCachedData = isOffline && freshness.hasCachedData;
+  const isReady = freshness.isHealthy;
+
+  return {
+    ...freshness,
+    isOffline,
+    isBlocked,
+    shouldPromptForCachedData,
+    isUsingCachedData,
+    isReady,
+  };
+}
+
+function getDeckDataFreshnessBannerHtml() {
+  const freshness = getDeckDataFreshnessState();
+
+  if (!freshness.hasCachedData && !freshness.isColdStart) {
+    return "";
+  }
+
+  if (freshness.isHealthy) {
+    return `
+      <div class="mb-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-300">
+        <i class="fa-solid fa-circle-check"></i>
+        <span>Live data • Updated ${formatCacheAge(freshness.cacheAgeMs)}</span>
+      </div>
+    `;
+  }
+
+  if (freshness.isColdStart) {
+    return `
+      <div class="mb-4 flex items-center gap-2 rounded-xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs font-medium text-yellow-700 dark:border-yellow-900/60 dark:bg-yellow-900/20 dark:text-yellow-300">
+        <i class="fa-solid fa-hourglass-half"></i>
+        <span>Waiting for fresh deck data. The app is reconnecting and may be temporarily empty.</span>
+      </div>
+    `;
+  }
+
+  if (freshness.isEmpty) {
+    return `
+      <div class="mb-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 dark:border-red-900/60 dark:bg-red-900/20 dark:text-red-300">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <span>No deck data is available yet. Please wait for the database to reconnect.</span>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-300">
+      <i class="fa-solid fa-database"></i>
+      <span>Using cached deck data • Last synced ${formatCacheAge(freshness.cacheAgeMs)}. This list may be stale.</span>
+    </div>
+  `;
+}
+
 async function optimizedBackgroundSync() {
   if (backgroundSyncPromise) return backgroundSyncPromise;
 
   backgroundSyncPromise = (async () => {
+    if (!isLeaderTab) {
+      syncScheduler.cancel();
+      return;
+    }
+
     try {
-      // FIX 4: LIGHTWEIGHT BACKGROUND SYNC POLLING
-      // First check sync status via lightweight endpoint
-      // Only fetch full summary if timestamp changed
+      const syncStatus = await checkSyncStatusLightweight();
 
-      if (!isLeaderTab) {
-        // Only leader tab performs polling
-        scheduleSyncPoll();
-        return;
-      }
-
-      try {
-        const syncStatus = await checkSyncStatusLightweight();
-
-        if (
-          !syncStatus ||
-          typeof syncStatus !== "object" ||
-          syncStatus.status !== "ok"
-        ) {
-          // Lightweight check failed - fall back to full sync attempt
-          // But do it silently if we have cached data
-          if (state.categorySummary.length > 0) {
-            console.log(
-              "[SYNC] Lightweight check failed, cached data available",
-            );
-          } else {
-            console.log(
-              "[SYNC] Lightweight check failed, attempting full sync",
-            );
-            await syncDatabase(true, true); // isRetry=true, isBackgroundCheck=true
-          }
-          return;
-        }
-
-        if (syncStatus.isColdStart === true) {
-          isColdStart = true;
-          if (state.categorySummary.length === 0) showColdStartNotification();
-          scheduleSyncRetry(state.categorySummary.length === 0);
-          return;
-        }
-
-        // Compare timestamp with what we last stored
-        const storedTimestamp = readStoredSyncStatusTimestamp();
-        const newTimestamp = String(syncStatus.syncTimestamp || "").trim();
-
-        if (storedTimestamp !== newTimestamp) {
-          // Sync timestamp changed - fetch full summary
-          console.log("[SYNC] Sync timestamp changed, fetching full summary");
-          persistSyncStatusTimestamp(newTimestamp);
-          await syncDatabase(true, true); // isRetry=true, isBackgroundCheck=true
-        } else {
-          // Timestamp unchanged - database is still current
-          console.log("[SYNC] Sync timestamp unchanged, skipping full fetch");
-          // Mark as connected since backend is responding
-          syncConnected = true;
-          isColdStart = false;
-        }
-      } catch (err) {
-        console.error("[SYNC] Optimized background sync error:", err);
-        // Cached decks remain usable; avoid a full payload request after a
-        // lightweight check failure unless there is no local summary.
+      if (
+        !syncStatus ||
+        typeof syncStatus !== "object" ||
+        syncStatus.status !== "ok"
+      ) {
         if (state.categorySummary.length > 0) {
           syncConnected = false;
           updateSyncStatus(
@@ -451,11 +585,48 @@ async function optimizedBackgroundSync() {
             "warning",
             false,
           );
-          scheduleSyncPoll();
-        } else {
-          await syncDatabase(true, true);
+          return;
         }
+
+        console.log(
+          "[SYNC] Lightweight status check failed; falling back to summary sync",
+        );
+        await syncDatabase(true, true);
+        return;
       }
+
+      if (syncStatus.isColdStart === true) {
+        isColdStart = true;
+        if (state.categorySummary.length === 0) showColdStartNotification();
+        scheduleSyncRetry(state.categorySummary.length === 0);
+        return;
+      }
+
+      const storedTimestamp = readStoredSyncStatusTimestamp();
+      const nextTimestamp = String(syncStatus.syncTimestamp || "").trim();
+
+      if (storedTimestamp && storedTimestamp === nextTimestamp) {
+        syncConnected = true;
+        isColdStart = false;
+        return;
+      }
+
+      if (nextTimestamp) {
+        persistSyncStatusTimestamp(nextTimestamp);
+      }
+      await syncDatabase(true, true);
+    } catch (err) {
+      console.error("[SYNC] Simplified background sync error:", err);
+      if (state.categorySummary.length > 0) {
+        syncConnected = false;
+        updateSyncStatus(
+          '<i class="fa-solid fa-exclamation-triangle mr-1"></i> Database unavailable. Using cached deck list.',
+          "warning",
+          false,
+        );
+        return;
+      }
+      await syncDatabase(true, true);
     } finally {
       backgroundSyncPromise = null;
     }
@@ -470,13 +641,20 @@ function scheduleSyncPoll() {
 
 const syncScheduler = {
   schedule() {
+    if (!isLeaderTab) {
+      this.cancel();
+      return;
+    }
+
     const activeToken = ++__mrhPollLoopToken;
     this.cancel();
     syncPollTimer = setTimeout(() => {
       if (activeToken !== __mrhPollLoopToken) return;
       if (typeof document !== "undefined" && document.hidden) return;
       optimizedBackgroundSync().finally(() => {
-        if (activeToken === __mrhPollLoopToken) this.schedule();
+        if (activeToken === __mrhPollLoopToken && isLeaderTab) {
+          this.schedule();
+        }
       });
     }, SYNC_INTERVAL_MS);
   },
@@ -490,9 +668,13 @@ const syncScheduler = {
   },
   handleVisibility(isHidden) {
     this.cancel();
-    if (!isHidden) {
-      optimizedBackgroundSync().finally(() => this.scheduleForLeader());
-    }
+    if (isHidden) return;
+
+    optimizedBackgroundSync().finally(() => {
+      if (isLeaderTab && typeof document !== "undefined" && !document.hidden) {
+        this.schedule();
+      }
+    });
   },
 };
 
@@ -719,6 +901,7 @@ function applySummaryData(summaryData, knownChanged = null) {
 
   state.categorySummary = summaryData || [];
   syncConnected = true;
+  persistDeckCacheTimestamp(Date.now());
   // FEATURE: Mark initial sync as complete after first successful sync
   if (!isInitialSyncComplete) {
     isInitialSyncComplete = true;
@@ -986,6 +1169,20 @@ async function syncDatabaseImplementation(
 }
 
 async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
+  const bootstrapStatus =
+    typeof window !== "undefined" ? window.__MRH_BOOTSTRAP__?.status : null;
+
+  if (bootstrapStatus === "failed") {
+    throw new Error("App bootstrap failed; database sync is unavailable.");
+  }
+
+  if (bootstrapStatus !== "ready" && !__mrhAppReady) {
+    console.debug(
+      "Skipping syncDatabase until app bootstrap has reached ready state.",
+    );
+    return false;
+  }
+
   return syncDatabaseImplementation(isRetry, isBackgroundCheck);
 }
 
@@ -993,6 +1190,14 @@ let filterModelSource = null;
 let filterModel = { subjects: [], tags: [] };
 
 function populateFilters() {
+  if (
+    typeof window !== "undefined" &&
+    window.__MRH_BOOTSTRAP__?.status !== "ready" &&
+    !__mrhAppReady
+  ) {
+    return;
+  }
+
   if (filterModelSource !== state.db) {
     const subjectIndex = ensureQuestionIndex();
     const subjects = [...subjectIndex.bySubject.keys()];
@@ -1263,6 +1468,14 @@ function getCategoryProgressRenderSignature() {
 }
 
 function renderCategoryProgress() {
+  if (
+    typeof window !== "undefined" &&
+    window.__MRH_BOOTSTRAP__?.status !== "ready" &&
+    !__mrhAppReady
+  ) {
+    return;
+  }
+
   if (categoryProgressRenderQueued) return;
   categoryProgressRenderQueued = true;
 
@@ -1445,6 +1658,8 @@ function renderCategoryProgressNow() {
       return total;
     }
 
+    const freshnessBannerHtml = getDeckDataFreshnessBannerHtml();
+
     let html = `
       <div class="flex flex-nowrap items-center gap-2 mb-6 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto pb-2 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
         <button onclick="goToPath(-1)" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2 flex-shrink-0">
@@ -1458,7 +1673,8 @@ function renderCategoryProgressNow() {
             `,
           )
           .join("")}
-      </div>`;
+      </div>
+      ${freshnessBannerHtml}`;
 
     const layoutClass = isGrid
       ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-6"
@@ -1619,6 +1835,11 @@ function renderCategoryProgressNow() {
         state.prefs.deckNameMode === "clip" ? "truncate" : "whitespace-normal";
       const totalQuestionsInDb = cat.QuestionCount;
       const databaseUnavailable = !isInitialSyncComplete;
+      const freshness = getDeckDataFreshnessState();
+      const staleBadgeHtml =
+        freshness.isStale && !databaseUnavailable
+          ? `<span class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-700 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-300"><i class="fa-solid fa-clock-rotate-left"></i> Cached</span>`
+          : "";
 
       const isRoot = !state.currentPath || state.currentPath.length === 0;
       const isArchived = (state.prefs?.archivedDecks || []).includes(subj);
@@ -1739,7 +1960,7 @@ function renderCategoryProgressNow() {
                   <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm flex-shrink-0"></i>
                   <span class="${deckNameMode} break-words">${safeName}</span> ${lockIcon}
                 </h3>
-                <div class="flex-shrink-0">${statusBadge}</div>
+                <div class="flex-shrink-0 flex items-center gap-1.5">${statusBadge}${staleBadgeHtml}</div>
               </div>
               ${statsHTML}
             </div>
@@ -2633,6 +2854,14 @@ function checkSavedSession() {
 let pendingResumeSession = null;
 
 async function resumeSession(password = null) {
+  if (
+    typeof window !== "undefined" &&
+    window.__MRH_BOOTSTRAP__?.status !== "ready" &&
+    !__mrhAppReady
+  ) {
+    throw new Error("App bootstrap not complete yet.");
+  }
+
   const activity = state.prefs.lastActivity;
   if (
     activity?.mode === "review" &&
@@ -3127,6 +3356,8 @@ function toggleNavigationPosition(source) {
 }
 
 async function loadReports() {
+  ensureAppReady();
+
   const pendingContainer = document.getElementById("public-pending-reports");
   const resolvedContainer = document.getElementById("public-resolved-reports");
   if (pendingContainer)
@@ -3323,7 +3554,7 @@ function updateRecentDecks(subj) {
   state.prefs.recentDecks = filtered.slice(0, 10);
 }
 
-function handleDeckClick(subj, action = "continue") {
+async function handleDeckClick(subj, action = "continue") {
   subj = decodeHandlerValue(subj);
   if (!subj) return;
 
@@ -3351,9 +3582,9 @@ function handleDeckClick(subj, action = "continue") {
     saveState();
   }
 
-  // ROBUSTNESS FIX: Allow access to cached decks even if sync is temporarily unavailable
-  // Only block if we've never successfully synced AND we're in cold start
-  if (!syncConnected && isColdStart && state.categorySummary.length === 0) {
+  const readiness = getDeckDataReadinessState();
+
+  if (readiness.isBlocked) {
     updateSyncStatus(
       '<i class="fa-solid fa-xmark mr-1"></i> Decks are temporarily unavailable while the database reconnects.',
       "warning",
@@ -3362,10 +3593,32 @@ function handleDeckClick(subj, action = "continue") {
     return;
   }
 
-  // Warn user but allow access if they have cached decks available
-  if (!syncConnected && state.categorySummary.length > 0) {
+  if (readiness.shouldPromptForCachedData) {
+    const staleWarningText =
+      readiness.cacheAgeMs >= STALE_CACHE_MAX_AGE_MS
+        ? `Using cached deck data from ${formatCacheAge(readiness.cacheAgeMs)}. This data may be stale or incomplete. Continue anyway?`
+        : "The database is temporarily unavailable and the deck list may be out of date. Continue with cached deck data?";
+
+    const confirmed = await requestConfirmation(
+      staleWarningText,
+      "Cached data warning",
+    );
+    if (!confirmed) {
+      updateSyncStatus(
+        '<i class="fa-solid fa-exclamation-triangle mr-1"></i> Cached deck data was not used. Waiting for the live database connection.',
+        "warning",
+      );
+      finishDeckInteraction();
+      return;
+    }
+
     updateSyncStatus(
-      '<i class="fa-solid fa-exclamation-triangle mr-1"></i> Using cached deck. Background sync unavailable.',
+      '<i class="fa-solid fa-exclamation-triangle mr-1"></i> Using cached deck data. Live sync is unavailable.',
+      "warning",
+    );
+  } else if (readiness.isUsingCachedData) {
+    updateSyncStatus(
+      '<i class="fa-solid fa-exclamation-triangle mr-1"></i> Using cached deck data. Background sync unavailable.',
       "warning",
     );
   }
@@ -3528,13 +3781,17 @@ const folderPasswordButton = document.getElementById(
 );
 if (folderPasswordButton) {
   folderPasswordButton.addEventListener("click", async () => {
-    const pass = document.getElementById("folder-password-input")?.value || "";
+    const input = document.getElementById("folder-password-input");
+    const pass = input?.value || "";
     const btn = folderPasswordButton;
 
     if (!pass) {
-      alert("Please enter a password.");
+      setFormError("folder-password-input", "Please enter a password.");
+      input?.focus();
       return;
     }
+
+    setFormError("folder-password-input", "");
 
     await runWithBusyButton(btn, "Verifying...", async () => {
       try {
@@ -3565,7 +3822,14 @@ if (folderPasswordButton) {
         renderCategoryProgress();
       } catch (error) {
         console.error("Verification failed", error);
-        alert("Network error while verifying the folder password.");
+        setFormError(
+          "folder-password-input",
+          "Network error while verifying the folder password.",
+        );
+        showToast(
+          "Network error while verifying the folder password.",
+          "error",
+        );
       }
     });
   });
@@ -3577,12 +3841,16 @@ const btnSubmitDeckPassword = document.getElementById(
 
 if (btnSubmitDeckPassword) {
   btnSubmitDeckPassword.addEventListener("click", async () => {
-    const pass = document.getElementById("deck-password-input")?.value || "";
+    const input = document.getElementById("deck-password-input");
+    const pass = input?.value || "";
 
     if (!pass) {
-      alert("Please enter a password.");
+      setFormError("deck-password-input", "Please enter a password.");
+      input?.focus();
       return;
     }
+
+    setFormError("deck-password-input", "");
 
     await runWithBusyButton(btnSubmitDeckPassword, "Verifying...", async () => {
       closeDeckPasswordModal();
@@ -3800,12 +4068,14 @@ async function changeQuestionTypeMode(mode) {
   }
 
   if (mode === "ident") {
-    alert(
-      "Warning: Strict Identification mode enabled. You are hiding choices for MCQs. (This is an experimental feature)",
+    showToast(
+      "Strict Identification mode enabled. Choices are hidden for MCQs.",
+      "warning",
     );
   } else if (mode === "mcq") {
-    alert(
-      "Warning: Strict MCQ mode enabled. Choices WILL return undefined if there are no other choices present in the database. (This is an experimental feature)",
+    showToast(
+      "Strict MCQ mode enabled. Choices may be undefined when no alternatives exist.",
+      "warning",
     );
   }
 
@@ -3986,24 +4256,15 @@ function setupVisibilityChangeHandler() {
 function scheduleNextPolling() {
   if (!isLeaderTab) {
     syncScheduler.cancel();
-    console.log("[POLLING] Not leader, skipping poll schedule");
     return;
   }
 
-  console.log(
-    "[POLLING] Using single sync scheduler for visibility-aware polling",
-  );
   syncScheduler.scheduleForLeader();
 }
 
 function startCacheVersionChecking() {
-  // Setup leader election first
   setupLeaderElection();
-
-  // Setup visibility handler
   setupVisibilityChangeHandler();
-
-  // Use the single app sync scheduler; keep only one poll loop alive.
   scheduleNextPolling();
 }
 
@@ -4015,11 +4276,104 @@ function forcePageRefresh() {
   }, 100);
 }
 
-function initializeApp() {
+async function initializeApp() {
+  if (window.__MRH_BOOTSTRAP__?.status === "ready") {
+    return false;
+  }
+
   if (__mrhAppInitialized) return false;
+
+  if (!hasRequiredAppRuntime()) {
+    console.warn(
+      "Application initialization deferred until required runtime dependencies are available.",
+    );
+    scheduleDeferredInitialization();
+    return false;
+  }
+
   __mrhAppInitialized = true;
 
-  (async () => {
+  const bindUi = () => {
+    const mainEl = document.querySelector("main");
+    const headerEl = document.querySelector("header");
+    if (headerEl)
+      headerEl.classList.add("transition-transform", "duration-300");
+
+    if (mainEl && headerEl) {
+      mainEl.addEventListener("scroll", (e) => {
+        if (!isTicking) {
+          window.requestAnimationFrame(() => {
+            const currentScroll = e.target.scrollTop;
+
+            if (currentScroll > lastScrollTop && currentScroll > 50) {
+              headerEl.classList.add("-translate-y-full");
+            } else {
+              headerEl.classList.remove("-translate-y-full");
+            }
+            lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
+
+            if (typeof globalThis.scheduleVirtualReviewRender === "function") {
+              globalThis.scheduleVirtualReviewRender();
+            }
+
+            const reviewSubject = getCurrentReviewSubject();
+            if (
+              document
+                .getElementById("view-deck-review")
+                .classList.contains("active") &&
+              reviewSubject
+            ) {
+              if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
+              if (!state.prefs.studyProgress[reviewSubject]) {
+                state.prefs.studyProgress[reviewSubject] = {
+                  page: 1,
+                  index: 0,
+                  scrollY: 0,
+                };
+              }
+              state.prefs.studyProgress[reviewSubject].scrollY = currentScroll;
+              clearTimeout(window.scrollSaveTimeout);
+              window.scrollSaveTimeout = setTimeout(() => saveState(), 1000);
+            }
+
+            isTicking = false;
+          });
+
+          isTicking = true;
+        }
+      });
+    }
+  };
+
+  const applyThemeFromPrefs = () => {
+    const enableDark = state.prefs?.darkMode !== false;
+    document.documentElement.classList.toggle("dark", enableDark);
+    document.documentElement.style.colorScheme = enableDark ? "dark" : "light";
+  };
+
+  const renderSkeleton = () => {
+    const htmlRoot = document.documentElement;
+    if (htmlRoot) {
+      htmlRoot.setAttribute("data-app-ready", "false");
+    }
+
+    const status = document.getElementById("connection-status");
+    if (status) {
+      status.textContent = "Loading maritime review data...";
+      status.classList.remove("hidden");
+    }
+  };
+
+  try {
+    if (typeof window !== "undefined") {
+      window.__MRH_BOOTSTRAP__ = window.__MRH_BOOTSTRAP__ || {
+        status: "idle",
+        ready: null,
+        error: null,
+      };
+      window.__MRH_BOOTSTRAP__.status = "loading";
+    }
+
     await loadState();
 
     const toggleElement = document.getElementById("globalModeToggle");
@@ -4027,77 +4381,46 @@ function initializeApp() {
       currentAppMode = toggleElement.checked ? "review" : "quiz";
     }
 
+    bindUi();
+    applyThemeFromPrefs();
+    renderSkeleton();
+
+    __mrhAppReady = true;
+    if (typeof window !== "undefined") {
+      window.__mrhAppReady = true;
+      window.__MRH_BOOTSTRAP__.status = "ready";
+      window.__MRH_BOOTSTRAP__.error = null;
+      document.documentElement.setAttribute("data-app-ready", "true");
+    }
+
+    setupCacheInvalidationListener();
+    startCacheVersionChecking();
+    initDetailsExclusivity();
+
+    fetchAccessMetadata().catch((err) => {
+      console.warn("Initial access metadata fetch failed, will retry:", err);
+    });
+
     await syncDatabase(false, false);
     fetchGlobalReports();
-  })().catch((error) => {
+
+    setTimeout(() => {
+      applyTitleMode();
+      updateTitleModeButton();
+    }, 100);
+
+    return true;
+  } catch (error) {
+    __mrhAppReady = false;
+    if (typeof window !== "undefined") {
+      window.__mrhAppReady = false;
+      window.__MRH_BOOTSTRAP__.status = "failed";
+      window.__MRH_BOOTSTRAP__.error = error;
+    }
     console.error("Application data initialization failed:", error);
-  });
-
-  // CRITICAL FIX: Setup cache invalidation listener and version checking
-  setupCacheInvalidationListener();
-  startCacheVersionChecking();
-  initDetailsExclusivity();
-
-  // CRITICAL: Fetch access metadata early to avoid filtering issues
-  fetchAccessMetadata().catch((err) => {
-    console.warn("Initial access metadata fetch failed, will retry:", err);
-  });
-
-  const mainEl = document.querySelector("main");
-  const headerEl = document.querySelector("header");
-  if (headerEl) headerEl.classList.add("transition-transform", "duration-300");
-
-  if (mainEl && headerEl) {
-    mainEl.addEventListener("scroll", (e) => {
-      if (!isTicking) {
-        window.requestAnimationFrame(() => {
-          const currentScroll = e.target.scrollTop;
-
-          if (currentScroll > lastScrollTop && currentScroll > 50) {
-            headerEl.classList.add("-translate-y-full");
-          } else {
-            headerEl.classList.remove("-translate-y-full");
-          }
-          lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
-
-          if (typeof globalThis.scheduleVirtualReviewRender === "function") {
-            globalThis.scheduleVirtualReviewRender();
-          }
-
-          const reviewSubject = getCurrentReviewSubject();
-          if (
-            document
-              .getElementById("view-deck-review")
-              .classList.contains("active") &&
-            reviewSubject
-          ) {
-            if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
-            if (!state.prefs.studyProgress[reviewSubject]) {
-              state.prefs.studyProgress[reviewSubject] = {
-                page: 1,
-                index: 0,
-                scrollY: 0,
-              };
-            }
-            state.prefs.studyProgress[reviewSubject].scrollY = currentScroll;
-            clearTimeout(window.scrollSaveTimeout);
-            window.scrollSaveTimeout = setTimeout(() => saveState(), 1000);
-          }
-
-          isTicking = false;
-        });
-
-        isTicking = true;
-      }
-    });
+    showBootstrapError(error);
+    return false;
   }
-
-  // Apply title display mode preference
-  setTimeout(() => {
-    applyTitleMode();
-    updateTitleModeButton();
-  }, 100);
-  return true;
 }
 
 window.initializeApp = initializeApp;

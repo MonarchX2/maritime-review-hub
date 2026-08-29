@@ -70,9 +70,14 @@
 
   rootScope.loadFeatureScript = loadFeatureScript;
 
+  rootScope.__MRH_BOOTSTRAP__ = {
+    status: "idle",
+    ready: null,
+    error: null,
+  };
+
   async function loadCoreHelpers() {
-    // The canonical runtime below depends on these shared helpers and the
-    // state module must run before app-core.js evaluates its legacy code.
+    // Stage 1: bootstrap helpers.
     const cores = [
       "storage-utils.js",
       "text-utils.js",
@@ -80,24 +85,23 @@
       "app-core-state.js",
     ];
 
-    await Promise.all(cores.slice(0, 3).map(loadFeatureScript));
-    await loadFeatureScript(cores[3]);
+    for (const file of cores) {
+      await loadFeatureScript(file);
+    }
   }
 
   async function loadApplicationRuntime() {
-    await Promise.all([
-      loadFeatureScript("app-core.js"),
-      loadFeatureScript("app-core-network.js"),
-    ]);
+    // Stage 2: app runtime.
+    await loadFeatureScript("app-core.js");
+    await loadFeatureScript("app-core-network.js");
+
+    // Stage 3: feature modules.
     await loadFeatureScript("session-core.js");
     await loadFeatureScript("analytics-core.js");
-
-    await Promise.all([
-      loadFeatureScript("ui-modal-core.js"),
-      loadFeatureScript("deck-nav-core.js"),
-      loadFeatureScript("deck-review-core.js"),
-      loadFeatureScript("quiz-rendering-core.js"),
-    ]);
+    await loadFeatureScript("ui-modal-core.js");
+    await loadFeatureScript("deck-nav-core.js");
+    await loadFeatureScript("deck-review-core.js");
+    await loadFeatureScript("quiz-rendering-core.js");
   }
 
   function showBootstrapError(error) {
@@ -124,44 +128,106 @@
       return;
     }
 
+    const swUrl = new URL("./sw.js", window.location.href);
+    swUrl.searchParams.set("v", "2026-08-29");
+
     navigator.serviceWorker
-      .register("./sw.js", { updateViaCache: "none" })
+      .register(swUrl.href, {
+        scope: "./",
+        updateViaCache: "none",
+      })
       .catch((error) => {
         console.warn("Service worker registration failed:", error);
       });
   }
 
-  let bootstrapStarted = false;
-  let bootstrapCompleted = false;
+  function missingRuntimeDependencies() {
+    const missing = [];
+
+    if (typeof rootScope.StorageUtils === "undefined") {
+      missing.push("StorageUtils");
+    }
+    if (typeof rootScope.TextUtils === "undefined") {
+      missing.push("TextUtils");
+    }
+    if (typeof rootScope.AppState === "undefined") {
+      missing.push("AppState");
+    }
+    if (typeof rootScope.AppNetwork === "undefined") {
+      missing.push("AppNetwork");
+    }
+    if (typeof rootScope.initializeApp !== "function") {
+      missing.push("initializeApp");
+    }
+
+    return missing;
+  }
+
+  async function waitForRuntimeDependencies(timeoutMs = 15000) {
+    const startTime = Date.now();
+    let lastMissing = [];
+
+    while (Date.now() - startTime < timeoutMs) {
+      const missing = missingRuntimeDependencies();
+      if (missing.length === 0) {
+        rootScope.__mrhRuntimeReady = true;
+        return;
+      }
+
+      lastMissing = missing;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    rootScope.__mrhRuntimeReady = false;
+    throw new Error(
+      `Startup dependencies were not ready in time: ${lastMissing.join(", ")}`,
+    );
+  }
 
   async function startApplicationBootstrap() {
-    if (bootstrapStarted) {
-      if (bootstrapCompleted && typeof rootScope.initializeApp === "function") {
-        rootScope.initializeApp();
-      }
-      return;
+    const bootstrap = rootScope.__MRH_BOOTSTRAP__ || {
+      status: "idle",
+      ready: null,
+      error: null,
+    };
+
+    if (bootstrap.status === "loading" && bootstrap.ready) {
+      return bootstrap.ready;
     }
 
-    bootstrapStarted = true;
-
-    try {
-      await loadCoreHelpers();
-      await loadApplicationRuntime();
-
-      // Dynamic scripts do not participate reliably in the original
-      // DOMContentLoaded listener in app-core.js. Explicitly initialize once
-      // every runtime module is present.
-      if (typeof rootScope.initializeApp === "function") {
-        rootScope.initializeApp();
-      }
-      bootstrapCompleted = true;
-      registerServiceWorker();
-    } catch (error) {
-      bootstrapCompleted = false;
-      showBootstrapError(error);
+    if (bootstrap.status === "ready" && bootstrap.ready) {
+      return bootstrap.ready;
     }
+
+    bootstrap.status = "loading";
+    bootstrap.error = null;
+
+    bootstrap.ready = (async function () {
+      try {
+        await loadCoreHelpers();
+        await loadApplicationRuntime();
+        await waitForRuntimeDependencies();
+
+        if (typeof rootScope.initializeApp === "function") {
+          rootScope.initializeApp();
+        }
+
+        bootstrap.status = "ready";
+        rootScope.__mrhBootstrapComplete = true;
+        registerServiceWorker();
+        return true;
+      } catch (error) {
+        bootstrap.status = "failed";
+        bootstrap.error = error;
+        rootScope.__mrhBootstrapComplete = false;
+        showBootstrapError(error);
+        throw error;
+      }
+    })();
+
+    return bootstrap.ready;
   }
 
   rootScope.startApplicationBootstrap = startApplicationBootstrap;
-  startApplicationBootstrap();
+  rootScope.__MRH_BOOTSTRAP__.ready = startApplicationBootstrap();
 })();
