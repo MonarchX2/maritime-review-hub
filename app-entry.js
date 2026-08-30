@@ -1,7 +1,16 @@
 (async function () {
   "use strict";
 
+  const APP_VERSION = "mrh-release-2026.08.30";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
+
+  rootScope.__MRH_APP__ = rootScope.__MRH_APP__ || {
+    version: APP_VERSION,
+  };
+
+  if (rootScope.__MRH_APP__.version !== APP_VERSION) {
+    rootScope.__MRH_APP__.version = APP_VERSION;
+  }
 
   if (rootScope) {
     rootScope.globalScope = rootScope;
@@ -129,7 +138,7 @@
     }
 
     const swUrl = new URL("./sw.js", window.location.href);
-    swUrl.searchParams.set("v", "2026-08-29");
+    swUrl.searchParams.set("v", rootScope.__MRH_APP__?.version || APP_VERSION);
 
     navigator.serviceWorker
       .register(swUrl.href, {

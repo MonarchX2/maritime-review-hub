@@ -575,6 +575,7 @@ async function optimizedBackgroundSync() {
             "warning",
             false,
           );
+          scheduleSyncPoll();
           return;
         }
 
@@ -614,6 +615,7 @@ async function optimizedBackgroundSync() {
           "warning",
           false,
         );
+        scheduleSyncPoll();
         return;
       }
       await syncDatabase(true, true);
@@ -1102,8 +1104,7 @@ async function syncDatabaseImplementation(
           "warning",
           false,
         );
-        syncConnected = false;
-        scheduleSyncPoll();
+        scheduleSyncRetry(!silentSync);
         return false;
       }
 
@@ -1131,13 +1132,12 @@ async function syncDatabaseImplementation(
         console.log(
           "[SYNC] Background check threw error but cached data available. Continuing silently.",
         );
-        syncConnected = false;
         updateSyncStatus(
           `<i class="fa-solid fa-exclamation-triangle mr-1"></i> Database unavailable. Using cached deck list.`,
           "warning",
           false,
         );
-        scheduleSyncPoll();
+        scheduleSyncRetry(!silentSync);
         return false;
       }
 
