@@ -1,5 +1,6 @@
-const CACHE_PREFIX = "mrh-static";
-const FALLBACK_CACHE_VERSION = "v7";
+const CACHE_PREFIX = "mrh-cache";
+const APP_VERSION = "mrh-release-2026.08.30";
+const FALLBACK_CACHE_VERSION = APP_VERSION;
 
 function getServiceWorkerUrl() {
   return new URL(self.location.href);
@@ -22,8 +23,37 @@ function resolveAppUrl(pathname) {
 }
 
 function getAppBasePath() {
-  const basePath = getAppBaseUrl().pathname;
-  return basePath.endsWith("/") ? basePath : `${basePath}/`;
+  const basePath = getAppBaseUrl().pathname || "/";
+  return basePath === "/"
+    ? "/"
+    : basePath.endsWith("/")
+      ? basePath
+      : `${basePath}/`;
+}
+
+function getAppShellNavigationPaths() {
+  const appBasePath = getAppBasePath();
+  const normalizedBasePath =
+    appBasePath === "/" ? "/" : appBasePath.replace(/\/+$/, "") || "/";
+  const candidates = new Set([
+    normalizedBasePath,
+    normalizedBasePath === "/" ? "/" : `${normalizedBasePath}/`,
+  ]);
+
+  const indexAliases = [
+    normalizedBasePath === "/"
+      ? "/index.html"
+      : `${normalizedBasePath}/index.html`,
+    normalizedBasePath === "/"
+      ? "/index.htm"
+      : `${normalizedBasePath}/index.htm`,
+  ];
+
+  for (const alias of indexAliases) {
+    candidates.add(alias);
+  }
+
+  return candidates;
 }
 
 const APP_SHELL = [
@@ -114,16 +144,11 @@ function isAppShellNavigation(request) {
   }
 
   const url = new URL(request.url);
-  const appBasePath = getAppBasePath();
-  const appEntryPath = `${appBasePath}index.html`;
+  if (!isSameOrigin(url)) {
+    return false;
+  }
 
-  return (
-    isSameOrigin(url) &&
-    (url.pathname === appBasePath ||
-      url.pathname === appEntryPath ||
-      (appBasePath === "/" &&
-        (url.pathname === "/" || url.pathname === "/index.html")))
-  );
+  return getAppShellNavigationPaths().has(url.pathname || "/");
 }
 
 async function getCache() {
@@ -204,12 +229,11 @@ async function networkFirstNavigation(event) {
       // dynamic or user-specific HTML.
       const url = new URL(event.request.url);
 
-      const appBasePath = getAppBasePath();
-      const appEntryPath = `${appBasePath}index.html`;
+      const appShellPaths = getAppShellNavigationPaths();
 
       if (
         url.origin === self.location.origin &&
-        (url.pathname === appBasePath || url.pathname === appEntryPath)
+        appShellPaths.has(url.pathname || "/")
       ) {
         await cache.put(resolveAppUrl("./index.html"), response.clone());
       }

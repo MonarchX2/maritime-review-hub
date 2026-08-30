@@ -284,6 +284,36 @@
     const idEl = getElement("q-id");
     if (idEl) idEl.textContent = `Question ${displayId}`;
 
+    // Set question type badge
+    const typeEl = getElement("q-type");
+    if (typeEl) {
+      let qType = "MC";
+      if (q.QuestionType) {
+        // Use pre-computed type from backend
+        qType =
+          q.QuestionType === "ID"
+            ? "ID"
+            : q.QuestionType === "MX"
+              ? "MX"
+              : "MC";
+      } else {
+        // Fallback: calculate from choices
+        let validChoicesCount = 0;
+        ["A", "B", "C", "D"].forEach((ch) => {
+          const choiceText = q[`Choice${ch}`];
+          if (
+            choiceText &&
+            String(choiceText).trim() !== "" &&
+            String(choiceText).toLowerCase() !== "undefined"
+          ) {
+            validChoicesCount++;
+          }
+        });
+        qType = validChoicesCount <= 1 ? "ID" : "MC";
+      }
+      typeEl.textContent = qType;
+    }
+
     const favBtn = getElement("btn-favorite-question");
     if (favBtn) {
       const favoriteQuestions = Array.isArray(getPrefs().favoriteQuestions)
