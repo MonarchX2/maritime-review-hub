@@ -1,5 +1,5 @@
-const CACHE_PREFIX = "mrh-static";
-const FALLBACK_CACHE_VERSION = "v7";
+const CACHE_PREFIX = "mrh-cache";
+const FALLBACK_CACHE_VERSION = "v8";
 
 function getServiceWorkerUrl() {
   return new URL(self.location.href);

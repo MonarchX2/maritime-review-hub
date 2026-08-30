@@ -677,13 +677,13 @@ function scheduleSinglePollLoop() {
 }
 
 function stripAccessMetadataFromSummary(summaryData) {
-  // Backend response already only includes: Subject, QuestionCount, Locked
+  // Backend response includes: Subject, QuestionCount, QuestionType, Locked
   // This function ensures no Password/Hidden fields are in stored data
   if (!Array.isArray(summaryData)) return summaryData;
   return summaryData.map((deck) => {
     if (!deck || typeof deck !== "object") return deck;
-    const { Subject, QuestionCount, Locked } = deck;
-    return { Subject, QuestionCount, Locked };
+    const { Subject, QuestionCount, QuestionType, Locked } = deck;
+    return { Subject, QuestionCount, QuestionType, Locked };
   });
 }
 
@@ -817,6 +817,7 @@ function getSummarySignature(summaryData) {
       [
         deck?.Subject,
         deck?.QuestionCount,
+        deck?.QuestionType,
         deck?.Locked,
         deck?.Hidden,
         deck?.IsFolder,
@@ -4025,28 +4026,45 @@ function toggleStudyFullscreen() {
 if (!state.prefs.qTypeOverride) state.prefs.qTypeOverride = "auto";
 
 function getQuestionTypeMode(q) {
-  let validChoicesCount = 0;
-  ["A", "B", "C", "D"].forEach((ch) => {
-    const choiceText = q[`Choice${ch}`];
-    if (
-      choiceText &&
-      String(choiceText).trim() !== "" &&
-      String(choiceText).toLowerCase() !== "undefined"
-    ) {
-      validChoicesCount++;
-    }
-  });
-
   const isForcedIdent = state.prefs.qTypeOverride === "ident";
   const isForcedMCQ = state.prefs.qTypeOverride === "mcq";
 
   let isPureIdent;
+  let validChoicesCount = 0;
+
   if (isForcedIdent) {
     isPureIdent = true;
   } else if (isForcedMCQ) {
     isPureIdent = false;
+  } else if (q && q.QuestionType) {
+    // Use pre-computed type from backend
+    isPureIdent = q.QuestionType === "ID";
   } else {
+    // Fallback: calculate from choices
+    ["A", "B", "C", "D"].forEach((ch) => {
+      const choiceText = q[`Choice${ch}`];
+      if (
+        choiceText &&
+        String(choiceText).trim() !== "" &&
+        String(choiceText).toLowerCase() !== "undefined"
+      ) {
+        validChoicesCount++;
+      }
+    });
     isPureIdent = validChoicesCount <= 1;
+  }
+
+  if (validChoicesCount === 0) {
+    ["A", "B", "C", "D"].forEach((ch) => {
+      const choiceText = q[`Choice${ch}`];
+      if (
+        choiceText &&
+        String(choiceText).trim() !== "" &&
+        String(choiceText).toLowerCase() !== "undefined"
+      ) {
+        validChoicesCount++;
+      }
+    });
   }
 
   return { isIdent: isPureIdent, validChoicesCount };

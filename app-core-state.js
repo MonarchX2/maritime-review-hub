@@ -138,7 +138,7 @@
       Answer: firstAvailableValue(source.Answer, source.a),
       Explanation: firstAvailableValue(source.Explanation, source.e),
       ImageURL: firstAvailableValue(source.ImageURL, source.u),
-      Tags: firstAvailableValue(source.Tags, source.t),
+      QuestionType: firstAvailableValue(source.QuestionType, source.t),
     };
 
     if (typeof normalized.Answer === "number") {
