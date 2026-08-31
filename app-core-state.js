@@ -126,15 +126,16 @@
   function normalizeQuestionRecord(question, subjectOverride = null) {
     if (!question || typeof question !== "object") return {};
 
-    const source = { ...question };
+    const source = question;
+    const choices = Array.isArray(source.c) ? source.c : null;
     const normalized = {
       Subject: firstAvailableValue(subjectOverride, source.Subject, source.s),
       ID: firstAvailableValue(source.ID, source.i),
       Question: firstAvailableValue(source.Question, source.q),
-      ChoiceA: firstAvailableValue(source.ChoiceA, source.c?.[0]),
-      ChoiceB: firstAvailableValue(source.ChoiceB, source.c?.[1]),
-      ChoiceC: firstAvailableValue(source.ChoiceC, source.c?.[2]),
-      ChoiceD: firstAvailableValue(source.ChoiceD, source.c?.[3]),
+      ChoiceA: firstAvailableValue(source.ChoiceA, choices?.[0]),
+      ChoiceB: firstAvailableValue(source.ChoiceB, choices?.[1]),
+      ChoiceC: firstAvailableValue(source.ChoiceC, choices?.[2]),
+      ChoiceD: firstAvailableValue(source.ChoiceD, choices?.[3]),
       Answer: firstAvailableValue(source.Answer, source.a),
       Explanation: firstAvailableValue(source.Explanation, source.e),
       ImageURL: firstAvailableValue(source.ImageURL, source.u),
@@ -156,23 +157,30 @@
     const bySubject = new Map();
     const byId = new Map();
 
-    (state.db || []).forEach((question) => {
-      if (!question || typeof question !== "object") return;
+    for (const question of state.db || []) {
+      if (!question || typeof question !== "object") continue;
 
-      const normalized = normalizeQuestionRecord(question);
+      // The database is normalized on load. Re-normalize only legacy/unshaped
+      // records instead of allocating a new object for every indexed question.
+      const normalized =
+        question.Subject !== undefined && question.ID !== undefined
+          ? question
+          : normalizeQuestionRecord(question);
+
       const subject = String(normalized.Subject || "").trim();
       const id = String(normalized.ID || "").trim();
 
       if (subject) {
-        const subjectList = bySubject.get(subject) || [];
+        let subjectList = bySubject.get(subject);
+        if (!subjectList) {
+          subjectList = [];
+          bySubject.set(subject, subjectList);
+        }
         if (id) subjectList.push(id);
-        bySubject.set(subject, subjectList);
       }
 
-      if (id) {
-        byId.set(id, normalized);
-      }
-    });
+      if (id) byId.set(id, normalized);
+    }
 
     state.subjectIndex = { bySubject, byId };
     return state.subjectIndex;
@@ -230,27 +238,35 @@
         ? rawStats
         : {};
 
-    const subjectAccuracy =
+    const subjectAccuracy = {};
+    const rawSubjectAccuracy =
       source.subjectAccuracy &&
       typeof source.subjectAccuracy === "object" &&
       !Array.isArray(source.subjectAccuracy)
-        ? Object.fromEntries(
-            Object.entries(source.subjectAccuracy)
-              .filter(
-                ([key, value]) =>
-                  typeof key === "string" &&
-                  (typeof value === "number" || typeof value === "string"),
-              )
-              .map(([key, value]) => [key, Number(value) || 0]),
-          )
+        ? source.subjectAccuracy
         : {};
+
+    for (const [key, value] of Object.entries(rawSubjectAccuracy)) {
+      if (!key) continue;
+
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        subjectAccuracy[key] = {
+          total: Math.max(0, Number(value.total) || 0),
+          correct: Math.max(0, Number(value.correct) || 0),
+        };
+      } else if (typeof value === "number" || typeof value === "string") {
+        // Backward compatibility for older percentage/number-shaped data.
+        const numeric = Math.max(0, Number(value) || 0);
+        subjectAccuracy[key] = { total: 0, correct: numeric };
+      }
+    }
 
     return {
       totalAnswered: Number.isFinite(Number(source.totalAnswered))
-        ? Number(source.totalAnswered)
+        ? Math.max(0, Number(source.totalAnswered))
         : 0,
       correct: Number.isFinite(Number(source.correct))
-        ? Number(source.correct)
+        ? Math.max(0, Number(source.correct))
         : 0,
       mistakes: Array.isArray(source.mistakes)
         ? source.mistakes.filter(
@@ -426,7 +442,7 @@
 
     const modeLabel = document.getElementById("modeLabel");
     if (modeLabel) {
-      modeLabel.innerText = controls.globalModeToggle ? "Study" : "Quiz";
+      modeLabel.textContent = controls.globalModeToggle ? "Study" : "Quiz";
     }
 
     const navigationSelect = document.getElementById(
@@ -482,13 +498,13 @@
     if (typeof document === "undefined") return;
 
     const statTotal = document.getElementById("stat-total");
-    if (statTotal) statTotal.innerText = state.stats.totalAnswered;
+    if (statTotal) statTotal.textContent = String(state.stats.totalAnswered);
 
     const statCorrect = document.getElementById("stat-correct");
-    if (statCorrect) statCorrect.innerText = state.stats.correct;
+    if (statCorrect) statCorrect.textContent = String(state.stats.correct);
 
     const dbSize = document.getElementById("db-size-display");
-    if (dbSize) dbSize.innerText = state.db.length;
+    if (dbSize) dbSize.textContent = String(state.db.length);
 
     if (typeof globalScope.checkSavedSession === "function") {
       globalScope.checkSavedSession();
@@ -502,7 +518,20 @@
     if (typeof globalScope.emitDebugState === "function") {
       globalScope.emitDebugState("load_state:start");
     }
+
     globalScope.migrateLegacyStorageKeys?.();
+
+    // Start IndexedDB immediately so its async I/O overlaps the synchronous
+    // local-storage parsing below.
+    let savedDbPromise = null;
+    if (typeof idbKeyval !== "undefined") {
+      try {
+        savedDbPromise = idbKeyval.get("mrh_db");
+      } catch (err) {
+        console.error("Error starting DB load from IndexedDB", err);
+      }
+    }
+
     const savedStats = getStoredItem("stats");
     const savedPrefs = getStoredItem("prefs");
     const savedSummary =
@@ -511,28 +540,6 @@
       typeof globalScope.readStoredNavigationPath === "function"
         ? globalScope.readStoredNavigationPath()
         : [];
-
-    try {
-      if (typeof idbKeyval !== "undefined") {
-        const savedDb = await idbKeyval.get("mrh_db");
-        if (savedDb) {
-          state.db = savedDb.map((q) => {
-            const normalized = normalizeQuestionRecord(q);
-            if (normalized.ID && !normalized.ID.toString().includes("::")) {
-              const cleanId = normalized.ID.toString().replace(
-                /^[a-zA-Z]+[-\s]?/,
-                "",
-              );
-              normalized.ID = `${normalized.Subject}::${cleanId}`;
-            }
-            return normalized;
-          });
-          rebuildQuestionIndex();
-        }
-      }
-    } catch (err) {
-      console.error("Error loading DB from IndexedDB", err);
-    }
 
     if (savedSummary) {
       const parsedSummary = StorageUtils.safeParseJSON(savedSummary, null);
@@ -543,8 +550,6 @@
         state.categorySummary = [];
       }
     }
-
-    ensureQuestionIndex();
 
     if (savedStats) {
       const parsedStats = StorageUtils.safeParseJSON(savedStats, null);
@@ -575,6 +580,29 @@
       }
     }
 
+    if (savedDbPromise) {
+      try {
+        const savedDb = await savedDbPromise;
+        if (Array.isArray(savedDb)) {
+          state.db = savedDb.map((q) => {
+            const normalized = normalizeQuestionRecord(q);
+            if (normalized.ID && !String(normalized.ID).includes("::")) {
+              const cleanId = String(normalized.ID).replace(
+                /^[a-zA-Z]+[-\s]?/,
+                "",
+              );
+              normalized.ID = `${normalized.Subject}::${cleanId}`;
+            }
+            return normalized;
+          });
+        }
+      } catch (err) {
+        console.error("Error loading DB from IndexedDB", err);
+      }
+    }
+
+    rebuildQuestionIndex();
+
     if (
       !["top", "bottom", "auto"].includes(state.prefs.quizNavigationPosition)
     ) {
@@ -602,9 +630,7 @@
       typeof document !== "undefined"
         ? document.getElementById("db-size-display")
         : null;
-    if (dbSizeEl) {
-      dbSizeEl.innerText = state.db ? state.db.length : 0;
-    }
+    if (dbSizeEl) dbSizeEl.textContent = String(state.db.length);
 
     if (typeof globalScope.populateFilters === "function") {
       globalScope.populateFilters();
@@ -616,6 +642,7 @@
       globalScope.updateThemeButton();
     }
     syncPreferenceControls();
+
     if (typeof globalScope.emitDebugState === "function") {
       globalScope.emitDebugState("load_state:complete", {
         dbCount: state.db.length,
@@ -627,35 +654,45 @@
   let stateSavePromise = null;
   let resolveStateSave = null;
   let stateSaveQueued = false;
+  let pendingSaveMask = 0;
+
+  const SAVE_STATS = 1;
+  const SAVE_PREFS = 2;
+  const SAVE_SUMMARY = 4;
+  const SAVE_PATH = 8;
+  const SAVE_ALL = SAVE_STATS | SAVE_PREFS | SAVE_SUMMARY | SAVE_PATH;
 
   function flushStateSave() {
     stateSaveQueued = false;
+    const saveMask = pendingSaveMask || SAVE_ALL;
+    pendingSaveMask = 0;
+
     try {
       if (typeof globalScope.emitDebugState === "function") {
         globalScope.emitDebugState("save_state:begin", {
           dbCount: state.db.length,
           summaryCount: state.categorySummary.length,
+          saveMask,
         });
       }
 
-      state.stats = normalizeStats(state.stats);
-      state.prefs = normalizePrefs(state.prefs);
-      state.categorySummary = normalizeCategorySummary(
-        state.categorySummary || [],
-      );
-
-      setStoredJSON("stats", state.stats);
-      setStoredJSON("prefs", state.prefs);
-      setStoredJSON("summary", state.categorySummary || []);
-      if (typeof globalScope.persistNavigationPath === "function") {
-        globalScope.persistNavigationPath(state.currentPath || []);
-      } else {
-        setStoredItem(
-          "mrh_navigation_path",
-          JSON.stringify(
-            Array.isArray(state.currentPath) ? state.currentPath : [],
-          ),
-        );
+      // State is normalized at load/mutation boundaries. Avoid re-walking large
+      // arrays and rebuilding objects every time a small statistic changes.
+      if (saveMask & SAVE_STATS) setStoredJSON("stats", state.stats);
+      if (saveMask & SAVE_PREFS) setStoredJSON("prefs", state.prefs);
+      if (saveMask & SAVE_SUMMARY)
+        setStoredJSON("summary", state.categorySummary || []);
+      if (saveMask & SAVE_PATH) {
+        if (typeof globalScope.persistNavigationPath === "function") {
+          globalScope.persistNavigationPath(state.currentPath || []);
+        } else {
+          setStoredItem(
+            "mrh_navigation_path",
+            JSON.stringify(
+              Array.isArray(state.currentPath) ? state.currentPath : [],
+            ),
+          );
+        }
       }
     } catch (e) {
       console.error(e);
@@ -665,6 +702,7 @@
       globalScope.emitDebugState("save_state:complete", {
         dbCount: state.db.length,
         summaryCount: state.categorySummary.length,
+        saveMask,
       });
     }
 
@@ -674,28 +712,29 @@
     if (resolve) resolve();
   }
 
-  function saveState() {
+  function saveState(dirty = "all") {
     if (!stateSavePromise) {
       stateSavePromise = new Promise((resolve) => {
         resolveStateSave = resolve;
       });
     }
 
+    if (dirty === "stats") pendingSaveMask |= SAVE_STATS;
+    else if (dirty === "prefs") pendingSaveMask |= SAVE_PREFS;
+    else if (dirty === "summary") pendingSaveMask |= SAVE_SUMMARY;
+    else if (dirty === "path") pendingSaveMask |= SAVE_PATH;
+    else pendingSaveMask |= SAVE_ALL;
+
     if (!stateSaveQueued) {
       stateSaveQueued = true;
-      const scheduleFlush = () => {
-        if (typeof requestIdleCallback === "function") {
-          requestIdleCallback(flushStateSave, { timeout: 300 });
-        } else {
-          setTimeout(flushStateSave, 150);
-        }
-      };
-      if (typeof setTimeout === "function") {
-        setTimeout(scheduleFlush, 0);
+      if (typeof requestIdleCallback === "function") {
+        requestIdleCallback(flushStateSave, { timeout: 300 });
+      } else if (typeof setTimeout === "function") {
+        setTimeout(flushStateSave, 100);
       } else if (typeof queueMicrotask === "function") {
-        queueMicrotask(scheduleFlush);
+        queueMicrotask(flushStateSave);
       } else {
-        Promise.resolve().then(scheduleFlush);
+        Promise.resolve().then(flushStateSave);
       }
     }
 

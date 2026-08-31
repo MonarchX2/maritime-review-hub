@@ -76,14 +76,30 @@
     }
 
     function emit(label, details = {}) {
-      const entry = snapshot(label, details);
-      if (
-        root.__MRH_DEBUG__ &&
+      const debugEnabled =
+        Boolean(root.__MRH_DEBUG__) &&
         typeof console !== "undefined" &&
-        typeof console.debug === "function"
-      ) {
-        console.debug(`[${scope}]`, label, entry);
+        typeof console.debug === "function";
+
+      // Avoid deep-cloning the full application state when debug mode is off.
+      // This is important because state snapshots can contain large question
+      // banks and session arrays.
+      if (!debugEnabled) {
+        return {
+          label: String(label || "debug"),
+          scope,
+          timestamp: new Date().toISOString(),
+          ...buildDebugSummary(details?.state),
+          ...(details && typeof details === "object"
+            ? Object.fromEntries(
+                Object.entries(details).filter(([key]) => key !== "state"),
+              )
+            : {}),
+        };
       }
+
+      const entry = snapshot(label, details);
+      console.debug(`[${scope}]`, label, entry);
       return entry;
     }
 

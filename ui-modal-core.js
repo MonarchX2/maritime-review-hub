@@ -9,12 +9,27 @@
 
   // ===================== CORE MODAL CONTROL =====================
   const modalTimers = new WeakMap();
+  const modalInnerCache = new WeakMap();
+  let reportedQuestionIdSet = null;
+  let dropdownMenusCache = null;
+
+  function getModalInner(modal) {
+    if (!modal) return null;
+    let inner = modalInnerCache.get(modal);
+    if (!inner) {
+      inner =
+        modal.querySelector(":scope > div") ||
+        modal.querySelector("div") ||
+        null;
+      if (inner) modalInnerCache.set(modal, inner);
+    }
+    return inner;
+  }
 
   function toggleModal(modalId, isVisible) {
     const modal = document.getElementById(modalId);
     if (!modal) return false;
-    const inner =
-      modal.querySelector(":scope > div") || modal.querySelector("div");
+    const inner = getModalInner(modal);
     const previous = modalTimers.get(modal);
     if (previous) {
       clearTimeout(previous.show);
@@ -88,23 +103,35 @@
   }
 
   function readReportedQuestionIds() {
+    if (reportedQuestionIdSet) return [...reportedQuestionIdSet];
     try {
       const raw =
         typeof getStoredItem === "function"
           ? getStoredItem("reported_qs", "[]")
           : "[]";
       const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-      return Array.isArray(parsed) ? parsed.map(String) : [];
+      reportedQuestionIdSet = new Set(
+        Array.isArray(parsed) ? parsed.map(String) : [],
+      );
+      return [...reportedQuestionIdSet];
     } catch (_) {
+      reportedQuestionIdSet = new Set();
       return [];
     }
   }
 
+  function hasReportedQuestion(id) {
+    const ids = readReportedQuestionIds();
+    return reportedQuestionIdSet?.has(String(id)) || ids.includes(String(id));
+  }
+
   function rememberReportedQuestion(id) {
-    const ids = new Set(readReportedQuestionIds());
-    ids.add(String(id));
-    if (typeof setStoredItem === "function")
-      setStoredItem("reported_qs", JSON.stringify([...ids]));
+    const normalizedId = String(id);
+    if (!reportedQuestionIdSet) readReportedQuestionIds();
+    reportedQuestionIdSet.add(normalizedId);
+    if (typeof setStoredItem === "function") {
+      setStoredItem("reported_qs", JSON.stringify([...reportedQuestionIdSet]));
+    }
   }
   // ===================== REPORT MODAL =====================
   function openReportModal() {
@@ -114,7 +141,7 @@
 
     const reportedQs = readReportedQuestionIds();
 
-    if (reportedQs.includes(String(q.ID))) {
+    if (hasReportedQuestion(q.ID)) {
       globalScope.showToast?.(
         "You have already reported this question. Thank you for your feedback!",
         "info",
@@ -145,12 +172,14 @@
   function openReportModalFromStudy(questionId) {
     const state = globalScope.state;
     questionId = globalScope.decodeHandlerValue(questionId);
-    const q = (state.db || []).find((item) => item.ID === questionId);
+    const q =
+      state.subjectIndex?.byId?.get?.(String(questionId)) ||
+      (state.db || []).find((item) => item.ID === questionId);
     if (!q) return;
 
     const reportedQs = readReportedQuestionIds();
 
-    if (reportedQs.includes(String(q.ID))) {
+    if (hasReportedQuestion(q.ID)) {
       globalScope.showToast?.(
         "You have already reported this question. Thank you for your feedback!",
         "info",
@@ -340,7 +369,7 @@
     // Small delay allows the browser to render 'block' before applying opacity for the transition
     setTimeout(() => {
       modal.classList.remove("opacity-0");
-      modal.querySelector("div").classList.remove("scale-95");
+      getModalInner(modal)?.classList.remove("scale-95");
     }, 10);
   }
 
@@ -506,18 +535,23 @@
 
   // ===================== DROPDOWN MENU MANAGEMENT =====================
   function closeAllDropdownMenus(exceptElement = null) {
-    document
-      .querySelectorAll("#deck-source-menu, #deck-sort-menu, #quiz-filter-menu")
-      .forEach((menu) => {
-        if (menu !== exceptElement) menu.open = false;
-      });
+    const menus =
+      dropdownMenusCache ||
+      (dropdownMenusCache = document.querySelectorAll(
+        "#deck-source-menu, #deck-sort-menu, #quiz-filter-menu",
+      ));
+    menus.forEach((menu) => {
+      if (menu !== exceptElement) menu.open = false;
+    });
   }
 
   function initDetailsExclusivity() {
     if (typeof document === "undefined") return false;
-    const detailsElements = document.querySelectorAll(
-      "#deck-source-menu, #deck-sort-menu, #quiz-filter-menu",
-    );
+    const detailsElements =
+      dropdownMenusCache ||
+      (dropdownMenusCache = document.querySelectorAll(
+        "#deck-source-menu, #deck-sort-menu, #quiz-filter-menu",
+      ));
 
     if (
       document.documentElement.dataset.mrhDetailsExclusivityInitialized ===

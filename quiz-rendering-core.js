@@ -6,6 +6,19 @@
   "use strict";
 
   const sessionCore = globalScope.SessionCore;
+  let cachedToggles = null;
+
+  function getElementCached(id) {
+    if (!cachedToggles) cachedToggles = Object.create(null);
+    if (!cachedToggles[id] && typeof document !== "undefined") {
+      cachedToggles[id] = document.getElementById(id);
+    }
+    return cachedToggles[id] || null;
+  }
+
+  function getToggle(id) {
+    return getElementCached(id);
+  }
 
   function callSession(method, ...args) {
     const handler = sessionCore?.[method];
@@ -33,7 +46,7 @@
   }
 
   function toggleHideABCD() {
-    const toggle = document.getElementById("toggle-hide-abcd");
+    const toggle = getToggle("toggle-hide-abcd");
     if (!toggle || !globalScope.state) return false;
     globalScope.state.prefs.hideABCD = toggle.checked;
     globalScope.saveState?.();
@@ -42,20 +55,18 @@
   }
 
   function toggleQuizHideABCD() {
-    const toggle = document.getElementById("toggle-quiz-hide-abcd");
+    const toggle = getToggle("toggle-quiz-hide-abcd");
     if (!toggle || toggle.disabled || !globalScope.state) return false;
     globalScope.state.prefs.quizHideABCD = toggle.checked;
     globalScope.saveState?.();
-    if (
-      document.getElementById("view-practice")?.classList.contains("active")
-    ) {
+    if (getElementCached("view-practice")?.classList.contains("active")) {
       renderQuestion();
     }
     return true;
   }
 
   function toggleShowWrongChoices() {
-    const toggle = document.getElementById("toggle-wrong-choices");
+    const toggle = getToggle("toggle-wrong-choices");
     if (!toggle || !globalScope.state) return false;
     globalScope.state.prefs.showWrongChoices = toggle.checked;
     globalScope.saveState?.();
@@ -64,7 +75,7 @@
   }
 
   function toggleClozeMode(source) {
-    const toggle = source || document.getElementById("toggle-cloze-mode");
+    const toggle = source || getToggle("toggle-cloze-mode");
     if (!globalScope.state) return false;
     globalScope.state.prefs.clozeEnabled = toggle
       ? Boolean(toggle.checked)
@@ -75,7 +86,7 @@
   }
 
   function toggleSrsMode(source) {
-    const toggle = source || document.getElementById("toggle-srs-mode");
+    const toggle = source || getToggle("toggle-srs-mode");
     if (!globalScope.state) return false;
     globalScope.state.prefs.srsEnabled = toggle
       ? Boolean(toggle.checked)

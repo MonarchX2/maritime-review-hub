@@ -3,13 +3,67 @@
   const DAY_MS = 24 * 60 * 60 * 1000;
   const HOUR_MS = 60 * 60 * 1000;
   const preloadedImageUrls = new Set();
+  const elementCache = new Map();
+  let choiceButtonsCache = null;
+  let choiceHandlerBoundTo = null;
+  let timerAnimationFrame = 0;
+  let sessionSaveTimer = 0;
+  let sessionSaveRequested = false;
 
   function getElement(id) {
-    return typeof document !== "undefined" ? document.getElementById(id) : null;
+    if (typeof document === "undefined") return null;
+    const cached = elementCache.get(id);
+    if (cached && cached.isConnected) return cached;
+
+    const element = document.getElementById(id);
+    if (element) elementCache.set(id, element);
+    else elementCache.delete(id);
+    return element;
   }
 
   function hasDOM() {
     return typeof document !== "undefined";
+  }
+
+  function getChoiceButtons() {
+    if (!hasDOM()) return [];
+    if (
+      choiceButtonsCache &&
+      choiceButtonsCache.length > 0 &&
+      choiceButtonsCache.every((button) => button.isConnected)
+    ) {
+      return choiceButtonsCache;
+    }
+    choiceButtonsCache = Array.from(
+      document.querySelectorAll(".choice-btn[data-choice]"),
+    );
+    return choiceButtonsCache;
+  }
+
+  function ensureChoiceHandler() {
+    const container = getElement("q-choices");
+    if (!container) return;
+    if (choiceHandlerBoundTo === container) return;
+
+    choiceHandlerBoundTo?.removeEventListener(
+      "click",
+      handleChoiceContainerClick,
+    );
+    choiceHandlerBoundTo = container;
+    container.addEventListener("click", handleChoiceContainerClick);
+  }
+
+  function handleChoiceContainerClick(event) {
+    const button = event.target?.closest?.(".choice-btn[data-choice]");
+    if (!button || !choiceHandlerBoundTo?.contains(button)) return;
+
+    const session = getSession();
+    if (!session?.active) return;
+
+    const q = getCurrentQuestion();
+    const selectedKey = normalizeAnswer(button.dataset.choice);
+    const correctKey = normalizeAnswer(q?.Answer);
+    submitPracticeAnswer(selectedKey, correctKey);
   }
 
   function getState() {
@@ -124,7 +178,7 @@
       const originalCorrectText = originalAnswerKey
         ? getChoiceText(originalQ, originalAnswerKey)
         : originalAnswer;
-      let validChoices = getValidChoices(q);
+      let validChoices = getValidChoices(originalQ);
 
       if (
         prefs.shuffleChoices !== false &&
@@ -133,29 +187,34 @@
         validChoices = globalScope.shuffleArray(validChoices);
       }
 
-      CHOICE_KEYS.forEach((key, index) => {
-        q[`Choice${key}`] = validChoices[index] || "";
-      });
+      for (let i = 0; i < CHOICE_KEYS.length; i++) {
+        q[`Choice${CHOICE_KEYS[i]}`] = validChoices[i] || "";
+      }
 
       const normalizedCorrect =
         normalizeText(originalCorrectText).toLowerCase();
-      const matchingIndex = validChoices.findIndex(
-        (choice) => normalizeText(choice).toLowerCase() === normalizedCorrect,
-      );
+      let matchingIndex = -1;
+      if (normalizedCorrect) {
+        for (let i = 0; i < validChoices.length; i++) {
+          if (
+            normalizeText(validChoices[i]).toLowerCase() === normalizedCorrect
+          ) {
+            matchingIndex = i;
+            break;
+          }
+        }
+      }
 
       if (matchingIndex >= 0 && matchingIndex < CHOICE_KEYS.length) {
         q.Answer = CHOICE_KEYS[matchingIndex];
         delete q._invalidAnswer;
       } else if (originalAnswerKey && validChoices.length === 0) {
-        // Preserve a valid answer key for non-choice/identification questions.
         q.Answer = originalAnswerKey;
         delete q._invalidAnswer;
       } else if (originalAnswer && validChoices.length === 0) {
-        // Non-MCQ questions may legitimately store their answer as free text.
         q.Answer = originalAnswer;
         delete q._invalidAnswer;
       } else {
-        // Never silently turn corrupt answer data into a correct A answer.
         q.Answer = "";
         q._invalidAnswer = true;
       }
@@ -231,7 +290,7 @@
     getElement("session-active")?.classList.remove("hidden");
 
     renderQuestion();
-    saveSessionProgress();
+    saveSessionProgress(true);
   }
 
   function renderQuestion() {
@@ -240,15 +299,17 @@
       !session?.active ||
       !Array.isArray(session.questions) ||
       session.questions.length === 0
-    )
+    ) {
       return;
+    }
 
     const totalCards = session.questions.length;
     const rawIndex = Number.isInteger(session.currentIndex)
       ? session.currentIndex
       : 0;
     session.currentIndex = Math.min(Math.max(rawIndex, 0), totalCards - 1);
-    const q = getCurrentQuestion();
+
+    const q = session.questions[session.currentIndex];
     if (!q) return;
 
     stopTimerSafely();
@@ -256,27 +317,32 @@
       globalScope.applyNavigationPosition();
     }
 
+    ensureChoiceHandler();
+
     const userAnswer = session.userAnswers?.[session.currentIndex];
+    const userAnswerKey = normalizeAnswer(userAnswer);
+    const correctKey = normalizeAnswer(q.Answer);
     const currentCard = session.currentIndex + 1;
+
     const progressText = getElement("session-progress-text");
     const progressBar = getElement("session-progress");
     if (progressText)
       progressText.textContent = `${currentCard} / ${totalCards}`;
-    if (progressBar)
+    if (progressBar) {
       progressBar.style.width = `${(currentCard / totalCards) * 100}%`;
+    }
 
     const fullSubject = normalizeText(q.Subject) || "General";
-    const parts = fullSubject
-      .split("::")
-      .map((part) => part.trim())
-      .filter(Boolean);
+    const parts = fullSubject.split("::");
     const subjectEl = getElement("q-subject");
-    if (subjectEl)
+    if (subjectEl) {
       subjectEl.textContent =
-        parts.length >= 2 ? parts.slice(-2).join(" :: ") : fullSubject;
+        parts.length >= 2
+          ? `${normalizeText(parts[parts.length - 2])} :: ${normalizeText(parts[parts.length - 1])}`
+          : fullSubject;
+    }
 
-    let displayId = q.ID ?? `Q-${currentCard}`;
-    displayId = normalizeText(displayId);
+    let displayId = normalizeText(q.ID ?? `Q-${currentCard}`);
     if (displayId.includes("::")) {
       const match = displayId.match(/::.*?\b(\d+)\s*$/);
       displayId = match ? match[1] : displayId.split("::").pop().trim();
@@ -284,12 +350,10 @@
     const idEl = getElement("q-id");
     if (idEl) idEl.textContent = `Question ${displayId}`;
 
-    // Set question type badge
     const typeEl = getElement("q-type");
     if (typeEl) {
       let qType = "MC";
       if (q.QuestionType) {
-        // Use pre-computed type from backend
         qType =
           q.QuestionType === "ID"
             ? "ID"
@@ -297,10 +361,9 @@
               ? "MX"
               : "MC";
       } else {
-        // Fallback: calculate from choices
         let validChoicesCount = 0;
-        ["A", "B", "C", "D"].forEach((ch) => {
-          const choiceText = q[`Choice${ch}`];
+        for (const key of CHOICE_KEYS) {
+          const choiceText = q[`Choice${key}`];
           if (
             choiceText &&
             String(choiceText).trim() !== "" &&
@@ -308,18 +371,17 @@
           ) {
             validChoicesCount++;
           }
-        });
+        }
         qType = validChoicesCount <= 1 ? "ID" : "MC";
       }
       typeEl.textContent = qType;
     }
 
+    const favoriteQuestions = getPrefs().favoriteQuestions;
     const favBtn = getElement("btn-favorite-question");
     if (favBtn) {
-      const favoriteQuestions = Array.isArray(getPrefs().favoriteQuestions)
-        ? getPrefs().favoriteQuestions
-        : [];
-      const isFavorite = favoriteQuestions.includes(q.ID);
+      const isFavorite =
+        Array.isArray(favoriteQuestions) && favoriteQuestions.includes(q.ID);
       favBtn.classList.toggle("text-yellow-500", isFavorite);
       favBtn.classList.toggle("text-gray-400", !isFavorite);
       favBtn.title = isFavorite ? "Remove from Favorites" : "Add to Favorites";
@@ -360,19 +422,24 @@
     const imgEl = getElement("q-image");
     const imageUrl = normalizeText(q.ImageURL);
     if (imgEl) {
-      imgEl.onload = null;
-      imgEl.onerror = null;
-      if (
-        imageUrl &&
-        typeof globalScope.isSafeImageURL === "function" &&
-        globalScope.isSafeImageURL(imageUrl)
-      ) {
+      if (!imgEl.dataset.mrhHandlersBound) {
         imgEl.onload = () => imgEl.classList.remove("hidden");
         imgEl.onerror = () => {
           imgEl.removeAttribute("src");
           imgEl.classList.add("hidden");
         };
-        imgEl.src = imageUrl;
+        imgEl.dataset.mrhHandlersBound = "1";
+        imgEl.decoding = "async";
+      }
+
+      if (
+        imageUrl &&
+        typeof globalScope.isSafeImageURL === "function" &&
+        globalScope.isSafeImageURL(imageUrl)
+      ) {
+        if (imgEl.getAttribute("src") !== imageUrl) {
+          imgEl.src = imageUrl;
+        }
         const questionText = normalizeText(q.Question);
         imgEl.alt = questionText
           ? `Reference for: ${questionText.slice(0, 50)}${questionText.length > 50 ? "..." : ""}`
@@ -392,60 +459,56 @@
     const isForcedMCQ = prefs.qTypeOverride === "mcq";
     const hideABCD = prefs.quizHideABCD === true || isPureIdent;
 
-    const choiceButtons = hasDOM()
-      ? [...document.querySelectorAll(".choice-btn[data-choice]")]
-      : [];
+    const choiceButtons = getChoiceButtons();
 
-    CHOICE_KEYS.forEach((choiceKey) => {
-      const btn =
-        choiceButtons.find((element) => element.dataset.choice === choiceKey) ||
-        (hasDOM()
-          ? document.querySelector(`.choice-btn[data-choice="${choiceKey}"]`)
-          : null);
-      if (!btn) return;
+    for (const btn of choiceButtons) {
+      const choiceKey = normalizeAnswer(btn.dataset.choice);
+      if (!choiceKey) continue;
 
       const choiceText = q[`Choice${choiceKey}`];
       let cleanChoice = normalizeText(choiceText);
-      btn.classList.remove("selected-correct", "selected-wrong", "dimmed");
-      btn.onclick = null;
-
       if (isForcedMCQ && cleanChoice === "") cleanChoice = "undefined";
+
       const shouldHide =
         !isForcedMCQ &&
         (cleanChoice === "" || cleanChoice.toLowerCase() === "undefined");
 
+      btn.classList.remove("selected-correct", "selected-wrong", "dimmed");
       btn.classList.toggle("hidden", shouldHide);
+
       if (shouldHide) {
-        btn.innerHTML = "";
-        return;
+        btn.replaceChildren();
+        continue;
       }
 
-      const prefixRegex = new RegExp(`^${choiceKey}[\\.\\)\\-]\\s*`, "i");
+      const prefixRegex = new RegExp(`^${choiceKey}[\.\)\-]\s*`, "i");
       const displayText = cleanChoice.replace(prefixRegex, "");
-      const safeDisplayText =
-        typeof globalScope.escapeHTML === "function"
-          ? globalScope.escapeHTML(displayText)
-          : displayText.replace(
-              /[&<>'"]/g,
-              (char) =>
-                ({
-                  "&": "&amp;",
-                  "<": "&lt;",
-                  ">": "&gt;",
-                  "'": "&#39;",
-                  '"': "&quot;",
-                })[char],
-            );
 
-      btn.innerHTML = hideABCD
-        ? safeDisplayText
-        : `<span class="choice-letter font-bold mr-2 whitespace-nowrap">${choiceKey})</span> ${safeDisplayText}`;
-
-      if (!userAnswer && !q._invalidAnswer) {
-        btn.onclick = () =>
-          submitPracticeAnswer(choiceKey, normalizeAnswer(q.Answer));
+      // Use text nodes rather than HTML parsing for choice text. The previous
+      // implementation escaped HTML and then reparsed it with innerHTML.
+      btn.replaceChildren();
+      if (hideABCD) {
+        btn.textContent = displayText;
+      } else {
+        const label = document.createElement("span");
+        label.className = "choice-letter font-bold mr-2 whitespace-nowrap";
+        label.textContent = `${choiceKey})`;
+        btn.append(label, document.createTextNode(` ${displayText}`));
       }
-    });
+
+      if (userAnswer) {
+        if (correctKey && choiceKey === correctKey) {
+          btn.classList.add("selected-correct");
+          btn.classList.remove("hidden");
+        } else if (isPureIdent) {
+          btn.classList.add("hidden");
+        } else if (choiceKey === userAnswerKey) {
+          btn.classList.add("selected-wrong");
+        } else {
+          btn.classList.add("dimmed");
+        }
+      }
+    }
 
     const qChoicesContainer = getElement("q-choices");
     const activeRecallMask = getElement("active-recall-mask");
@@ -460,23 +523,6 @@
       activeRecallMask?.classList.add("hidden");
       qChoicesContainer?.classList.remove("hidden");
       showExplanation(q);
-
-      choiceButtons.forEach((btn) => {
-        btn.onclick = null;
-        const choice = normalizeAnswer(btn.dataset.choice);
-        const correct = normalizeAnswer(q.Answer);
-        if (correct && choice === correct) {
-          btn.classList.add("selected-correct");
-          btn.classList.remove("hidden");
-        } else if (isPureIdent) {
-          btn.classList.add("hidden");
-        } else if (choice === normalizeAnswer(userAnswer)) {
-          btn.classList.add("selected-wrong");
-        } else {
-          btn.classList.add("dimmed");
-        }
-      });
-
       if (btnNext) btnNext.disabled = false;
       if (btnReveal) btnReveal.disabled = true;
     } else {
@@ -498,47 +544,29 @@
 
     const activeRecallToggle = getElement("toggle-active-recall");
     const shuffleChoicesToggle = getElement("toggle-shuffle-choices");
-    if (activeRecallToggle) {
-      activeRecallToggle.disabled = isPureIdent;
-      activeRecallToggle.parentElement?.classList.toggle(
-        "opacity-50",
-        isPureIdent,
-      );
-      activeRecallToggle.parentElement?.classList.toggle(
-        "cursor-not-allowed",
-        isPureIdent,
-      );
-      activeRecallToggle.parentElement?.classList.toggle(
-        "pointer-events-none",
-        isPureIdent,
-      );
-    }
-    if (shuffleChoicesToggle) {
-      shuffleChoicesToggle.disabled = isPureIdent;
-      shuffleChoicesToggle.parentElement?.classList.toggle(
-        "opacity-50",
-        isPureIdent,
-      );
-      shuffleChoicesToggle.parentElement?.classList.toggle(
-        "cursor-not-allowed",
-        isPureIdent,
-      );
-      shuffleChoicesToggle.parentElement?.classList.toggle(
-        "pointer-events-none",
-        isPureIdent,
-      );
+    for (const [control, disabled] of [
+      [activeRecallToggle, isPureIdent],
+      [shuffleChoicesToggle, isPureIdent],
+    ]) {
+      if (!control) continue;
+      control.disabled = disabled;
+      const parent = control.parentElement;
+      parent?.classList.toggle("opacity-50", disabled);
+      parent?.classList.toggle("cursor-not-allowed", disabled);
+      parent?.classList.toggle("pointer-events-none", disabled);
     }
 
-    const nextIndex = session.currentIndex + 1;
-    const upcomingQuestions = session.questions.slice(nextIndex, nextIndex + 2);
     if (typeof Image === "function") {
-      upcomingQuestions.forEach((nextQ) => {
-        const nextImageUrl = normalizeText(nextQ?.ImageURL);
-        if (!nextImageUrl || preloadedImageUrls.has(nextImageUrl)) return;
+      const nextIndex = session.currentIndex + 1;
+      const limit = Math.min(session.questions.length, nextIndex + 2);
+      for (let i = nextIndex; i < limit; i++) {
+        const nextImageUrl = normalizeText(session.questions[i]?.ImageURL);
+        if (!nextImageUrl || preloadedImageUrls.has(nextImageUrl)) continue;
         preloadedImageUrls.add(nextImageUrl);
         const imgPreload = new Image();
+        imgPreload.decoding = "async";
         imgPreload.src = nextImageUrl;
-      });
+      }
     }
   }
 
@@ -546,34 +574,36 @@
     const session = getSession();
     const q = getCurrentQuestion();
     const selectedKey = normalizeAnswer(selected);
-    const correctKey = normalizeAnswer(correct);
+    const correctKey = normalizeAnswer(correct ?? q?.Answer);
+
     if (
       !session?.active ||
       !q ||
       !selectedKey ||
       q._invalidAnswer ||
       !correctKey
-    )
+    ) {
       return false;
+    }
     if (session.userAnswers?.[session.currentIndex]) return false;
 
-    if (!session.userAnswers || typeof session.userAnswers !== "object")
+    if (!session.userAnswers || typeof session.userAnswers !== "object") {
       session.userAnswers = {};
+    }
     session.userAnswers[session.currentIndex] = selectedKey;
 
     trackStats(q, selectedKey === correctKey);
 
-    const choicesContainer = getElement("q-choices");
-    choicesContainer?.querySelectorAll(".choice-btn").forEach((btn) => {
-      btn.onclick = null;
+    for (const btn of getChoiceButtons()) {
       const choice = normalizeAnswer(btn.dataset.choice);
       btn.classList.remove("selected-correct", "selected-wrong", "dimmed");
       if (choice === correctKey) btn.classList.add("selected-correct");
       else if (choice === selectedKey) btn.classList.add("selected-wrong");
       else btn.classList.add("dimmed");
-    });
+    }
 
     showExplanation(q);
+
     const btnNext = getElement("btn-next");
     const btnReveal = getElement("btn-reveal");
     if (btnNext) btnNext.disabled = false;
@@ -584,6 +614,7 @@
       progressBar.style.width = `${((session.currentIndex + 1) / session.questions.length) * 100}%`;
     }
 
+    saveSessionProgress();
     startTimerSafely();
     safeClearAutoNextTimeout();
     session.autoNextTimeout = setTimeout(() => {
@@ -674,22 +705,26 @@
 
     const qId = normalizeText(q.ID) || normalizeText(q.Question);
     if (!qId) return;
+
     if (
       !stats.srsMap ||
       typeof stats.srsMap !== "object" ||
       Array.isArray(stats.srsMap)
-    )
+    ) {
       stats.srsMap = {};
+    }
 
     const existing = stats.srsMap[qId] || getDefaultSrsEntry(qId);
     const reps = Math.max(0, Number(existing.reps) || 0) + 1;
     const existingEase = Number(existing.ease);
     const ease = Number.isFinite(existingEase) ? existingEase : 2.5;
+    const now = Date.now();
+
     const next = {
       ...existing,
       qId,
       reps,
-      lastAnsweredAt: Date.now(),
+      lastAnsweredAt: now,
     };
 
     if (isCorrect) {
@@ -697,14 +732,14 @@
       next.step = Math.max(1, (Number(existing.step) || 0) + 1);
       next.ease = Math.max(1.3, ease + 0.1);
       next.interval = computeSrsInterval(next.step, next.ease);
-      next.due = Date.now() + next.interval * DAY_MS;
+      next.due = now + next.interval * DAY_MS;
     } else {
       next.lastScore = "wrong";
       next.step = 0;
       next.lapses = Math.max(0, Number(existing.lapses) || 0) + 1;
       next.ease = Math.max(1.3, ease - 0.2);
       next.interval = 1;
-      next.due = Date.now() + HOUR_MS;
+      next.due = now + HOUR_MS;
     }
 
     stats.srsMap[qId] = next;
@@ -720,7 +755,6 @@
   }
 
   function trackStats(q, isCorrect) {
-    const state = getState();
     const stats = getStats();
     if (!q || typeof stats !== "object") return;
 
@@ -728,35 +762,42 @@
     stats.correct = Math.max(0, Number(stats.correct) || 0);
     if (!Array.isArray(stats.mistakes)) stats.mistakes = [];
     if (!Array.isArray(stats.completedQs)) stats.completedQs = [];
-    if (!stats.subjectAccuracy || typeof stats.subjectAccuracy !== "object")
+    if (!stats.subjectAccuracy || typeof stats.subjectAccuracy !== "object") {
       stats.subjectAccuracy = {};
+    }
 
     const subject = normalizeText(q.Subject) || "General";
-    if (
-      !stats.subjectAccuracy[subject] ||
-      typeof stats.subjectAccuracy[subject] !== "object"
-    ) {
-      stats.subjectAccuracy[subject] = { total: 0, correct: 0 };
+    let subjectStats = stats.subjectAccuracy[subject];
+    if (!subjectStats || typeof subjectStats !== "object") {
+      subjectStats = { total: 0, correct: 0 };
+      stats.subjectAccuracy[subject] = subjectStats;
     }
-    const subjectStats = stats.subjectAccuracy[subject];
+
     subjectStats.total = Math.max(0, Number(subjectStats.total) || 0) + 1;
     subjectStats.correct = Math.max(0, Number(subjectStats.correct) || 0);
 
     const questionId = q.ID;
-    if (questionId != null && !stats.completedQs.includes(questionId))
+    if (questionId != null && !stats.completedQs.includes(questionId)) {
       stats.completedQs.push(questionId);
+    }
 
     if (isCorrect) {
       stats.correct += 1;
       subjectStats.correct += 1;
-      if (questionId != null)
-        stats.mistakes = stats.mistakes.filter((id) => id !== questionId);
+
+      if (questionId != null) {
+        const mistakeIndex = stats.mistakes.indexOf(questionId);
+        if (mistakeIndex !== -1) stats.mistakes.splice(mistakeIndex, 1);
+      }
     } else if (questionId != null && !stats.mistakes.includes(questionId)) {
       stats.mistakes.push(questionId);
     }
 
     updateSrsForQuestion(q, Boolean(isCorrect));
-    if (typeof globalScope.saveState === "function") globalScope.saveState();
+
+    if (typeof globalScope.saveState === "function") {
+      globalScope.saveState("stats");
+    }
   }
 
   function endSession(silent = false) {
@@ -776,7 +817,7 @@
     const shouldClearSaved = isLastQuestion && isAnswered;
 
     if (shouldClearSaved) clearSessionProgress();
-    else saveSessionProgress();
+    else saveSessionProgress(true);
 
     session.active = false;
 
@@ -797,12 +838,15 @@
       globalScope.navigate("dashboard");
   }
 
-  function saveSessionProgress() {
+  function writeSessionProgressNow() {
     const session = getSession();
     const state = getState();
     const prefs = getPrefs();
-    if (!session?.active || typeof globalScope.setStoredJSON !== "function")
+
+    if (!session?.active || typeof globalScope.setStoredJSON !== "function") {
+      sessionSaveRequested = false;
       return false;
+    }
 
     try {
       globalScope.setStoredJSON("saved_session", session);
@@ -813,8 +857,10 @@
       };
       state.prefs = prefs;
       globalScope.setStoredJSON("prefs", prefs);
+      sessionSaveRequested = false;
       return true;
     } catch (error) {
+      sessionSaveRequested = false;
       console.warn(
         "Storage quota exceeded. Could not save session progress.",
         error,
@@ -827,6 +873,32 @@
       }
       return false;
     }
+  }
+
+  function saveSessionProgress(immediate = false) {
+    const session = getSession();
+    if (!session?.active || typeof globalScope.setStoredJSON !== "function") {
+      return false;
+    }
+
+    sessionSaveRequested = true;
+
+    if (immediate) {
+      if (sessionSaveTimer) {
+        clearTimeout(sessionSaveTimer);
+        sessionSaveTimer = 0;
+      }
+      return writeSessionProgressNow();
+    }
+
+    if (!sessionSaveTimer) {
+      sessionSaveTimer = setTimeout(() => {
+        sessionSaveTimer = 0;
+        if (sessionSaveRequested) writeSessionProgressNow();
+      }, 100);
+    }
+
+    return true;
   }
 
   function checkSavedSession() {
@@ -895,6 +967,11 @@
   }
 
   function clearSessionProgress() {
+    if (sessionSaveTimer) {
+      clearTimeout(sessionSaveTimer);
+      sessionSaveTimer = 0;
+    }
+    sessionSaveRequested = false;
     if (typeof globalScope.removeStoredItem === "function")
       globalScope.removeStoredItem("saved_session");
     const state = getState();
@@ -937,18 +1014,40 @@
     const container = getElement("auto-next-timer-container");
     const bar = getElement("auto-next-timer-bar");
     if (!container || !bar) return;
+
     container.classList.remove("hidden");
+
+    if (timerAnimationFrame) {
+      cancelAnimationFrame(timerAnimationFrame);
+      timerAnimationFrame = 0;
+    }
+
     bar.classList.remove("animate-timer-bar");
-    void bar.offsetWidth;
-    bar.classList.add("animate-timer-bar");
+    if (typeof bar.getAnimations === "function") {
+      bar.getAnimations().forEach((animation) => animation.cancel());
+    }
+
+    timerAnimationFrame = requestAnimationFrame(() => {
+      timerAnimationFrame = 0;
+      if (bar.isConnected) bar.classList.add("animate-timer-bar");
+    });
   }
 
   function stopVisualTimer() {
     const container = getElement("auto-next-timer-container");
     const bar = getElement("auto-next-timer-bar");
     if (!container || !bar) return;
+
+    if (timerAnimationFrame) {
+      cancelAnimationFrame(timerAnimationFrame);
+      timerAnimationFrame = 0;
+    }
+
     container.classList.add("hidden");
     bar.classList.remove("animate-timer-bar");
+    if (typeof bar.getAnimations === "function") {
+      bar.getAnimations().forEach((animation) => animation.cancel());
+    }
   }
 
   const SessionCore = {

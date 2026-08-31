@@ -9,6 +9,9 @@
   let reviewRenderFrame = null;
   let virtualReviewScrollFrame = null;
   let lastVirtualRenderKey = null;
+  let reviewMainElement = null;
+  let reviewContainerElement = null;
+  let cachedReviewContainerTop = 0;
   const REVIEW_ESTIMATED_CARD_HEIGHT = 420;
   const REVIEW_VIRTUAL_OVERSCAN = 4;
 
@@ -59,9 +62,20 @@
     currentReviewSubject = subject;
     currentReviewQuestions = questions;
 
-    const container = document.getElementById("deck-review-list");
-    document.getElementById("deck-review-title").innerText =
-      getShortSubjectLabel(subject, "General");
+    const container =
+      reviewContainerElement ||
+      (reviewContainerElement = document.getElementById("deck-review-list"));
+    const titleElement = document.getElementById("deck-review-title");
+    if (titleElement) {
+      titleElement.textContent = getShortSubjectLabel(subject, "General");
+    }
+    if (!reviewMainElement && typeof document !== "undefined") {
+      reviewMainElement = document.querySelector("main");
+    }
+    if (reviewMainElement && container && !isVirtualScroll) {
+      cachedReviewContainerTop =
+        reviewMainElement === container ? 0 : container.offsetTop;
+    }
 
     const globalShowWrong = state.prefs.showWrongChoices !== false;
     const hideABCD = state.prefs.hideABCD === true;
@@ -105,12 +119,20 @@
         studyFilterMode === "favorites"
           ? questions.filter((question) => favoriteQuestions.has(question.ID))
           : questions;
-      sortedQuestions = [...filteredQuestions].sort((a, b) => {
-        const aFav = favoriteQuestions.has(a.ID) ? 1 : 0;
-        const bFav = favoriteQuestions.has(b.ID) ? 1 : 0;
-        if (aFav !== bFav) return bFav - aFav;
-        return 0;
-      });
+      if (studyFilterMode === "favorites") {
+        sortedQuestions = filteredQuestions;
+      } else if (favoriteQuestions.size > 0) {
+        const favoriteFirst = [];
+        const regular = [];
+        for (const question of filteredQuestions) {
+          (favoriteQuestions.has(question.ID) ? favoriteFirst : regular).push(
+            question,
+          );
+        }
+        sortedQuestions = favoriteFirst.concat(regular);
+      } else {
+        sortedQuestions = filteredQuestions;
+      }
       derivedQuestionsCache = {
         questions,
         filterMode: studyFilterMode,
@@ -161,8 +183,8 @@
       displayQuestions = [filteredQuestions[currentIndex]];
     } else {
       if (pageSize === "All") {
-        const main = document.querySelector("main");
-        const containerTop = main && container ? container.offsetTop : 0;
+        const main = reviewMainElement;
+        const containerTop = cachedReviewContainerTop;
         const viewportTop = Math.max(0, (main?.scrollTop || 0) - containerTop);
         const viewportHeight = main?.clientHeight || window.innerHeight || 800;
         virtualStartIndex = Math.max(
@@ -427,13 +449,15 @@
     }
     navigate("deck-review");
 
-    setTimeout(() => {
-      const scrollContainer = document.querySelector("main");
-      if (scrollContainer && layout === "scroll") {
-        scrollContainer.scrollTop = progress.scrollY || 0;
+    if (!isVirtualScroll) {
+      if (reviewMainElement && layout === "scroll" && progress.scrollY) {
+        requestAnimationFrame(() => {
+          if (reviewMainElement)
+            reviewMainElement.scrollTop = progress.scrollY || 0;
+        });
       }
-      applyTitleMode();
-    }, 100);
+      if (typeof applyTitleMode === "function") applyTitleMode();
+    }
   }
 
   if (typeof globalThis !== "undefined") {

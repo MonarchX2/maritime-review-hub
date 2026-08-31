@@ -169,11 +169,14 @@
     if (!state.stats.completedQs) state.stats.completedQs = [];
     if (!state.stats.srsMap) state.stats.srsMap = {};
 
+    // Set membership turns repeated O(n) includes() checks into O(1) lookups
+    // for large question banks.
+    const completedSet = new Set(state.stats.completedQs);
+    const mistakesSet = new Set(state.stats.mistakes || []);
+
     let pool = [];
     if (mode === "continue") {
-      pool = validQuestions.filter(
-        (q) => !state.stats.completedQs.includes(q.ID),
-      );
+      pool = validQuestions.filter((q) => !completedSet.has(q.ID));
 
       if (state.prefs.srsEnabled === true) {
         const now = Date.now();
@@ -186,18 +189,15 @@
         if (duePool.length > 0) {
           pool = duePool;
         } else {
-          const retryQueue = pool.slice(0);
-          if (retryQueue.length > 0) {
-            pool = retryQueue;
+          if (pool.length > 0) {
+            // Keep the existing pool; no copy is needed.
           }
         }
       }
 
       if (pool.length === 0) {
         if (state.prefs.srsEnabled === true) {
-          const queue = validQuestions.filter(
-            (q) => !state.stats.completedQs.includes(q.ID),
-          );
+          const queue = validQuestions.filter((q) => !completedSet.has(q.ID));
           if (queue.length > 0) {
             pool = queue;
           } else {
@@ -214,7 +214,7 @@
         }
       }
     } else if (mode === "mistakes") {
-      pool = validQuestions.filter((q) => state.stats.mistakes.includes(q.ID));
+      pool = validQuestions.filter((q) => mistakesSet.has(q.ID));
       if (pool.length === 0) {
         alert(`No mistakes to review for ${subject}! Great job.`);
         return;
@@ -277,16 +277,17 @@
       }
 
       const subjectQIDs = getQuestionsForSubject(subject).map((q) => q.ID);
+      const subjectIdSet = new Set(subjectQIDs);
 
       if (state.stats.completedQs) {
         state.stats.completedQs = state.stats.completedQs.filter(
-          (id) => !subjectQIDs.includes(id),
+          (id) => !subjectIdSet.has(id),
         );
       }
 
       if (state.stats.mistakes) {
         state.stats.mistakes = state.stats.mistakes.filter(
-          (id) => !subjectQIDs.includes(id),
+          (id) => !subjectIdSet.has(id),
         );
       }
 

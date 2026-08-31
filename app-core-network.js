@@ -2,14 +2,19 @@
   "use strict";
 
   const DEFAULT_TIMEOUT_MS = 15000;
+  let cachedDatabaseUrl = "";
+
   function getDatabaseUrl() {
+    if (cachedDatabaseUrl) return cachedDatabaseUrl;
     try {
       if (typeof DB_URL !== "undefined" && String(DB_URL).trim()) {
-        return String(DB_URL).trim();
+        cachedDatabaseUrl = String(DB_URL).trim();
+        return cachedDatabaseUrl;
       }
     } catch (_) {}
     if (typeof globalScope.DB_URL === "string" && globalScope.DB_URL.trim()) {
-      return globalScope.DB_URL.trim();
+      cachedDatabaseUrl = globalScope.DB_URL.trim();
+      return cachedDatabaseUrl;
     }
     return "";
   }
@@ -152,34 +157,51 @@
     return result;
   }
 
-  async function getDeckSummary(options = {}) {
-    const databaseUrl = getDatabaseUrl();
-    if (!databaseUrl) throw new Error("Database URL is not configured.");
-    const url = new URL(databaseUrl, globalScope.location?.href || undefined);
+  let deckSummaryInFlight = null;
 
-    const appVersion =
-      typeof globalThis.__MRH_APP__?.version === "string"
-        ? globalThis.__MRH_APP__.version.trim()
-        : "";
-    if (appVersion) {
-      url.searchParams.set("v", appVersion);
+  async function getDeckSummary(options = {}) {
+    if (!options.signal && deckSummaryInFlight) {
+      return deckSummaryInFlight;
     }
 
-    const response = await fetchWithTimeout(
-      url.toString(),
-      {
-        method: "GET",
-        headers: { Accept: "application/json", ...(options.headers || {}) },
-        redirect: "follow",
-        cache: "force-cache",
-        signal: options.signal,
-      },
-      Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 15000,
-    );
-    const result = await parseJsonResponse(response);
-    const backendError = getBackendError(result, response);
-    if (backendError) throw backendError;
-    return result;
+    const request = (async () => {
+      const databaseUrl = getDatabaseUrl();
+      if (!databaseUrl) throw new Error("Database URL is not configured.");
+      const url = new URL(databaseUrl, globalScope.location?.href || undefined);
+
+      const appVersion =
+        typeof globalThis.__MRH_APP__?.version === "string"
+          ? globalThis.__MRH_APP__.version.trim()
+          : "";
+      if (appVersion) {
+        url.searchParams.set("v", appVersion);
+      }
+
+      const response = await fetchWithTimeout(
+        url.toString(),
+        {
+          method: "GET",
+          headers: { Accept: "application/json", ...(options.headers || {}) },
+          redirect: "follow",
+          cache: "force-cache",
+          signal: options.signal,
+        },
+        Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 15000,
+      );
+      const result = await parseJsonResponse(response);
+      const backendError = getBackendError(result, response);
+      if (backendError) throw backendError;
+      return result;
+    })();
+
+    if (!options.signal) {
+      deckSummaryInFlight = request.finally(() => {
+        deckSummaryInFlight = null;
+      });
+      return deckSummaryInFlight;
+    }
+
+    return request;
   }
 
   async function getDeck(subject, password = "", options = {}) {

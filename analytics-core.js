@@ -11,6 +11,8 @@
   let chartRetryTimer = null;
   let chartRetryCount = 0;
   let renderGeneration = 0;
+  let accuracyCanvas = null;
+  let themeButton = null;
   const MAX_CHART_RETRIES = 10;
   const CHART_RETRY_DELAY_MS = 500;
   const FALLBACK_SUBJECTS = ["COLREG", "Navigation", "Meteorology"];
@@ -104,18 +106,33 @@
     }
     chartRetryCount = 0;
 
-    const canvas =
-      typeof document !== "undefined"
-        ? document.getElementById("chart-accuracy")
-        : null;
+    if (!accuracyCanvas && typeof document !== "undefined") {
+      accuracyCanvas = document.getElementById("chart-accuracy");
+    }
+    const canvas = accuracyCanvas;
     if (!canvas || typeof canvas.getContext !== "function") return null;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
-    destroyChart();
     const { labels, data } = getAccuracyData();
 
+    // Reuse an existing Chart.js instance whenever possible. Recreating and
+    // destroying a chart forces unnecessary canvas/plugin work.
+    if (
+      chartInstance &&
+      chartInstance.config?.type === "radar" &&
+      chartInstance.data?.datasets?.[0]
+    ) {
+      chartInstance.data.labels = labels;
+      chartInstance.data.datasets[0].data = data;
+      if (typeof chartInstance.update === "function") {
+        chartInstance.update("none");
+      }
+      return chartInstance;
+    }
+
+    destroyChart();
     chartInstance = new ChartConstructor(ctx, {
       type: "radar",
       data: {
@@ -143,7 +160,7 @@
           },
         },
         plugins: { legend: { display: false } },
-        animation: { duration: 1500, easing: "easeOutQuart" },
+        animation: false,
       },
     });
 
@@ -166,10 +183,10 @@
   }
 
   function updateThemeButton() {
-    const button =
-      typeof document !== "undefined"
-        ? document.getElementById("btn-theme-toggle")
-        : null;
+    if (!themeButton && typeof document !== "undefined") {
+      themeButton = document.getElementById("btn-theme-toggle");
+    }
+    const button = themeButton;
     if (!button) return;
 
     const darkMode = Boolean(getPrefs().darkMode);

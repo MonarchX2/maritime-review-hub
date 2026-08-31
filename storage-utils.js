@@ -6,6 +6,16 @@
   const MEMORY_LOCAL_KEY = "__mrhNodeStorage";
   const MEMORY_SESSION_KEY = "__mrhNodeSessionStorage";
 
+  // Cache storage handles and the resolved namespace. Repeated storage access is
+  // on hot paths (settings, progress, reports); probing native storage on every
+  // call adds synchronous work for no functional benefit.
+  let localStorageRef = null;
+  let sessionStorageRef = null;
+  let localStorageResolved = false;
+  let sessionStorageResolved = false;
+  let cachedStorageIdentity = null;
+  let cachedStorageNamespace = null;
+
   function createMemoryStorage(existing) {
     const store = existing && typeof existing === "object" ? existing : {};
     return {
@@ -52,20 +62,39 @@
   }
 
   function getStorage(kind) {
-    const property = kind === "session" ? "sessionStorage" : "localStorage";
+    const isSession = kind === "session";
+
+    if (isSession ? sessionStorageResolved : localStorageResolved) {
+      return isSession ? sessionStorageRef : localStorageRef;
+    }
+
+    const property = isSession ? "sessionStorage" : "localStorage";
+    let resolved = null;
+
     try {
       const nativeStorage = root[property];
       if (isStorageLike(nativeStorage)) {
-        // Probe access because browsers can expose storage but deny it at runtime.
+        // Probe once per storage type because browsers can expose storage while
+        // still denying access at runtime.
         const probeKey = "__mrh_storage_probe__";
         nativeStorage.setItem(probeKey, "1");
         nativeStorage.removeItem(probeKey);
-        return nativeStorage;
+        resolved = nativeStorage;
       }
     } catch (error) {
-      // Fall back to in-memory storage when storage is blocked/unavailable.
+      resolved = null;
     }
-    return getMemoryStorage(kind);
+
+    if (!resolved) resolved = getMemoryStorage(kind);
+
+    if (isSession) {
+      sessionStorageRef = resolved;
+      sessionStorageResolved = true;
+    } else {
+      localStorageRef = resolved;
+      localStorageResolved = true;
+    }
+    return resolved;
   }
 
   function getLocalStorage() {
@@ -148,7 +177,13 @@
       runtimeState.prefs.storageIdentity ||
       runtimeState.prefs.userId ||
       "guest";
-    return normalizeIdentity(rawIdentity);
+    const normalizedIdentity = normalizeIdentity(rawIdentity);
+
+    if (cachedStorageIdentity !== normalizedIdentity) {
+      cachedStorageIdentity = normalizedIdentity;
+      cachedStorageNamespace = `mrh_${normalizedIdentity}`;
+    }
+    return cachedStorageIdentity;
   }
 
   function normalizeStorageKey(key) {
@@ -156,7 +191,8 @@
   }
 
   function getStorageNamespace() {
-    return `mrh_${getSafeStorageIdentity()}`;
+    getSafeStorageIdentity();
+    return cachedStorageNamespace || "mrh_guest";
   }
 
   const STORAGE_SCHEMA_VERSION = 2;
@@ -356,7 +392,7 @@
         migrated += 1;
       }
 
-      if (safeGetItem(store, legacyKey) !== null) {
+      if (legacyValue !== null) {
         safeRemoveItem(store, legacyKey);
       }
     });

@@ -1,37 +1,76 @@
 (function (globalScope) {
+  "use strict";
+
+  const HTML_ENTITY_MAP = Object.freeze({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "'": "&#39;",
+    '"': "&quot;",
+  });
+  const HTML_ESCAPE_RE = /[&<>'"]/g;
+  const MATH_SEGMENT_RE = /(\$\$[\s\S]*?\$\$|\$[\s\S]*?\$)/g;
+  const MATH_EXPRESSION_RE = /^(\$\$?)([\s\S]*?)\1$/;
+  const CLOZE_RE = /\{\{c\d+::([^{}]+)\}\}/g;
+  const LIST_RE = /(?:\s|^)((?:\d+|[A-Za-z]|[IVXLCDMivxlcdm]{1,4})\.)\s/g;
+  const QUESTION_NUMBER_RE = /^\s*\d+[\).\-:]\s*/;
+  const QUESTION_NUMBER_DOT_RE = /^\s*\d+\.\s*/;
+  const NATURAL_SORT_COLLATOR =
+    typeof Intl !== "undefined" && typeof Intl.Collator === "function"
+      ? new Intl.Collator(undefined, { numeric: true, sensitivity: "base" })
+      : null;
+  const MATH_CACHE_LIMIT = 128;
+  const FORMAT_CACHE_LIMIT = 256;
+  const mathRenderCache = new Map();
+  const formatTextCache = new Map();
+
+  function memoizeBounded(cache, key, producer, limit) {
+    if (cache.has(key)) {
+      const value = cache.get(key);
+      cache.delete(key);
+      cache.set(key, value);
+      return value;
+    }
+    const value = producer();
+    cache.set(key, value);
+    if (cache.size > limit) {
+      const oldestKey = cache.keys().next().value;
+      cache.delete(oldestKey);
+    }
+    return value;
+  }
+
   function escapeHTML(value) {
     if (value === null || value === undefined) return "";
-    return String(value).replace(
-      /[&<>'"]/g,
-      (c) =>
-        ({
-          "&": "&amp;",
-          "<": "&lt;",
-          ">": "&gt;",
-          "'": "&#39;",
-          '"': "&quot;",
-        })[c],
-    );
+    return String(value).replace(HTML_ESCAPE_RE, (c) => HTML_ENTITY_MAP[c]);
   }
 
   function renderMathExpression(rawExpression, displayMode) {
     const expr = String(rawExpression || "").trim();
     if (!expr) return "";
 
-    const katexApi = globalScope.katex;
-    if (katexApi && typeof katexApi.renderToString === "function") {
-      try {
-        return katexApi.renderToString(expr, {
-          throwOnError: false,
-          displayMode: Boolean(displayMode),
-          strict: "ignore",
-        });
-      } catch (error) {
-        return `<code class="math-fallback">${escapeHTML(expr)}</code>`;
-      }
-    }
+    const key = `${displayMode ? "1" : "0"}|${expr}`;
+    return memoizeBounded(
+      mathRenderCache,
+      key,
+      () => {
+        const katexApi = globalScope.katex;
+        if (katexApi && typeof katexApi.renderToString === "function") {
+          try {
+            return katexApi.renderToString(expr, {
+              throwOnError: false,
+              displayMode: Boolean(displayMode),
+              strict: "ignore",
+            });
+          } catch (error) {
+            return `<code class="math-fallback">${escapeHTML(expr)}</code>`;
+          }
+        }
 
-    return `<code class="math-fallback">${escapeHTML(expr)}</code>`;
+        return `<code class="math-fallback">${escapeHTML(expr)}</code>`;
+      },
+      MATH_CACHE_LIMIT,
+    );
   }
 
   function isSafeImageURL(value) {
@@ -99,10 +138,9 @@
       if (textDiff !== 0) return textDiff;
     }
 
-    return a.localeCompare(b, undefined, {
-      numeric: true,
-      sensitivity: "base",
-    });
+    return NATURAL_SORT_COLLATOR
+      ? NATURAL_SORT_COLLATOR.compare(a, b)
+      : a.localeCompare(b);
   }
 
   function formatQuestionText(text, options = {}) {
@@ -112,51 +150,55 @@
     const clozeEnabled =
       options.clozeEnabled ?? globalScope.state?.prefs?.clozeEnabled !== false;
     const normalizedText = stripQuestionNumberPrefix(text);
+    const cacheKey = `${clozeEnabled ? "1" : "0"}|${revealCloze ? "1" : "0"}|${normalizedText}`;
 
-    function formatNonMathSegment(segment) {
-      let safeSegment = escapeHTML(segment);
+    return memoizeBounded(
+      formatTextCache,
+      cacheKey,
+      () => {
+        function formatNonMathSegment(segment) {
+          let safeSegment = escapeHTML(segment);
 
-      if (clozeEnabled) {
-        const clozeRegex = /\{\{c\d+::([^{}]+)\}\}/g;
-        safeSegment = safeSegment.replace(
-          clozeRegex,
-          function (_match, innerText) {
-            const safeInner = escapeHTML(String(innerText || "").trim());
-            const safeInnerValue = safeInner || "••••";
-            const clozeVisual = revealCloze
-              ? `<span class="cloze-answer text-brand-700 dark:text-brand-300">${safeInnerValue}</span>`
-              : `<span class="cloze-answer hidden">${safeInnerValue}</span>`;
+          if (clozeEnabled) {
+            safeSegment = safeSegment.replace(
+              CLOZE_RE,
+              function (_match, innerText) {
+                const safeInner = escapeHTML(String(innerText || "").trim());
+                const safeInnerValue = safeInner || "••••";
+                const clozeVisual = revealCloze
+                  ? `<span class="cloze-answer text-brand-700 dark:text-brand-300">${safeInnerValue}</span>`
+                  : `<span class="cloze-answer hidden">${safeInnerValue}</span>`;
 
-            return `<span class="cloze-token inline-flex items-center">
+                return `<span class="cloze-token inline-flex items-center">
         <button type="button" class="cloze-trigger rounded border border-dashed border-brand-500 px-2 py-0.5 text-xs font-bold bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-200 ${revealCloze ? "cloze-visible" : ""}" onclick="event.preventDefault(); event.stopPropagation(); revealClozeAnswer(this)">
           <span class="cloze-mask">${revealCloze ? safeInnerValue : "□ □ □"}</span>
           ${clozeVisual}
         </button>
       </span>`;
-          },
-        );
-      }
+              },
+            );
+          }
 
-      const listRegex = /(?:\s|^)((?:\d+|[A-Za-z]|[IVXLCDMivxlcdm]{1,4})\.)\s/g;
-      safeSegment = safeSegment.replace(listRegex, "<br><br>$1 ");
-      if (safeSegment.startsWith("<br><br>")) {
-        safeSegment = safeSegment.substring(8);
-      }
-      return safeSegment;
-    }
-
-    const parts = String(normalizedText).split(
-      /(\$\$[\s\S]*?\$\$|\$[\s\S]*?\$)/g,
-    );
-    return parts
-      .map(function (segment) {
-        const mathMatch = segment.match(/^(\$\$?)([\s\S]*?)\1$/);
-        if (mathMatch) {
-          return renderMathExpression(mathMatch[2], mathMatch[1] === "$$");
+          safeSegment = safeSegment.replace(LIST_RE, "<br><br>$1 ");
+          if (safeSegment.startsWith("<br><br>")) {
+            safeSegment = safeSegment.substring(8);
+          }
+          return safeSegment;
         }
-        return formatNonMathSegment(segment);
-      })
-      .join("");
+
+        const parts = String(normalizedText).split(MATH_SEGMENT_RE);
+        return parts
+          .map(function (segment) {
+            const mathMatch = segment.match(MATH_EXPRESSION_RE);
+            if (mathMatch) {
+              return renderMathExpression(mathMatch[2], mathMatch[1] === "$$");
+            }
+            return formatNonMathSegment(segment);
+          })
+          .join("");
+      },
+      FORMAT_CACHE_LIMIT,
+    );
   }
 
   function encodeHandlerValue(value) {

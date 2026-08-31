@@ -1,4 +1,4 @@
-const CACHE_PREFIX = "mrh-cache";
+const CACHE_PREFIX = "mrh-cache-1";
 const APP_VERSION = "mrh-release-2026.08.31";
 const FALLBACK_CACHE_VERSION = APP_VERSION;
 
@@ -14,16 +14,15 @@ function getRuntimeCacheVersion() {
 const CACHE_VERSION = getRuntimeCacheVersion();
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 
-function getAppBaseUrl() {
-  return new URL("./", self.location.href);
-}
+const APP_BASE_URL = new URL("./", self.location.href);
+const APP_BASE_PATH = APP_BASE_URL.pathname || "/";
 
 function resolveAppUrl(pathname) {
-  return new URL(pathname, getAppBaseUrl()).toString();
+  return new URL(pathname, APP_BASE_URL).toString();
 }
 
 function getAppBasePath() {
-  const basePath = getAppBaseUrl().pathname || "/";
+  const basePath = APP_BASE_PATH;
   return basePath === "/"
     ? "/"
     : basePath.endsWith("/")
@@ -55,6 +54,8 @@ function getAppShellNavigationPaths() {
 
   return candidates;
 }
+
+const APP_SHELL_NAVIGATION_PATHS = getAppShellNavigationPaths();
 
 const APP_SHELL = [
   "./index.html",
@@ -148,7 +149,7 @@ function isAppShellNavigation(request) {
     return false;
   }
 
-  return getAppShellNavigationPaths().has(url.pathname || "/");
+  return APP_SHELL_NAVIGATION_PATHS.has(url.pathname || "/");
 }
 
 async function getCache() {
@@ -229,13 +230,19 @@ async function networkFirstNavigation(event) {
       // dynamic or user-specific HTML.
       const url = new URL(event.request.url);
 
-      const appShellPaths = getAppShellNavigationPaths();
-
       if (
         url.origin === self.location.origin &&
-        appShellPaths.has(url.pathname || "/")
+        APP_SHELL_NAVIGATION_PATHS.has(url.pathname || "/")
       ) {
-        await cache.put(resolveAppUrl("./index.html"), response.clone());
+        // Do not block navigation on cache persistence. The response can be
+        // returned immediately while the service worker stores the fresh shell.
+        event.waitUntil(
+          cache
+            .put(resolveAppUrl("./index.html"), response.clone())
+            .catch((error) => {
+              console.warn("[SW] Failed to refresh app shell cache:", error);
+            }),
+        );
       }
     }
 

@@ -24,6 +24,13 @@ let syncInFlightPromise = null;
 let backgroundSyncPromise = null;
 const deckFetchInFlight = new Map();
 const lastDeckRefreshAtBySubject = {};
+
+// Performance caches. WeakMap keeps entries tied to the current array/object
+// identity, so replacing state arrays automatically invalidates the cache.
+const arraySignatureCache = new WeakMap();
+const subjectListSignatureCache = new WeakMap();
+const localDeckSignatureCache = new WeakMap();
+const collectionSignatureCache = new WeakMap();
 const SYNC_STATUS_STORAGE_KEY = "mrh_last_sync_status_timestamp";
 const SYNC_REQUEST_TIMEOUT_MS = 60000;
 let __mrhAppInitialized = false;
@@ -754,13 +761,15 @@ function resolveSubjectAccess(subject, accessMap = {}, summaryEntries = []) {
     return { Hidden: false, Password: "", Locked: false };
   }
 
-  const directEntry = accessMap[subjectName] || {};
+  const directEntry = accessMap?.[subjectName] || {};
   const summaryEntry =
-    (Array.isArray(summaryEntries) &&
-      summaryEntries.find(
-        (item) => String(item?.Subject || "") === subjectName,
-      )) ||
-    {};
+    Object.keys(directEntry).length > 0
+      ? {}
+      : (Array.isArray(summaryEntries)
+          ? summaryEntries.find(
+              (item) => String(item?.Subject || "") === subjectName,
+            )
+          : null) || {};
 
   const hidden =
     normalizeAccessFlag(directEntry.Hidden) ||
@@ -814,7 +823,10 @@ function buildAccessMetadataMap(accessData) {
 
 function getSummarySignature(summaryData) {
   if (!Array.isArray(summaryData)) return "";
-  return summaryData
+  const cached = arraySignatureCache.get(summaryData);
+  if (cached !== undefined) return cached;
+
+  const signature = summaryData
     .map((deck) =>
       [
         deck?.Subject,
@@ -831,11 +843,17 @@ function getSummarySignature(summaryData) {
         .join("\u001f"),
     )
     .join("\u001e");
+
+  arraySignatureCache.set(summaryData, signature);
+  return signature;
 }
 
 function getSubjectListSignature(summaryData) {
   if (!Array.isArray(summaryData)) return "";
-  return [
+  const cached = subjectListSignatureCache.get(summaryData);
+  if (cached !== undefined) return cached;
+
+  const signature = [
     ...new Set(
       summaryData
         .map((deck) => String(deck?.Subject || "").trim())
@@ -844,6 +862,9 @@ function getSubjectListSignature(summaryData) {
   ]
     .sort()
     .join("\u001e");
+
+  subjectListSignatureCache.set(summaryData, signature);
+  return signature;
 }
 
 // REMOVED: mergeAccessMetadataIntoSummary - NOT USED
@@ -1202,6 +1223,7 @@ async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
 
 let filterModelSource = null;
 let filterModel = { subjects: [], tags: [] };
+let filterDomSignature = "";
 
 function populateFilters() {
   if (
@@ -1262,6 +1284,9 @@ function populateFilters() {
   // Populate new dropdown filter menu
   const filterListContainer = document.getElementById("quiz-filter-list");
   if (filterListContainer) {
+    const filterSignature = `${subjects.join("\u001f")}\u001e${tags.join("\u001f")}`;
+    if (filterSignature === filterDomSignature) return;
+    filterDomSignature = filterSignature;
     let html = "";
 
     // Add subjects
@@ -1299,7 +1324,6 @@ function populateFilters() {
 function changeQuizFilter(filterValue) {
   // Update the display text
   const displayEl = document.getElementById("filter-subject-display");
-  const trigger = document.getElementById("quiz-filter-trigger");
 
   if (filterValue === "ALL") {
     if (displayEl) displayEl.textContent = "All Subjects";
@@ -1377,12 +1401,12 @@ function getSubjectProgressStats(
 ) {
   const subjectIds = subjectIdsBySubject?.get(subject) || [];
   const totalQuestionsInDb = subjectIds.length;
-  const completedCount = subjectIds.reduce((count, id) => {
-    return count + (completedSet?.has(id) ? 1 : 0);
-  }, 0);
-  const mistakesCount = subjectIds.reduce((count, id) => {
-    return count + (mistakesSet?.has(id) ? 1 : 0);
-  }, 0);
+  let completedCount = 0;
+  let mistakesCount = 0;
+  for (const id of subjectIds) {
+    if (completedSet?.has(id)) completedCount += 1;
+    if (mistakesSet?.has(id)) mistakesCount += 1;
+  }
   const progressPercent =
     totalQuestionsInDb > 0
       ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100))
@@ -1429,18 +1453,31 @@ let categoryProgressRenderInFlight = false;
 let categoryProgressRenderQueued = false;
 let categoryProgressLastRenderSignature = "";
 let categoryTreeCache = null;
+let categoryTreeFolderStatsCache = null;
+let categoryTreeNodeMetadataCache = null;
 
 function getCollectionSignature(values) {
-  return Array.isArray(values)
-    ? values.map((value) => String(value ?? "")).join("\u001f")
-    : "";
+  if (!Array.isArray(values)) return "";
+  const cached = collectionSignatureCache.get(values);
+  if (cached !== undefined) return cached;
+
+  const signature = values.map((value) => String(value ?? "")).join("\u001f");
+  collectionSignatureCache.set(values, signature);
+  return signature;
 }
 
 function getLocalDeckSignature() {
-  const localSubjects = Array.isArray(state.db)
-    ? state.db.map((question) => question?.Subject).filter(Boolean)
-    : [];
-  return getCollectionSignature([...new Set(localSubjects)].sort());
+  if (!Array.isArray(state.db)) return "";
+  const cached = localDeckSignatureCache.get(state.db);
+  if (cached !== undefined) return cached;
+
+  const signature = getCollectionSignature(
+    [
+      ...new Set(state.db.map((question) => question?.Subject).filter(Boolean)),
+    ].sort(),
+  );
+  localDeckSignatureCache.set(state.db, signature);
+  return signature;
 }
 
 function getAccessMetadataSignature() {
@@ -1616,7 +1653,7 @@ function renderCategoryProgressNow() {
     let tree;
     if (
       categoryTreeCache &&
-      categoryTreeCache.subjectSignature === visibleSubjectSignature
+      categoryTreeCache.summarySignature === visibleSummarySignature
     ) {
       tree = categoryTreeCache.tree;
     } else {
@@ -1645,6 +1682,11 @@ function renderCategoryProgressNow() {
         subjectSignature: visibleSubjectSignature,
         tree,
       };
+      // Tree nodes are stable until the tree itself is rebuilt. Keep metadata
+      // alongside the cached tree instead of recalculating subtree totals on
+      // every dashboard render.
+      categoryTreeFolderStatsCache = new WeakMap();
+      categoryTreeNodeMetadataCache = new WeakMap();
     }
 
     if (!Array.isArray(state.currentPath)) state.currentPath = [];
@@ -1665,7 +1707,11 @@ function renderCategoryProgressNow() {
       currentNode = tree;
     }
 
-    const folderStatsCache = new WeakMap();
+    const folderStatsCache = categoryTreeFolderStatsCache || new WeakMap();
+    const nodeMetadataCache = categoryTreeNodeMetadataCache || new WeakMap();
+    categoryTreeFolderStatsCache = folderStatsCache;
+    categoryTreeNodeMetadataCache = nodeMetadataCache;
+
     function getFolderStats(node) {
       if (!node || typeof node !== "object") return 0;
       if (folderStatsCache.has(node)) return folderStatsCache.get(node);
@@ -1682,7 +1728,6 @@ function renderCategoryProgressNow() {
       return total;
     }
 
-    const nodeMetadataCache = new WeakMap();
     function getNodeMetadata(node) {
       if (!node || typeof node !== "object") {
         return {
@@ -2342,6 +2387,10 @@ async function deleteSubjectData(subject) {
   }
 }
 
+function getDeckFetchKey(subject, pass = null, customFilter = null) {
+  return `${String(subject || "").trim()}::${String(pass || "")}::${typeof customFilter === "function" ? "custom" : "all"}`;
+}
+
 async function fetchDeckQuestions(
   subject,
   pass = null,
@@ -2349,6 +2398,7 @@ async function fetchDeckQuestions(
   customFilter = null,
 ) {
   const subjectKey = String(subject || "").trim();
+  const fetchKey = getDeckFetchKey(subject, pass, customFilter);
   let cachedQuestions = getQuestionsForSubject(subject);
   if (typeof customFilter === "function") {
     cachedQuestions = cachedQuestions.filter(customFilter);
@@ -2360,7 +2410,7 @@ async function fetchDeckQuestions(
     const shouldRefreshStaleDeck =
       Date.now() - lastRefresh > staleAfterMs &&
       (syncConnected || state.categorySummary.length > 0) &&
-      !deckFetchInFlight.has(subjectKey);
+      !deckFetchInFlight.has(fetchKey);
 
     if (shouldRefreshStaleDeck) {
       const refreshPromise = fetchDeckQuestionsFromNetwork(
@@ -2394,7 +2444,7 @@ async function fetchDeckQuestionsFromNetwork(
   customFilter,
   loaderElement = null,
 ) {
-  const subjectKey = `${String(subject || "").trim()}::${String(pass || "")}::${typeof customFilter === "function" ? "mcq" : "all"}`;
+  const subjectKey = getDeckFetchKey(subject, pass, customFilter);
   if (deckFetchInFlight.has(subjectKey)) {
     return deckFetchInFlight.get(subjectKey);
   }
@@ -2989,6 +3039,15 @@ async function resumeSession(password = null) {
   pendingResumeSession = null;
   state.session = savedSession;
 
+  // Build one ID lookup instead of scanning the full database for every
+  // question in the saved session. This changes resume from O(session * DB)
+  // to O(session + DB).
+  const dbQuestionsById = new Map(
+    (state.db || [])
+      .filter((dbQ) => dbQ?.ID)
+      .map((dbQ) => [String(dbQ.ID), dbQ]),
+  );
+
   state.session.questions = state.session.questions.map((savedQ, index) => {
     let searchId = savedQ.ID;
     if (searchId && !searchId.toString().includes("::")) {
@@ -2996,9 +3055,9 @@ async function resumeSession(password = null) {
       searchId = `${savedQ.Subject}::${cleanId}`;
     }
 
-    const freshQ = (state.db || []).find(
-      (dbQ) => dbQ.ID === searchId || dbQ.ID === savedQ.ID,
-    );
+    const freshQ =
+      dbQuestionsById.get(String(searchId || "")) ||
+      dbQuestionsById.get(String(savedQ.ID || ""));
 
     if (freshQ) {
       savedQ.Question = freshQ.Question;
@@ -4123,31 +4182,18 @@ function getQuestionTypeMode(q) {
     // Use pre-computed type from backend
     isPureIdent = q.QuestionType === "ID";
   } else {
-    // Fallback: calculate from choices
-    ["A", "B", "C", "D"].forEach((ch) => {
-      const choiceText = q[`Choice${ch}`];
+    // Fallback: calculate from choices once.
+    for (const ch of ["A", "B", "C", "D"]) {
+      const choiceText = q?.[`Choice${ch}`];
       if (
         choiceText &&
         String(choiceText).trim() !== "" &&
         String(choiceText).toLowerCase() !== "undefined"
       ) {
-        validChoicesCount++;
+        validChoicesCount += 1;
       }
-    });
+    }
     isPureIdent = validChoicesCount <= 1;
-  }
-
-  if (validChoicesCount === 0) {
-    ["A", "B", "C", "D"].forEach((ch) => {
-      const choiceText = q[`Choice${ch}`];
-      if (
-        choiceText &&
-        String(choiceText).trim() !== "" &&
-        String(choiceText).toLowerCase() !== "undefined"
-      ) {
-        validChoicesCount++;
-      }
-    });
   }
 
   return { isIdent: isPureIdent, validChoicesCount };
@@ -4205,7 +4251,7 @@ function setupCacheInvalidationListener() {
 
 function triggerSilentSummaryRefresh(reason = "cache invalidation") {
   console.log(`[CACHE] ${reason} - syncing silently in background`);
-  syncDatabase(false, true);
+  return syncDatabase(false, true);
 }
 
 function handleCacheInvalidation() {

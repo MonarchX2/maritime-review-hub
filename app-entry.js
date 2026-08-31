@@ -54,7 +54,6 @@
       const script = document.createElement("script");
       script.src = src;
       script.async = true;
-      script.defer = true;
 
       script.onload = () => resolve();
       script.onerror = () => {
@@ -177,25 +176,15 @@
     return missing;
   }
 
-  async function waitForRuntimeDependencies(timeoutMs = 15000) {
-    const startTime = Date.now();
-    let lastMissing = [];
-
-    while (Date.now() - startTime < timeoutMs) {
-      const missing = missingRuntimeDependencies();
-      if (missing.length === 0) {
-        rootScope.__mrhRuntimeReady = true;
-        return;
-      }
-
-      lastMissing = missing;
-      await new Promise((resolve) => setTimeout(resolve, 50));
+  function waitForRuntimeDependencies() {
+    const missing = missingRuntimeDependencies();
+    if (missing.length) {
+      rootScope.__mrhRuntimeReady = false;
+      throw new Error(
+        `Startup dependencies were not ready after script loading: ${missing.join(", ")}`,
+      );
     }
-
-    rootScope.__mrhRuntimeReady = false;
-    throw new Error(
-      `Startup dependencies were not ready in time: ${lastMissing.join(", ")}`,
-    );
+    rootScope.__mrhRuntimeReady = true;
   }
 
   async function startApplicationBootstrap() {
