@@ -396,22 +396,34 @@
       const template = document.createElement("template");
       template.innerHTML = html;
 
+      const fragment = document.createDocumentFragment();
       const existingCards = new Map(
         Array.from(container.querySelectorAll(".review-question-card"))
           .filter((card) => card.dataset.questionId)
           .map((card) => [card.dataset.questionId, card]),
       );
 
-      template.content
-        .querySelectorAll(".review-question-card")
-        .forEach((card) => {
-          const existingCard = existingCards.get(card.dataset.questionId);
-          if (existingCard) card.replaceWith(existingCard);
-        });
+      Array.from(template.content.childNodes).forEach((node) => {
+        if (!(node instanceof Element)) {
+          fragment.appendChild(node.cloneNode(true));
+          return;
+        }
 
-      container.replaceChildren(...Array.from(template.content.childNodes));
+        const questionId = node.dataset.questionId;
+        if (questionId && existingCards.has(questionId)) {
+          const existingCard = existingCards.get(questionId);
+          existingCard.replaceWith(node);
+        }
+        fragment.appendChild(node);
+      });
+
+      container.replaceChildren(fragment);
     } else {
-      container.innerHTML = html;
+      const fragment = document.createDocumentFragment();
+      const host = document.createElement("div");
+      host.innerHTML = html;
+      Array.from(host.childNodes).forEach((node) => fragment.appendChild(node));
+      container.replaceChildren(fragment);
     }
     navigate("deck-review");
 

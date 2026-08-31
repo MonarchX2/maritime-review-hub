@@ -138,7 +138,7 @@
         },
         body: JSON.stringify(payload),
         redirect: "follow",
-        cache: "no-store",
+        cache: "reload",
         signal: options.signal,
       },
       Number(options.timeoutMs) > 0
@@ -156,14 +156,22 @@
     const databaseUrl = getDatabaseUrl();
     if (!databaseUrl) throw new Error("Database URL is not configured.");
     const url = new URL(databaseUrl, globalScope.location?.href || undefined);
-    url.searchParams.set("_t", Date.now().toString());
+
+    const appVersion =
+      typeof globalThis.__MRH_APP__?.version === "string"
+        ? globalThis.__MRH_APP__.version.trim()
+        : "";
+    if (appVersion) {
+      url.searchParams.set("v", appVersion);
+    }
+
     const response = await fetchWithTimeout(
       url.toString(),
       {
         method: "GET",
         headers: { Accept: "application/json", ...(options.headers || {}) },
         redirect: "follow",
-        cache: "no-store",
+        cache: "force-cache",
         signal: options.signal,
       },
       Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 15000,

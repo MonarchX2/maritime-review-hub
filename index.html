@@ -26,34 +26,22 @@
 
     <script>
       (function () {
-        try {
-          const storageIdentity = (() => {
-            try {
-              const stored = localStorage.getItem("mrh_storage_identity");
-              if (stored) return stored;
-            } catch (e) {}
-            const generated = `device_${Math.random().toString(36).slice(2, 10)}`;
-            try {
-              localStorage.setItem("mrh_storage_identity", generated);
-            } catch (e) {}
-            return generated;
-          })();
+        const root = document.documentElement;
+        const readThemeCookie = () => {
+          try {
+            const match = document.cookie.match(/(?:^|;\s*)mrh_theme=([^;]+)/);
+            return match ? decodeURIComponent(match[1]) : "";
+          } catch (error) {
+            return "";
+          }
+        };
 
-          const storedPrefs = localStorage.getItem(
-            `mrh_${storageIdentity}:prefs`,
-          );
-          const legacyPrefs = localStorage.getItem("mrh_prefs");
-          const prefs = JSON.parse(
-            storedPrefs || legacyPrefs || '{"darkMode":true}',
-          );
-          const darkMode = prefs.darkMode !== false;
-          const root = document.documentElement;
-          root.classList.toggle("dark", darkMode);
-          root.style.colorScheme = darkMode ? "dark" : "light";
-        } catch (e) {
-          document.documentElement.classList.add("dark");
-          document.documentElement.style.colorScheme = "dark";
-        }
+        const themeValue = readThemeCookie();
+        const darkMode =
+          themeValue === "light" ? false : themeValue === "dark" ? true : true;
+
+        root.classList.toggle("dark", darkMode);
+        root.style.colorScheme = darkMode ? "dark" : "light";
       })();
     </script>
 
@@ -142,6 +130,71 @@
           window.setTimeout(revealShell, 30);
         } else {
           window.addEventListener("load", revealShell, { once: true });
+        }
+      })();
+    </script>
+
+    <script>
+      (function () {
+        const root = document.documentElement;
+
+        function applyStoredTheme() {
+          try {
+            const storageIdentity = (() => {
+              try {
+                const stored = localStorage.getItem("mrh_storage_identity");
+                if (stored) return stored;
+              } catch (error) {}
+
+              const generated = `device_${Math.random().toString(36).slice(2, 10)}`;
+              try {
+                localStorage.setItem("mrh_storage_identity", generated);
+              } catch (error) {}
+              return generated;
+            })();
+
+            const storedPrefs = (() => {
+              try {
+                return localStorage.getItem(`mrh_${storageIdentity}:prefs`);
+              } catch (error) {
+                return null;
+              }
+            })();
+            const legacyPrefs = (() => {
+              try {
+                return localStorage.getItem("mrh_prefs");
+              } catch (error) {
+                return null;
+              }
+            })();
+
+            let prefs = { darkMode: true };
+            try {
+              prefs = JSON.parse(
+                storedPrefs || legacyPrefs || '{"darkMode":true}',
+              );
+            } catch (error) {
+              prefs = { darkMode: true };
+            }
+
+            const darkMode = prefs.darkMode !== false;
+            root.classList.toggle("dark", darkMode);
+            root.style.colorScheme = darkMode ? "dark" : "light";
+
+            try {
+              const maxAge = 60 * 60 * 24 * 365;
+              document.cookie = `mrh_theme=${darkMode ? "dark" : "light"}; path=/; max-age=${maxAge}; SameSite=Lax`;
+            } catch (error) {}
+          } catch (error) {
+            root.classList.add("dark");
+            root.style.colorScheme = "dark";
+          }
+        }
+
+        if (window.requestIdleCallback) {
+          window.requestIdleCallback(applyStoredTheme, { timeout: 500 });
+        } else {
+          window.setTimeout(applyStoredTheme, 0);
         }
       })();
     </script>

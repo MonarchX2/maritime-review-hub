@@ -833,6 +833,19 @@ function getSummarySignature(summaryData) {
     .join("\u001e");
 }
 
+function getSubjectListSignature(summaryData) {
+  if (!Array.isArray(summaryData)) return "";
+  return [
+    ...new Set(
+      summaryData
+        .map((deck) => String(deck?.Subject || "").trim())
+        .filter(Boolean),
+    ),
+  ]
+    .sort()
+    .join("\u001e");
+}
+
 // REMOVED: mergeAccessMetadataIntoSummary - NOT USED
 // Backend handles all access control in filterSummaryDataByAccess()
 // Frontend should never merge or modify backend response
@@ -1598,34 +1611,40 @@ function renderCategoryProgressNow() {
     );
 
     const visibleSummary = getVisibleCategorySummary();
-
     const visibleSummarySignature = getSummarySignature(visibleSummary);
+    const visibleSubjectSignature = getSubjectListSignature(visibleSummary);
     let tree;
     if (
       categoryTreeCache &&
-      categoryTreeCache.summarySignature === visibleSummarySignature
+      categoryTreeCache.subjectSignature === visibleSubjectSignature
     ) {
       tree = categoryTreeCache.tree;
     } else {
       tree = {};
       if (visibleSummary && visibleSummary.length > 0) {
         visibleSummary.forEach((cat) => {
-          const parts = cat.Subject.split("::");
+          if (!cat?.Subject) return;
+          const parts = String(cat.Subject).split("::");
           let currentLevel = tree;
 
           parts.forEach((part, index) => {
-            part = part.trim();
-            if (!currentLevel[part]) {
-              currentLevel[part] = { _children: {}, _data: null };
+            const normalizedPart = String(part || "").trim();
+            if (!normalizedPart) return;
+            if (!currentLevel[normalizedPart]) {
+              currentLevel[normalizedPart] = { _children: {}, _data: null };
             }
             if (index === parts.length - 1) {
-              currentLevel[part]._data = cat;
+              currentLevel[normalizedPart]._data = cat;
             }
-            currentLevel = currentLevel[part]._children;
+            currentLevel = currentLevel[normalizedPart]._children;
           });
         });
       }
-      categoryTreeCache = { summarySignature: visibleSummarySignature, tree };
+      categoryTreeCache = {
+        summarySignature: visibleSummarySignature,
+        subjectSignature: visibleSubjectSignature,
+        tree,
+      };
     }
 
     if (!Array.isArray(state.currentPath)) state.currentPath = [];
@@ -1648,15 +1667,42 @@ function renderCategoryProgressNow() {
 
     const folderStatsCache = new WeakMap();
     function getFolderStats(node) {
+      if (!node || typeof node !== "object") return 0;
       if (folderStatsCache.has(node)) return folderStatsCache.get(node);
 
       let total = 0;
-      if (node._data) total += node._data.QuestionCount || 0;
-      for (let k in node._children) {
-        total += getFolderStats(node._children[k]);
+      if (node._data && Number(node._data.QuestionCount || 0) > 0) {
+        total += Number(node._data.QuestionCount || 0);
+      }
+      const childKeys = Object.keys(node._children || {});
+      for (let i = 0; i < childKeys.length; i += 1) {
+        total += getFolderStats(node._children[childKeys[i]]);
       }
       folderStatsCache.set(node, total);
       return total;
+    }
+
+    const nodeMetadataCache = new WeakMap();
+    function getNodeMetadata(node) {
+      if (!node || typeof node !== "object") {
+        return {
+          childKeys: [],
+          hasChildren: false,
+          isFolder: false,
+          totalCards: 0,
+        };
+      }
+      if (nodeMetadataCache.has(node)) {
+        return nodeMetadataCache.get(node);
+      }
+
+      const childKeys = Object.keys(node._children || {});
+      const hasChildren = childKeys.length > 0;
+      const isFolder = hasChildren || Boolean(node._data?.IsFolder);
+      const totalCards = getFolderStats(node);
+      const metadata = { childKeys, hasChildren, isFolder, totalCards };
+      nodeMetadataCache.set(node, metadata);
+      return metadata;
     }
 
     const freshnessBannerHtml = getDeckDataFreshnessBannerHtml();
@@ -1684,26 +1730,35 @@ function renderCategoryProgressNow() {
     html += `<div class="${layoutClass}">`;
     const sortBy = state.prefs.deckSortBy || "letters";
     const sortDirection = state.prefs.deckSortDirection === "desc" ? -1 : 1;
-    const keys = Object.keys(currentNode).sort((left, right) => {
-      const leftNode = currentNode[left];
-      const rightNode = currentNode[right];
-      const leftIsFolder =
-        Object.keys(leftNode._children || {}).length > 0 ||
-        leftNode._data?.IsFolder;
-      const rightIsFolder =
-        Object.keys(rightNode._children || {}).length > 0 ||
-        rightNode._data?.IsFolder;
-      if (leftIsFolder !== rightIsFolder) return leftIsFolder ? -1 : 1;
-      if (sortBy === "questions") {
-        const leftCount = getFolderStats(leftNode);
-        const rightCount = getFolderStats(rightNode);
-        return (
-          (leftCount - rightCount) * sortDirection ||
-          TextUtils.naturalSortStrings(left, right) * sortDirection
-        );
-      }
-      return TextUtils.naturalSortStrings(left, right) * sortDirection;
-    });
+    const keys = Object.keys(currentNode)
+      .map((key) => {
+        const node = currentNode[key];
+        const metadata = getNodeMetadata(node);
+        return { key, metadata };
+      })
+      .sort((leftEntry, rightEntry) => {
+        const leftIsFolder = leftEntry.metadata.isFolder;
+        const rightIsFolder = rightEntry.metadata.isFolder;
+
+        if (leftIsFolder !== rightIsFolder) {
+          return leftIsFolder ? -1 : 1;
+        }
+
+        const left = leftEntry.key;
+        const right = rightEntry.key;
+
+        if (sortBy === "questions") {
+          const leftCount = leftEntry.metadata.totalCards;
+          const rightCount = rightEntry.metadata.totalCards;
+          return (
+            (leftCount - rightCount) * sortDirection ||
+            TextUtils.naturalSortStrings(left, right) * sortDirection
+          );
+        }
+
+        return TextUtils.naturalSortStrings(left, right) * sortDirection;
+      })
+      .map((entry) => entry.key);
 
     const sourceFilter = state.prefs.deckSourceFilter || "all";
     const favoriteDecks = Array.isArray(state.prefs.favoriteDecks)
@@ -1935,7 +1990,7 @@ function renderCategoryProgressNow() {
       }
 
       return `
-        <div onclick="handleDeckClick('${encodedSubj}')" class="${isDeckInteractionBusy ? "pointer-events-none opacity-60 cursor-wait" : "cursor-pointer"} animate-card-in ${cardClasses} ${availabilityClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;" title="${databaseUnavailable ? "Waiting for database connection" : ""}" aria-busy="${isDeckInteractionBusy}">
+        <div data-deck-key="${escapeHTML(subj)}" onclick="handleDeckClick('${encodedSubj}')" class="${isDeckInteractionBusy ? "pointer-events-none opacity-60 cursor-wait" : "cursor-pointer"} animate-card-in ${cardClasses} ${availabilityClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;" title="${databaseUnavailable ? "Waiting for database connection" : ""}" aria-busy="${isDeckInteractionBusy}">
           ${
             databaseUnavailable
               ? `<div class="absolute inset-0 bg-gray-500/30 dark:bg-gray-900/60 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
@@ -2046,7 +2101,7 @@ function renderCategoryProgressNow() {
         }
 
         html += `
-          <div onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
+          <div data-folder-key="${escapeHTML(key)}" onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
             <div class="h-12 ${folderColorClass} transition-colors relative">
               <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
             </div>
@@ -2072,8 +2127,36 @@ function renderCategoryProgressNow() {
 
     html += `</div>`;
     if (container) {
+      const host = document.createElement("div");
+      host.innerHTML = html;
+      const fragment = document.createDocumentFragment();
+      const existingNodes = new Map();
+
+      container
+        .querySelectorAll("[data-deck-key],[data-folder-key]")
+        .forEach((node) => {
+          const key = node.dataset.deckKey || node.dataset.folderKey;
+          if (key) existingNodes.set(key, node);
+        });
+
+      Array.from(host.childNodes).forEach((node) => {
+        if (!(node instanceof Element)) {
+          fragment.appendChild(node.cloneNode(true));
+          return;
+        }
+
+        const key = node.dataset.deckKey || node.dataset.folderKey;
+        if (key && existingNodes.has(key)) {
+          const existingNode = existingNodes.get(key);
+          existingNode.replaceWith(node);
+          fragment.appendChild(node);
+        } else {
+          fragment.appendChild(node);
+        }
+      });
+
       container.className = "transition-all duration-500";
-      container.innerHTML = html;
+      container.replaceChildren(fragment);
     }
 
     categoryProgressLastRenderSignature = renderSignature;

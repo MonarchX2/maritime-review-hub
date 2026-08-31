@@ -28,6 +28,21 @@
    */
   const loadedFeatures = new Set();
   const loadingFeatures = new Map();
+  const BOOTSTRAP_SCRIPTS = [
+    "storage-utils.js",
+    "text-utils.js",
+    "debug-utils.js",
+    "app-core-state.js",
+  ];
+  const APPLICATION_RUNTIME_SCRIPTS = ["app-core.js", "app-core-network.js"];
+  const FEATURE_SCRIPTS = [
+    "session-core.js",
+    "analytics-core.js",
+    "ui-modal-core.js",
+    "deck-nav-core.js",
+    "deck-review-core.js",
+    "quiz-rendering-core.js",
+  ];
 
   function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -38,7 +53,8 @@
 
       const script = document.createElement("script");
       script.src = src;
-      script.async = false;
+      script.async = true;
+      script.defer = true;
 
       script.onload = () => resolve();
       script.onerror = () => {
@@ -85,32 +101,21 @@
     error: null,
   };
 
-  async function loadCoreHelpers() {
-    // Stage 1: bootstrap helpers.
-    const cores = [
-      "storage-utils.js",
-      "text-utils.js",
-      "debug-utils.js",
-      "app-core-state.js",
-    ];
-
-    for (const file of cores) {
-      await loadFeatureScript(file);
+  async function loadScriptsInParallel(files) {
+    if (!Array.isArray(files) || files.length === 0) {
+      return;
     }
+
+    await Promise.all(files.map((file) => loadFeatureScript(file)));
+  }
+
+  async function loadCoreHelpers() {
+    await loadScriptsInParallel(BOOTSTRAP_SCRIPTS);
   }
 
   async function loadApplicationRuntime() {
-    // Stage 2: app runtime.
-    await loadFeatureScript("app-core.js");
-    await loadFeatureScript("app-core-network.js");
-
-    // Stage 3: feature modules.
-    await loadFeatureScript("session-core.js");
-    await loadFeatureScript("analytics-core.js");
-    await loadFeatureScript("ui-modal-core.js");
-    await loadFeatureScript("deck-nav-core.js");
-    await loadFeatureScript("deck-review-core.js");
-    await loadFeatureScript("quiz-rendering-core.js");
+    await loadScriptsInParallel(APPLICATION_RUNTIME_SCRIPTS);
+    await loadScriptsInParallel(FEATURE_SCRIPTS);
   }
 
   function showBootstrapError(error) {

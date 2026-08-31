@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-release-2026.08.30";
+const APP_VERSION = "mrh-release-2026.08.31";
 const FALLBACK_CACHE_VERSION = APP_VERSION;
 
 function getServiceWorkerUrl() {
