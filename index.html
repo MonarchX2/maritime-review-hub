@@ -235,26 +235,8 @@
 
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link
-      rel="preload"
-      href="tailwind.generated.css"
-      as="style"
-      onload="
-        this.onload = null;
-        this.rel = 'stylesheet';
-        this.setAttribute('data-loaded', 'true');
-      "
-    />
-    <link
-      rel="preload"
-      href="styles.css"
-      as="style"
-      onload="
-        this.onload = null;
-        this.rel = 'stylesheet';
-        this.setAttribute('data-loaded', 'true');
-      "
-    />
+    <link rel="stylesheet" href="tailwind.generated.css" />
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body
     class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col transition-colors duration-500"
