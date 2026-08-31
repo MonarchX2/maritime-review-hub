@@ -795,6 +795,10 @@
 
     updateSrsForQuestion(q, Boolean(isCorrect));
 
+    if (typeof globalScope.renderCategoryProgress === "function") {
+      globalScope.renderCategoryProgress();
+    }
+
     if (typeof globalScope.saveState === "function") {
       globalScope.saveState("stats");
     }
