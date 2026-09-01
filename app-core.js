@@ -2493,7 +2493,9 @@ async function fetchDeckQuestionsFromNetwork(
         const incomingId = String(rawId ?? "").trim();
 
         if (!subjectKey) {
-          return incomingId || `question-${Math.random().toString(36).substr(2, 6)}`;
+          return (
+            incomingId || `question-${Math.random().toString(36).substr(2, 6)}`
+          );
         }
 
         if (!incomingId) {
