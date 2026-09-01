@@ -19,7 +19,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # This action automatically minifies your HTML, CSS, and JS files
       - name: Minify files
         uses: dra1ex/minify-action@v1.0.3
 
