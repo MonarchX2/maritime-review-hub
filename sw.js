@@ -1,4 +1,4 @@
-const CACHE_PREFIX = "mrh-cache-2";
+const CACHE_PREFIX = "mrh-cache-3";
 const APP_VERSION = "mrh-release-2026.09.01";
 const FALLBACK_CACHE_VERSION = APP_VERSION;
 
@@ -18,7 +18,9 @@ const APP_BASE_URL = new URL("./", self.location.href);
 const APP_BASE_PATH = APP_BASE_URL.pathname || "/";
 
 function resolveAppUrl(pathname) {
-  return new URL(pathname, APP_BASE_URL).toString();
+  const url = new URL(pathname, APP_BASE_URL);
+  url.searchParams.set("v", CACHE_VERSION);
+  return url.toString();
 }
 
 function getAppBasePath() {

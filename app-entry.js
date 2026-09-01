@@ -1,7 +1,7 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-release-2026.09.01";
+  const APP_VERSION = "mrh-release-2026.09.03";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
 
   rootScope.__MRH_APP__ = rootScope.__MRH_APP__ || {
@@ -44,8 +44,22 @@
         return;
       }
 
+      const versionedSrc = (() => {
+        const raw = String(src || "").trim();
+        if (!raw) return raw;
+        try {
+          const url = new URL(raw, window.location.href);
+          url.searchParams.set("v", APP_VERSION);
+          return url.href;
+        } catch (error) {
+          return raw.includes("?")
+            ? `${raw}&v=${APP_VERSION}`
+            : `${raw}?v=${APP_VERSION}`;
+        }
+      })();
+
       const script = document.createElement("script");
-      script.src = src;
+      script.src = versionedSrc;
       script.async = false;
       script.defer = false;
 
@@ -106,9 +120,29 @@
     await loadScriptsInParallel(BOOTSTRAP_SCRIPTS);
   }
 
+  function scheduleIdleFeatureLoad() {
+    if (typeof rootScope.requestIdleCallback === "function") {
+      rootScope.requestIdleCallback(
+        () => {
+          loadScriptsInParallel(FEATURE_SCRIPTS).catch((error) => {
+            console.warn("Deferred feature script loading failed:", error);
+          });
+        },
+        { timeout: 2500 },
+      );
+      return;
+    }
+
+    rootScope.setTimeout(() => {
+      loadScriptsInParallel(FEATURE_SCRIPTS).catch((error) => {
+        console.warn("Deferred feature script loading failed:", error);
+      });
+    }, 100);
+  }
+
   async function loadApplicationRuntime() {
     await loadScriptsInParallel(APPLICATION_RUNTIME_SCRIPTS);
-    await loadScriptsInParallel(FEATURE_SCRIPTS);
+    scheduleIdleFeatureLoad();
   }
 
   function showBootstrapError(error) {
@@ -126,6 +160,8 @@
     status.setAttribute("role", "alert");
   }
 
+  rootScope.showBootstrapError = showBootstrapError;
+
   function registerServiceWorker() {
     if (
       typeof navigator === "undefined" ||
@@ -138,11 +174,39 @@
     const swUrl = new URL("./sw.js", window.location.href);
     swUrl.searchParams.set("v", rootScope.__MRH_APP__?.version || APP_VERSION);
 
+    const controllerUrl = navigator.serviceWorker.controller?.scriptURL || "";
+    const controllerVersion = (() => {
+      try {
+        const controller = new URL(controllerUrl);
+        return controller.searchParams.get("v") || "";
+      } catch (error) {
+        return "";
+      }
+    })();
+
+    if (
+      controllerUrl &&
+      controllerVersion &&
+      controllerVersion !== APP_VERSION
+    ) {
+      navigator.serviceWorker
+        .getRegistrations()
+        .then((registrations) => {
+          return Promise.all(
+            registrations.map((registration) => registration.unregister()),
+          );
+        })
+        .catch((error) => {
+          console.warn("Service worker refresh cleanup failed:", error);
+        });
+    }
+
     navigator.serviceWorker
       .register(swUrl.href, {
         scope: "./",
         updateViaCache: "none",
       })
+      .then((registration) => registration.update())
       .catch((error) => {
         console.warn("Service worker registration failed:", error);
       });
@@ -201,6 +265,7 @@
 
     bootstrap.ready = (async function () {
       try {
+        registerServiceWorker();
         await loadCoreHelpers();
         await loadApplicationRuntime();
         await waitForRuntimeDependencies();
@@ -211,7 +276,6 @@
 
         bootstrap.status = "ready";
         rootScope.__mrhBootstrapComplete = true;
-        registerServiceWorker();
         return true;
       } catch (error) {
         bootstrap.status = "failed";

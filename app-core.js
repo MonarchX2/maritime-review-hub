@@ -1475,10 +1475,22 @@ function getVisibleCategorySummary() {
 }
 
 function closeAllDropdownMenus(exceptElement = null) {
+  if (
+    typeof ModalCore === "undefined" ||
+    typeof ModalCore.closeAllDropdownMenus !== "function"
+  ) {
+    return false;
+  }
   return ModalCore.closeAllDropdownMenus(exceptElement);
 }
 
 function initDetailsExclusivity() {
+  if (
+    typeof ModalCore === "undefined" ||
+    typeof ModalCore.initDetailsExclusivity !== "function"
+  ) {
+    return false;
+  }
   return ModalCore.initDetailsExclusivity();
 }
 
@@ -2802,16 +2814,70 @@ function endSession(silent = false) {
   return SessionCore.endSession(silent);
 }
 
+function getAnalyticsCore() {
+  if (typeof globalThis !== "undefined" && globalThis.Analytics) {
+    return globalThis.Analytics;
+  }
+  if (typeof Analytics !== "undefined") {
+    return Analytics;
+  }
+  return null;
+}
+
 function renderCharts() {
-  return Analytics.renderCharts();
+  const analytics = getAnalyticsCore();
+  if (!analytics || typeof analytics.renderCharts !== "function") {
+    return null;
+  }
+  return analytics.renderCharts();
 }
 
 function toggleTheme() {
-  return Analytics.toggleTheme();
+  const analytics = getAnalyticsCore();
+  if (analytics && typeof analytics.toggleTheme === "function") {
+    return analytics.toggleTheme();
+  }
+
+  const prefs = (typeof state !== "undefined" && state && state.prefs) || {};
+  prefs.darkMode = !Boolean(prefs.darkMode);
+
+  if (typeof document !== "undefined" && document.documentElement) {
+    document.documentElement.classList.toggle("dark", prefs.darkMode);
+  }
+
+  return prefs.darkMode;
 }
 
 function updateThemeButton() {
-  return Analytics.updateThemeButton();
+  const analytics = getAnalyticsCore();
+  if (analytics && typeof analytics.updateThemeButton === "function") {
+    return analytics.updateThemeButton();
+  }
+
+  const button =
+    typeof document !== "undefined"
+      ? document.getElementById("btn-theme-toggle")
+      : null;
+  if (!button) return null;
+
+  const darkMode = Boolean(
+    (typeof state !== "undefined" &&
+      state &&
+      state.prefs &&
+      state.prefs.darkMode) !== false,
+  );
+  button.innerHTML = darkMode
+    ? '<i class="fa-solid fa-sun transition-transform transform hover:rotate-180 duration-500"></i>'
+    : '<i class="fa-solid fa-moon transition-transform transform hover:rotate-12 duration-300"></i>';
+  button.setAttribute(
+    "aria-label",
+    darkMode ? "Switch to light mode" : "Switch to dark mode",
+  );
+  button.setAttribute(
+    "title",
+    darkMode ? "Switch to light mode" : "Switch to dark mode",
+  );
+  return button;
 }
 
 async function resetProgress() {
@@ -4567,7 +4633,6 @@ async function initializeApp() {
 
     const status = document.getElementById("connection-status");
     if (status) {
-      status.textContent = "Loading maritime review data...";
       status.classList.remove("hidden");
     }
   };
@@ -4621,7 +4686,12 @@ async function initializeApp() {
       window.__MRH_BOOTSTRAP__.error = error;
     }
     console.error("Application data initialization failed:", error);
-    showBootstrapError(error);
+    if (
+      typeof window !== "undefined" &&
+      typeof window.showBootstrapError === "function"
+    ) {
+      window.showBootstrapError(error);
+    }
     return false;
   }
 }

@@ -13,8 +13,10 @@
 
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" />
     <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+    <link rel="preconnect" href="https://script.google.com" />
     <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
     <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
+    <link rel="dns-prefetch" href="https://script.google.com" />
 
     <!-- Dark Mode Memory Fix to avoid white flash -->
     <script>
@@ -200,8 +202,14 @@
     </script>
 
     <link
+      rel="preload"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css?v=mrh-release-2026.09.03"
+      as="style"
+      fetchpriority="high"
+    />
+    <link
       rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css?v=mrh-release-2026.09.03"
       media="print"
       onload="
         this.media = 'all';
@@ -214,6 +222,12 @@
 
     <!-- KaTeX for inline math rendering -->
     <link
+      rel="preload"
+      href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css"
+      as="style"
+      fetchpriority="low"
+    />
+    <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css"
       media="print"
@@ -223,20 +237,52 @@
       "
     />
     <script
-      src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"
+      src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js?v=mrh-release-2026.09.03"
       defer
     ></script>
 
     <!-- idb-keyval for IndexedDB (Bypasses 5MB localStorage limit) -->
     <script
-      src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js"
+      src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js?v=mrh-release-2026.09.03"
       defer
     ></script>
 
-    <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="tailwind.generated.css" />
-    <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="icon"
+      href="icon.svg?v=mrh-release-2026.09.03"
+      type="image/svg+xml"
+    />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-2026.09.03" />
+    <link
+      rel="preload"
+      href="tailwind.generated.css?v=mrh-release-2026.09.03"
+      as="style"
+      fetchpriority="high"
+    />
+    <link
+      rel="preload"
+      href="styles.css?v=mrh-release-2026.09.03"
+      as="style"
+      fetchpriority="high"
+    />
+    <link
+      rel="stylesheet"
+      href="tailwind.generated.css?v=mrh-release-2026.09.03"
+      media="print"
+      onload="
+        this.media = 'all';
+        this.setAttribute('data-loaded', 'true');
+      "
+    />
+    <link
+      rel="stylesheet"
+      href="styles.css?v=mrh-release-2026.09.03"
+      media="print"
+      onload="
+        this.media = 'all';
+        this.setAttribute('data-loaded', 'true');
+      "
+    />
   </head>
   <body
     class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col transition-colors duration-500"
@@ -2066,7 +2112,7 @@
         panel.setAttribute("aria-hidden", String(isHidden));
       }
     </script>
-    <script src="app-entry.js" defer></script>
+    <script src="app-entry.js?v=mrh-release-2026.09.03" defer></script>
 
     <div
       id="toast-container"

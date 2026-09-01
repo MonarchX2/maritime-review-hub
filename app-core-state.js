@@ -506,7 +506,10 @@
     const dbSize = document.getElementById("db-size-display");
     if (dbSize) dbSize.textContent = String(state.db.length);
 
-    if (typeof globalScope.checkSavedSession === "function") {
+    if (
+      typeof globalScope.checkSavedSession === "function" &&
+      typeof globalScope.SessionCore?.checkSavedSession === "function"
+    ) {
       globalScope.checkSavedSession();
     }
     if (typeof globalScope.renderCategoryProgress === "function") {

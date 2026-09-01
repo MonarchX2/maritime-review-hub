@@ -183,7 +183,7 @@
           method: "GET",
           headers: { Accept: "application/json", ...(options.headers || {}) },
           redirect: "follow",
-          cache: "force-cache",
+          cache: "no-cache",
           signal: options.signal,
         },
         Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 15000,
