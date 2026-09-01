@@ -865,6 +865,42 @@ function getSubjectListSignature(summaryData) {
   return signature;
 }
 
+function scheduleStartupSync() {
+  const runStartupSync = () => {
+    if (typeof window === "undefined") return;
+
+    const runIdleTasks = () => {
+      if (typeof fetchAccessMetadata === "function") {
+        fetchAccessMetadata().catch((error) => {
+          console.warn(
+            "Initial access metadata fetch failed, will retry:",
+            error,
+          );
+        });
+      }
+
+      if (typeof syncDatabase === "function") {
+        syncDatabase(false, true).catch((error) => {
+          console.warn("Background startup sync was skipped:", error);
+        });
+      }
+
+      if (typeof fetchGlobalReports === "function") {
+        fetchGlobalReports();
+      }
+    };
+
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(runIdleTasks, { timeout: 2000 });
+      return;
+    }
+
+    setTimeout(runIdleTasks, 250);
+  };
+
+  runStartupSync();
+}
+
 // REMOVED: mergeAccessMetadataIntoSummary - NOT USED
 // Backend handles all access control in filterSummaryDataByAccess()
 // Frontend should never merge or modify backend response
@@ -4569,12 +4605,7 @@ async function initializeApp() {
     startCacheVersionChecking();
     initDetailsExclusivity();
 
-    fetchAccessMetadata().catch((err) => {
-      console.warn("Initial access metadata fetch failed, will retry:", err);
-    });
-
-    await syncDatabase(false, false);
-    fetchGlobalReports();
+    scheduleStartupSync();
 
     setTimeout(() => {
       applyTitleMode();

@@ -46,7 +46,8 @@
 
       const script = document.createElement("script");
       script.src = src;
-      script.async = true;
+      script.async = false;
+      script.defer = false;
 
       script.onload = () => resolve();
       script.onerror = () => {
