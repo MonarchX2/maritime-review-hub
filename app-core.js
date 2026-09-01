@@ -4,7 +4,7 @@ const DB_URL =
 const SYNC_INTERVAL_MS = 60 * 1000;
 const SYNC_RETRY_INTERVAL_MS = 3 * 1000;
 const QUIZ_NAVIGATION_BREAKPOINT = 768;
-const STALE_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
+const STALE_CACHE_MAX_AGE_MS = 10 * 1000;
 const DATA_CACHE_TIMESTAMP_KEY = "mrh_last_sync_complete_ms";
 
 let syncAbortController = null;
@@ -23,14 +23,12 @@ let lastSyncAt = 0;
 let syncInFlightPromise = null;
 let backgroundSyncPromise = null;
 const deckFetchInFlight = new Map();
-const lastDeckRefreshAtBySubject = {};
 
-// Performance caches. WeakMap keeps entries tied to the current array/object
-// identity, so replacing state arrays automatically invalidates the cache.
+// Performance caches for stable render signatures. WeakMap keeps entries tied to
+// the current array/object identity, so replacing state arrays automatically
+// invalidates the cached value.
 const arraySignatureCache = new WeakMap();
 const subjectListSignatureCache = new WeakMap();
-const localDeckSignatureCache = new WeakMap();
-const collectionSignatureCache = new WeakMap();
 const SYNC_STATUS_STORAGE_KEY = "mrh_last_sync_status_timestamp";
 const SYNC_REQUEST_TIMEOUT_MS = 60000;
 let __mrhAppInitialized = false;
@@ -1458,26 +1456,7 @@ let categoryTreeNodeMetadataCache = null;
 
 function getCollectionSignature(values) {
   if (!Array.isArray(values)) return "";
-  const cached = collectionSignatureCache.get(values);
-  if (cached !== undefined) return cached;
-
-  const signature = values.map((value) => String(value ?? "")).join("\u001f");
-  collectionSignatureCache.set(values, signature);
-  return signature;
-}
-
-function getLocalDeckSignature() {
-  if (!Array.isArray(state.db)) return "";
-  const cached = localDeckSignatureCache.get(state.db);
-  if (cached !== undefined) return cached;
-
-  const signature = getCollectionSignature(
-    [
-      ...new Set(state.db.map((question) => question?.Subject).filter(Boolean)),
-    ].sort(),
-  );
-  localDeckSignatureCache.set(state.db, signature);
-  return signature;
+  return values.map((value) => String(value ?? "")).join("\u001f");
 }
 
 function getAccessMetadataSignature() {
@@ -1501,7 +1480,15 @@ function getAccessMetadataSignature() {
 function getCategoryProgressRenderSignature() {
   return [
     getSummarySignature(state.categorySummary || []),
-    getLocalDeckSignature(),
+    getCollectionSignature(
+      [
+        ...new Set(
+          (Array.isArray(state.db) ? state.db : [])
+            .map((question) => String(question?.Subject || "").trim())
+            .filter(Boolean),
+        ),
+      ].sort(),
+    ),
     getCollectionSignature(state.currentPath),
     state.prefs.layoutMode,
     state.prefs.deckSourceFilter,
@@ -1974,11 +1961,15 @@ function renderCategoryProgressNow() {
       const availabilityClasses = databaseUnavailable
         ? "opacity-40 cursor-not-allowed pointer-events-none"
         : "";
-      const isDownloaded = downloadedSubjects.has(subj);
-      const statusBadge = isDownloaded
-        ? `<span class="bg-green-100 text-green-800 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-green-900/40 dark:text-green-400 shadow-sm transition-colors"><i class="fa-solid fa-hard-drive mr-1"></i></span>`
-        : `<span class="bg-gray-100 text-gray-500 text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold dark:bg-gray-700 dark:text-gray-400 shadow-sm transition-colors"><i class="fa-solid fa-cloud mr-1"></i></span>`;
       const isReview = currentAppMode === "review";
+      const recentPathDepth = getRecentPathDepth(subj);
+      const isRecentlyViewed = recentPathDepth > 0;
+      const recentViewedBadge = isRecentlyViewed
+        ? '<i class="fa-regular fa-clock text-xs text-amber-500 mr-2 flex-shrink-0" title="Recently Viewed"></i>'
+        : "";
+      const recentClassName = isRecentlyViewed
+        ? "ring-2 ring-amber-400/80 shadow-amber-500/10"
+        : "";
       const primaryActionText = isReview
         ? "Review Deck"
         : completedCount === 0
@@ -2010,8 +2001,6 @@ function renderCategoryProgressNow() {
       if (!isReview) {
         countBadgeHTML = `
           <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
-            ${databaseUnavailable ? "" : archiveBtnHTML}
-            ${databaseUnavailable || !isDownloaded ? "" : `<button onclick="event.stopPropagation(); deleteSubjectData('${encodedSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>`}
             <span class="text-sm font-black ${themeColorText} transition-colors">${completedCount} / ${totalQuestionsInDb}</span>
           </div>`;
         progressBarHTML = `
@@ -2028,14 +2017,12 @@ function renderCategoryProgressNow() {
       } else {
         countBadgeHTML = `
           <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
-            ${databaseUnavailable ? "" : archiveBtnHTML}
-            ${databaseUnavailable || !isDownloaded ? "" : `<button onclick="event.stopPropagation(); deleteSubjectData('${encodedSubj}')" class="text-gray-400 hover:text-red-500 hover:scale-125 hover:rotate-12 transition-all duration-300 p-1" title="Delete Downloaded Data"><i class="fa-solid fa-trash-can"></i></button>`}
             <span class="text-sm font-black ${themeColorText} transition-colors">${totalQuestionsInDb} cards</span>
           </div>`;
       }
 
       return `
-        <div data-deck-key="${escapeHTML(subj)}" onclick="handleDeckClick('${encodedSubj}')" class="${isDeckInteractionBusy ? "pointer-events-none opacity-60 cursor-wait" : "cursor-pointer"} animate-card-in ${cardClasses} ${availabilityClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;" title="${databaseUnavailable ? "Waiting for database connection" : ""}" aria-busy="${isDeckInteractionBusy}">
+        <div data-deck-key="${escapeHTML(subj)}" onclick="handleDeckClick('${encodedSubj}')" class="${isDeckInteractionBusy ? "pointer-events-none opacity-60 cursor-wait" : "cursor-pointer"} animate-card-in ${cardClasses} ${availabilityClasses} ${recentClassName} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;" title="${databaseUnavailable ? "Waiting for database connection" : ""}" aria-busy="${isDeckInteractionBusy}">
           ${
             databaseUnavailable
               ? `<div class="absolute inset-0 bg-gray-500/30 dark:bg-gray-900/60 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
@@ -2053,10 +2040,9 @@ function renderCategoryProgressNow() {
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2 mb-1 min-w-0">
                 <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors min-w-0">
-                  <i class="fa-regular fa-file-lines text-gray-400 mr-2 text-sm flex-shrink-0"></i>
+                  ${recentViewedBadge}
                   <span class="${deckNameMode} break-words">${safeName}</span> ${lockIcon}
                 </h3>
-                <div class="flex-shrink-0 flex items-center gap-1.5">${statusBadge}</div>
               </div>
               ${statsHTML}
             </div>
@@ -2110,6 +2096,13 @@ function renderCategoryProgressNow() {
 
         const folderSubject =
           (state.currentPath || []).concat(key).join("::") || key;
+        const recentFolderDepth = getRecentPathDepth(folderSubject);
+        const isRecentlyViewedFolder = recentFolderDepth > 0;
+        const folderRecentClass = isRecentlyViewedFolder
+          ? recentFolderDepth === 1
+            ? "ring-2 ring-amber-400/80 bg-amber-50/30 dark:bg-amber-900/10"
+            : "ring-1 ring-amber-300/70 bg-amber-50/20 dark:bg-amber-900/5"
+          : "";
         const isLocked =
           isDeckLocked(folderSubject) || Boolean(item?._data?.Locked);
         const lockIcon = isLocked
@@ -2146,13 +2139,14 @@ function renderCategoryProgressNow() {
         }
 
         html += `
-          <div data-folder-key="${escapeHTML(key)}" onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
+          <div data-folder-key="${escapeHTML(key)}" onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} ${folderRecentClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
             <div class="h-12 ${folderColorClass} transition-colors relative">
               <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
             </div>
             <div class="p-4 flex-1 flex flex-col justify-between">
               <div class="flex justify-between items-start w-full gap-2">
                 <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg flex items-center min-w-0">
+                  ${isRecentlyViewedFolder ? '<i class="fa-regular fa-clock text-xs text-amber-500 mr-2 flex-shrink-0" title="Recently Viewed"></i>' : ""}
                   <span class="${state.prefs.deckNameMode === "clip" ? "truncate" : "whitespace-normal break-words"}">${escapeHTML(key)}</span> ${lockIcon}
                 </h3>
                 <div class="flex items-center gap-1.5">
@@ -2398,37 +2392,7 @@ async function fetchDeckQuestions(
   customFilter = null,
 ) {
   const subjectKey = String(subject || "").trim();
-  const fetchKey = getDeckFetchKey(subject, pass, customFilter);
-  let cachedQuestions = getQuestionsForSubject(subject);
-  if (typeof customFilter === "function") {
-    cachedQuestions = cachedQuestions.filter(customFilter);
-  }
-
-  if (cachedQuestions.length > 0 && !pass) {
-    const lastRefresh = Number(lastDeckRefreshAtBySubject[subjectKey] || 0);
-    const staleAfterMs = 10 * 60 * 1000;
-    const shouldRefreshStaleDeck =
-      Date.now() - lastRefresh > staleAfterMs &&
-      (syncConnected || state.categorySummary.length > 0) &&
-      !deckFetchInFlight.has(fetchKey);
-
-    if (shouldRefreshStaleDeck) {
-      const refreshPromise = fetchDeckQuestionsFromNetwork(
-        subject,
-        pass,
-        customFilter,
-        loaderElement,
-      );
-      refreshPromise.catch(() => getQuestionsForSubject(subject));
-    } else {
-      if (loaderElement) {
-        loaderElement.classList.add("hidden");
-        loaderElement.classList.remove("flex");
-      }
-    }
-
-    return cachedQuestions;
-  }
+  if (!subjectKey) return [];
 
   return await fetchDeckQuestionsFromNetwork(
     subject,
@@ -2506,24 +2470,79 @@ async function fetchDeckQuestionsFromNetwork(
       if (typeof customFilter === "function")
         validQuestions = validQuestions.filter(customFilter);
 
+      const existingSubjectQuestions = getQuestionsForSubject(subject);
+      const stableIdBySignature = new Map();
+      for (const existingQuestion of existingSubjectQuestions) {
+        const signature = [
+          String(existingQuestion?.Question || "").trim(),
+          String(existingQuestion?.Answer || "").trim(),
+          String(existingQuestion?.ChoiceA || "").trim(),
+          String(existingQuestion?.ChoiceB || "").trim(),
+          String(existingQuestion?.ChoiceC || "").trim(),
+          String(existingQuestion?.ChoiceD || "").trim(),
+          String(existingQuestion?.Explanation || "").trim(),
+        ].join("||");
+        const stableKey = `${String(existingQuestion?.Subject || subject).trim()}::${signature}`;
+        if (signature && existingQuestion?.ID) {
+          stableIdBySignature.set(stableKey, String(existingQuestion.ID));
+        }
+      }
+
+      const normalizeDeckQuestionId = (rawId, questionSubject) => {
+        const subjectKey = String(questionSubject || subject || "").trim();
+        const incomingId = String(rawId ?? "").trim();
+
+        if (!subjectKey) {
+          return incomingId || `question-${Math.random().toString(36).substr(2, 6)}`;
+        }
+
+        if (!incomingId) {
+          return `${subjectKey}::${Math.random().toString(36).substr(2, 6)}`;
+        }
+
+        const segments = incomingId
+          .split("::")
+          .map((segment) => segment.trim())
+          .filter(Boolean);
+        const lastSegment = segments[segments.length - 1] || incomingId;
+
+        if (incomingId.startsWith(`${subjectKey}::`)) {
+          return incomingId;
+        }
+
+        return `${subjectKey}::${lastSegment}`;
+      };
+
       validQuestions = validQuestions.map((q) => {
-        let cleanId = q.ID
-          ? q.ID.toString().replace(/^[a-zA-Z]+[-\s]?/, "")
-          : Math.random().toString(36).substr(2, 6);
-        q.ID = `${q.Subject}::${cleanId}`;
+        const signature = [
+          String(q.Question || "").trim(),
+          String(q.Answer || "").trim(),
+          String(q.ChoiceA || "").trim(),
+          String(q.ChoiceB || "").trim(),
+          String(q.ChoiceC || "").trim(),
+          String(q.ChoiceD || "").trim(),
+          String(q.Explanation || "").trim(),
+        ].join("||");
+        const stableKey = `${String(q.Subject || subject).trim()}::${signature}`;
+
+        const existingId = stableIdBySignature.get(stableKey);
+        if (existingId) {
+          q.ID = existingId;
+          return q;
+        }
+
+        q.ID = normalizeDeckQuestionId(q.ID, q.Subject || subject);
         return q;
       });
 
       if (validQuestions.length === 0) {
-        const cachedForSubject = getQuestionsForSubject(subject);
-        if (cachedForSubject.length > 0) {
-          return cachedForSubject;
-        }
+        return [];
       }
 
-      const otherQuestions = state.db.filter((q) => q.Subject !== subject);
+      const otherQuestions = state.db.filter(
+        (q) => String(q?.Subject || "").trim() !== subject,
+      );
       state.db = [...otherQuestions, ...validQuestions];
-      lastDeckRefreshAtBySubject[String(subject || "").trim()] = Date.now();
       clearLocalDownloadDeleted(subject);
       rebuildQuestionIndex();
       await safeIdbSet("mrh_db", state.db);
@@ -2533,19 +2552,11 @@ async function fetchDeckQuestionsFromNetwork(
 
       return validQuestions;
     } catch (err) {
-      const cachedQuestions = getQuestionsForSubject(subject);
       const message =
         err && err.message
           ? err.message
           : "Unable to load deck data from the backend.";
       console.warn("Network fetch failed.", err);
-      if (cachedQuestions.length > 0) {
-        showToast(
-          `Unable to load "${subject}" from the database. Showing the cached version instead.`,
-          "error",
-        );
-        return cachedQuestions;
-      }
       showToast(
         `Unable to load "${subject}" from the database. ${message}`,
         "error",
@@ -2582,16 +2593,9 @@ async function reviewDeck(subject, pass = null) {
     return;
   }
 
-  // Check local cache first if no password is provided
+  // Always fetch fresh deck data for review access; do not reuse cached question rows.
   let validQuestions = [];
-  if (!pass) {
-    validQuestions = getQuestionsForSubject(subject);
-  }
-
-  // Fetch if cache is empty or password is required
-  if (validQuestions.length === 0 || pass) {
-    validQuestions = await fetchDeckQuestions(subject, pass, loader);
-  }
+  validQuestions = await fetchDeckQuestions(subject, pass, loader);
 
   if (validQuestions.length === 0) {
     if (isDeckLocked(subject)) {
@@ -2602,7 +2606,7 @@ async function reviewDeck(subject, pass = null) {
       return;
     }
     showToast(
-      `Cannot review deck. You are offline and "${subject}" has not been downloaded yet.`,
+      `Could not refresh "${subject}". Please try again in a moment.`,
       "warning",
       5000,
     );
@@ -3694,6 +3698,58 @@ function updateRecentDecks(subj) {
   state.prefs.recentDecks = filtered.slice(0, 10);
 }
 
+function getPathSegments(value) {
+  return String(value || "")
+    .split("::")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function getRecentPathRelationDepth(subjectA, subjectB) {
+  const left = getPathSegments(subjectA);
+  const right = getPathSegments(subjectB);
+
+  if (left.length === 0 || right.length === 0) return 0;
+
+  const leftKey = left.join("::");
+  const rightKey = right.join("::");
+  if (leftKey === rightKey) return left.length;
+
+  if (left.length <= right.length) {
+    const ancestor = right.slice(0, left.length).join("::");
+    if (ancestor === leftKey) return left.length;
+  }
+
+  if (right.length <= left.length) {
+    const ancestor = left.slice(0, right.length).join("::");
+    if (ancestor === rightKey) return right.length;
+  }
+
+  return 0;
+}
+
+function isRecentlyViewedPath(subject) {
+  const activity = String(subject || "").trim();
+  const recentDecks = Array.isArray(state.prefs?.recentDecks)
+    ? state.prefs.recentDecks
+    : [];
+  const latest = String(recentDecks[0] || "").trim();
+  if (!activity || !latest) return false;
+
+  return getRecentPathRelationDepth(activity, latest) > 0;
+}
+
+function getRecentPathDepth(subject) {
+  const activity = String(subject || "").trim();
+  const recentDecks = Array.isArray(state.prefs?.recentDecks)
+    ? state.prefs.recentDecks
+    : [];
+  const latest = String(recentDecks[0] || "").trim();
+  if (!activity || !latest) return 0;
+
+  return getRecentPathRelationDepth(activity, latest);
+}
+
 async function handleDeckClick(subj, action = "continue") {
   subj = decodeHandlerValue(subj);
   if (!subj) return;
@@ -3731,36 +3787,6 @@ async function handleDeckClick(subj, action = "continue") {
     );
     finishDeckInteraction();
     return;
-  }
-
-  if (readiness.shouldPromptForCachedData) {
-    const staleWarningText =
-      readiness.cacheAgeMs >= STALE_CACHE_MAX_AGE_MS
-        ? `Using cached deck data from ${formatCacheAge(readiness.cacheAgeMs)}. This data may be stale or incomplete. Continue anyway?`
-        : "The database is temporarily unavailable and the deck list may be out of date. Continue with cached deck data?";
-
-    const confirmed = await requestConfirmation(
-      staleWarningText,
-      "Cached data warning",
-    );
-    if (!confirmed) {
-      updateSyncStatus(
-        '<i class="fa-solid fa-exclamation-triangle mr-1"></i> Cached deck data was not used. Waiting for the live database connection.',
-        "warning",
-      );
-      finishDeckInteraction();
-      return;
-    }
-
-    updateSyncStatus(
-      '<i class="fa-solid fa-exclamation-triangle mr-1"></i> Using cached deck data. Live sync is unavailable.',
-      "warning",
-    );
-  } else if (readiness.isUsingCachedData) {
-    updateSyncStatus(
-      '<i class="fa-solid fa-exclamation-triangle mr-1"></i> Using cached deck data. Background sync unavailable.',
-      "warning",
-    );
   }
 
   updateRecentDecks(subj);

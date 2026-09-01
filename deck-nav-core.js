@@ -149,7 +149,7 @@
     );
     if (!Array.isArray(validQuestions)) validQuestions = [];
 
-    // Fallback check if offline and fetch returned empty
+    // Fallback check if fetch returned empty; keep the user in-app and let them retry.
     if (validQuestions.length === 0) {
       if (
         typeof globalScope.isDeckLocked === "function" &&
@@ -160,8 +160,9 @@
         openDeckPasswordModal(subject, mode);
         return;
       }
-      alert(
-        `Cannot start session. You are offline and "${subject}" has not been downloaded to your device yet.`,
+      globalScope.showToast?.(
+        `Could not refresh "${subject}". Please try again in a moment.`,
+        "warning",
       );
       return;
     }

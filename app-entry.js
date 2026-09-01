@@ -1,7 +1,7 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-release-2026.08.30";
+  const APP_VERSION = "mrh-release-2026.09.01";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
 
   rootScope.__MRH_APP__ = rootScope.__MRH_APP__ || {
@@ -19,13 +19,6 @@
     }
   }
 
-  /*
-   * Feature script loader
-   * ---------------------
-   * Keep one promise per URL so concurrent callers cannot inject the same
-   * script more than once. A loaded Set alone is not sufficient because it is
-   * updated only after the script's load event fires.
-   */
   const loadedFeatures = new Set();
   const loadingFeatures = new Map();
   const BOOTSTRAP_SCRIPTS = [
