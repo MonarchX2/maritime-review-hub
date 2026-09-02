@@ -1,5 +1,5 @@
 const DB_URL =
-  "https://script.google.com/macros/s/AKfycby4j5hbEWyfqonO9HYKgywo4OAt1NBwerEWWZwLWb1ODbsQGUd-YMMO-H9wX3_C-tBw/exec";
+  "https://script.google.com/macros/s/AKfycbyM7L_Fam7UT8iRrCVy09ktV5VPPJxMLF2in6kwUewUJJ-La-BYd8okAsPVC8Tkcaw/exec";
 
 const SYNC_INTERVAL_MS = 60 * 1000;
 const SYNC_RETRY_INTERVAL_MS = 3 * 1000;
