@@ -19,6 +19,28 @@
     openDeckPasswordModal,
   } = globalScope;
 
+  if (typeof document !== "undefined") {
+    const existingStyle = document.getElementById(
+      "mrh-reset-deck-bounce-style",
+    );
+    if (!existingStyle) {
+      const style = document.createElement("style");
+      style.id = "mrh-reset-deck-bounce-style";
+      style.textContent = `
+        @keyframes mrhResetDeckBounce {
+          0%, 100% { transform: translateY(0) scale(1); filter: saturate(1); }
+          30% { transform: translateY(-2px) scale(1.04); filter: saturate(1.1); }
+          55% { transform: translateY(1px) scale(0.99); filter: saturate(1.05); }
+          75% { transform: translateY(-1px) scale(1.02); filter: saturate(1.08); }
+        }
+        .reset-deck-btn.mrh-reset-bouncing {
+          animation: mrhResetDeckBounce 1.8s ease-in-out 2;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }
+
   // ===================== VIEW NAVIGATION =====================
   async function navigate(viewId) {
     const viewElement = document.getElementById(`view-${viewId}`);
@@ -98,6 +120,30 @@
     }
     globalScope.persistNavigationPath(state.currentPath);
     globalScope.renderCategoryProgress();
+  }
+
+  function triggerDeckResetBounce(subject) {
+    const normalized = String(subject || "").trim();
+    if (!normalized) return;
+
+    const buttons = Array.from(
+      document.querySelectorAll(".reset-deck-btn[data-reset-subject]"),
+    );
+    const button =
+      buttons.find((el) => {
+        const value = String(el.dataset.resetSubject || "").trim();
+        return value === normalized || value === decodeURIComponent(normalized);
+      }) || document.querySelector(".reset-deck-btn");
+
+    if (!button) return;
+
+    button.classList.remove("mrh-reset-bouncing");
+    void button.offsetWidth;
+    button.classList.add("mrh-reset-bouncing");
+    clearTimeout(button.__mrhResetBounceTimer);
+    button.__mrhResetBounceTimer = setTimeout(() => {
+      button.classList.remove("mrh-reset-bouncing");
+    }, 1600);
   }
 
   // ===================== DECK LIFECYCLE & SESSION MANAGEMENT =====================
@@ -202,14 +248,18 @@
           if (queue.length > 0) {
             pool = queue;
           } else {
-            alert(
-              `You have answered all available questions for ${subject}! Reset the category to start over.`,
+            triggerDeckResetBounce(subject);
+            globalScope.showToast?.(
+              "You have answered all available questions. Reset to start over.",
+              "info",
             );
             return;
           }
         } else {
-          alert(
-            `You have answered all available questions for ${subject}! Reset the category to start over.`,
+          triggerDeckResetBounce(subject);
+          globalScope.showToast?.(
+            "You have answered all available questions. Reset to start over.",
+            "info",
           );
           return;
         }
@@ -217,7 +267,10 @@
     } else if (mode === "mistakes") {
       pool = validQuestions.filter((q) => mistakesSet.has(q.ID));
       if (pool.length === 0) {
-        alert(`No mistakes to review for ${subject}! Great job.`);
+        globalScope.showToast?.(
+          `No mistakes to review for ${subject}. Great job.`,
+          "success",
+        );
         return;
       }
     }
@@ -325,6 +378,7 @@
   globalScope.fetchAndStartCategory = fetchAndStartCategory;
   globalScope.startCustomSession = startCustomSession;
   globalScope.resetCategory = resetCategory;
+  globalScope.triggerDeckResetBounce = triggerDeckResetBounce;
 
   // For Node.js testing - export as CommonJS if in test environment
   if (typeof module !== "undefined" && module.exports) {

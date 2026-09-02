@@ -2,7 +2,248 @@
   "use strict";
 
   const DEFAULT_TIMEOUT_MS = 15000;
+  const DEFAULT_POOL_CONFIG = {
+    maxConnections: 8,
+    maxRetries: 7,
+    baseRetryDelayMs: 500,
+    maxRetryDelayMs: 60000,
+    idleTimeoutMs: 60000,
+    keepAlive: true,
+    keepAliveIntervalMs: 10000,
+    reconnectDelayMs: 1000,
+    autoReconnect: true,
+    healthCheckIntervalMs: 25000,
+    healthCheckTimeoutMs: 8000,
+  };
   let cachedDatabaseUrl = "";
+
+  function calculateRetryDelay(
+    attempt,
+    baseDelayMs = DEFAULT_POOL_CONFIG.baseRetryDelayMs,
+    maxDelayMs = DEFAULT_POOL_CONFIG.maxRetryDelayMs,
+  ) {
+    const safeAttempt = Math.max(0, Number(attempt) || 0);
+    const exponential = baseDelayMs * Math.pow(2, safeAttempt);
+    return Math.min(maxDelayMs, exponential);
+  }
+
+  function isRetryableError(error) {
+    if (!error) return false;
+    const status = Number(error?.status);
+    if (Number.isFinite(status) && status >= 500) return true;
+    if (status === 429) return true;
+    if (error.name === "TimeoutError") return true;
+    if (
+      error.message &&
+      /network|fetch|Failed to fetch|timed out|temporar|reconnect/i.test(
+        error.message,
+      )
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  async function retryWithBackoff(operation, options = {}) {
+    const maxRetries = Number(
+      options.maxRetries ?? DEFAULT_POOL_CONFIG.maxRetries,
+    );
+    let attempt = 0;
+
+    while (true) {
+      try {
+        return await operation(attempt);
+      } catch (error) {
+        if (attempt >= maxRetries || !isRetryableError(error)) {
+          throw error;
+        }
+        const delay = calculateRetryDelay(
+          attempt,
+          Number(
+            options.baseRetryDelayMs ?? DEFAULT_POOL_CONFIG.baseRetryDelayMs,
+          ),
+          Number(
+            options.maxRetryDelayMs ?? DEFAULT_POOL_CONFIG.maxRetryDelayMs,
+          ),
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        attempt += 1;
+      }
+    }
+  }
+
+  function createConnectionPool(config = {}) {
+    const settings = {
+      ...DEFAULT_POOL_CONFIG,
+      ...config,
+    };
+    const queue = [];
+    let activeConnections = 0;
+    let keepAliveTimer = null;
+    let healthCheckTimer = null;
+    let reconnecting = false;
+    let lastActivityAt = Date.now();
+    let lastSuccessfulResponseAt = Date.now();
+
+    function scheduleIdleKeepAlive() {
+      if (!settings.keepAlive) {
+        if (keepAliveTimer) {
+          clearInterval(keepAliveTimer);
+          keepAliveTimer = null;
+        }
+        return;
+      }
+
+      if (keepAliveTimer) return;
+      keepAliveTimer = setInterval(() => {
+        const idleMs = Date.now() - lastActivityAt;
+        if (idleMs >= settings.idleTimeoutMs && activeConnections === 0) {
+          lastActivityAt = Date.now();
+          lastSuccessfulResponseAt = Date.now();
+        }
+      }, settings.keepAliveIntervalMs);
+    }
+
+    function scheduleHealthCheck() {
+      if (healthCheckTimer) return;
+      healthCheckTimer = setInterval(async () => {
+        if (reconnecting || activeConnections > 0) return;
+        const idleMs = Date.now() - lastSuccessfulResponseAt;
+        if (idleMs < settings.healthCheckIntervalMs) return;
+
+        try {
+          const databaseUrl = getDatabaseUrl();
+          if (!databaseUrl) return;
+          const url = new URL(
+            databaseUrl,
+            globalScope.location?.href || undefined,
+          );
+          await fetchWithTimeout(
+            url.toString(),
+            {
+              method: "GET",
+              headers: { Accept: "application/json" },
+              redirect: "follow",
+              cache: "no-store",
+              keepalive: true,
+            },
+            settings.healthCheckTimeoutMs,
+          );
+          lastSuccessfulResponseAt = Date.now();
+          lastActivityAt = Date.now();
+        } catch (error) {
+          if (settings.autoReconnect) {
+            await reconnect();
+          }
+        }
+      }, settings.healthCheckIntervalMs);
+    }
+
+    function reconnect() {
+      if (reconnecting) return Promise.resolve();
+      reconnecting = true;
+      activeConnections = 0;
+      queue.length = 0;
+      if (keepAliveTimer) {
+        clearInterval(keepAliveTimer);
+        keepAliveTimer = null;
+      }
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          reconnecting = false;
+          lastActivityAt = Date.now();
+          lastSuccessfulResponseAt = Date.now();
+          scheduleIdleKeepAlive();
+          scheduleHealthCheck();
+          resolve();
+        }, settings.reconnectDelayMs);
+      });
+    }
+
+    function releaseConnection() {
+      activeConnections = Math.max(0, activeConnections - 1);
+      lastActivityAt = Date.now();
+      lastSuccessfulResponseAt = Date.now();
+      scheduleIdleKeepAlive();
+      scheduleHealthCheck();
+      const next = queue.shift();
+      if (next) {
+        next();
+      }
+    }
+
+    async function request(operation, requestOptions = {}) {
+      const attemptLimit = Number(
+        requestOptions.maxRetries ?? settings.maxRetries,
+      );
+      const baseDelay = Number(
+        requestOptions.baseRetryDelayMs ?? settings.baseRetryDelayMs,
+      );
+      const maxDelay = Number(
+        requestOptions.maxRetryDelayMs ?? settings.maxRetryDelayMs,
+      );
+
+      if (reconnecting) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, settings.reconnectDelayMs),
+        );
+      }
+
+      if (activeConnections >= settings.maxConnections) {
+        await new Promise((resolve) => {
+          queue.push(resolve);
+        });
+      }
+
+      activeConnections += 1;
+      lastActivityAt = Date.now();
+      scheduleIdleKeepAlive();
+      scheduleHealthCheck();
+
+      try {
+        return await retryWithBackoff(operation, {
+          maxRetries: attemptLimit,
+          baseRetryDelayMs: baseDelay,
+          maxRetryDelayMs: maxDelay,
+        });
+      } catch (error) {
+        if (settings.autoReconnect && isRetryableError(error)) {
+          await reconnect();
+        }
+        throw error;
+      } finally {
+        releaseConnection();
+      }
+    }
+
+    scheduleIdleKeepAlive();
+    scheduleHealthCheck();
+
+    return {
+      settings,
+      request,
+      reconnect,
+      getState: () => ({
+        activeConnections,
+        reconnecting,
+        queueLength: queue.length,
+        lastActivityAt,
+        lastSuccessfulResponseAt,
+      }),
+      destroy: () => {
+        if (keepAliveTimer) {
+          clearInterval(keepAliveTimer);
+          keepAliveTimer = null;
+        }
+        if (healthCheckTimer) {
+          clearInterval(healthCheckTimer);
+          healthCheckTimer = null;
+        }
+      },
+    };
+  }
+
+  const defaultConnectionPool = createConnectionPool();
 
   function getDatabaseUrl() {
     if (cachedDatabaseUrl) return cachedDatabaseUrl;
@@ -132,29 +373,45 @@
       throw new Error("Backend request type is required.");
     }
 
-    const response = await fetchWithTimeout(
-      url,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/plain;charset=utf-8",
-          Accept: "application/json",
-          ...(options.headers || {}),
-        },
-        body: JSON.stringify(payload),
-        redirect: "follow",
-        cache: "reload",
-        signal: options.signal,
-      },
-      Number(options.timeoutMs) > 0
-        ? Number(options.timeoutMs)
-        : DEFAULT_TIMEOUT_MS,
-    );
+    return defaultConnectionPool.request(
+      async () => {
+        const response = await fetchWithTimeout(
+          url,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "text/plain;charset=utf-8",
+              Accept: "application/json",
+              ...(options.headers || {}),
+            },
+            body: JSON.stringify(payload),
+            redirect: "follow",
+            cache: "reload",
+            keepalive: true,
+            signal: options.signal,
+          },
+          Number(options.timeoutMs) > 0
+            ? Number(options.timeoutMs)
+            : DEFAULT_TIMEOUT_MS,
+        );
 
-    const result = await parseJsonResponse(response);
-    const backendError = getBackendError(result, response);
-    if (backendError) throw backendError;
-    return result;
+        const result = await parseJsonResponse(response);
+        const backendError = getBackendError(result, response);
+        if (backendError) throw backendError;
+        return result;
+      },
+      {
+        maxRetries: Number(
+          options.maxRetries ?? DEFAULT_POOL_CONFIG.maxRetries,
+        ),
+        baseRetryDelayMs: Number(
+          options.baseRetryDelayMs ?? DEFAULT_POOL_CONFIG.baseRetryDelayMs,
+        ),
+        maxRetryDelayMs: Number(
+          options.maxRetryDelayMs ?? DEFAULT_POOL_CONFIG.maxRetryDelayMs,
+        ),
+      },
+    );
   }
 
   let deckSummaryInFlight = null;
@@ -164,35 +421,52 @@
       return deckSummaryInFlight;
     }
 
-    const request = (async () => {
-      const databaseUrl = getDatabaseUrl();
-      if (!databaseUrl) throw new Error("Database URL is not configured.");
-      const url = new URL(databaseUrl, globalScope.location?.href || undefined);
+    const request = defaultConnectionPool.request(
+      async () => {
+        const databaseUrl = getDatabaseUrl();
+        if (!databaseUrl) throw new Error("Database URL is not configured.");
+        const url = new URL(
+          databaseUrl,
+          globalScope.location?.href || undefined,
+        );
 
-      const appVersion =
-        typeof globalThis.__MRH_APP__?.version === "string"
-          ? globalThis.__MRH_APP__.version.trim()
-          : "";
-      if (appVersion) {
-        url.searchParams.set("v", appVersion);
-      }
+        const appVersion =
+          typeof globalThis.__MRH_APP__?.version === "string"
+            ? globalThis.__MRH_APP__.version.trim()
+            : "";
+        if (appVersion) {
+          url.searchParams.set("v", appVersion);
+        }
 
-      const response = await fetchWithTimeout(
-        url.toString(),
-        {
-          method: "GET",
-          headers: { Accept: "application/json", ...(options.headers || {}) },
-          redirect: "follow",
-          cache: "no-cache",
-          signal: options.signal,
-        },
-        Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 15000,
-      );
-      const result = await parseJsonResponse(response);
-      const backendError = getBackendError(result, response);
-      if (backendError) throw backendError;
-      return result;
-    })();
+        const response = await fetchWithTimeout(
+          url.toString(),
+          {
+            method: "GET",
+            headers: { Accept: "application/json", ...(options.headers || {}) },
+            redirect: "follow",
+            cache: "no-cache",
+            keepalive: true,
+            signal: options.signal,
+          },
+          Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 15000,
+        );
+        const result = await parseJsonResponse(response);
+        const backendError = getBackendError(result, response);
+        if (backendError) throw backendError;
+        return result;
+      },
+      {
+        maxRetries: Number(
+          options.maxRetries ?? DEFAULT_POOL_CONFIG.maxRetries,
+        ),
+        baseRetryDelayMs: Number(
+          options.baseRetryDelayMs ?? DEFAULT_POOL_CONFIG.baseRetryDelayMs,
+        ),
+        maxRetryDelayMs: Number(
+          options.maxRetryDelayMs ?? DEFAULT_POOL_CONFIG.maxRetryDelayMs,
+        ),
+      },
+    );
 
     if (!options.signal) {
       deckSummaryInFlight = request.finally(() => {
@@ -205,10 +479,74 @@
   }
 
   async function getDeck(subject, password = "", options = {}) {
+    const normalizedSubject = String(subject || "").trim();
+    const hasPassword = String(password || "").trim().length > 0;
+    const useDirectGet =
+      !hasPassword &&
+      options.page === undefined &&
+      options.limit === undefined &&
+      !options.forcePost;
+
+    if (useDirectGet) {
+      const databaseUrl = getDatabaseUrl();
+      if (!databaseUrl) {
+        return callBackend(
+          {
+            type: "get_deck",
+            subject: normalizedSubject,
+            password: "",
+          },
+          options,
+        );
+      }
+
+      const url = new URL(databaseUrl, globalScope.location?.href || undefined);
+      url.searchParams.set("subject", normalizedSubject);
+
+      const appVersion =
+        typeof globalThis.__MRH_APP__?.version === "string"
+          ? globalThis.__MRH_APP__.version.trim()
+          : "";
+      if (appVersion) {
+        url.searchParams.set("v", appVersion);
+      }
+
+      try {
+        const response = await fetchWithTimeout(
+          url.toString(),
+          {
+            method: "GET",
+            headers: { Accept: "application/json" },
+            redirect: "follow",
+            cache: "no-cache",
+            keepalive: true,
+            signal: options.signal,
+          },
+          Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 15000,
+        );
+        const result = await parseJsonResponse(response);
+        const backendError = getBackendError(result, response);
+        if (backendError) throw backendError;
+        return result;
+      } catch (error) {
+        if (options.allowFallback !== false) {
+          return callBackend(
+            {
+              type: "get_deck",
+              subject: normalizedSubject,
+              password: "",
+            },
+            options,
+          );
+        }
+        throw error;
+      }
+    }
+
     return callBackend(
       {
         type: "get_deck",
-        subject: String(subject || "").trim(),
+        subject: normalizedSubject,
         password: String(password || ""),
         ...(options.page !== undefined ? { page: options.page } : {}),
         ...(options.limit !== undefined ? { limit: options.limit } : {}),
@@ -239,6 +577,11 @@
     callBackend,
     getDeckSummary,
     getDeck,
+    calculateRetryDelay,
+    retryWithBackoff,
+    createConnectionPool,
+    reconnect: () => defaultConnectionPool.reconnect(),
+    getConnectionPoolState: () => defaultConnectionPool.getState(),
     verifyFolderAccess: (subject, password, options = {}) =>
       callBackend(
         {

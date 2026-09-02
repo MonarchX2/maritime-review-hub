@@ -2005,7 +2005,9 @@ function renderCategoryProgressNow() {
       const isCompleted = progressStats.isCompleted;
       const cardClasses = isCompleted
         ? "bg-green-50 dark:bg-green-900/30 border-green-300"
-        : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700";
+        : mistakesCount > 0
+          ? "bg-orange-50 dark:bg-orange-900/30 border-orange-300"
+          : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700";
       const availabilityClasses = databaseUnavailable
         ? "opacity-40 cursor-not-allowed pointer-events-none"
         : "";
@@ -2058,7 +2060,7 @@ function renderCategoryProgressNow() {
 
         if (!databaseUnavailable && (completedCount > 0 || mistakesCount > 0)) {
           resetBtnHTML = `
-            <button onclick="resetCategory('${encodedSubj}')" class="w-10 sm:w-12 shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
+            <button data-reset-subject="${escapeHTML(subj)}" onclick="resetCategory('${encodedSubj}')" class="reset-deck-btn w-10 sm:w-12 shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
               <i class="fa-solid fa-rotate-left"></i>
             </button>`;
         }
