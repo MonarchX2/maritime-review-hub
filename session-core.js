@@ -281,6 +281,7 @@
       questions: preparedPool,
       currentIndex: 0,
       userAnswers: {},
+      identificationRatings: {},
       mode: "quiz",
       revealedCloze: false,
       autoNextTimeout: null,
@@ -320,6 +321,10 @@
     ensureChoiceHandler();
 
     const userAnswer = session.userAnswers?.[session.currentIndex];
+    const hasIdentificationRating = Object.prototype.hasOwnProperty.call(
+      session.identificationRatings || {},
+      session.currentIndex,
+    );
     const userAnswerKey = normalizeAnswer(userAnswer);
     const correctKey = normalizeAnswer(q.Answer);
     const currentCard = session.currentIndex + 1;
@@ -516,19 +521,31 @@
     const btnNext = getElement("btn-next");
     const btnPrev = getElement("btn-prev");
     const btnReveal = getElement("btn-reveal");
+    const answerRating = getElement("answer-rating");
+    const awaitingIdentificationRating =
+      isPureIdent && userAnswer === "REVEALED" && !hasIdentificationRating;
 
-    if (btnPrev) btnPrev.disabled = session.currentIndex <= 0;
 
     if (userAnswer) {
       activeRecallMask?.classList.add("hidden");
       qChoicesContainer?.classList.remove("hidden");
       showExplanation(q);
-      if (btnNext) btnNext.disabled = false;
+      if (btnNext) btnNext.disabled = awaitingIdentificationRating;
       if (btnReveal) btnReveal.disabled = true;
+      answerRating?.classList.toggle(
+        "hidden",
+        !awaitingIdentificationRating,
+      );
+      answerRating?.classList.toggle(
+        "flex",
+        awaitingIdentificationRating,
+      );
     } else {
       expBox?.classList.add("hidden");
       if (btnNext) btnNext.disabled = false;
       if (btnReveal) btnReveal.disabled = false;
+      answerRating?.classList.add("hidden");
+      answerRating?.classList.remove("flex");
 
       if (isPureIdent) {
         activeRecallMask?.classList.add("hidden");
@@ -542,6 +559,9 @@
       }
     }
 
+      if (btnPrev)
+        btnPrev.disabled =
+          session.currentIndex <= 0 || awaitingIdentificationRating;
     const activeRecallToggle = getElement("toggle-active-recall");
     const shuffleChoicesToggle = getElement("toggle-shuffle-choices");
     for (const [control, disabled] of [
@@ -992,25 +1012,61 @@
     if (!session?.active || !q || session.userAnswers?.[session.currentIndex])
       return false;
 
+    const typeMode =
+      typeof globalScope.getQuestionTypeMode === "function"
+        ? globalScope.getQuestionTypeMode(q) || {}
+        : {};
+    const isPureIdent = typeMode.isIdent === true;
+
     if (!session.userAnswers || typeof session.userAnswers !== "object")
       session.userAnswers = {};
     session.userAnswers[session.currentIndex] = "REVEALED";
     session.revealedCloze = true;
 
-    // Revealing is not a user-correct response. Count it as a miss so statistics
-    // and SRS do not incorrectly award credit for an answer the user did not give.
-    trackStats(q, false);
+    if (!isPureIdent) {
+      // Revealing is not a user-correct response. Count it as a miss so statistics
+      // and SRS do not incorrectly award credit for an answer the user did not give.
+      trackStats(q, false);
+    }
 
     getElement("q-choices")?.classList.remove("hidden");
     getElement("active-recall-mask")?.classList.add("hidden");
     renderQuestion();
     saveSessionProgress();
-    startTimerSafely();
+    if (!isPureIdent) startTimerSafely();
 
-    safeClearAutoNextTimeout();
-    session.autoNextTimeout = setTimeout(() => {
-      if (getSession()?.active) nextQuestion();
-    }, 2000);
+    if (!isPureIdent) {
+      safeClearAutoNextTimeout();
+      session.autoNextTimeout = setTimeout(() => {
+        if (getSession()?.active) nextQuestion();
+      }, 2000);
+    }
+    return true;
+  }
+
+  function rateIdentificationAnswer(isCorrect) {
+    const session = getSession();
+    const q = getCurrentQuestion();
+    const typeMode =
+      typeof globalScope.getQuestionTypeMode === "function"
+        ? globalScope.getQuestionTypeMode(q) || {}
+        : {};
+
+    if (
+      !session?.active ||
+      !q ||
+      typeMode.isIdent !== true ||
+      session.userAnswers?.[session.currentIndex] !== "REVEALED"
+    ) {
+      return false;
+    }
+
+    if (!session.identificationRatings || typeof session.identificationRatings !== "object") {
+      session.identificationRatings = {};
+    }
+    session.identificationRatings[session.currentIndex] = Boolean(isCorrect);
+    trackStats(q, Boolean(isCorrect));
+    nextQuestion();
     return true;
   }
 
@@ -1071,6 +1127,7 @@
     checkSavedSession,
     clearSessionProgress,
     revealAnswer,
+    rateIdentificationAnswer,
     startVisualTimer,
     stopVisualTimer,
   };
@@ -1092,6 +1149,7 @@
   globalScope.checkSavedSession = checkSavedSession;
   globalScope.clearSessionProgress = clearSessionProgress;
   globalScope.revealAnswer = revealAnswer;
+  globalScope.rateIdentificationAnswer = rateIdentificationAnswer;
   globalScope.startVisualTimer = startVisualTimer;
   globalScope.stopVisualTimer = stopVisualTimer;
 })(typeof window !== "undefined" ? window : globalThis);

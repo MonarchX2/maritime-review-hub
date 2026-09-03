@@ -885,9 +885,6 @@ function scheduleStartupSync() {
         });
       }
 
-      if (typeof fetchGlobalReports === "function") {
-        fetchGlobalReports();
-      }
     };
 
     if (typeof window.requestIdleCallback === "function") {
@@ -2005,26 +2002,23 @@ function renderCategoryProgressNow() {
       const isCompleted = progressStats.isCompleted;
       const cardClasses = isCompleted
         ? "bg-green-50 dark:bg-green-900/30 border-green-300"
-        : mistakesCount > 0
-          ? "bg-orange-50 dark:bg-orange-900/30 border-orange-300"
-          : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700";
+        : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700";
+      const unfinishedBadge = mistakesCount > 0
+        ? '<i class="fa-solid fa-file-circle-xmark text-orange-500 mr-2 flex-shrink-0" title="Unfinished"></i>'
+        : "";
       const availabilityClasses = databaseUnavailable
         ? "opacity-40 cursor-not-allowed pointer-events-none"
         : "";
       const isReview = currentAppMode === "review";
-      const recentPathDepth = getRecentPathDepth(subj);
-      const isRecentlyViewed = recentPathDepth > 0;
+      const isRecentlyViewed = getRecentPathDepth(subj) > 0;
       const recentViewedBadge = isRecentlyViewed
         ? '<i class="fa-regular fa-clock text-xs text-amber-500 mr-2 flex-shrink-0" title="Recently Viewed"></i>'
         : "";
-      const recentClassName = isRecentlyViewed
-        ? "ring-2 ring-amber-400/80 shadow-amber-500/10"
-        : "";
       const primaryActionText = isReview
-        ? "Review Deck"
+        ? "Review"
         : completedCount === 0
-          ? "Start Quiz"
-          : "Continue Quiz";
+          ? "Quiz"
+          : "Continue";
       const primaryActionIcon = isReview ? "fa-eye" : "fa-play";
       const primaryActionColor = isReview
         ? "bg-purple-600 hover:bg-purple-700"
@@ -2072,7 +2066,7 @@ function renderCategoryProgressNow() {
       }
 
       return `
-        <div data-deck-key="${escapeHTML(subj)}" onclick="handleDeckClick('${encodedSubj}')" class="${isDeckInteractionBusy ? "pointer-events-none opacity-60 cursor-wait" : "cursor-pointer"} animate-card-in ${cardClasses} ${availabilityClasses} ${recentClassName} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;" title="${databaseUnavailable ? "Waiting for database connection" : ""}" aria-busy="${isDeckInteractionBusy}">
+        <div data-deck-key="${escapeHTML(subj)}" onclick="handleDeckClick('${encodedSubj}')" class="${isDeckInteractionBusy ? "pointer-events-none opacity-60 cursor-wait" : "cursor-pointer"} animate-card-in ${cardClasses} ${availabilityClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-all duration-400 relative w-full h-full flex flex-col" style="animation-delay: ${delay}s;" title="${databaseUnavailable ? "Waiting for database connection" : ""}" aria-busy="${isDeckInteractionBusy}">
           ${
             databaseUnavailable
               ? `<div class="absolute inset-0 bg-gray-500/30 dark:bg-gray-900/60 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center transition-opacity">
@@ -2091,6 +2085,7 @@ function renderCategoryProgressNow() {
               <div class="flex items-center gap-2 mb-1 min-w-0">
                 <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors min-w-0">
                   ${recentViewedBadge}
+                  ${unfinishedBadge}
                   <span class="${deckNameMode} break-words">${safeName}</span> ${lockIcon}
                 </h3>
               </div>
@@ -2137,6 +2132,9 @@ function renderCategoryProgressNow() {
         const folderClass = isGrid ? "h-full min-h-[140px]" : "h-auto";
 
         const isReview = currentAppMode === "review";
+        const isRecentlyViewedFolder = getRecentPathDepth(
+          (state.currentPath || []).concat(key).join("::"),
+        ) > 0;
         const folderColorClass = isReview
           ? "bg-purple-500 dark:bg-purple-700 group-hover:bg-purple-600 dark:group-hover:bg-purple-600"
           : "bg-brand-500 dark:bg-brand-700 group-hover:bg-brand-600 dark:group-hover:bg-brand-600";
@@ -2146,13 +2144,6 @@ function renderCategoryProgressNow() {
 
         const folderSubject =
           (state.currentPath || []).concat(key).join("::") || key;
-        const recentFolderDepth = getRecentPathDepth(folderSubject);
-        const isRecentlyViewedFolder = recentFolderDepth > 0;
-        const folderRecentClass = isRecentlyViewedFolder
-          ? recentFolderDepth === 1
-            ? "ring-2 ring-amber-400/80 bg-amber-50/30 dark:bg-amber-900/10"
-            : "ring-1 ring-amber-300/70 bg-amber-50/20 dark:bg-amber-900/5"
-          : "";
         const isLocked =
           isDeckLocked(folderSubject) || Boolean(item?._data?.Locked);
         const lockIcon = isLocked
@@ -2189,7 +2180,7 @@ function renderCategoryProgressNow() {
         }
 
         html += `
-          <div data-folder-key="${escapeHTML(key)}" onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} ${folderRecentClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
+          <div data-folder-key="${escapeHTML(key)}" onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
             <div class="h-12 ${folderColorClass} transition-colors relative">
               <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
             </div>
@@ -3057,16 +3048,6 @@ document.addEventListener("keydown", (e) => {
 
 let globallyReportedQs = new Set();
 
-async function fetchGlobalReports() {
-  try {
-    const reports = await AppNetwork.getReports({ role: "user" });
-    if (Array.isArray(reports))
-      globallyReportedQs = new Set(reports.map((r) => r.questionId));
-  } catch (e) {
-    console.warn("Unable to fetch global reports", e);
-  }
-}
-
 window.addEventListener("resize", () => {
   if (state.session.active && state.prefs.quizNavigationPosition === "auto")
     applyNavigationPosition();
@@ -3606,6 +3587,8 @@ function toggleNavigationPosition(source) {
 }
 
 async function loadReports() {
+  return false;
+
   ensureAppReady();
 
   const pendingContainer = document.getElementById("public-pending-reports");
