@@ -525,21 +525,14 @@
     const awaitingIdentificationRating =
       isPureIdent && userAnswer === "REVEALED" && !hasIdentificationRating;
 
-
     if (userAnswer) {
       activeRecallMask?.classList.add("hidden");
       qChoicesContainer?.classList.remove("hidden");
       showExplanation(q);
       if (btnNext) btnNext.disabled = awaitingIdentificationRating;
       if (btnReveal) btnReveal.disabled = true;
-      answerRating?.classList.toggle(
-        "hidden",
-        !awaitingIdentificationRating,
-      );
-      answerRating?.classList.toggle(
-        "flex",
-        awaitingIdentificationRating,
-      );
+      answerRating?.classList.toggle("hidden", !awaitingIdentificationRating);
+      answerRating?.classList.toggle("flex", awaitingIdentificationRating);
     } else {
       expBox?.classList.add("hidden");
       if (btnNext) btnNext.disabled = false;
@@ -559,9 +552,9 @@
       }
     }
 
-      if (btnPrev)
-        btnPrev.disabled =
-          session.currentIndex <= 0 || awaitingIdentificationRating;
+    if (btnPrev)
+      btnPrev.disabled =
+        session.currentIndex <= 0 || awaitingIdentificationRating;
     const activeRecallToggle = getElement("toggle-active-recall");
     const shuffleChoicesToggle = getElement("toggle-shuffle-choices");
     for (const [control, disabled] of [
@@ -1061,7 +1054,10 @@
       return false;
     }
 
-    if (!session.identificationRatings || typeof session.identificationRatings !== "object") {
+    if (
+      !session.identificationRatings ||
+      typeof session.identificationRatings !== "object"
+    ) {
       session.identificationRatings = {};
     }
     session.identificationRatings[session.currentIndex] = Boolean(isCorrect);

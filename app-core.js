@@ -884,7 +884,6 @@ function scheduleStartupSync() {
           console.warn("Background startup sync was skipped:", error);
         });
       }
-
     };
 
     if (typeof window.requestIdleCallback === "function") {
@@ -2003,9 +2002,10 @@ function renderCategoryProgressNow() {
       const cardClasses = isCompleted
         ? "bg-green-50 dark:bg-green-900/30 border-green-300"
         : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700";
-      const unfinishedBadge = mistakesCount > 0
-        ? '<i class="fa-solid fa-file-circle-xmark text-orange-500 mr-2 flex-shrink-0" title="Unfinished"></i>'
-        : "";
+      const unfinishedBadge =
+        mistakesCount > 0
+          ? '<i class="fa-solid fa-file-circle-xmark text-orange-500 mr-2 flex-shrink-0" title="Unfinished"></i>'
+          : "";
       const availabilityClasses = databaseUnavailable
         ? "opacity-40 cursor-not-allowed pointer-events-none"
         : "";
@@ -2132,9 +2132,9 @@ function renderCategoryProgressNow() {
         const folderClass = isGrid ? "h-full min-h-[140px]" : "h-auto";
 
         const isReview = currentAppMode === "review";
-        const isRecentlyViewedFolder = getRecentPathDepth(
-          (state.currentPath || []).concat(key).join("::"),
-        ) > 0;
+        const isRecentlyViewedFolder =
+          getRecentPathDepth((state.currentPath || []).concat(key).join("::")) >
+          0;
         const folderColorClass = isReview
           ? "bg-purple-500 dark:bg-purple-700 group-hover:bg-purple-600 dark:group-hover:bg-purple-600"
           : "bg-brand-500 dark:bg-brand-700 group-hover:bg-brand-600 dark:group-hover:bg-brand-600";
