@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-release-2026.09.05";
+const APP_VERSION = "mrh-release-2026.09.06";
 const FALLBACK_CACHE_VERSION = APP_VERSION;
 
 function getServiceWorkerUrl() {
@@ -69,6 +69,8 @@ const APP_SHELL = [
   "./app-entry.js",
   "./app-config.js",
   "./app-core.js",
+  "./preferences-core.js",
+  "./dashboard-core.js",
   "./app-core-state.js",
   "./app-core-network.js",
   "./sync-core.js",
@@ -80,37 +82,42 @@ const APP_SHELL = [
   "./quiz-rendering-core.js",
   "./debug-utils.js",
   "./lifecycle-utils.js",
+  "./rendering-core.js",
   "./storage-utils.js",
   "./text-utils.js",
 ].map(resolveAppUrl);
 
 const APP_SHELL_INTEGRITY = Object.freeze({
   "index.html":
-    "d8f077dff5ae87b1c772daa627ff9fc834f32efeaa41439ea1ca6e32e4840416",
+    "5bf4c550f042d406ae54ac0d1c2e01a3ab1db4215bc4a0db130a0dade7682b1a",
   "tailwind.generated.css":
     "b8660785a8ba0756314bcd068fd43e2bd218228a574db158e0c5496d2330d37c",
   "styles.css":
     "098f08286d4a3b083186440224fb054b70c0e4dda472b9b4d2629f413097ce9a",
   "app-entry.js":
-    "1e0a4d5f11a6f41d62546217b69c52a98e4733a0f5a684f6e5fa90912ba51ac5",
+    "3e861ebcaa2b950d290606c1037bf4a37eb5012d3e137d2c3a16dbef1dbf55da",
   "app-config.js":
     "971f3f28cc40cb0b91b581b493436d4934cd6ed27b7349cbd62011f4a7d42dc1",
   "app-core.js":
-    "da5768e6e2cf30839ff5bf7786ced2d89f4073898aabbc3b1f6d08464eadcc95",
+    "9dd5e82463cc07cc128eb0f2ee3e5db2b829e1f03c47dcbb139221f331dd8b4b",
+  "preferences-core.js":
+    "d8c8ce23660af4083e3f779ac193786ce22e10da51089e79031cbb38a59e9c1d",
+  "dashboard-core.js":
+    "e5f7668b6f3a72a27377c96bfd6f7d3974be6c772dd2292bdee6bfecefe7f202",
   "app-core-state.js":
-    "38c7394b709b687c97e26ec0ae03d32f11157613e881e4b5eb8de7a77557cd05",
+    "e388834146cf33ea94e09e3eab6970dce9f9a100a8789b66584516c8b55279d8",
   "app-core-network.js":
-    "40d008957a3679d45fca663479f51293c00a92c1c370a7c160b5e73441d6986a",
+    "c1d296ce4cf5a39a995a3ab48ab2a45ba2634b97b5f4fbfabab24fc52dcba46d",
   "sync-core.js":
-    "9ed4adb1964c36eadc259bb82e20791225d53710527eff083d4d59c89f614b49",
+    "3a53797eec263aebfa1d7cd7d23eaade483fa82a4ee4ede871b724e6ca83277a",
   "session-core.js":
-    "88b502fe292470e7f6494c0aa12a309790ee0089353ccc35fed55bba43c826a1",
+    "1e4016afc34f708c59a56dfd134a718d4319517bc87d85aa87fba5092dec3a13",
   "analytics-core.js":
     "43df22f3bd7120d670fa1ca5b5d446038917d12aeeab5297e85a93abde37a78d",
   "ui-modal-core.js":
-    "346d4465f81519e9541d224f37ce05c09f18b8d2f230d040337791b6fd474b58a",
+    "0e7a895c23874c86b3d83a0aeb45b7bdf29baf64cb6167aed79728ed73b4b324",
   "deck-nav-core.js":
-    "2805fecd992cea390cba2f90e71219deaa4e4a398ce5e6e5dcb8844fdeabfd5a",
+    "e0c75fca277b17ab3a1302f6fb4f7ba3366a9f0305ab895dd6491e24f8110bb8",
   "deck-review-core.js":
     "11476109878302a0f11528ce6fad99a3eb5edc5559e43bea4f4f72bd991df9ba",
   "quiz-rendering-core.js":
@@ -119,10 +126,12 @@ const APP_SHELL_INTEGRITY = Object.freeze({
     "825e96cb1ab6be2c4c92d9b63f1c60c5d28260561b6e6637c51955a5303e9961",
   "lifecycle-utils.js":
     "ac5c52a5f255bef28d1243954407149bd54708de67a62be7f2d7dffafa94d82e",
+  "rendering-core.js":
+    "99a62476baa27888e6ef31d546d1c2c8a8120a4b443dadffa8a8238a03402e17",
   "storage-utils.js":
-    "a55cd7e274d5a3bdfa8099f861f1bcbcd35c6cf37d71f735a6a3f6b2bc8e232b",
+    "118047fc8693853e23f66c4b3e49e0f62adfeff5ee30a5c4fa1008881234b853",
   "text-utils.js":
-    "8fa073d67b9081e81985ba869c1e89c63f3a652ed65984a39d8db56c64c52654",
+    "570b0eef2969aefdd44302fcc367151e43afb6a365ecf257abd2aaaf391aa226",
 });
 
 self.__MRH_SW__ = {

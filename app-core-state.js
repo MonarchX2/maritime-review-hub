@@ -843,8 +843,8 @@
     loadState: async function loadStateAlias() {
       return loadState();
     },
-    saveState: async function saveStateAlias() {
-      return saveState();
+    saveState: async function saveStateAlias(dirty = "all") {
+      return saveState(dirty);
     },
   };
 

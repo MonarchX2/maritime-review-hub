@@ -821,6 +821,7 @@
 
     updateSrsForQuestion(q, Boolean(isCorrect));
 
+    globalScope.invalidateCategoryProgressRenderSignature?.();
     if (typeof globalScope.renderCategoryProgress === "function") {
       globalScope.renderCategoryProgress();
     }

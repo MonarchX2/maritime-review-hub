@@ -109,6 +109,7 @@
     if (!state.currentPath) state.currentPath = [];
     state.currentPath.push(folderName);
     globalScope.persistNavigationPath(state.currentPath);
+    globalScope.invalidateCategoryProgressRenderSignature?.();
     globalScope.renderCategoryProgress();
   }
 
@@ -120,6 +121,7 @@
       state.currentPath = state.currentPath.slice(0, index + 1);
     }
     globalScope.persistNavigationPath(state.currentPath);
+    globalScope.invalidateCategoryProgressRenderSignature?.();
     globalScope.renderCategoryProgress();
   }
 
@@ -353,6 +355,7 @@
       }
 
       saveState();
+      globalScope.invalidateCategoryProgressRenderSignature?.();
       globalScope.renderCategoryProgress();
     }
   }

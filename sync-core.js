@@ -32,6 +32,125 @@
   /** @property {() => Promise<void>} SyncCoreController.optimizedBackgroundSync */
   /** @typedef {boolean} SyncCoreResult */
 
+  /**
+   * Create the cross-tab leader coordinator used by background synchronization.
+   * The coordinator owns the channel and heartbeat lifecycle; the app facade
+   * only observes leadership changes so it can keep its public API stable.
+   *
+   * @param {Object} options
+   * @returns {{isLeader: () => boolean, start: () => void, cleanup: () => void}}
+   */
+  function createLeaderCoordinator(options = {}) {
+    const lifecycle = options.lifecycle || globalScope;
+    const logger = options.logger || console;
+    const protocol = options.protocol || "mrh-broadcast-v1";
+    const heartbeatIntervalMs = options.heartbeatIntervalMs ?? 10 * 1000;
+    const peerTtlMs = options.peerTtlMs ?? 25000;
+    let channel = null;
+    let heartbeatTimer = null;
+    let leader = false;
+    let started = false;
+    const peers = new Map();
+    const tabId =
+      options.tabId ||
+      `tab_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+
+    const notify = (nextLeader, wasLeader) => {
+      if (wasLeader === nextLeader) return;
+      leader = nextLeader;
+      logger.info?.(`[LEADER] ${leader ? "Became" : "Yielded"} leadership`);
+      options.onLeaderChange?.(leader);
+    };
+
+    const electLeader = () => {
+      const now = Date.now();
+      for (const [peerId, seenAt] of peers) {
+        if (now - seenAt > peerTtlMs) peers.delete(peerId);
+      }
+      const candidates = [tabId, ...peers.keys()].sort();
+      notify((candidates[0] || tabId) === tabId, leader);
+    };
+
+    const sendHeartbeat = () => {
+      try {
+        channel?.postMessage({
+          protocol,
+          type: "leader_heartbeat",
+          tabId,
+          timestamp: Date.now(),
+        });
+      } catch (error) {
+        logger.warn?.("[LEADER] Heartbeat failed:", error);
+      }
+      electLeader();
+    };
+
+    function start() {
+      if (started) return;
+      started = true;
+
+      if (typeof BroadcastChannel === "undefined") {
+        leader = true;
+        options.onLeaderChange?.(true);
+        logger.info?.(
+          "[LEADER] BroadcastChannel unavailable; this tab is the leader",
+        );
+        return;
+      }
+
+      try {
+        channel = new BroadcastChannel("mrh_leader_election");
+        channel.onmessage = (event) => {
+          const data = event?.data;
+          if (
+            !data ||
+            typeof data !== "object" ||
+            data.protocol !== protocol ||
+            data.type !== "leader_heartbeat"
+          ) {
+            return;
+          }
+
+          const peerId = String(data.tabId || "");
+          const timestamp = Number(data.timestamp);
+          if (
+            peerId === tabId ||
+            !/^[a-z0-9_-]{8,128}$/i.test(peerId) ||
+            !Number.isFinite(timestamp) ||
+            Math.abs(Date.now() - timestamp) > peerTtlMs * 2
+          ) {
+            return;
+          }
+
+          peers.set(peerId, Date.now());
+          electLeader();
+        };
+        heartbeatTimer = lifecycle.setInterval(
+          sendHeartbeat,
+          heartbeatIntervalMs,
+        );
+        sendHeartbeat();
+      } catch (error) {
+        logger.error?.("[LEADER] Failed to setup leader election:", error);
+        leader = true;
+        options.onLeaderChange?.(true);
+      }
+    }
+
+    function cleanup() {
+      started = false;
+      lifecycle.clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+      peers.clear();
+      if (channel) {
+        channel.close();
+        channel = null;
+      }
+    }
+
+    return { isLeader: () => leader, start, cleanup };
+  }
+
   /** @param {SyncCoreOptions} options @returns {SyncCoreController & Object} */
   function createController(options) {
     const lifecycle = options.lifecycle;
@@ -359,5 +478,5 @@
     };
   }
 
-  globalScope.SyncCore = { createController };
+  globalScope.SyncCore = { createController, createLeaderCoordinator };
 })(typeof window !== "undefined" ? window : globalThis);

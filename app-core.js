@@ -19,10 +19,12 @@
   const state = rootScope.state;
   const lifecycle = rootScope.LifecycleUtils || rootScope;
   const uiEventController = new AbortController();
-  const appAnimationFrames = new Set();
+  const renderingScheduler = rootScope.RenderingCore?.createScheduler?.() || {
+    schedule: (callback) => lifecycle.setTimeout(callback, 0),
+    cancelAll: () => undefined,
+  };
   const SYNC_INTERVAL_MS = appConfig.syncIntervalMs ?? 60 * 1000;
   const SYNC_RETRY_INTERVAL_MS = appConfig.syncRetryIntervalMs ?? 3 * 1000;
-  const QUIZ_NAVIGATION_BREAKPOINT = appConfig.quizNavigationBreakpoint ?? 768;
   const STALE_CACHE_MAX_AGE_MS = appConfig.staleCacheMaxAgeMs ?? 10 * 1000;
   const SYNC_RETRY_MAX_DELAY_MS = appConfig.syncRetryMaxDelayMs ?? 60 * 1000;
   const DATA_CACHE_TIMESTAMP_KEY = "mrh_last_sync_complete_ms";
@@ -55,34 +57,12 @@
   let __mrhInitializationTimer = null;
   let __mrhPollLoopToken = 0;
 
-  /**
-   * Schedule a render callback on the next animation frame when available.
-   *
-   * @param {Function} callback
-   * @returns {number|unknown}
-   */
   function scheduleAppAnimationFrame(callback) {
-    if (typeof requestAnimationFrame !== "function") {
-      return lifecycle.setTimeout(callback, 0);
-    }
-
-    const frameId = requestAnimationFrame(() => {
-      appAnimationFrames.delete(frameId);
-      callback();
-    });
-    appAnimationFrames.add(frameId);
-    return frameId;
+    return renderingScheduler.schedule(callback);
   }
 
   function cancelAppAnimationFrames() {
-    appAnimationFrames.forEach((frameId) => {
-      if (typeof cancelAnimationFrame === "function") {
-        cancelAnimationFrame(frameId);
-      } else {
-        lifecycle.clearTimeout(frameId);
-      }
-    });
-    appAnimationFrames.clear();
+    renderingScheduler.cancelAll();
   }
 
   /**
@@ -309,25 +289,25 @@
     throw new Error("AppState is required before loading application state.");
   }
 
-  async function saveState() {
+  async function saveState(dirty = "all") {
     if (
       typeof AppState !== "undefined" &&
       typeof AppState.saveState === "function"
     ) {
-      return AppState.saveState();
+      return AppState.saveState(dirty);
     }
     throw new Error("AppState is required before saving application state.");
   }
 
   function syncPreferenceControls() {
     if (
-      typeof AppState !== "undefined" &&
-      typeof AppState.syncPreferenceControls === "function"
+      typeof PreferencesCore !== "undefined" &&
+      typeof PreferencesCore.syncPreferenceControls === "function"
     ) {
-      return AppState.syncPreferenceControls();
+      return PreferencesCore.syncPreferenceControls();
     }
     throw new Error(
-      "AppState is required before synchronizing preference controls.",
+      "PreferencesCore is required before synchronizing preference controls.",
     );
   }
 
@@ -1002,6 +982,7 @@
         : Boolean(knownChanged);
 
     state.categorySummary = summaryData || [];
+    invalidateCategoryProgressRenderSignature();
     syncConnected = true;
     persistDeckCacheTimestamp(Date.now());
     // FEATURE: Mark initial sync as complete after first successful sync
@@ -1099,223 +1080,12 @@
     return getSyncController().syncDatabase(isRetry, isBackgroundCheck);
   }
 
-  let filterModelSource = null;
-  let filterModel = { subjects: [], tags: [] };
-  let filterDomSignature = "";
-
-  function populateFilters() {
-    if (
-      typeof window !== "undefined" &&
-      window.__MRH_BOOTSTRAP__?.status !== "ready" &&
-      !__mrhAppReady
-    ) {
-      return;
-    }
-
-    if (filterModelSource !== state.db) {
-      const subjectIndex = ensureQuestionIndex();
-      const subjects = [...subjectIndex.bySubject.keys()];
-      const tagSet = new Set();
-
-      (state.db || []).forEach((q) => {
-        if (!q || !q.Tags) return;
-        q.Tags.split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean)
-          .forEach((tag) => tagSet.add(tag));
-      });
-
-      filterModelSource = state.db;
-      filterModel = { subjects, tags: [...tagSet] };
-    }
-
-    const { subjects, tags } = filterModel;
-
-    // Update old select element if it exists (for backward compatibility)
-    const select = document.getElementById("filter-subject");
-    if (select) {
-      let html = '<option value="ALL">All Subjects (Randomized)</option>';
-      if (subjects.length > 0) {
-        html += '<optgroup label="Subjects">';
-        html += subjects
-          .map(
-            (s) =>
-              `<option value="SUBJ:${escapeHTML(s)}">${escapeHTML(s)}</option>`,
-          )
-          .join("");
-        html += "</optgroup>";
-      }
-      if (tags.length > 0) {
-        html += '<optgroup label="Tags">';
-        html += tags
-          .map(
-            (t) =>
-              `<option value="TAG:${escapeHTML(t)}">${escapeHTML(t)}</option>`,
-          )
-          .join("");
-        html += "</optgroup>";
-      }
-
-      select.innerHTML = html;
-    }
-
-    // Populate new dropdown filter menu
-    const filterListContainer = document.getElementById("quiz-filter-list");
-    if (filterListContainer) {
-      const filterSignature = `${subjects.join("\u001f")}\u001e${tags.join("\u001f")}`;
-      if (filterSignature === filterDomSignature) return;
-      filterDomSignature = filterSignature;
-      let html = "";
-
-      // Add subjects
-      if (subjects.length > 0) {
-        html +=
-          '<div class="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-gray-400">Subjects</div>';
-        html += subjects
-          .map(
-            (s) =>
-              `<button type="button" data-filter-value="SUBJ:${escapeHTML(s)}" onclick="changeQuizFilter(decodeHandlerValue('SUBJ:${encodeHandlerValue(s)}'))" class="quiz-filter-option">${escapeHTML(s)} <i class="fa-solid fa-check filter-check"></i></button>`,
-          )
-          .join("");
-      }
-
-      // Add tags
-      if (tags.length > 0) {
-        if (subjects.length > 0) {
-          html +=
-            '<div class="my-1 border-t border-gray-200 dark:border-gray-700"></div>';
-        }
-        html +=
-          '<div class="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-gray-400">Tags</div>';
-        html += tags
-          .map(
-            (t) =>
-              `<button type="button" data-filter-value="TAG:${escapeHTML(t)}" onclick="changeQuizFilter(decodeHandlerValue('TAG:${encodeHandlerValue(t)}'))" class="quiz-filter-option">${escapeHTML(t)} <i class="fa-solid fa-check filter-check"></i></button>`,
-          )
-          .join("");
-      }
-
-      filterListContainer.innerHTML = html;
-    }
-  }
-
-  function changeQuizFilter(filterValue) {
-    // Update the display text
-    const displayEl = document.getElementById("filter-subject-display");
-
-    if (filterValue === "ALL") {
-      if (displayEl) displayEl.textContent = "All Subjects";
-    } else if (filterValue.startsWith("SUBJ:")) {
-      const subj = filterValue.substring(5);
-      if (displayEl) displayEl.textContent = subj;
-    } else if (filterValue.startsWith("TAG:")) {
-      const tag = filterValue.substring(4);
-      if (displayEl) displayEl.textContent = `Tag: ${tag}`;
-    }
-
-    // Update check marks
-    document.querySelectorAll(".quiz-filter-option").forEach((btn) => {
-      const btnValue = btn.getAttribute("data-filter-value");
-      const checkIcon = btn.querySelector(".filter-check");
-      if (btnValue === filterValue) {
-        if (checkIcon) checkIcon.style.opacity = "1";
-      } else {
-        if (checkIcon) checkIcon.style.opacity = "0";
-      }
-    });
-
-    // Update check mark for All Subjects button
-    const allSubjectsBtn = document.querySelector("[data-filter-value='ALL']");
-    if (allSubjectsBtn) {
-      const checkIcon = allSubjectsBtn.querySelector(".filter-check");
-      if (filterValue === "ALL") {
-        if (checkIcon) checkIcon.style.opacity = "1";
-      } else {
-        if (checkIcon) checkIcon.style.opacity = "0";
-      }
-    }
-
-    // Store the value for initSession to use
-    let hiddenSelect = document.getElementById("filter-subject");
-    if (!hiddenSelect) {
-      // Create a hidden select element if it doesn't exist
-      hiddenSelect = document.createElement("select");
-      hiddenSelect.id = "filter-subject";
-      hiddenSelect.style.display = "none";
-      document.body.appendChild(hiddenSelect);
-    }
-    hiddenSelect.value = filterValue;
-
-    // Close the dropdown
-    const menu = document.getElementById("quiz-filter-menu");
-    if (menu) menu.open = false;
-  }
-
-  function getShortSubjectLabel(subject, fallback = "General") {
-    const raw = String(subject ?? "").trim();
-    if (!raw) return fallback;
-
-    const parts = raw
-      .split("::")
-      .map((part) => part.trim())
-      .filter(Boolean);
-
-    return parts.length >= 2 ? parts.slice(-2).join(" :: ") : raw;
-  }
-
   function enterFolder(folderName, isLockedFolder) {
     return DeckNavCore.enterFolder(folderName, isLockedFolder);
   }
 
   function goToPath(index) {
     return DeckNavCore.goToPath(index);
-  }
-
-  function getSubjectProgressStats(
-    subject,
-    subjectIdsBySubject,
-    completedSet,
-    mistakesSet,
-  ) {
-    const subjectIds = subjectIdsBySubject?.get(subject) || [];
-    const totalQuestionsInDb = subjectIds.length;
-    let completedCount = 0;
-    let mistakesCount = 0;
-    for (const id of subjectIds) {
-      if (completedSet?.has(id)) completedCount += 1;
-      if (mistakesSet?.has(id)) mistakesCount += 1;
-    }
-    const progressPercent =
-      totalQuestionsInDb > 0
-        ? Math.min(100, Math.round((completedCount / totalQuestionsInDb) * 100))
-        : 0;
-    const isCompleted =
-      totalQuestionsInDb > 0 && completedCount >= totalQuestionsInDb;
-
-    return {
-      completedCount,
-      mistakesCount,
-      totalQuestionsInDb,
-      progressPercent,
-      isCompleted,
-    };
-  }
-
-  function getDeckLoaderId(subject) {
-    const normalized = String(subject || "").replace(/[^a-zA-Z0-9_-]+/g, "_");
-    return `loading-${normalized || "deck"}`;
-  }
-
-  function getVisibleCategorySummary() {
-    if (
-      typeof DeckNavCore !== "undefined" &&
-      typeof DeckNavCore.getVisibleCategorySummary === "function"
-    ) {
-      return DeckNavCore.getVisibleCategorySummary();
-    }
-    // CRITICAL: Backend already filters ALL hidden decks in filterSummaryDataByAccess()
-    // Frontend must NEVER filter again - return categorySummary as-is
-    return state.categorySummary || [];
   }
 
   function closeAllDropdownMenus(exceptElement = null) {
@@ -1346,55 +1116,9 @@
   let categoryTreeFolderStatsCache = null;
   let categoryTreeNodeMetadataCache = null;
 
-  function getCollectionSignature(values) {
-    if (!Array.isArray(values)) return "";
-    return values.map((value) => String(value ?? "")).join("\u001f");
-  }
-
-  function getAccessMetadataSignature() {
-    const accessMetadata = state.accessMetadata || {};
-    return Object.keys(accessMetadata)
-      .sort()
-      .map((subject) => {
-        const access = accessMetadata[subject] || {};
-        return [
-          subject,
-          access.Hidden,
-          access.Locked,
-          access.Password ? "protected" : "",
-        ]
-          .map((value) => String(value ?? ""))
-          .join("\u001f");
-      })
-      .join("\u001e");
-  }
-
-  function getCategoryProgressRenderSignature() {
-    return [
-      getSummarySignature(state.categorySummary || []),
-      getCollectionSignature(
-        [
-          ...new Set(
-            (Array.isArray(state.db) ? state.db : [])
-              .map((question) => String(question?.Subject || "").trim())
-              .filter(Boolean),
-          ),
-        ].sort(),
-      ),
-      getCollectionSignature(state.currentPath),
-      state.prefs.layoutMode,
-      state.prefs.deckSourceFilter,
-      state.prefs.deckSortBy,
-      state.prefs.deckSortDirection,
-      state.prefs.deckNameMode,
-      currentAppMode,
-      getCollectionSignature(state.stats?.completedQs),
-      getCollectionSignature(state.stats?.mistakes),
-      getCollectionSignature(state.prefs.favoriteDecks),
-      getCollectionSignature(state.prefs.archivedDecks),
-      getAccessMetadataSignature(),
-      isInitialSyncComplete,
-    ].join("\u001e");
+  function invalidateCategoryProgressRenderSignature() {
+    globalScope.invalidateCategoryProgressSignatureCache?.();
+    categoryProgressLastRenderSignature = "";
   }
 
   function renderCategoryProgress() {
@@ -1441,7 +1165,10 @@
       return;
     }
 
-    const renderSignature = getCategoryProgressRenderSignature();
+    const renderSignature = getCategoryProgressRenderSignature({
+      currentAppMode,
+      isInitialSyncComplete,
+    });
     if (renderSignature === categoryProgressLastRenderSignature) {
       categoryProgressRenderQueued = false;
       return;
@@ -1463,62 +1190,11 @@
     categoryProgressRenderInFlight = true;
 
     try {
-      // Initialize deck source filter if not set
-      if (!state.prefs.deckSourceFilter) {
-        state.prefs.deckSourceFilter = "all";
-      }
-
-      const sourceLabel = document.getElementById("deck-source-label");
-      if (sourceLabel) {
-        const sourceLabels = {
-          all: "All Decks",
-          favorites: "Favorites",
-          downloaded: "Downloaded",
-          cloud: "Cloud Only",
-          archived: "Archived",
-        };
-        sourceLabel.innerText =
-          sourceLabels[state.prefs.deckSourceFilter] || "All Decks";
-      }
-
-      document.querySelectorAll(".deck-source-option").forEach((btn) => {
-        const check = btn.querySelector(".source-check");
-        if (btn.dataset.sourceValue === state.prefs.deckSourceFilter) {
-          check.style.opacity = "1";
-        } else {
-          check.style.opacity = "0";
-        }
-      });
-
-      const selectedSortBy = state.prefs.deckSortBy || "letters";
-      const selectedSortDirection =
-        state.prefs.deckSortDirection === "desc" ? "desc" : "asc";
-      document
-        .querySelectorAll(".deck-sort-option[data-sort-value]")
-        .forEach((btn) => {
-          const check = btn.querySelector(".sort-check");
-          if (check)
-            check.style.opacity =
-              btn.dataset.sortValue === selectedSortBy ? "1" : "0";
-        });
-      document
-        .querySelectorAll(".deck-sort-option[data-sort-direction]")
-        .forEach((btn) => {
-          const check = btn.querySelector(".sort-direction-check");
-          if (check) {
-            check.style.opacity =
-              btn.dataset.sortDirection === selectedSortDirection ? "1" : "0";
-          }
-        });
+      const dashboardControls = dashboardView || document;
+      syncDashboardControls(dashboardControls);
 
       const container = document.getElementById("category-list");
       const isGrid = state.prefs.layoutMode === "grid";
-      const layoutIcon = document.getElementById("layout-icon");
-      if (layoutIcon) {
-        layoutIcon.className = isGrid
-          ? "fa-solid fa-list text-brand-500"
-          : "fa-solid fa-table-cells text-brand-500";
-      }
       const completedSet = new Set(state.stats?.completedQs || []);
       const mistakesSet = new Set(state.stats?.mistakes || []);
       const subjectIdsBySubject = ensureQuestionIndex().bySubject;
@@ -1536,26 +1212,7 @@
       ) {
         tree = categoryTreeCache.tree;
       } else {
-        tree = {};
-        if (visibleSummary && visibleSummary.length > 0) {
-          visibleSummary.forEach((cat) => {
-            if (!cat?.Subject) return;
-            const parts = String(cat.Subject).split("::");
-            let currentLevel = tree;
-
-            parts.forEach((part, index) => {
-              const normalizedPart = String(part || "").trim();
-              if (!normalizedPart) return;
-              if (!currentLevel[normalizedPart]) {
-                currentLevel[normalizedPart] = { _children: {}, _data: null };
-              }
-              if (index === parts.length - 1) {
-                currentLevel[normalizedPart]._data = cat;
-              }
-              currentLevel = currentLevel[normalizedPart]._children;
-            });
-          });
-        }
+        tree = buildCategoryTree(visibleSummary);
         categoryTreeCache = {
           summarySignature: visibleSummarySignature,
           subjectSignature: visibleSubjectSignature,
@@ -1591,44 +1248,6 @@
       categoryTreeFolderStatsCache = folderStatsCache;
       categoryTreeNodeMetadataCache = nodeMetadataCache;
 
-      function getFolderStats(node) {
-        if (!node || typeof node !== "object") return 0;
-        if (folderStatsCache.has(node)) return folderStatsCache.get(node);
-
-        let total = 0;
-        if (node._data && Number(node._data.QuestionCount || 0) > 0) {
-          total += Number(node._data.QuestionCount || 0);
-        }
-        const childKeys = Object.keys(node._children || {});
-        for (let i = 0; i < childKeys.length; i += 1) {
-          total += getFolderStats(node._children[childKeys[i]]);
-        }
-        folderStatsCache.set(node, total);
-        return total;
-      }
-
-      function getNodeMetadata(node) {
-        if (!node || typeof node !== "object") {
-          return {
-            childKeys: [],
-            hasChildren: false,
-            isFolder: false,
-            totalCards: 0,
-          };
-        }
-        if (nodeMetadataCache.has(node)) {
-          return nodeMetadataCache.get(node);
-        }
-
-        const childKeys = Object.keys(node._children || {});
-        const hasChildren = childKeys.length > 0;
-        const isFolder = hasChildren || Boolean(node._data?.IsFolder);
-        const totalCards = getFolderStats(node);
-        const metadata = { childKeys, hasChildren, isFolder, totalCards };
-        nodeMetadataCache.set(node, metadata);
-        return metadata;
-      }
-
       const freshnessBannerHtml = getDeckDataFreshnessBannerHtml();
 
       let html = `
@@ -1657,7 +1276,11 @@
       const keys = Object.keys(currentNode)
         .map((key) => {
           const node = currentNode[key];
-          const metadata = getNodeMetadata(node);
+          const metadata = getNodeMetadata(
+            node,
+            nodeMetadataCache,
+            folderStatsCache,
+          );
           return { key, metadata };
         })
         .sort((leftEntry, rightEntry) => {
@@ -1984,7 +1607,7 @@
         const delay = index * 0.05;
 
         if (hasChildren || isExplicitFolder) {
-          const totalCards = getFolderStats(item);
+          const totalCards = getFolderStats(item, folderStatsCache);
           const folderClass = isGrid ? "h-full min-h-[140px]" : "h-auto";
 
           const isReview = currentAppMode === "review";
@@ -2085,8 +1708,9 @@
           const key = node.dataset.deckKey || node.dataset.folderKey;
           if (key && existingNodes.has(key)) {
             const existingNode = existingNodes.get(key);
-            existingNode.replaceWith(node);
-            fragment.appendChild(node);
+            fragment.appendChild(
+              existingNode.outerHTML === node.outerHTML ? existingNode : node,
+            );
           } else {
             fragment.appendChild(node);
           }
@@ -2159,6 +1783,7 @@
       state.db = state.db.filter((q) => q.Subject !== subject);
       rebuildQuestionIndex();
       markLocalDownloadDeleted(subject);
+      invalidateCategoryProgressRenderSignature();
 
       if (beforeSummary) {
         beforeSummary.Downloaded = false;
@@ -2186,13 +1811,7 @@
 
       saveState();
       await safeIdbSet("mrh_db", state.db);
-      const deckSourceFilter = document.getElementById("deck-source-filter");
-      if (deckSourceFilter && deckSourceFilter.value === "downloaded") {
-        renderCategoryProgress();
-      }
-      if (typeof renderCategoryProgress === "function") {
-        renderCategoryProgress();
-      }
+      renderCategoryProgress();
 
       const saved = getStoredItem("saved_session");
       if (saved) {
@@ -2453,6 +2072,7 @@
         state.db = [...otherQuestions, ...validQuestions];
         clearLocalDownloadDeleted(subject);
         rebuildQuestionIndex();
+        invalidateCategoryProgressRenderSignature();
         await safeIdbSet("mrh_db", state.db);
         if (typeof renderCategoryProgress === "function") {
           renderCategoryProgress();
@@ -2548,6 +2168,7 @@
       : [...existing, subjectId];
 
     saveState();
+    invalidateCategoryProgressRenderSignature();
     renderCategoryProgress();
     showToast(isFavorite ? "Removed from Favorites." : "Added to Favorites.");
   }
@@ -2577,6 +2198,7 @@
     }
 
     saveState();
+    invalidateCategoryProgressRenderSignature();
 
     // Refresh the dashboard to instantly hide/show the deck based on the current filter
     renderCategoryProgress();
@@ -3126,356 +2748,8 @@
     return SessionCore.stopVisualTimer();
   }
 
-  function toggleLayout() {
-    state.prefs.layoutMode =
-      state.prefs.layoutMode === "grid" ? "list" : "grid";
-    saveState();
-    renderCategoryProgress();
-  }
-
   function getCurrentReviewSubject() {
     return DeckReviewCore?.getCurrentReviewSubject?.() || "";
-  }
-
-  function getNavigationContextSubject() {
-    if (
-      document.getElementById("view-deck-review")?.classList.contains("active")
-    ) {
-      return getCurrentReviewSubject();
-    }
-
-    if (state.session?.active) {
-      return (
-        state.session.questions?.[state.session.currentIndex]?.Subject || ""
-      );
-    }
-
-    return "";
-  }
-
-  function getQuizNavigationPosition(subject = getNavigationContextSubject()) {
-    const deckKey = String(subject || "").trim();
-    const override = deckKey
-      ? getDeckNavigationOverride(deckKey, "quiz")
-      : null;
-    if (override) {
-      return ["top", "bottom"].includes(override) ? override : "top";
-    }
-    if (state.prefs.quizNavigationPosition !== "auto")
-      return state.prefs.quizNavigationPosition;
-    return window.innerWidth <= QUIZ_NAVIGATION_BREAKPOINT ? "top" : "bottom";
-  }
-
-  function getDeckNavigationOverride(subject, type) {
-    const deckKey = String(subject || "").trim();
-    if (!deckKey) return null;
-    const overrides = state.prefs.deckNavigationOverrides || {};
-    const deckOverrides = overrides[deckKey];
-    if (!deckOverrides || !deckOverrides[type]) return null;
-    return deckOverrides[type];
-  }
-
-  function setDeckNavigationOverride(subject, type, value) {
-    const deckKey = String(subject || "").trim();
-    if (!deckKey) return;
-    state.prefs.deckNavigationOverrides =
-      state.prefs.deckNavigationOverrides || {};
-    state.prefs.deckNavigationOverrides[deckKey] =
-      state.prefs.deckNavigationOverrides[deckKey] || {};
-    state.prefs.deckNavigationOverrides[deckKey][type] = value;
-    saveState();
-  }
-
-  function getStudyNavigationPosition(
-    layoutType = state.prefs.studyLayout || "scroll",
-    subject = getNavigationContextSubject(),
-  ) {
-    const normalizedLayout = layoutType === "single" ? "single" : "scroll";
-    const overrideKey =
-      normalizedLayout === "single" ? "studySingle" : "studyScroll";
-    const overrideValue = getDeckNavigationOverride(subject, overrideKey);
-    if (overrideValue) {
-      if (normalizedLayout === "single") {
-        return ["top", "bottom"].includes(overrideValue)
-          ? overrideValue
-          : "top";
-      }
-      return ["top", "bottom", "both"].includes(overrideValue)
-        ? overrideValue
-        : "both";
-    }
-
-    const value =
-      normalizedLayout === "single"
-        ? state.prefs.studySingleNavigationPosition
-        : state.prefs.studyScrollNavigationPosition;
-
-    if (normalizedLayout === "single") {
-      return ["top", "bottom"].includes(value) ? value : "top";
-    }
-
-    if (!["top", "bottom", "both"].includes(value)) {
-      return "both";
-    }
-
-    return value;
-  }
-
-  function setStudyNavigationPosition(
-    layoutType,
-    position,
-    subject = getNavigationContextSubject(),
-  ) {
-    const normalized =
-      position === "bottom" ? "bottom" : position === "both" ? "both" : "top";
-    const effectiveLayout = layoutType === "single" ? "single" : "scroll";
-
-    if (effectiveLayout === "single") {
-      const nextValue = normalized === "both" ? "top" : normalized;
-      if (subject) {
-        setDeckNavigationOverride(subject, "studySingle", nextValue);
-      } else {
-        state.prefs.studySingleNavigationPosition = nextValue;
-      }
-    } else {
-      if (subject) {
-        setDeckNavigationOverride(subject, "studyScroll", normalized);
-      } else {
-        state.prefs.studyScrollNavigationPosition = normalized;
-      }
-    }
-
-    state.prefs.reviewNavigationPosition =
-      effectiveLayout === "single"
-        ? subject
-          ? getStudyNavigationPosition("single", subject)
-          : state.prefs.studySingleNavigationPosition
-        : subject
-          ? getStudyNavigationPosition("scroll", subject)
-          : state.prefs.studyScrollNavigationPosition;
-  }
-
-  function getScrollNavigationButtonLabel(position) {
-    const normalized = ["top", "bottom", "both"].includes(position)
-      ? position
-      : "top";
-    if (normalized === "both") return "TOP + BOTTOM";
-    if (normalized === "bottom") return "on Bottom";
-    return "on TOP";
-  }
-
-  function cycleNavigationModeButton(mode, button) {
-    const layoutType =
-      mode === "study"
-        ? state.prefs.studyLayout === "single"
-          ? "single"
-          : "scroll"
-        : mode;
-
-    const orderByMode = {
-      quiz: ["top", "bottom"],
-      single: ["top", "bottom"],
-      scroll: ["top", "both", "bottom"],
-    };
-    const order = orderByMode[layoutType] || ["top", "bottom"];
-
-    const subject = getNavigationContextSubject() || null;
-
-    let current = "top";
-    if (layoutType === "quiz") {
-      current = getQuizNavigationPosition(subject) || "top";
-    } else if (layoutType === "single") {
-      current = getStudyNavigationPosition("single", subject) || "top";
-    } else {
-      current = getStudyNavigationPosition("scroll", subject) || "top";
-    }
-
-    const next = order[(order.indexOf(current) + 1) % order.length];
-
-    if (layoutType === "quiz") {
-      if (subject) {
-        setDeckNavigationOverride(subject, "quiz", next);
-      } else {
-        state.prefs.quizNavigationPosition = next;
-        state.prefs.quizNavigationMode = "manual";
-      }
-    } else if (layoutType === "single") {
-      setStudyNavigationPosition("single", next, subject);
-    } else {
-      setStudyNavigationPosition("scroll", next, subject);
-    }
-
-    saveState();
-    applyNavigationPosition();
-    if (
-      document.getElementById("view-deck-review")?.classList.contains("active")
-    ) {
-      reRenderDeckReview();
-    }
-
-    if (button) {
-      button.textContent = getScrollNavigationButtonLabel(next);
-    }
-  }
-
-  function cycleScrollNavigationPosition() {
-    cycleNavigationModeButton(
-      "scroll",
-      document.getElementById("main-navigation-scroll-button"),
-    );
-  }
-
-  function changeDeckNameMode(mode) {
-    const normalizedMode = ["clip", "wrap"].includes(mode) ? mode : "wrap";
-    state.prefs.deckNameMode = normalizedMode;
-    state.prefs.titleMode = normalizedMode;
-    saveState();
-    applyTitleMode();
-    renderCategoryProgress();
-  }
-
-  function changeDeckSort(sortOrder) {
-    state.prefs.deckSortBy = ["letters", "questions"].includes(sortOrder)
-      ? sortOrder
-      : "letters";
-
-    const menu = document.getElementById("deck-sort-menu");
-    if (menu) menu.open = false;
-
-    saveState();
-    renderCategoryProgress();
-  }
-
-  function changeDeckSource(sourceValue) {
-    const validSources = [
-      "all",
-      "favorites",
-      "downloaded",
-      "cloud",
-      "archived",
-    ];
-    state.prefs.deckSourceFilter = validSources.includes(sourceValue)
-      ? sourceValue
-      : "all";
-
-    const sourceLabels = {
-      all: "All Decks",
-      favorites: "Favorites",
-      downloaded: "Downloaded",
-      cloud: "Cloud Only",
-      archived: "Archived",
-    };
-
-    const label = document.getElementById("deck-source-label");
-    if (label) label.innerText = sourceLabels[state.prefs.deckSourceFilter];
-
-    document.querySelectorAll(".deck-source-option").forEach((btn) => {
-      const check = btn.querySelector(".source-check");
-      const isSelected =
-        btn.dataset.sourceValue === state.prefs.deckSourceFilter;
-      if (check) check.style.opacity = isSelected ? "1" : "0";
-    });
-
-    const menu = document.getElementById("deck-source-menu");
-    if (menu) menu.open = false;
-
-    const select = document.getElementById("deck-source-filter");
-    if (select) select.value = state.prefs.deckSourceFilter;
-
-    saveState();
-    renderCategoryProgress();
-  }
-
-  function toggleDeckSortDirection() {
-    setDeckSortDirection(
-      state.prefs.deckSortDirection === "desc" ? "asc" : "desc",
-    );
-  }
-
-  function setDeckSortDirection(direction) {
-    state.prefs.deckSortDirection = direction === "desc" ? "desc" : "asc";
-    saveState();
-    renderCategoryProgress();
-  }
-
-  function applyNavigationPosition() {
-    const navigation = document.getElementById("quiz-navigation");
-    const topAnchor = document.getElementById("quiz-navigation-top");
-    const bottomAnchor = document.getElementById("quiz-navigation-bottom");
-    if (!navigation || !topAnchor || !bottomAnchor) return;
-
-    const savedPosition = state.session.active
-      ? getQuizNavigationPosition()
-      : getStudyNavigationPosition(state.prefs.studyLayout || "scroll");
-    const position = ["top", "bottom", "both"].includes(savedPosition)
-      ? savedPosition
-      : "top";
-
-    if (navigation.parentElement)
-      navigation.parentElement.removeChild(navigation);
-    const existingBottomClone = bottomAnchor.querySelector(
-      ".quiz-navigation-clone",
-    );
-    if (existingBottomClone) existingBottomClone.remove();
-
-    if (position === "both") {
-      topAnchor.appendChild(navigation);
-      const bottomClone = navigation.cloneNode(true);
-      bottomClone.id = "quiz-navigation-bottom-clone";
-      bottomClone.classList.add("quiz-navigation-clone");
-      bottomAnchor.appendChild(bottomClone);
-      topAnchor.classList.remove("hidden");
-      bottomAnchor.classList.remove("hidden");
-      return;
-    }
-
-    (position === "top" ? topAnchor : bottomAnchor).appendChild(navigation);
-    topAnchor.classList.toggle("hidden", position !== "top");
-    bottomAnchor.classList.toggle("hidden", position !== "bottom");
-  }
-
-  function changeNavigationPosition(position) {
-    const normalized = position === "top" ? "top" : "bottom";
-    if (
-      document.getElementById("view-deck-review")?.classList.contains("active")
-    ) {
-      const layoutType =
-        state.prefs.studyLayout === "single" ? "single" : "scroll";
-      setStudyNavigationPosition(layoutType, normalized);
-    } else {
-      state.prefs.quizNavigationPosition = normalized;
-      state.prefs.quizNavigationMode = "manual";
-    }
-    saveState();
-    applyNavigationPosition();
-    const select = document.getElementById("navigation-position-select");
-    if (select) select.value = normalized;
-  }
-
-  function toggleMainNavigationPosition(mode, source) {
-    const normalized = source.checked ? "bottom" : "top";
-    if (mode === "quiz") {
-      state.prefs.quizNavigationPosition = normalized;
-      state.prefs.quizNavigationMode = "manual";
-    } else {
-      setStudyNavigationPosition(mode, normalized);
-    }
-    saveState();
-    applyNavigationPosition();
-    if (
-      document.getElementById("view-deck-review")?.classList.contains("active")
-    ) {
-      reRenderDeckReview();
-    }
-  }
-
-  function toggleNavigationPosition(source) {
-    changeNavigationPosition(source.checked ? "bottom" : "top");
-    if (
-      document.getElementById("view-deck-review")?.classList.contains("active")
-    ) {
-      reRenderDeckReview();
-    }
   }
 
   async function loadReports() {
@@ -3840,98 +3114,6 @@
     syncPreferenceControls();
   }
 
-  function setTitleMode(mode) {
-    if (!["clip", "wrap"].includes(mode)) return;
-
-    const normalizedMode = mode === "clip" ? "clip" : "wrap";
-    state.prefs.deckNameMode = normalizedMode;
-    state.prefs.titleMode = normalizedMode;
-    saveState();
-    applyTitleMode();
-    updateTitleModeButton();
-  }
-
-  function applyTitleMode() {
-    const mode = state.prefs.titleMode || "wrap";
-    const body = document.body;
-
-    if (body) {
-      body.classList.toggle("title-mode-wrap", mode === "wrap");
-      body.classList.toggle("title-mode-clip", mode === "clip");
-    }
-
-    document
-      .querySelectorAll(
-        ".dashboard-header-row, .quiz-header-row, .review-header-row, .app-content-shell, main, .view-section, #view-dashboard, #view-practice, #view-deck-review",
-      )
-      .forEach((el) => {
-        el.classList.add("min-w-0", "max-w-full");
-        if (mode === "wrap") {
-          el.classList.add("flex-wrap");
-          el.style.maxWidth = "100%";
-          el.style.minWidth = "0";
-        } else {
-          el.classList.remove("flex-wrap");
-          el.style.maxWidth = "100%";
-          el.style.minWidth = "0";
-        }
-      });
-
-    const dashboardH2 = document.querySelector(".dashboard-header-row h2");
-    const quizSubject = document.getElementById("q-subject");
-    const reviewTitle = document.getElementById("deck-review-title");
-
-    [dashboardH2, quizSubject, reviewTitle].forEach((elem) => {
-      if (!elem) return;
-
-      const parent = elem.parentElement;
-
-      if (mode === "clip") {
-        elem.classList.add("truncate", "overflow-hidden");
-        elem.classList.remove("whitespace-normal", "break-words");
-        elem.style.whiteSpace = "nowrap";
-        elem.style.overflow = "hidden";
-        elem.style.textOverflow = "ellipsis";
-        elem.style.overflowWrap = "normal";
-        elem.style.wordBreak = "normal";
-
-        if (parent) {
-          parent.classList.add("min-w-0", "overflow-hidden");
-          parent.classList.remove("flex-wrap");
-        }
-      } else if (mode === "wrap") {
-        elem.classList.remove("truncate", "overflow-hidden");
-        elem.classList.add("whitespace-normal", "break-words");
-        elem.style.whiteSpace = "normal";
-        elem.style.overflow = "hidden";
-        elem.style.textOverflow = "clip";
-        elem.style.overflowWrap = "anywhere";
-        elem.style.wordBreak = "break-word";
-
-        if (parent) {
-          parent.classList.add("min-w-0");
-          parent.classList.add("overflow-hidden");
-          parent.classList.remove("flex-wrap");
-        }
-      }
-    });
-  }
-
-  function toggleTitleMode() {
-    const currentMode = state.prefs.titleMode || "wrap";
-    const newMode = currentMode === "wrap" ? "clip" : "wrap";
-    setTitleMode(newMode);
-    updateTitleModeButton();
-  }
-
-  function updateTitleModeButton() {
-    const mode = state.prefs.titleMode || "wrap";
-    const btn = document.getElementById("title-mode-toggle-btn");
-    if (btn) {
-      btn.textContent = mode === "clip" ? "Clip" : "Wrap";
-    }
-  }
-
   const folderPasswordButton = document.getElementById(
     "btn-submit-folder-password",
   );
@@ -4186,7 +3368,6 @@
     if (!q) return;
 
     toggleQuestionFavorite(q.ID);
-    renderQuestion();
   }
 
   function toggleStudyFullscreen() {
@@ -4264,6 +3445,7 @@
 
   let lastScrollTop = 0;
   let isTicking = false;
+  let latestReviewScrollY = 0;
 
   // CRITICAL FIX: Cache invalidation management
   function isValidBroadcastMessage(data, type) {
@@ -4333,97 +3515,32 @@
   // ============================================
   // OPTIMIZATION: Leader Election Pattern
   // ============================================
+  let leaderCoordinator = null;
+
   function setupLeaderElection() {
-    if (typeof BroadcastChannel === "undefined") {
-      // Fallback: single-tab or older browser, act as leader.
+    if (typeof SyncCore === "undefined" || !SyncCore.createLeaderCoordinator) {
       isLeaderTab = true;
-      appLogger.info(
-        "[LEADER] BroadcastChannel unavailable; this tab is the leader",
-      );
       return;
     }
 
-    try {
-      if (leaderElectionChannel) {
-        try {
-          leaderElectionChannel.close();
-        } catch (error) {
-          appLogger.warn("Unable to close the previous leader channel.", error);
+    leaderCoordinator?.cleanup();
+    leaderCoordinator = SyncCore.createLeaderCoordinator({
+      lifecycle,
+      logger: appLogger,
+      protocol: BROADCAST_PROTOCOL,
+      tabId:
+        typeof window !== "undefined"
+          ? (window.mrh_tabId ||= `tab_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`)
+          : undefined,
+      heartbeatIntervalMs: appConfig.leaderHeartbeatIntervalMs ?? 10 * 1000,
+      onLeaderChange: (isLeader) => {
+        isLeaderTab = isLeader;
+        if (isLeader && typeof scheduleNextPolling === "function") {
+          scheduleNextPolling();
         }
-      }
-
-      leaderElectionChannel = new BroadcastChannel("mrh_leader_election");
-      window.mrh_tabId =
-        window.mrh_tabId ||
-        `tab_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-
-      const peers = new Map();
-      const PEER_TTL_MS = 25000;
-
-      const electLeader = () => {
-        const now = Date.now();
-        for (const [tabId, seenAt] of peers) {
-          if (now - seenAt > PEER_TTL_MS) peers.delete(tabId);
-        }
-        const candidates = [window.mrh_tabId, ...peers.keys()].sort();
-        const nextLeader = candidates[0] || window.mrh_tabId;
-        const wasLeader = isLeaderTab;
-        isLeaderTab = nextLeader === window.mrh_tabId;
-        if (wasLeader !== isLeaderTab) {
-          appLogger.info(
-            `[LEADER] ${isLeaderTab ? "Became" : "Yielded"} leadership: ${nextLeader}`,
-          );
-          if (isLeaderTab && typeof scheduleNextPolling === "function") {
-            // Reclaiming leadership must restart sync polling.
-            scheduleNextPolling();
-          }
-        }
-      };
-
-      leaderElectionChannel.onmessage = (event) => {
-        const data = event?.data;
-        if (!isValidBroadcastMessage(data, "leader_heartbeat")) return;
-
-        const tabId = String(data.tabId || "");
-        const timestamp = Number(data.timestamp);
-        if (
-          !/^[a-z0-9_-]{8,128}$/i.test(tabId) ||
-          !Number.isFinite(timestamp) ||
-          Math.abs(Date.now() - timestamp) > PEER_TTL_MS * 2
-        ) {
-          return;
-        }
-
-        if (tabId !== window.mrh_tabId) {
-          peers.set(tabId, Date.now());
-          electLeader();
-        }
-      };
-
-      const sendHeartbeat = () => {
-        try {
-          leaderElectionChannel.postMessage({
-            protocol: BROADCAST_PROTOCOL,
-            type: "leader_heartbeat",
-            tabId: window.mrh_tabId,
-            timestamp: Date.now(),
-          });
-        } catch (e) {
-          appLogger.warn("[LEADER] Heartbeat failed:", e);
-        }
-        electLeader();
-      };
-
-      lifecycle.clearInterval(leaderHeartbeatTimer);
-      leaderHeartbeatTimer = lifecycle.setInterval(
-        sendHeartbeat,
-        appConfig.leaderHeartbeatIntervalMs ?? 10 * 1000,
-      );
-      sendHeartbeat();
-    } catch (e) {
-      appLogger.error("[LEADER] Failed to setup leader election:", e);
-      isLeaderTab = true;
-    }
+      },
+    });
+    leaderCoordinator.start();
   }
 
   let appResourcesCleanedUp = false;
@@ -4440,13 +3557,8 @@
     lifecycle.clearInterval(syncCountdownTimer);
     lifecycle.clearTimeout(syncStatusHideTimer);
     syncScheduler.cancel();
-    lifecycle.clearInterval(leaderHeartbeatTimer);
-    leaderHeartbeatTimer = null;
-
-    if (leaderElectionChannel) {
-      leaderElectionChannel.close();
-      leaderElectionChannel = null;
-    }
+    leaderCoordinator?.cleanup();
+    leaderCoordinator = null;
 
     if (cacheInvalidationChannel) {
       cacheInvalidationChannel.close();
@@ -4582,22 +3694,22 @@
                     .classList.contains("active") &&
                   reviewSubject
                 ) {
-                  if (!state.prefs.studyProgress)
-                    state.prefs.studyProgress = {};
-                  if (!state.prefs.studyProgress[reviewSubject]) {
-                    state.prefs.studyProgress[reviewSubject] = {
-                      page: 1,
-                      index: 0,
-                      scrollY: 0,
-                    };
-                  }
-                  state.prefs.studyProgress[reviewSubject].scrollY =
-                    currentScroll;
+                  latestReviewScrollY = currentScroll;
                   clearTimeout(window.scrollSaveTimeout);
-                  window.scrollSaveTimeout = lifecycle.setTimeout(
-                    () => saveState(),
-                    1000,
-                  );
+                  window.scrollSaveTimeout = lifecycle.setTimeout(() => {
+                    if (!state.prefs.studyProgress)
+                      state.prefs.studyProgress = {};
+                    if (!state.prefs.studyProgress[reviewSubject]) {
+                      state.prefs.studyProgress[reviewSubject] = {
+                        page: 1,
+                        index: 0,
+                        scrollY: 0,
+                      };
+                    }
+                    state.prefs.studyProgress[reviewSubject].scrollY =
+                      latestReviewScrollY;
+                    saveState("prefs");
+                  }, 1000);
                 }
 
                 isTicking = false;
@@ -4735,6 +3847,7 @@
     getAccessMetadataSignature,
     getAnalyticsCore,
     getCategoryProgressRenderSignature,
+    invalidateCategoryProgressRenderSignature,
     getCollectionSignature,
     getCurrentReviewSubject,
     getDeckDataFreshnessBannerHtml,

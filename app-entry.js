@@ -28,7 +28,10 @@
     "text-utils.js",
     "debug-utils.js",
     "lifecycle-utils.js",
+    "rendering-core.js",
     "app-core-state.js",
+    "preferences-core.js",
+    "dashboard-core.js",
   ];
   const APPLICATION_RUNTIME_SCRIPTS = [
     "app-core.js",
