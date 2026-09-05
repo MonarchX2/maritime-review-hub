@@ -15,6 +15,15 @@
     healthCheckIntervalMs: 25000,
     healthCheckTimeoutMs: 8000,
   };
+  const lifecycle = globalScope.LifecycleUtils || {
+    setTimeout: globalScope.setTimeout.bind(globalScope),
+    clearTimeout: globalScope.clearTimeout.bind(globalScope),
+    setInterval: globalScope.setInterval.bind(globalScope),
+    clearInterval: globalScope.clearInterval.bind(globalScope),
+  };
+  const networkLogger = globalScope.DebugUtils?.createDebugLogger
+    ? globalScope.DebugUtils.createDebugLogger("mrh-network")
+    : { warn: () => {}, error: () => {} };
   let cachedDatabaseUrl = "";
 
   function calculateRetryDelay(
@@ -66,7 +75,7 @@
             options.maxRetryDelayMs ?? DEFAULT_POOL_CONFIG.maxRetryDelayMs,
           ),
         );
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        await new Promise((resolve) => lifecycle.setTimeout(resolve, delay));
         attempt += 1;
       }
     }
@@ -81,6 +90,7 @@
     let activeConnections = 0;
     let keepAliveTimer = null;
     let healthCheckTimer = null;
+    let reconnectTimer = null;
     let reconnecting = false;
     let lastActivityAt = Date.now();
     let lastSuccessfulResponseAt = Date.now();
@@ -88,14 +98,14 @@
     function scheduleIdleKeepAlive() {
       if (!settings.keepAlive) {
         if (keepAliveTimer) {
-          clearInterval(keepAliveTimer);
+          lifecycle.clearInterval(keepAliveTimer);
           keepAliveTimer = null;
         }
         return;
       }
 
       if (keepAliveTimer) return;
-      keepAliveTimer = setInterval(() => {
+      keepAliveTimer = lifecycle.setInterval(() => {
         const idleMs = Date.now() - lastActivityAt;
         if (idleMs >= settings.idleTimeoutMs && activeConnections === 0) {
           lastActivityAt = Date.now();
@@ -106,7 +116,7 @@
 
     function scheduleHealthCheck() {
       if (healthCheckTimer) return;
-      healthCheckTimer = setInterval(async () => {
+      healthCheckTimer = lifecycle.setInterval(async () => {
         if (reconnecting || activeConnections > 0) return;
         const idleMs = Date.now() - lastSuccessfulResponseAt;
         if (idleMs < settings.healthCheckIntervalMs) return;
@@ -132,6 +142,7 @@
           lastSuccessfulResponseAt = Date.now();
           lastActivityAt = Date.now();
         } catch (error) {
+          networkLogger.warn("Connection pool health check failed.", error);
           if (settings.autoReconnect) {
             await reconnect();
           }
@@ -145,11 +156,12 @@
       activeConnections = 0;
       queue.length = 0;
       if (keepAliveTimer) {
-        clearInterval(keepAliveTimer);
+        lifecycle.clearInterval(keepAliveTimer);
         keepAliveTimer = null;
       }
       return new Promise((resolve) => {
-        setTimeout(() => {
+        reconnectTimer = lifecycle.setTimeout(() => {
+          reconnectTimer = null;
           reconnecting = false;
           lastActivityAt = Date.now();
           lastSuccessfulResponseAt = Date.now();
@@ -185,7 +197,7 @@
 
       if (reconnecting) {
         await new Promise((resolve) =>
-          setTimeout(resolve, settings.reconnectDelayMs),
+          lifecycle.setTimeout(resolve, settings.reconnectDelayMs),
         );
       }
 
@@ -232,12 +244,16 @@
       }),
       destroy: () => {
         if (keepAliveTimer) {
-          clearInterval(keepAliveTimer);
+          lifecycle.clearInterval(keepAliveTimer);
           keepAliveTimer = null;
         }
         if (healthCheckTimer) {
-          clearInterval(healthCheckTimer);
+          lifecycle.clearInterval(healthCheckTimer);
           healthCheckTimer = null;
+        }
+        if (reconnectTimer) {
+          lifecycle.clearTimeout(reconnectTimer);
+          reconnectTimer = null;
         }
       },
     };
@@ -247,14 +263,9 @@
 
   function getDatabaseUrl() {
     if (cachedDatabaseUrl) return cachedDatabaseUrl;
-    try {
-      if (typeof DB_URL !== "undefined" && String(DB_URL).trim()) {
-        cachedDatabaseUrl = String(DB_URL).trim();
-        return cachedDatabaseUrl;
-      }
-    } catch (_) {}
-    if (typeof globalScope.DB_URL === "string" && globalScope.DB_URL.trim()) {
-      cachedDatabaseUrl = globalScope.DB_URL.trim();
+    const configuredUrl = globalScope.MRH_CONFIG?.databaseUrl;
+    if (typeof configuredUrl === "string" && configuredUrl.trim()) {
+      cachedDatabaseUrl = configuredUrl.trim();
       return cachedDatabaseUrl;
     }
     return "";
@@ -324,7 +335,7 @@
     const externalSignal = options.signal;
     let externalAbortHandler = null;
     let didTimeout = false;
-    const timer = setTimeout(() => {
+    const timer = lifecycle.setTimeout(() => {
       didTimeout = true;
       controller.abort();
     }, timeoutMs);
@@ -351,7 +362,7 @@
       }
       throw error;
     } finally {
-      clearTimeout(timer);
+      lifecycle.clearTimeout(timer);
       if (externalSignal && externalAbortHandler) {
         externalSignal.removeEventListener("abort", externalAbortHandler);
       }
@@ -362,6 +373,11 @@
    * Fixed backend contract:
    * POST JSON requests are dispatched by the backend's `type` field.
    * We deliberately do not invent/translate unsupported backend actions.
+   */
+  /**
+   * @param {Record<string, unknown>} payload
+   * @param {{signal?: AbortSignal, timeoutMs?: number, maxRetries?: number}} [options]
+   * @returns {Promise<Record<string, unknown>>}
    */
   async function callBackend(payload, options = {}) {
     const url = getDatabaseUrl();
@@ -416,6 +432,10 @@
 
   let deckSummaryInFlight = null;
 
+  /**
+   * @param {{signal?: AbortSignal, timeoutMs?: number}} [options]
+   * @returns {Promise<unknown>}
+   */
   async function getDeckSummary(options = {}) {
     if (!options.signal && deckSummaryInFlight) {
       return deckSummaryInFlight;
@@ -582,6 +602,7 @@
     createConnectionPool,
     reconnect: () => defaultConnectionPool.reconnect(),
     getConnectionPoolState: () => defaultConnectionPool.getState(),
+    destroy: () => defaultConnectionPool.destroy(),
     verifyFolderAccess: (subject, password, options = {}) =>
       callBackend(
         {

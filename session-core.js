@@ -1,4 +1,5 @@
 (function (globalScope) {
+  const lifecycle = globalScope.LifecycleUtils || globalScope;
   const CHOICE_KEYS = ["A", "B", "C", "D"];
   const DAY_MS = 24 * 60 * 60 * 1000;
   const HOUR_MS = 60 * 60 * 1000;
@@ -128,7 +129,7 @@
   function safeClearAutoNextTimeout() {
     const session = getSession();
     if (session?.autoNextTimeout) {
-      clearTimeout(session.autoNextTimeout);
+      lifecycle.clearTimeout(session.autoNextTimeout);
       session.autoNextTimeout = null;
     }
   }
@@ -228,7 +229,7 @@
     const state = getState();
     const stats = getStats();
     if (!filterEl || !Array.isArray(state.db)) {
-      console.error(
+      DebugUtils.error(
         "Cannot start session: quiz filter or question database is unavailable.",
       );
       return;
@@ -630,7 +631,7 @@
     saveSessionProgress();
     startTimerSafely();
     safeClearAutoNextTimeout();
-    session.autoNextTimeout = setTimeout(() => {
+    session.autoNextTimeout = lifecycle.setTimeout(() => {
       if (getSession()?.active) nextQuestion();
     }, 2000);
     return true;
@@ -878,7 +879,7 @@
       return true;
     } catch (error) {
       sessionSaveRequested = false;
-      console.warn(
+      DebugUtils.warn(
         "Storage quota exceeded. Could not save session progress.",
         error,
       );
@@ -902,20 +903,36 @@
 
     if (immediate) {
       if (sessionSaveTimer) {
-        clearTimeout(sessionSaveTimer);
+        lifecycle.clearTimeout(sessionSaveTimer);
         sessionSaveTimer = 0;
       }
       return writeSessionProgressNow();
     }
 
     if (!sessionSaveTimer) {
-      sessionSaveTimer = setTimeout(() => {
+      sessionSaveTimer = lifecycle.setTimeout(() => {
         sessionSaveTimer = 0;
         if (sessionSaveRequested) writeSessionProgressNow();
       }, 100);
     }
 
     return true;
+  }
+
+  function cleanup() {
+    choiceHandlerBoundTo?.removeEventListener(
+      "click",
+      handleChoiceContainerClick,
+    );
+    choiceHandlerBoundTo = null;
+    safeClearAutoNextTimeout();
+    lifecycle.clearTimeout(sessionSaveTimer);
+    sessionSaveTimer = 0;
+    if (timerAnimationFrame && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(timerAnimationFrame);
+      timerAnimationFrame = 0;
+    }
+    sessionSaveRequested = false;
   }
 
   function checkSavedSession() {
@@ -969,7 +986,7 @@
           globalScope.removeStoredItem("saved_session");
         }
       } catch (error) {
-        console.error("Error checking saved session:", error);
+        DebugUtils.error("Error checking saved session:", error);
         if (typeof globalScope.removeStoredItem === "function")
           globalScope.removeStoredItem("saved_session");
       }
@@ -985,7 +1002,7 @@
 
   function clearSessionProgress() {
     if (sessionSaveTimer) {
-      clearTimeout(sessionSaveTimer);
+      lifecycle.clearTimeout(sessionSaveTimer);
       sessionSaveTimer = 0;
     }
     sessionSaveRequested = false;
@@ -1030,7 +1047,7 @@
 
     if (!isPureIdent) {
       safeClearAutoNextTimeout();
-      session.autoNextTimeout = setTimeout(() => {
+      session.autoNextTimeout = lifecycle.setTimeout(() => {
         if (getSession()?.active) nextQuestion();
       }, 2000);
     }
@@ -1126,7 +1143,10 @@
     rateIdentificationAnswer,
     startVisualTimer,
     stopVisualTimer,
+    cleanup,
   };
+
+  globalScope.LifecycleUtils?.registerCleanup(cleanup);
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = SessionCore;

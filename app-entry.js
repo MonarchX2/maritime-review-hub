@@ -3,6 +3,7 @@
 
   const APP_VERSION = "mrh-release-2026.09.03";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
+  const bootstrapLogger = () => rootScope.DebugUtils || console;
 
   rootScope.__MRH_APP__ = rootScope.__MRH_APP__ || {
     version: APP_VERSION,
@@ -22,12 +23,18 @@
   const loadedFeatures = new Set();
   const loadingFeatures = new Map();
   const BOOTSTRAP_SCRIPTS = [
+    "app-config.js",
     "storage-utils.js",
     "text-utils.js",
     "debug-utils.js",
+    "lifecycle-utils.js",
     "app-core-state.js",
   ];
-  const APPLICATION_RUNTIME_SCRIPTS = ["app-core.js", "app-core-network.js"];
+  const APPLICATION_RUNTIME_SCRIPTS = [
+    "app-core.js",
+    "app-core-network.js",
+    "sync-core.js",
+  ];
   const FEATURE_SCRIPTS = [
     "session-core.js",
     "analytics-core.js",
@@ -125,7 +132,10 @@
       rootScope.requestIdleCallback(
         () => {
           loadScriptsInParallel(FEATURE_SCRIPTS).catch((error) => {
-            console.warn("Deferred feature script loading failed:", error);
+            bootstrapLogger().warn(
+              "Deferred feature script loading failed:",
+              error,
+            );
           });
         },
         { timeout: 2500 },
@@ -133,9 +143,12 @@
       return;
     }
 
-    rootScope.setTimeout(() => {
+    (rootScope.LifecycleUtils || rootScope).setTimeout(() => {
       loadScriptsInParallel(FEATURE_SCRIPTS).catch((error) => {
-        console.warn("Deferred feature script loading failed:", error);
+        bootstrapLogger().warn(
+          "Deferred feature script loading failed:",
+          error,
+        );
       });
     }, 100);
   }
@@ -146,7 +159,7 @@
   }
 
   function showBootstrapError(error) {
-    console.error("App bootstrap failed:", error);
+    bootstrapLogger().error("App bootstrap failed:", error);
 
     const status =
       typeof document !== "undefined"
@@ -197,7 +210,10 @@
           );
         })
         .catch((error) => {
-          console.warn("Service worker refresh cleanup failed:", error);
+          bootstrapLogger().warn(
+            "Service worker refresh cleanup failed:",
+            error,
+          );
         });
     }
 
@@ -208,7 +224,7 @@
       })
       .then((registration) => registration.update())
       .catch((error) => {
-        console.warn("Service worker registration failed:", error);
+        bootstrapLogger().warn("Service worker registration failed:", error);
       });
   }
 

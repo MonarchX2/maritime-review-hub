@@ -4,6 +4,7 @@
 // ============================================================================
 
 (function (globalScope) {
+  const lifecycle = globalScope.LifecycleUtils || globalScope;
   const {
     state,
     saveState,
@@ -141,7 +142,7 @@
     void button.offsetWidth;
     button.classList.add("mrh-reset-bouncing");
     clearTimeout(button.__mrhResetBounceTimer);
-    button.__mrhResetBounceTimer = setTimeout(() => {
+    button.__mrhResetBounceTimer = lifecycle.setTimeout(() => {
       button.classList.remove("mrh-reset-bouncing");
     }, 1600);
   }
@@ -276,7 +277,7 @@
     }
 
     startCustomSession(pool).catch((error) => {
-      console.error("Unable to start deck session:", error);
+      DebugUtils.error("Unable to start deck session:", error);
       globalScope.showToast?.(
         "Unable to start this session. Check your connection and try again.",
         "error",

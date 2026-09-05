@@ -1,3 +1,6 @@
+importScripts("./debug-utils.js");
+
+const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
 const APP_VERSION = "mrh-release-2026.09.05";
 const FALLBACK_CACHE_VERSION = APP_VERSION;
@@ -74,6 +77,7 @@ const APP_SHELL = [
   "./deck-review-core.js",
   "./quiz-rendering-core.js",
   "./debug-utils.js",
+  "./lifecycle-utils.js",
   "./storage-utils.js",
   "./text-utils.js",
 ].map(resolveAppUrl);
@@ -171,7 +175,7 @@ async function cacheResponse(cache, request, response) {
   try {
     await cache.put(request, response.clone());
   } catch (error) {
-    console.warn("[SW] Failed to cache response:", request.url, error);
+    swLogger.warn("[SW] Failed to cache response:", request.url, error);
   }
 }
 
@@ -197,7 +201,7 @@ async function precacheAppShell() {
 
         await cache.put(url, response);
       } catch (error) {
-        console.error("[SW] Failed to precache:", url, error);
+        swLogger.error("[SW] Failed to precache:", url, error);
 
         // Abort installation if a required app-shell resource cannot
         // be cached. This prevents installing a worker that cannot
@@ -242,7 +246,7 @@ async function networkFirstNavigation(event) {
           cache
             .put(resolveAppUrl("./index.html"), response.clone())
             .catch((error) => {
-              console.warn("[SW] Failed to refresh app shell cache:", error);
+              swLogger.warn("[SW] Failed to refresh app shell cache:", error);
             }),
         );
       }
@@ -250,7 +254,10 @@ async function networkFirstNavigation(event) {
 
     return response;
   } catch (error) {
-    console.warn("[SW] Navigation network request failed, using cache:", error);
+    swLogger.warn(
+      "[SW] Navigation network request failed, using cache:",
+      error,
+    );
 
     const appEntryUrl = resolveAppUrl("./index.html");
     const cached =
@@ -286,7 +293,7 @@ async function staleWhileRevalidateStatic(request) {
     })
     .catch((error) => {
       if (!cached) throw error;
-      console.warn(
+      swLogger.warn(
         "[SW] Static refresh failed; using cached response:",
         request.url,
       );
@@ -322,7 +329,7 @@ self.addEventListener("activate", (event) => {
         try {
           await self.registration.navigationPreload.enable();
         } catch (error) {
-          console.warn("[SW] Navigation preload could not be enabled:", error);
+          swLogger.warn("[SW] Navigation preload could not be enabled:", error);
         }
       }
 

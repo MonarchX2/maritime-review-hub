@@ -7,6 +7,7 @@
 
   const root =
     globalScope || (typeof globalThis !== "undefined" ? globalThis : {});
+  const lifecycle = root.LifecycleUtils || root;
   let chartInstance = null;
   let chartRetryTimer = null;
   let chartRetryCount = 0;
@@ -38,17 +39,26 @@
       try {
         chartInstance.destroy();
       } catch (error) {
-        console.warn("Unable to destroy the existing analytics chart.", error);
+        DebugUtils.warn(
+          "Unable to destroy the existing analytics chart.",
+          error,
+        );
       }
     }
     chartInstance = null;
+  }
+
+  function cleanup() {
+    lifecycle.clearTimeout(chartRetryTimer);
+    chartRetryTimer = null;
+    destroyChart();
   }
 
   function scheduleChartRetry(generation) {
     if (chartRetryTimer !== null || chartRetryCount >= MAX_CHART_RETRIES)
       return;
     chartRetryCount += 1;
-    chartRetryTimer = setTimeout(() => {
+    chartRetryTimer = lifecycle.setTimeout(() => {
       chartRetryTimer = null;
       if (generation === renderGeneration) renderCharts();
     }, CHART_RETRY_DELAY_MS);
@@ -93,7 +103,7 @@
     if (!ChartConstructor) {
       scheduleChartRetry(generation);
       if (chartRetryCount >= MAX_CHART_RETRIES) {
-        console.error(
+        DebugUtils.error(
           "Chart.js failed to load after the maximum number of retries.",
         );
       }
@@ -101,7 +111,7 @@
     }
 
     if (chartRetryTimer !== null) {
-      clearTimeout(chartRetryTimer);
+      lifecycle.clearTimeout(chartRetryTimer);
       chartRetryTimer = null;
     }
     chartRetryCount = 0;
@@ -209,7 +219,10 @@
     updateThemeButton,
     getChartInstance: () => chartInstance,
     destroyChart,
+    cleanup,
   };
+
+  globalScope.LifecycleUtils?.registerCleanup(cleanup);
 
   root.AnalyticsCore = AnalyticsCore;
   root.Analytics = AnalyticsCore;

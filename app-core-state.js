@@ -1,4 +1,20 @@
 (function (globalScope) {
+  const rootScope =
+    globalScope || (typeof globalThis !== "undefined" ? globalThis : {});
+  const lifecycle = rootScope.LifecycleUtils || rootScope;
+
+  /** @typedef {{Subject?: string, ID?: string, Question?: string, Answer?: string}} MrhQuestion */
+  /** @typedef {{db: MrhQuestion[], categorySummary: object[], accessMetadata: object, prefs: object, stats: object, session: object, currentPath: string[]}} MrhState */
+
+  /**
+   * Shared application state object used by the runtime and persisted to storage.
+   * This module intentionally keeps the state contract explicit to avoid implicit
+   * global lookups during startup and reload.
+   *
+   * @type {MrhState}
+   */
+
+  /** @type {MrhState} */
   const state = {
     db: [],
     categorySummary: [],
@@ -57,7 +73,6 @@
     reportQuestion: null,
     unlockedFolders: {},
   };
-
   function getStoredItem(key, fallback = null) {
     return StorageUtils.getStoredItem(key, fallback);
   }
@@ -531,7 +546,7 @@
       try {
         savedDbPromise = idbKeyval.get("mrh_db");
       } catch (err) {
-        console.error("Error starting DB load from IndexedDB", err);
+        DebugUtils.error("Error starting DB load from IndexedDB", err);
       }
     }
 
@@ -549,7 +564,7 @@
       if (Array.isArray(parsedSummary)) {
         state.categorySummary = normalizeCategorySummary(parsedSummary);
       } else {
-        console.error("Summary corrupted, resetting.");
+        DebugUtils.error("Summary corrupted, resetting.");
         state.categorySummary = [];
       }
     }
@@ -559,7 +574,7 @@
       if (parsedStats && typeof parsedStats === "object") {
         state.stats = normalizeStats(parsedStats);
       } else {
-        console.error("Stats corrupted, resetting to default.");
+        DebugUtils.error("Stats corrupted, resetting to default.");
         state.stats = {
           totalAnswered: 0,
           correct: 0,
@@ -579,7 +594,7 @@
           ...parsedPrefs,
         });
       } else {
-        console.error("Invalid preferences.");
+        DebugUtils.error("Invalid preferences.");
       }
     }
 
@@ -600,7 +615,7 @@
           });
         }
       } catch (err) {
-        console.error("Error loading DB from IndexedDB", err);
+        DebugUtils.error("Error loading DB from IndexedDB", err);
       }
     }
 
@@ -698,7 +713,7 @@
         }
       }
     } catch (e) {
-      console.error(e);
+      DebugUtils.error(e);
     }
 
     if (typeof globalScope.emitDebugState === "function") {
@@ -733,7 +748,7 @@
       if (typeof requestIdleCallback === "function") {
         requestIdleCallback(flushStateSave, { timeout: 300 });
       } else if (typeof setTimeout === "function") {
-        setTimeout(flushStateSave, 100);
+        lifecycle.setTimeout(flushStateSave, 100);
       } else if (typeof queueMicrotask === "function") {
         queueMicrotask(flushStateSave);
       } else {
@@ -758,7 +773,7 @@
           try {
             setStoredItem("mrh_navigation_path", JSON.stringify(normalized));
           } catch (e) {
-            console.warn("Unable to persist navigation path.", e);
+            DebugUtils.warn("Unable to persist navigation path.", e);
           }
         };
   globalScope.readStoredNavigationPath =

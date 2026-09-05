@@ -5,6 +5,8 @@
     globalScope || (typeof globalThis !== "undefined" ? globalThis : {});
   const MEMORY_LOCAL_KEY = "__mrhNodeStorage";
   const MEMORY_SESSION_KEY = "__mrhNodeSessionStorage";
+  const MAX_JSON_PAYLOAD_BYTES =
+    globalScope.MRH_CONFIG?.storageMaxJsonPayloadBytes ?? 250000;
 
   // Cache storage handles and the resolved namespace. Repeated storage access is
   // on hot paths (settings, progress, reports); probing native storage on every
@@ -197,8 +199,6 @@
 
   const STORAGE_SCHEMA_VERSION = 2;
   const STORAGE_SCHEMA_KEY = "__mrh_storage_schema_version";
-  const MAX_JSON_PAYLOAD_BYTES = 250000;
-
   function isPlainObject(value) {
     return !!value && typeof value === "object" && !Array.isArray(value);
   }

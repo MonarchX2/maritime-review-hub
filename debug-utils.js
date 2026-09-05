@@ -58,6 +58,17 @@
 
   function createDebugLogger(scopeName = "mrh") {
     const scope = String(scopeName || "mrh");
+    const activeSink =
+      root.__MRH_LOGGER__ && typeof root.__MRH_LOGGER__ === "object"
+        ? root.__MRH_LOGGER__
+        : null;
+
+    function write(level, ...args) {
+      if (!activeSink) return;
+      const writer = activeSink?.[level];
+      if (typeof writer !== "function") return;
+      writer.call(activeSink, `[${scope}]`, ...args);
+    }
 
     function snapshot(label, details = {}) {
       const safeDetails =
@@ -76,10 +87,12 @@
     }
 
     function emit(label, details = {}) {
+      const sink =
+        root.__MRH_LOGGER__ && typeof root.__MRH_LOGGER__ === "object"
+          ? root.__MRH_LOGGER__
+          : null;
       const debugEnabled =
-        Boolean(root.__MRH_DEBUG__) &&
-        typeof console !== "undefined" &&
-        typeof console.debug === "function";
+        Boolean(root.__MRH_DEBUG__) && sink && typeof sink.debug === "function";
 
       // Avoid deep-cloning the full application state when debug mode is off.
       // This is important because state snapshots can contain large question
@@ -99,14 +112,29 @@
       }
 
       const entry = snapshot(label, details);
-      console.debug(`[${scope}]`, label, entry);
+      sink.debug(`[${scope}]`, label, entry);
       return entry;
     }
 
-    return { snapshot, emit };
+    return {
+      snapshot,
+      emit,
+      debug: (...args) => write("debug", ...args),
+      info: (...args) => write("info", ...args),
+      warn: (...args) => write("warn", ...args),
+      error: (...args) => write("error", ...args),
+    };
   }
 
-  const DebugUtils = { buildDebugSummary, createDebugLogger };
+  const defaultLogger = createDebugLogger("mrh");
+  const DebugUtils = {
+    buildDebugSummary,
+    createDebugLogger,
+    debug: (...args) => defaultLogger.debug(...args),
+    info: (...args) => defaultLogger.info(...args),
+    warn: (...args) => defaultLogger.warn(...args),
+    error: (...args) => defaultLogger.error(...args),
+  };
 
   if (typeof module !== "undefined" && module.exports)
     module.exports = DebugUtils;

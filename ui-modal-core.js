@@ -6,6 +6,7 @@
 (function (globalScope) {
   // Import global utilities
   const { getStoredItem, setStoredItem, callBackend } = globalScope;
+  const lifecycle = globalScope.LifecycleUtils || globalScope;
 
   // ===================== CORE MODAL CONTROL =====================
   const modalTimers = new WeakMap();
@@ -32,13 +33,13 @@
     const inner = getModalInner(modal);
     const previous = modalTimers.get(modal);
     if (previous) {
-      clearTimeout(previous.show);
-      clearTimeout(previous.hide);
+      lifecycle.clearTimeout(previous.show);
+      lifecycle.clearTimeout(previous.hide);
     }
 
     if (isVisible) {
       modal.setAttribute("aria-hidden", "false");
-      const show = setTimeout(() => {
+      const show = lifecycle.setTimeout(() => {
         if (modal.getAttribute("aria-hidden") === "true") return;
         modal.classList.remove("opacity-0");
         if (inner) inner.classList.remove("scale-95", "opacity-0");
@@ -48,7 +49,7 @@
       modal.setAttribute("aria-hidden", "true");
       modal.classList.add("opacity-0");
       if (inner) inner.classList.add("scale-95", "opacity-0");
-      const hide = setTimeout(() => {
+      const hide = lifecycle.setTimeout(() => {
         modal.setAttribute("aria-hidden", "true");
       }, 300);
       modalTimers.set(modal, { show: null, hide });
@@ -268,9 +269,9 @@
         btn.classList.remove("bg-red-500", "hover:bg-red-600");
         btn.classList.add("bg-green-500", "hover:bg-green-600");
 
-        setTimeout(() => {
+        lifecycle.setTimeout(() => {
           closeReportModal();
-          setTimeout(() => {
+          lifecycle.setTimeout(() => {
             btn.innerHTML = originalText;
             btn.disabled = false;
             btn.classList.remove("bg-green-500", "hover:bg-green-600");
@@ -289,7 +290,7 @@
         }, 1500);
       }
     } catch (err) {
-      console.error(err);
+      DebugUtils.error(err);
       globalScope.showToast?.("Network error. Please try again.", "error");
       btn.innerHTML = originalText;
       btn.disabled = false;
@@ -367,7 +368,7 @@
     updateStudyFilterToggle();
     modal.setAttribute("aria-hidden", "false");
     // Small delay allows the browser to render 'block' before applying opacity for the transition
-    setTimeout(() => {
+    lifecycle.setTimeout(() => {
       modal.classList.remove("opacity-0");
       getModalInner(modal)?.classList.remove("scale-95");
     }, 10);
@@ -380,7 +381,7 @@
     modal.classList.add("opacity-0");
     modal.querySelector("div")?.classList.add("scale-95");
     // Wait for transition to finish before hiding element
-    setTimeout(() => {
+    lifecycle.setTimeout(() => {
       modal.setAttribute("aria-hidden", "true");
     }, 300);
     return true;

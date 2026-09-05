@@ -3,6 +3,7 @@
 // ============================================================================
 
 (function (globalScope) {
+  const lifecycle = globalScope.LifecycleUtils || globalScope;
   let currentReviewSubject = null;
   let currentReviewQuestions = [];
   let derivedQuestionsCache = null;
@@ -32,7 +33,7 @@
     virtualReviewScrollFrame =
       typeof requestAnimationFrame === "function"
         ? requestAnimationFrame(render)
-        : setTimeout(render, 0);
+        : lifecycle.setTimeout(render, 0);
   }
 
   function reRenderDeckReview(isVirtualScroll = false) {
@@ -50,7 +51,7 @@
     if (typeof requestAnimationFrame === "function") {
       reviewRenderFrame = requestAnimationFrame(render);
     } else {
-      reviewRenderFrame = setTimeout(render, 0);
+      reviewRenderFrame = lifecycle.setTimeout(render, 0);
     }
   }
 
@@ -534,6 +535,23 @@
     reRenderDeckReview();
   }
 
+  function cleanup() {
+    if (reviewRenderFrame !== null) {
+      if (typeof cancelAnimationFrame === "function") {
+        cancelAnimationFrame(reviewRenderFrame);
+      }
+      lifecycle.clearTimeout(reviewRenderFrame);
+      reviewRenderFrame = null;
+    }
+    if (virtualReviewScrollFrame !== null) {
+      if (typeof cancelAnimationFrame === "function") {
+        cancelAnimationFrame(virtualReviewScrollFrame);
+      }
+      lifecycle.clearTimeout(virtualReviewScrollFrame);
+      virtualReviewScrollFrame = null;
+    }
+  }
+
   // ===================== MODULE EXPORT =====================
   const DeckReviewCore = {
     renderDeckReview,
@@ -544,11 +562,14 @@
     changeStudyPage,
     changeStudyIndex,
     jumpToStudyPage,
+    cleanup,
     renderDeckReviewImplementation,
     // Expose state accessors
     getCurrentReviewSubject: () => currentReviewSubject,
     getCurrentReviewQuestions: () => currentReviewQuestions,
   };
+
+  globalScope.LifecycleUtils?.registerCleanup(cleanup);
 
   // Export to global scope
   globalScope.DeckReviewCore = DeckReviewCore;
