@@ -287,6 +287,14 @@
       html += `<div aria-hidden="true" style="height: ${virtualStartIndex * REVIEW_ESTIMATED_CARD_HEIGHT}px"></div>`;
     }
 
+    const passwordProtectedCache = new Map();
+    function getIsProtected(subj) {
+      if (!passwordProtectedCache.has(subj)) {
+        passwordProtectedCache.set(subj, isDeckPasswordProtected(subj));
+      }
+      return passwordProtectedCache.get(subj);
+    }
+
     displayQuestions.forEach((q, displayIndex) => {
       const originalIndex = questionIndexById.get(q.ID) ?? displayIndex;
       const isQuestionFavorite = favoriteQuestions.has(q.ID);
@@ -353,8 +361,11 @@
                 </div>`;
       }
 
-      const isProtectedDeck = isDeckPasswordProtected(q.Subject);
-      let reportClass = globallyReportedQs.has(q.ID)
+      const isProtectedDeck = getIsProtected(q.Subject);
+      const isReported =
+        typeof globalScope.hasReportedQuestion === "function" &&
+        globalScope.hasReportedQuestion(q.ID);
+      let reportClass = isReported
         ? "text-red-500 bg-red-50 dark:bg-red-900/30"
         : isProtectedDeck
           ? "text-gray-300 bg-gray-100 dark:bg-gray-700/40 cursor-not-allowed opacity-60"
@@ -384,7 +395,7 @@
                             ? `<button type="button" class="${reportClass} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm transition-all" title="Reporting disabled for password-protected decks" disabled>
                                 <i class="fa-solid fa-triangle-exclamation"></i>
                             </button>`
-                            : `<button onclick="openReportModalFromStudy('${encodeHandlerValue(q.ID)}')" class="${reportClass} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95 transition-all" title="${globallyReportedQs.has(q.ID) ? "Active Community Report" : "Report Issue"}">
+                            : `<button onclick="openReportModalFromStudy('${encodeHandlerValue(q.ID)}')" class="${reportClass} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95 transition-all" title="${isReported ? "Active Community Report" : "Report Issue"}">
                                 <i class="fa-solid fa-triangle-exclamation"></i>
                             </button>`
                         }

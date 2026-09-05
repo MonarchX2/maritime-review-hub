@@ -198,7 +198,7 @@
   }
 
   function encodeHandlerValue(value) {
-    return encodeURIComponent(String(value ?? ""));
+    return encodeURIComponent(String(value ?? "")).replace(/'/g, "%27");
   }
 
   function decodeHandlerValue(value) {

@@ -10,6 +10,7 @@
   let choiceHandlerController = null;
   let timerAnimationFrame = 0;
   let sessionSaveTimer = 0;
+  let _statsRenderTimeout = 0;
   let sessionSaveRequested = false;
 
   function getElement(id) {
@@ -18,8 +19,15 @@
     if (cached && cached.isConnected) return cached;
 
     const element = document.getElementById(id);
-    if (element) elementCache.set(id, element);
-    else elementCache.delete(id);
+    if (element) {
+      if (!elementCache.has(id) && elementCache.size >= 60) {
+        const first = elementCache.keys().next().value;
+        elementCache.delete(first);
+      }
+      elementCache.set(id, element);
+    } else {
+      elementCache.delete(id);
+    }
     return element;
   }
 
@@ -822,9 +830,12 @@
     updateSrsForQuestion(q, Boolean(isCorrect));
 
     globalScope.invalidateCategoryProgressRenderSignature?.();
-    if (typeof globalScope.renderCategoryProgress === "function") {
-      globalScope.renderCategoryProgress();
-    }
+    clearTimeout(_statsRenderTimeout);
+    _statsRenderTimeout = lifecycle.setTimeout(() => {
+      if (typeof globalScope.renderCategoryProgress === "function") {
+        globalScope.renderCategoryProgress();
+      }
+    }, 600);
 
     if (typeof globalScope.saveState === "function") {
       globalScope.saveState("stats");
@@ -933,6 +944,7 @@
   }
 
   function cleanup() {
+    elementCache.clear();
     choiceHandlerController?.abort();
     choiceHandlerController = null;
     choiceHandlerBoundTo?.removeEventListener(

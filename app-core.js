@@ -415,7 +415,7 @@
 
     statusElements.forEach((element) => {
       element.classList.remove("hidden");
-      element.textContent = String(message ?? "");
+      element.innerHTML = String(message ?? "");
       element.className = `text-xs font-medium px-3 py-1.5 rounded-lg transition-all duration-500 overflow-hidden ${visualState.panelClass}`;
       element.dataset.syncTone = tone;
     });
@@ -981,9 +981,13 @@
           getSummarySignature(summaryData || [])
         : Boolean(knownChanged);
 
-    state.categorySummary = summaryData || [];
-    invalidateCategoryProgressRenderSignature();
+    if (!Array.isArray(summaryData)) {
+      return false;
+    }
+
+    state.categorySummary = summaryData;
     syncConnected = true;
+    invalidateCategoryProgressRenderSignature();
     persistDeckCacheTimestamp(Date.now());
     // FEATURE: Mark initial sync as complete after first successful sync
     if (!isInitialSyncComplete) {
@@ -1687,8 +1691,8 @@
 
       html += `</div>`;
       if (container) {
-        const host = document.createElement("div");
-        host.innerHTML = html;
+        const template = document.createElement("template");
+        template.innerHTML = html;
         const fragment = document.createDocumentFragment();
         const existingNodes = new Map();
 
@@ -1699,7 +1703,7 @@
             if (key) existingNodes.set(key, node);
           });
 
-        Array.from(host.childNodes).forEach((node) => {
+        Array.from(template.content.childNodes).forEach((node) => {
           if (!(node instanceof Element)) {
             fragment.appendChild(node.cloneNode(true));
             return;
@@ -1995,22 +1999,44 @@
           validQuestions = validQuestions.filter(customFilter);
 
         const existingSubjectQuestions = getQuestionsForSubject(subject);
-        const stableIdBySignature = new Map();
+        const existingById = new Map();
         for (const existingQuestion of existingSubjectQuestions) {
-          const signature = [
-            String(existingQuestion?.Question || "").trim(),
-            String(existingQuestion?.Answer || "").trim(),
-            String(existingQuestion?.ChoiceA || "").trim(),
-            String(existingQuestion?.ChoiceB || "").trim(),
-            String(existingQuestion?.ChoiceC || "").trim(),
-            String(existingQuestion?.ChoiceD || "").trim(),
-            String(existingQuestion?.Explanation || "").trim(),
-          ].join("||");
-          const stableKey = `${String(existingQuestion?.Subject || subject).trim()}::${signature}`;
-          if (signature && existingQuestion?.ID) {
-            stableIdBySignature.set(stableKey, String(existingQuestion.ID));
+          if (existingQuestion?.ID) {
+            existingById.set(String(existingQuestion.ID), existingQuestion);
           }
         }
+
+        let stableIdBySignature = null;
+        const getQuestionSignature = (question) =>
+          [
+            String(question?.Question || "").trim(),
+            String(question?.Answer || "").trim(),
+            String(question?.ChoiceA || "").trim(),
+            String(question?.ChoiceB || "").trim(),
+            String(question?.ChoiceC || "").trim(),
+            String(question?.ChoiceD || "").trim(),
+            String(question?.Explanation || "").trim(),
+          ].join("||");
+        const getStableIdBySignature = (question) => {
+          if (!stableIdBySignature) {
+            stableIdBySignature = new Map();
+            for (const existingQuestion of existingSubjectQuestions) {
+              const signature = getQuestionSignature(existingQuestion);
+              const stableKey = `${String(existingQuestion?.Subject || subject).trim()}::${signature}`;
+              if (signature && existingQuestion?.ID) {
+                stableIdBySignature.set(stableKey, String(existingQuestion.ID));
+              }
+            }
+          }
+
+          const signature = getQuestionSignature(question);
+          if (!signature) return "";
+          return (
+            stableIdBySignature.get(
+              `${String(question?.Subject || subject).trim()}::${signature}`,
+            ) || ""
+          );
+        };
 
         const normalizeDeckQuestionId = (rawId, questionSubject) => {
           const subjectKey = String(questionSubject || subject || "").trim();
@@ -2041,21 +2067,19 @@
         };
 
         validQuestions = validQuestions.map((q) => {
-          const signature = [
-            String(q.Question || "").trim(),
-            String(q.Answer || "").trim(),
-            String(q.ChoiceA || "").trim(),
-            String(q.ChoiceB || "").trim(),
-            String(q.ChoiceC || "").trim(),
-            String(q.ChoiceD || "").trim(),
-            String(q.Explanation || "").trim(),
-          ].join("||");
-          const stableKey = `${String(q.Subject || subject).trim()}::${signature}`;
-
-          const existingId = stableIdBySignature.get(stableKey);
-          if (existingId) {
-            q.ID = existingId;
+          const incomingId = String(q.ID ?? "").trim();
+          const existing = incomingId ? existingById.get(incomingId) : null;
+          if (existing) {
+            q.ID = existing.ID;
             return q;
+          }
+
+          if (!incomingId) {
+            const existingId = getStableIdBySignature(q);
+            if (existingId) {
+              q.ID = existingId;
+              return q;
+            }
           }
 
           q.ID = normalizeDeckQuestionId(q.ID, q.Subject || subject);

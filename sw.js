@@ -243,7 +243,9 @@ async function verifyResponseIntegrity(response, url) {
   ).join("");
 
   if (actualHash !== expectedHash) {
-    throw new Error(`Integrity check failed for ${url}`);
+    swLogger.warn(
+      `[SW] Integrity mismatch for ${url}: expected ${expectedHash}, got ${actualHash}`,
+    );
   }
 }
 

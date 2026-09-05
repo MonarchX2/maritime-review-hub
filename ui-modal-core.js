@@ -600,6 +600,7 @@
 
   // ===================== MODULE EXPORT =====================
   const ModalCore = {
+    hasReportedQuestion,
     toggleModal,
     openAboutModal,
     closeAboutModal,
@@ -648,6 +649,7 @@
   globalScope.requestConfirmation = requestConfirmation;
   globalScope.closeConfirmModal = closeConfirmModal;
   globalScope.openReportModal = openReportModal;
+  globalScope.hasReportedQuestion = hasReportedQuestion;
   globalScope.closeReportModal = closeReportModal;
   globalScope.openReportModalFromStudy = openReportModalFromStudy;
   globalScope.submitReport = submitReport;
