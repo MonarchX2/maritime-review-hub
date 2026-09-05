@@ -67,9 +67,11 @@ const APP_SHELL = [
   "./tailwind.generated.css",
   "./styles.css",
   "./app-entry.js",
+  "./app-config.js",
   "./app-core.js",
   "./app-core-state.js",
   "./app-core-network.js",
+  "./sync-core.js",
   "./session-core.js",
   "./analytics-core.js",
   "./ui-modal-core.js",
@@ -81,6 +83,47 @@ const APP_SHELL = [
   "./storage-utils.js",
   "./text-utils.js",
 ].map(resolveAppUrl);
+
+const APP_SHELL_INTEGRITY = Object.freeze({
+  "index.html":
+    "d8f077dff5ae87b1c772daa627ff9fc834f32efeaa41439ea1ca6e32e4840416",
+  "tailwind.generated.css":
+    "b8660785a8ba0756314bcd068fd43e2bd218228a574db158e0c5496d2330d37c",
+  "styles.css":
+    "098f08286d4a3b083186440224fb054b70c0e4dda472b9b4d2629f413097ce9a",
+  "app-entry.js":
+    "1e0a4d5f11a6f41d62546217b69c52a98e4733a0f5a684f6e5fa90912ba51ac5",
+  "app-config.js":
+    "971f3f28cc40cb0b91b581b493436d4934cd6ed27b7349cbd62011f4a7d42dc1",
+  "app-core.js":
+    "da5768e6e2cf30839ff5bf7786ced2d89f4073898aabbc3b1f6d08464eadcc95",
+  "app-core-state.js":
+    "38c7394b709b687c97e26ec0ae03d32f11157613e881e4b5eb8de7a77557cd05",
+  "app-core-network.js":
+    "40d008957a3679d45fca663479f51293c00a92c1c370a7c160b5e73441d6986a",
+  "sync-core.js":
+    "9ed4adb1964c36eadc259bb82e20791225d53710527eff083d4d59c89f614b49",
+  "session-core.js":
+    "88b502fe292470e7f6494c0aa12a309790ee0089353ccc35fed55bba43c826a1",
+  "analytics-core.js":
+    "43df22f3bd7120d670fa1ca5b5d446038917d12aeeab5297e85a93abde37a78d",
+  "ui-modal-core.js":
+    "346d4465f81519e9541d224f37ce05c09f18b8d2f230d040337791b6fd474b58a",
+  "deck-nav-core.js":
+    "2805fecd992cea390cba2f90e71219deaa4e4a398ce5e6e5dcb8844fdeabfd5a",
+  "deck-review-core.js":
+    "11476109878302a0f11528ce6fad99a3eb5edc5559e43bea4f4f72bd991df9ba",
+  "quiz-rendering-core.js":
+    "c8182f54592ae5f6082cebbbcdc1a4b46d97cd4005dfa32615bf5bb196258b9d",
+  "debug-utils.js":
+    "825e96cb1ab6be2c4c92d9b63f1c60c5d28260561b6e6637c51955a5303e9961",
+  "lifecycle-utils.js":
+    "ac5c52a5f255bef28d1243954407149bd54708de67a62be7f2d7dffafa94d82e",
+  "storage-utils.js":
+    "a55cd7e274d5a3bdfa8099f861f1bcbcd35c6cf37d71f735a6a3f6b2bc8e232b",
+  "text-utils.js":
+    "8fa073d67b9081e81985ba869c1e89c63f3a652ed65984a39d8db56c64c52654",
+});
 
 self.__MRH_SW__ = {
   getRuntimeCacheVersion,
@@ -162,6 +205,39 @@ async function getCache() {
   return caches.open(CACHE_NAME);
 }
 
+function getAppResourceName(url) {
+  const path = new URL(url).pathname;
+  const basePath = APP_BASE_PATH.endsWith("/")
+    ? APP_BASE_PATH
+    : `${APP_BASE_PATH}/`;
+  const resourceName = path.startsWith(basePath)
+    ? path.slice(basePath.length)
+    : "";
+  return APP_SHELL_NAVIGATION_PATHS.has(path) ? "index.html" : resourceName;
+}
+
+async function verifyResponseIntegrity(response, url) {
+  const expectedHash = APP_SHELL_INTEGRITY[getAppResourceName(url)];
+  if (!expectedHash) return;
+
+  const subtleCrypto = self.crypto?.subtle;
+  if (!subtleCrypto) {
+    throw new Error(`Web Crypto is unavailable for ${url}`);
+  }
+
+  const digest = await subtleCrypto.digest(
+    "SHA-256",
+    await response.clone().arrayBuffer(),
+  );
+  const actualHash = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+
+  if (actualHash !== expectedHash) {
+    throw new Error(`Integrity check failed for ${url}`);
+  }
+}
+
 async function cacheResponse(cache, request, response) {
   if (!response || !response.ok) {
     return;
@@ -171,6 +247,8 @@ async function cacheResponse(cache, request, response) {
   if (response.type === "opaque") {
     return;
   }
+
+  await verifyResponseIntegrity(response, request.url);
 
   try {
     await cache.put(request, response.clone());
@@ -199,6 +277,7 @@ async function precacheAppShell() {
           );
         }
 
+        await verifyResponseIntegrity(response, url);
         await cache.put(url, response);
       } catch (error) {
         swLogger.error("[SW] Failed to precache:", url, error);
@@ -229,6 +308,8 @@ async function networkFirstNavigation(event) {
     const preloadResponse = await event.preloadResponse;
 
     const response = preloadResponse || (await fetch(event.request));
+
+    await verifyResponseIntegrity(response, event.request.url);
 
     if (response && response.ok && response.type !== "opaque") {
       // Only store the application entry point.

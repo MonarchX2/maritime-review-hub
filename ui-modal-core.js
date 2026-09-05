@@ -87,8 +87,14 @@
         document.body.appendChild(modal);
       const titleEl = document.getElementById("confirm-title");
       const messageEl = document.getElementById("confirm-message");
-      if (titleEl)
-        titleEl.innerHTML = `<i class="fa-solid fa-circle-question text-brand-500 mr-2"></i>${typeof globalScope.escapeHTML === "function" ? globalScope.escapeHTML(title) : String(title)}`;
+      if (titleEl) {
+        const icon = document.createElement("i");
+        icon.className = "fa-solid fa-circle-question text-brand-500 mr-2";
+        titleEl.replaceChildren(
+          icon,
+          document.createTextNode(String(title ?? "")),
+        );
+      }
       if (messageEl) messageEl.textContent = String(message ?? "");
       toggleModal("confirm-modal", true);
     });
@@ -101,6 +107,18 @@
       confirmRequest = null;
       queueMicrotask(() => current.resolve(Boolean(confirmed)));
     }
+  }
+
+  function setButtonStatus(button, iconClass, label) {
+    const icon = document.createElement("i");
+    icon.className = iconClass;
+    button.replaceChildren(icon, document.createTextNode(` ${label}`));
+  }
+
+  function restoreButtonContent(button, originalNodes) {
+    button.replaceChildren(
+      ...originalNodes.map((node) => node.cloneNode(true)),
+    );
   }
 
   function readReportedQuestionIds() {
@@ -219,9 +237,10 @@
 
     const btn = document.getElementById("btn-submit-report");
     if (!btn) return false;
-    const originalText = btn.innerHTML;
-    btn.innerHTML =
-      '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Sending...';
+    const originalNodes = Array.from(btn.childNodes).map((node) =>
+      node.cloneNode(true),
+    );
+    setButtonStatus(btn, "fa-solid fa-spinner fa-spin mr-2", "Sending...");
     btn.disabled = true;
 
     const q =
@@ -230,7 +249,7 @@
 
     if (!q) {
       globalScope.showToast?.("Error: No question found to report.", "error");
-      btn.innerHTML = originalText;
+      restoreButtonContent(btn, originalNodes);
       btn.disabled = false;
       return;
     }
@@ -243,7 +262,7 @@
         "Reporting is disabled for password-protected decks.",
         "warning",
       );
-      btn.innerHTML = originalText;
+      restoreButtonContent(btn, originalNodes);
       btn.disabled = false;
       return;
     }
@@ -264,15 +283,14 @@
       if (result.status === "success") {
         rememberReportedQuestion(q.ID);
 
-        btn.innerHTML =
-          '<i class="fa-solid fa-check mr-2"></i> Report Submitted!';
+        setButtonStatus(btn, "fa-solid fa-check mr-2", "Report Submitted!");
         btn.classList.remove("bg-red-500", "hover:bg-red-600");
         btn.classList.add("bg-green-500", "hover:bg-green-600");
 
         lifecycle.setTimeout(() => {
           closeReportModal();
           lifecycle.setTimeout(() => {
-            btn.innerHTML = originalText;
+            restoreButtonContent(btn, originalNodes);
             btn.disabled = false;
             btn.classList.remove("bg-green-500", "hover:bg-green-600");
             btn.classList.add("bg-red-500", "hover:bg-red-600");
@@ -292,7 +310,7 @@
     } catch (err) {
       DebugUtils.error(err);
       globalScope.showToast?.("Network error. Please try again.", "error");
-      btn.innerHTML = originalText;
+      restoreButtonContent(btn, originalNodes);
       btn.disabled = false;
     }
   }

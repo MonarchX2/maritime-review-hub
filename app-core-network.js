@@ -280,6 +280,161 @@
     return fallback || "Request failed.";
   }
 
+  const REQUEST_SCHEMAS = Object.freeze({
+    get_deck: {
+      required: ["subject"],
+      allowed: ["type", "subject", "password", "page", "limit"],
+    },
+    verify_folder_access: {
+      required: ["subject", "password"],
+      allowed: ["type", "subject", "password"],
+    },
+    verify_access: {
+      required: ["subject", "password"],
+      allowed: ["type", "subject", "password"],
+    },
+    submit_report: {
+      required: ["questionId", "subject", "errorType"],
+      allowed: [
+        "type",
+        "questionId",
+        "subject",
+        "questionText",
+        "errorType",
+        "lesson",
+        "comments",
+        "choices",
+        "correctAnswer",
+      ],
+    },
+    get_reports: {
+      required: [],
+      allowed: ["type", "role", "page", "limit"],
+    },
+    get_cache_version: { required: [], allowed: ["type"] },
+    get_sync_status: { required: [], allowed: ["type"] },
+  });
+
+  const STRING_FIELD_LIMITS = Object.freeze({
+    type: 64,
+    subject: 500,
+    password: 500,
+    questionId: 200,
+    questionText: 10000,
+    errorType: 200,
+    lesson: 500,
+    comments: 10000,
+    correctAnswer: 200,
+    role: 64,
+  });
+  const MAX_BACKEND_PAYLOAD_BYTES = 500000;
+
+  function isRecord(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function validateRequestValue(value, key, depth = 0) {
+    if (depth > 4) throw new Error("Backend payload is too deeply nested.");
+    if (value === null || value === undefined) return;
+
+    if (typeof value === "string") {
+      const limit = STRING_FIELD_LIMITS[key] ?? 2000;
+      if (value.length > limit) {
+        throw new Error(`Backend field '${key}' exceeds its size limit.`);
+      }
+      return;
+    }
+
+    if (typeof value === "number") {
+      if (!Number.isFinite(value))
+        throw new Error(`Backend field '${key}' must be finite.`);
+      return;
+    }
+
+    if (typeof value === "boolean") return;
+    if (Array.isArray(value)) {
+      if (value.length > 1000)
+        throw new Error(`Backend field '${key}' has too many items.`);
+      value.forEach((item) => validateRequestValue(item, key, depth + 1));
+      return;
+    }
+
+    if (isRecord(value)) {
+      const keys = Object.keys(value);
+      if (keys.length > 50)
+        throw new Error(`Backend field '${key}' has too many properties.`);
+      keys.forEach((childKey) =>
+        validateRequestValue(value[childKey], childKey, depth + 1),
+      );
+      return;
+    }
+
+    throw new Error(`Backend field '${key}' has an unsupported value.`);
+  }
+
+  function validateBackendPayload(payload) {
+    if (!isRecord(payload)) {
+      throw new Error("Backend payload must be an object.");
+    }
+
+    const type = String(payload.type || "").trim();
+    const schema = REQUEST_SCHEMAS[type];
+    if (!schema) throw new Error("Unsupported backend request type.");
+
+    const allowed = new Set(schema.allowed);
+    Object.keys(payload).forEach((key) => {
+      if (!allowed.has(key)) {
+        throw new Error(`Unexpected backend field '${key}'.`);
+      }
+      validateRequestValue(payload[key], key);
+    });
+
+    schema.required.forEach((key) => {
+      const value = payload[key];
+      if (typeof value !== "string" || !value.trim()) {
+        throw new Error(`Backend field '${key}' is required.`);
+      }
+    });
+
+    if (
+      payload.page !== undefined &&
+      (!Number.isInteger(payload.page) || payload.page < 1)
+    ) {
+      throw new Error("Backend field 'page' must be a positive integer.");
+    }
+    if (
+      payload.limit !== undefined &&
+      (!Number.isInteger(payload.limit) ||
+        payload.limit < 1 ||
+        payload.limit > 1000)
+    ) {
+      throw new Error(
+        "Backend field 'limit' must be an integer from 1 to 1000.",
+      );
+    }
+    if (payload.choices !== undefined) {
+      if (!isRecord(payload.choices))
+        throw new Error("Backend field 'choices' must be an object.");
+      Object.keys(payload.choices).forEach((key) => {
+        if (
+          !/^[ABCD]$/.test(key) ||
+          (payload.choices[key] !== null &&
+            payload.choices[key] !== undefined &&
+            typeof payload.choices[key] !== "string")
+        ) {
+          throw new Error(
+            "Backend choices must contain only A-D string values.",
+          );
+        }
+      });
+    }
+
+    const serialized = JSON.stringify(payload);
+    if (serialized.length > MAX_BACKEND_PAYLOAD_BYTES) {
+      throw new Error("Backend payload exceeds the maximum size.");
+    }
+  }
+
   function getBackendError(result, response) {
     const statusCode = Number(result?.statusCode);
     const hasErrorEnvelope =
@@ -382,12 +537,7 @@
   async function callBackend(payload, options = {}) {
     const url = getDatabaseUrl();
     if (!url) throw new Error("Database URL is not configured.");
-    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-      throw new Error("Backend payload must be an object.");
-    }
-    if (!String(payload.type || "").trim()) {
-      throw new Error("Backend request type is required.");
-    }
+    validateBackendPayload(payload);
 
     return defaultConnectionPool.request(
       async () => {

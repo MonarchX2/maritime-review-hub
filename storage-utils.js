@@ -17,6 +17,7 @@
   let sessionStorageResolved = false;
   let cachedStorageIdentity = null;
   let cachedStorageNamespace = null;
+  let lastQuotaWarningAt = 0;
 
   function createMemoryStorage(existing) {
     const store = existing && typeof existing === "object" ? existing : {};
@@ -239,11 +240,35 @@
     }
   }
 
+  function isQuotaExceededError(error) {
+    return Boolean(
+      error &&
+      (error.name === "QuotaExceededError" ||
+        error.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+        error.code === 22 ||
+        error.code === 1014),
+    );
+  }
+
+  function notifyQuotaExceeded() {
+    const now = Date.now();
+    if (now - lastQuotaWarningAt < 10000) return;
+    lastQuotaWarningAt = now;
+
+    if (typeof root.showToast === "function") {
+      root.showToast(
+        "Storage is full. Some changes may not be saved. Free up browser storage and try again.",
+        "error",
+      );
+    }
+  }
+
   function safeSetItem(store, key, value) {
     try {
       store.setItem(key, String(value));
       return true;
     } catch (error) {
+      if (isQuotaExceededError(error)) notifyQuotaExceeded();
       return false;
     }
   }

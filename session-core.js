@@ -7,6 +7,7 @@
   const elementCache = new Map();
   let choiceButtonsCache = null;
   let choiceHandlerBoundTo = null;
+  let choiceHandlerController = null;
   let timerAnimationFrame = 0;
   let sessionSaveTimer = 0;
   let sessionSaveRequested = false;
@@ -46,12 +47,16 @@
     if (!container) return;
     if (choiceHandlerBoundTo === container) return;
 
+    choiceHandlerController?.abort();
     choiceHandlerBoundTo?.removeEventListener(
       "click",
       handleChoiceContainerClick,
     );
     choiceHandlerBoundTo = container;
-    container.addEventListener("click", handleChoiceContainerClick);
+    choiceHandlerController = new AbortController();
+    container.addEventListener("click", handleChoiceContainerClick, {
+      signal: choiceHandlerController.signal,
+    });
   }
 
   function handleChoiceContainerClick(event) {
@@ -575,7 +580,14 @@
       const limit = Math.min(session.questions.length, nextIndex + 2);
       for (let i = nextIndex; i < limit; i++) {
         const nextImageUrl = normalizeText(session.questions[i]?.ImageURL);
-        if (!nextImageUrl || preloadedImageUrls.has(nextImageUrl)) continue;
+        if (
+          !nextImageUrl ||
+          preloadedImageUrls.has(nextImageUrl) ||
+          typeof globalScope.isSafeImageURL !== "function" ||
+          !globalScope.isSafeImageURL(nextImageUrl)
+        ) {
+          continue;
+        }
         preloadedImageUrls.add(nextImageUrl);
         const imgPreload = new Image();
         imgPreload.decoding = "async";
@@ -920,6 +932,8 @@
   }
 
   function cleanup() {
+    choiceHandlerController?.abort();
+    choiceHandlerController = null;
     choiceHandlerBoundTo?.removeEventListener(
       "click",
       handleChoiceContainerClick,

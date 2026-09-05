@@ -16,7 +16,7 @@
 
   const rootScope = globalScope || globalThis;
   const appConfig = rootScope.MRH_CONFIG || {};
-  const state = globalThis.state;
+  const state = rootScope.state;
   const lifecycle = rootScope.LifecycleUtils || rootScope;
   const uiEventController = new AbortController();
   const appAnimationFrames = new Set();
@@ -40,8 +40,6 @@
   let lastSyncStatusTimestamp = "";
   let isInitialSyncComplete = false; // Track if the first sync from startup has completed
   let lastSyncAt = 0;
-  let syncInFlightPromise = null;
-  let backgroundSyncPromise = null;
   const deckFetchInFlight = new Map();
 
   // Performance caches for stable render signatures. WeakMap keeps entries tied to
@@ -51,6 +49,7 @@
   const subjectListSignatureCache = new WeakMap();
   const SYNC_STATUS_STORAGE_KEY = "mrh_last_sync_status_timestamp";
   const SYNC_REQUEST_TIMEOUT_MS = appConfig.syncRequestTimeoutMs ?? 60000;
+  const BROADCAST_PROTOCOL = "mrh-broadcast-v1";
   let __mrhAppInitialized = false;
   let __mrhAppReady = false;
   let __mrhInitializationTimer = null;
@@ -255,19 +254,25 @@
       return action();
     }
 
-    const previousHtml = button.innerHTML;
+    const previousNodes = Array.from(button.childNodes).map((node) =>
+      node.cloneNode(true),
+    );
     const previousDisabled = button.disabled;
-    button.dataset.originalHtml = previousHtml;
     button.disabled = true;
     button.setAttribute("aria-busy", "true");
-    button.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> ${loadingText}`;
+    const spinner = document.createElement("i");
+    spinner.className = "fa-solid fa-spinner fa-spin mr-2";
+    button.replaceChildren(
+      spinner,
+      document.createTextNode(` ${String(loadingText ?? "")}`),
+    );
 
     try {
       return await action();
     } finally {
       button.disabled = previousDisabled;
       button.removeAttribute("aria-busy");
-      button.innerHTML = previousHtml;
+      button.replaceChildren(...previousNodes);
     }
   }
 
@@ -430,7 +435,7 @@
 
     statusElements.forEach((element) => {
       element.classList.remove("hidden");
-      element.innerHTML = message;
+      element.textContent = String(message ?? "");
       element.className = `text-xs font-medium px-3 py-1.5 rounded-lg transition-all duration-500 overflow-hidden ${visualState.panelClass}`;
       element.dataset.syncTone = tone;
     });
@@ -478,7 +483,7 @@
       if (shouldShowStatusToast) {
         lifecycle.clearTimeout(syncStatusHideTimer);
         connectionStatus.classList.remove("hidden", "opacity-0", "scale-95");
-        connectionStatus.innerHTML = message;
+        connectionStatus.textContent = String(message ?? "");
         connectionStatus.className = `fixed bottom-5 left-1/2 z-[60] w-max max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-lg px-4 py-2 text-center text-xs font-medium shadow-lg transition-all duration-500 ${visualState.panelClass}`;
       } else {
         lifecycle.clearTimeout(syncStatusHideTimer);
@@ -755,10 +760,8 @@
 
   function ensureUnlockedFolderState() {
     const rootState =
-      typeof globalThis !== "undefined" &&
-      globalThis.state &&
-      typeof globalThis.state === "object"
-        ? globalThis.state
+      rootScope.state && typeof rootScope.state === "object"
+        ? rootScope.state
         : null;
 
     if (!rootState) {
@@ -1171,7 +1174,7 @@
         html += subjects
           .map(
             (s) =>
-              `<button type="button" data-filter-value="SUBJ:${escapeHTML(s)}" onclick="changeQuizFilter('SUBJ:${escapeHTML(s)}')" class="quiz-filter-option">${escapeHTML(s)} <i class="fa-solid fa-check filter-check"></i></button>`,
+              `<button type="button" data-filter-value="SUBJ:${escapeHTML(s)}" onclick="changeQuizFilter(decodeHandlerValue('SUBJ:${encodeHandlerValue(s)}'))" class="quiz-filter-option">${escapeHTML(s)} <i class="fa-solid fa-check filter-check"></i></button>`,
           )
           .join("");
       }
@@ -1187,7 +1190,7 @@
         html += tags
           .map(
             (t) =>
-              `<button type="button" data-filter-value="TAG:${escapeHTML(t)}" onclick="changeQuizFilter('TAG:${escapeHTML(t)}')" class="quiz-filter-option">${escapeHTML(t)} <i class="fa-solid fa-check filter-check"></i></button>`,
+              `<button type="button" data-filter-value="TAG:${escapeHTML(t)}" onclick="changeQuizFilter(decodeHandlerValue('TAG:${encodeHandlerValue(t)}'))" class="quiz-filter-option">${escapeHTML(t)} <i class="fa-solid fa-check filter-check"></i></button>`,
           )
           .join("");
       }
@@ -2034,7 +2037,7 @@
           }
 
           html += `
-          <div data-folder-key="${escapeHTML(key)}" onclick="enterFolder('${escapeHTML(key)}', ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
+          <div data-folder-key="${escapeHTML(key)}" onclick="enterFolder(decodeHandlerValue('${encodeHandlerValue(key)}'), ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
             <div class="h-12 ${folderColorClass} transition-colors relative">
               <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
             </div>
@@ -4263,14 +4266,24 @@
   let isTicking = false;
 
   // CRITICAL FIX: Cache invalidation management
+  function isValidBroadcastMessage(data, type) {
+    return (
+      data &&
+      typeof data === "object" &&
+      !Array.isArray(data) &&
+      data.protocol === BROADCAST_PROTOCOL &&
+      data.type === type
+    );
+  }
+
   function setupCacheInvalidationListener() {
     if (typeof BroadcastChannel === "undefined") return;
 
     try {
       cacheInvalidationChannel = new BroadcastChannel("mrh_cache_invalidation");
       cacheInvalidationChannel.onmessage = (event) => {
-        if (event.data && event.data.type === "cache_invalidated") {
-          appLogger.info("[CACHE] Invalidation signal received:", event.data);
+        if (isValidBroadcastMessage(event?.data, "cache_invalidated")) {
+          appLogger.info("[CACHE] Invalidation signal received");
           // Force refresh database when the cache version changes
           handleCacheInvalidation();
         }
@@ -4369,20 +4382,28 @@
 
       leaderElectionChannel.onmessage = (event) => {
         const data = event?.data;
-        if (!data || !data.type) return;
+        if (!isValidBroadcastMessage(data, "leader_heartbeat")) return;
 
-        if (data.type === "leader_heartbeat" && data.tabId) {
-          if (data.tabId !== window.mrh_tabId) {
-            peers.set(String(data.tabId), Date.now());
-            electLeader();
-          }
+        const tabId = String(data.tabId || "");
+        const timestamp = Number(data.timestamp);
+        if (
+          !/^[a-z0-9_-]{8,128}$/i.test(tabId) ||
+          !Number.isFinite(timestamp) ||
+          Math.abs(Date.now() - timestamp) > PEER_TTL_MS * 2
+        ) {
           return;
+        }
+
+        if (tabId !== window.mrh_tabId) {
+          peers.set(tabId, Date.now());
+          electLeader();
         }
       };
 
       const sendHeartbeat = () => {
         try {
           leaderElectionChannel.postMessage({
+            protocol: BROADCAST_PROTOCOL,
             type: "leader_heartbeat",
             tabId: window.mrh_tabId,
             timestamp: Date.now(),
@@ -4442,6 +4463,8 @@
 
     lifecycle.clearTimeout(window.cacheInvalidationTimeout);
     lifecycle.clearTimeout(window.scrollSaveTimeout);
+    syncController?.cleanup?.();
+    syncController = null;
     if (typeof AppNetwork?.destroy === "function") AppNetwork.destroy();
   }
 

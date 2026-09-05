@@ -52,6 +52,7 @@
     let inFlightPromise = null;
     let backgroundPromise = null;
     let pollLoopToken = 0;
+    let disposed = false;
 
     const isCached = () => options.state.categorySummary.length > 0;
     const setConnected = (value) => {
@@ -73,7 +74,7 @@
     }
 
     function schedulePoll() {
-      if (!options.isLeader()) return cancelPoll();
+      if (disposed || !options.isLeader()) return cancelPoll();
       const activeToken = ++pollLoopToken;
       cancelPoll();
       pollTimer = lifecycle.setTimeout(() => {
@@ -87,6 +88,7 @@
     }
 
     function scheduleRetry(showOverlay = true) {
+      if (disposed) return;
       lifecycle.clearTimeout(retryTimer);
       lifecycle.clearInterval(countdownTimer);
       const retryCount = Math.max(0, Number(attempt || 1) - 1);
@@ -132,11 +134,14 @@
     }
 
     async function optimizedBackgroundSync() {
+      if (disposed) return;
       if (backgroundPromise) return backgroundPromise;
       backgroundPromise = (async () => {
+        if (disposed) return;
         if (!options.isLeader()) return;
         try {
           const status = await checkSyncStatusLightweight();
+          if (disposed) return;
           if (!status || typeof status !== "object" || status.status !== "ok") {
             if (isCached()) {
               setConnected(false);
@@ -205,6 +210,7 @@
 
     /** @returns {Promise<SyncCoreResult>} */
     async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
+      if (disposed) return false;
       if (inFlightPromise) return inFlightPromise;
       inFlightPromise = (async () => {
         lifecycle.clearTimeout(retryTimer);
@@ -236,6 +242,7 @@
               signal: requestController.signal,
             }),
           );
+          if (disposed) return false;
           if (
             summaryData &&
             !Array.isArray(summaryData) &&
@@ -343,6 +350,7 @@
       },
       getStatus: () => ({ connected, coldStart, pendingSummaryData }),
       cleanup() {
+        disposed = true;
         cancelPoll();
         lifecycle.clearTimeout(retryTimer);
         lifecycle.clearInterval(countdownTimer);

@@ -82,13 +82,7 @@
     try {
       const base = globalScope.location?.href || "https://localhost/";
       const url = new URL(raw, base);
-      return (
-        (url.protocol === "https:" ||
-          (url.protocol === "http:" &&
-            url.origin === globalScope.location?.origin)) &&
-        !url.username &&
-        !url.password
-      );
+      return url.protocol === "https:" && !url.username && !url.password;
     } catch (error) {
       return false;
     }

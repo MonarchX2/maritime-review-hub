@@ -2,6 +2,8 @@
   const rootScope =
     globalScope || (typeof globalThis !== "undefined" ? globalThis : {});
   const lifecycle = rootScope.LifecycleUtils || rootScope;
+  const MAX_CATEGORY_SUMMARY_ENTRIES =
+    rootScope.MRH_CONFIG?.maxCategorySummaryEntries ?? 2000;
 
   /** @typedef {{Subject?: string, ID?: string, Question?: string, Answer?: string}} MrhQuestion */
   /** @typedef {{db: MrhQuestion[], categorySummary: object[], accessMetadata: object, prefs: object, stats: object, session: object, currentPath: string[]}} MrhState */
@@ -244,7 +246,7 @@
     if (!Array.isArray(rawSummary)) return [];
     return rawSummary
       .filter((entry) => entry && typeof entry === "object")
-      .slice(0, 2000);
+      .slice(0, MAX_CATEGORY_SUMMARY_ENTRIES);
   }
 
   function normalizeStats(rawStats) {
