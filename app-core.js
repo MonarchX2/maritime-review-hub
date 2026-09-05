@@ -694,6 +694,46 @@ function stripAccessMetadataFromSummary(summaryData) {
   });
 }
 
+function normalizeSummaryData(summaryData) {
+  if (
+    summaryData &&
+    !Array.isArray(summaryData) &&
+    summaryData.v === 1 &&
+    Array.isArray(summaryData.p) &&
+    Array.isArray(summaryData.d)
+  ) {
+    summaryData = summaryData.d.map((row) => {
+      if (!Array.isArray(row) || row.length < 4) return null;
+      const prefix = String(summaryData.p[Number(row[0])] || "");
+      const suffix = String(row[1] || "");
+      return {
+        s: prefix ? `${prefix}::${suffix}` : suffix,
+        c: row[2],
+        t: row[3],
+        ...(row[4] ? { l: "t" } : {}),
+      };
+    });
+  }
+
+  if (!Array.isArray(summaryData)) return summaryData;
+
+  return summaryData.map((deck) => {
+    if (!deck || typeof deck !== "object") return deck;
+
+    const subject = deck.s !== undefined ? deck.s : deck.Subject;
+    const questionCount = deck.c !== undefined ? deck.c : deck.QuestionCount;
+    const questionType = deck.t !== undefined ? deck.t : deck.QuestionType;
+    const locked = deck.l !== undefined ? deck.l : deck.Locked;
+
+    return {
+      Subject: subject,
+      QuestionCount: Number(questionCount || 0),
+      QuestionType: questionType || "ID",
+      Locked: normalizeAccessFlag(locked),
+    };
+  });
+}
+
 function normalizeAccessFlag(value, fallback = false) {
   if (value === null || value === undefined || value === "") {
     return fallback;
@@ -703,8 +743,8 @@ function normalizeAccessFlag(value, fallback = false) {
   if (typeof value === "number") return value !== 0;
 
   const normalized = String(value).trim().toLowerCase();
-  if (["true", "1", "yes", "y", "on"].includes(normalized)) return true;
-  if (["false", "0", "no", "n", "off"].includes(normalized)) return false;
+  if (["true", "1", "yes", "y", "on", "t"].includes(normalized)) return true;
+  if (["false", "0", "no", "n", "off", "f"].includes(normalized)) return false;
 
   return Boolean(value);
 }
@@ -1104,10 +1144,12 @@ async function syncDatabaseImplementation(
       ) {
         throw new Error("AppNetwork summary API is unavailable.");
       }
-      const summaryData = await AppNetwork.getDeckSummary({
+      const summaryResponse = await AppNetwork.getDeckSummary({
         timeoutMs: SYNC_REQUEST_TIMEOUT_MS,
         signal: requestController.signal,
       });
+
+      const summaryData = normalizeSummaryData(summaryResponse);
 
       if (
         summaryData &&
