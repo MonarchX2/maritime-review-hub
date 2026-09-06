@@ -1010,9 +1010,3 @@ details[open] summary ~ div {
     opacity: 1;
   }
 }
-
-@media (max-width: 768px) and (orientation: portrait) {
-  #layout-toggle {
-    display: none !important;
-  }
-}

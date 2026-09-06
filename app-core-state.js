@@ -35,7 +35,7 @@
     },
     prefs: {
       darkMode: true,
-      layoutMode: "tree",
+      layoutMode: "grid",
       activeRecall: false,
       shuffleChoices: true,
       shuffleQuestions: true,
@@ -336,7 +336,7 @@
       normalized.layoutMode,
     )
       ? normalized.layoutMode
-      : "tree";
+      : "grid";
 
     normalized.archivedDecks = Array.isArray(normalized.archivedDecks)
       ? normalized.archivedDecks.filter((entry) => typeof entry === "string")
