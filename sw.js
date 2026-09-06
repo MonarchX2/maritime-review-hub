@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-release-2026.09.06";
+const APP_VERSION = "mrh-release-2026.09.07";
 const FALLBACK_CACHE_VERSION = APP_VERSION;
 
 function getServiceWorkerUrl() {
@@ -95,7 +95,7 @@ const APP_SHELL_INTEGRITY = Object.freeze({
   "styles.css":
     "098f08286d4a3b083186440224fb054b70c0e4dda472b9b4d2629f413097ce9a",
   "app-entry.js":
-    "3e861ebcaa2b950d290606c1037bf4a37eb5012d3e137d2c3a16dbef1dbf55da",
+    "dd0d1733d57da9fff5d8d4c84e0e2504a7cd8fff9ce40df2a08d81f13428803e",
   "app-config.js":
     "971f3f28cc40cb0b91b581b493436d4934cd6ed27b7349cbd62011f4a7d42dc1",
   "app-core.js":
@@ -119,7 +119,7 @@ const APP_SHELL_INTEGRITY = Object.freeze({
   "deck-nav-core.js":
     "e0c75fca277b17ab3a1302f6fb4f7ba3366a9f0305ab895dd6491e24f8110bb8",
   "deck-review-core.js":
-    "11476109878302a0f11528ce6fad99a3eb5edc5559e43bea4f4f72bd991df9ba",
+    "634c41dff27ecf4daa4e8274ece9314cfd72cc576486d93f8439dfd7f9e292ea",
   "quiz-rendering-core.js":
     "c8182f54592ae5f6082cebbbcdc1a4b46d97cd4005dfa32615bf5bb196258b9d",
   "debug-utils.js":
