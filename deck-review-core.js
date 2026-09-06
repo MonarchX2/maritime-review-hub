@@ -521,6 +521,8 @@
     const progress = state.prefs.studyProgress[currentReviewSubject];
     if (!progress) return;
     progress.page = Math.max(1, (progress.page || 1) + delta);
+    progress.scrollY = 0;
+    if (reviewMainElement) reviewMainElement.scrollTop = 0;
     saveState();
     reRenderDeckReview();
   }
@@ -542,6 +544,8 @@
     const page = parseInt(pageNumber, 10);
     if (!progress || Number.isNaN(page)) return;
     progress.page = Math.max(1, page);
+    progress.scrollY = 0;
+    if (reviewMainElement) reviewMainElement.scrollTop = 0;
     saveState();
     reRenderDeckReview();
   }
