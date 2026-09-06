@@ -406,8 +406,9 @@
       if (!element) return;
 
       const parent = element.parentElement;
+      const elementMode = element === dashboardHeading ? "clip" : mode;
 
-      if (mode === "clip") {
+      if (elementMode === "clip") {
         element.classList.add("truncate", "overflow-hidden");
         element.classList.remove("whitespace-normal", "break-words");
         element.style.whiteSpace = "nowrap";
