@@ -415,10 +415,17 @@
 
     const layoutIcon = document.getElementById("layout-icon");
     if (layoutIcon) {
+      const layoutIconColor =
+        state.prefs.lastActivity?.mode === "review"
+          ? "text-purple-600 dark:text-purple-400"
+          : "text-brand-500";
+      const layoutIcons = {
+        grid: `fa-solid fa-table-cells ${layoutIconColor}`,
+        list: `fa-solid fa-list ${layoutIconColor}`,
+        tree: `fa-solid fa-sitemap ${layoutIconColor}`,
+      };
       layoutIcon.className =
-        state.prefs.layoutMode === "grid"
-          ? "fa-solid fa-list text-brand-500"
-          : "fa-solid fa-table-cells text-brand-500";
+        layoutIcons[state.prefs.layoutMode] || layoutIcons.grid;
     }
   }
 

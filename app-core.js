@@ -56,6 +56,8 @@
   let __mrhAppReady = false;
   let __mrhInitializationTimer = null;
   let __mrhPollLoopToken = 0;
+  const collapsedTreePaths = new Set();
+  let treeCollapseInitialized = false;
 
   function scheduleAppAnimationFrame(callback) {
     return renderingScheduler.schedule(callback);
@@ -1149,6 +1151,23 @@
     }
   }
 
+  function toggleTreeNode(encodedPath) {
+    const path = decodeHandlerValue(encodedPath);
+    if (!path) return;
+
+    if (collapsedTreePaths.has(path)) {
+      collapsedTreePaths.delete(path);
+    } else {
+      collapsedTreePaths.add(path);
+    }
+
+    state.prefs.treeCollapsedPaths = [...collapsedTreePaths];
+    saveState();
+
+    invalidateCategoryProgressRenderSignature();
+    renderCategoryProgress();
+  }
+
   function renderCategoryProgressNow() {
     if (!document.body) {
       if (!categoryProgressRenderScheduled) {
@@ -1198,6 +1217,7 @@
       syncDashboardControls(dashboardControls);
 
       const container = document.getElementById("category-list");
+      const isTree = state.prefs.layoutMode === "tree";
       const isGrid = state.prefs.layoutMode === "grid";
       const completedSet = new Set(state.stats?.completedQs || []);
       const mistakesSet = new Set(state.stats?.mistakes || []);
@@ -1229,6 +1249,36 @@
         categoryTreeNodeMetadataCache = new WeakMap();
       }
 
+      if (isTree && !treeCollapseInitialized && Object.keys(tree).length > 0) {
+        const collapseGroups = (node, path = []) => {
+          const children = node?._children || node || {};
+          Object.keys(children).forEach((key) => {
+            const child = children[key];
+            const childPath = path.concat(key);
+            const hasChildren = Object.keys(child?._children || {}).length > 0;
+            const isExplicitFolder = child?._data?.IsFolder === true;
+            if (hasChildren || isExplicitFolder) {
+              collapsedTreePaths.add(childPath.join("::"));
+              collapseGroups(child, childPath);
+            }
+          });
+        };
+        collapsedTreePaths.clear();
+        const savedCollapsedPaths = Array.isArray(
+          state.prefs.treeCollapsedPaths,
+        )
+          ? state.prefs.treeCollapsedPaths.filter(Boolean)
+          : [];
+        if (savedCollapsedPaths.length > 0) {
+          savedCollapsedPaths.forEach((path) => collapsedTreePaths.add(path));
+        } else {
+          collapseGroups(tree);
+          state.prefs.treeCollapsedPaths = [...collapsedTreePaths];
+          saveState();
+        }
+        treeCollapseInitialized = true;
+      }
+
       if (!Array.isArray(state.currentPath)) state.currentPath = [];
       let currentNode = tree;
       let pathValid = true;
@@ -1254,7 +1304,9 @@
 
       const freshnessBannerHtml = getDeckDataFreshnessBannerHtml();
 
-      let html = `
+      let html = isTree
+        ? ""
+        : `
       <div class="flex flex-nowrap items-center gap-2 mb-6 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto pb-2 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
         <button onclick="goToPath(-1)" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2 flex-shrink-0">
           <i class="fa-solid fa-folder-open text-brand-500"></i> HOME
@@ -1270,9 +1322,11 @@
       </div>
       ${freshnessBannerHtml}`;
 
-      const layoutClass = isGrid
-        ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-6"
-        : "flex flex-col space-y-4";
+      const layoutClass = isTree
+        ? "deck-tree-view overflow-visible rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm"
+        : isGrid
+          ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-6"
+          : "flex flex-col space-y-4";
 
       html += `<div class="${layoutClass}">`;
       const sortBy = state.prefs.deckSortBy || "letters";
@@ -1431,7 +1485,211 @@
         return nodeMatchesFilter(currentNode[key], sourceFilter, key);
       });
 
-      if (visibleKeys.length === 0) {
+      if (isTree) {
+        const treeStatsCache = new WeakMap();
+        const allCountColor =
+          currentAppMode === "review"
+            ? "text-purple-600 dark:text-purple-400"
+            : "text-blue-400 dark:text-blue-300";
+        const allHeaderColor =
+          currentAppMode === "review"
+            ? "text-purple-600 dark:text-purple-400"
+            : "text-blue-600 dark:text-blue-300";
+        const latestRecentlyViewed = String(
+          state.prefs?.recentDecks?.[0] || "",
+        ).trim();
+        const latestRecentlyViewedSegments =
+          getPathSegments(latestRecentlyViewed);
+        let visibleRecentlyViewedPath = latestRecentlyViewed;
+        for (
+          let index = 1;
+          index < latestRecentlyViewedSegments.length;
+          index += 1
+        ) {
+          const ancestorPath = latestRecentlyViewedSegments
+            .slice(0, index)
+            .join("::");
+          if (collapsedTreePaths.has(ancestorPath)) {
+            visibleRecentlyViewedPath = ancestorPath;
+            break;
+          }
+        }
+
+        function getTreeStats(node) {
+          if (!node || typeof node !== "object") {
+            return { total: 0, correctCount: 0, mistakesCount: 0 };
+          }
+          if (treeStatsCache.has(node)) return treeStatsCache.get(node);
+
+          const stats = { total: 0, correctCount: 0, mistakesCount: 0 };
+          if (node._data) {
+            const subject = node._data.Subject;
+            const total = Math.max(0, Number(node._data.QuestionCount || 0));
+            const ids = subjectIdsBySubject.get(subject) || [];
+            stats.total = total;
+            if (ids.length > 0) {
+              const completed = ids.filter((id) => completedSet.has(id)).length;
+              const mistakes = ids.filter((id) => mistakesSet.has(id)).length;
+              stats.correctCount = Math.max(0, completed - mistakes);
+              stats.mistakesCount = mistakes;
+            } else {
+              const recorded = state.stats?.subjectAccuracy?.[subject] || {};
+              stats.correctCount = Math.min(
+                total,
+                Math.max(0, Number(recorded.correct || 0)),
+              );
+              stats.mistakesCount = Math.min(
+                Math.max(0, total - stats.correctCount),
+                Math.max(0, Number(recorded.total || 0) - stats.correctCount),
+              );
+            }
+          }
+          Object.keys(node._children || {}).forEach((childKey) => {
+            const childStats = getTreeStats(node._children[childKey]);
+            stats.total += childStats.total;
+            stats.correctCount += childStats.correctCount;
+            stats.mistakesCount += childStats.mistakesCount;
+          });
+          treeStatsCache.set(node, stats);
+          return stats;
+        }
+
+        function renderTreeStat(value, colorClass, clickHandler = "") {
+          const numericValue = Math.max(0, Number(value) || 0);
+          const clickableClass = clickHandler
+            ? "cursor-pointer hover:underline"
+            : "";
+          return `<span class="text-right tabular-nums ${clickableClass} ${numericValue === 0 ? "text-gray-500 dark:text-gray-600" : colorClass}"${clickHandler ? ` onclick="event.stopPropagation(); ${clickHandler}" title="Quiz mistakes"` : ""}>${numericValue}</span>`;
+        }
+
+        function sortTreeKeys(node) {
+          const children = node?._children || node || {};
+          return Object.keys(children)
+            .map((key) => ({
+              key,
+              metadata: getNodeMetadata(
+                children[key],
+                nodeMetadataCache,
+                folderStatsCache,
+              ),
+            }))
+            .sort((leftEntry, rightEntry) => {
+              if (
+                leftEntry.metadata.isFolder !== rightEntry.metadata.isFolder
+              ) {
+                return leftEntry.metadata.isFolder ? -1 : 1;
+              }
+              if (sortBy === "questions") {
+                return (
+                  (leftEntry.metadata.totalCards -
+                    rightEntry.metadata.totalCards) *
+                    sortDirection ||
+                  TextUtils.naturalSortStrings(leftEntry.key, rightEntry.key) *
+                    sortDirection
+                );
+              }
+              return (
+                TextUtils.naturalSortStrings(leftEntry.key, rightEntry.key) *
+                sortDirection
+              );
+            })
+            .map((entry) => entry.key);
+        }
+
+        function renderTreeRows(
+          node,
+          depth = 0,
+          showAllChildren = false,
+          path = [],
+        ) {
+          const children = node?._children || node || {};
+          return sortTreeKeys(node)
+            .map((key) => {
+              const item = children[key];
+              const matches =
+                showAllChildren || nodeMatchesFilter(item, sourceFilter, key);
+              if (!matches) return "";
+
+              const childPath = path.concat(key);
+              const hasChildren = Object.keys(item._children || {}).length > 0;
+              const explicitFolder = item._data && item._data.IsFolder === true;
+              const stats = getTreeStats(item);
+              const safeKey = escapeHTML(key);
+              const indent = Math.min(depth * 24 + 12, 420);
+              const folderSubject = childPath.join("::");
+              const isGroup = hasChildren || explicitFolder;
+              const deckSubject = item._data?.Subject || folderSubject;
+              const isCollapsed = collapsedTreePaths.has(folderSubject);
+              const isActive = state.currentPath?.join("::") === folderSubject;
+              const isTopLevelGroup = depth === 0 && isGroup;
+              const isFavorite = (state.prefs.favoriteDecks || []).includes(
+                folderSubject,
+              );
+              const isArchived = (state.prefs.archivedDecks || []).includes(
+                folderSubject,
+              );
+              const recentlyViewedIcon =
+                folderSubject === visibleRecentlyViewedPath
+                  ? '<i class="fa-regular fa-clock deck-tree-recent" title="Recently viewed" aria-label="Recently viewed"></i>'
+                  : "";
+              const favoriteIcon = isFavorite
+                ? '<i class="fa-solid fa-star deck-tree-favorite" title="Favorite deck" aria-label="Favorite deck"></i>'
+                : "";
+              const action = isGroup
+                ? `toggleTreeNode('${encodeHandlerValue(folderSubject)}')`
+                : `handleDeckClick('${encodeHandlerValue(item._data?.Subject || folderSubject)}')`;
+              const icon = isGroup
+                ? `<span class="deck-tree-toggle" aria-hidden="true">${isCollapsed ? "+" : "−"}</span>`
+                : '<span class="deck-tree-toggle" aria-hidden="true"></span>';
+              const typeIcon = isGroup
+                ? '<i class="fa-solid fa-folder deck-tree-type-icon deck-tree-folder-icon" aria-hidden="true"></i>'
+                : '<i class="fa-regular fa-file-lines deck-tree-type-icon" aria-hidden="true"></i>';
+              const nameCaseClass = isGroup ? "uppercase" : "";
+              const deckActionIcon = !isGroup
+                ? `<button type="button" class="deck-tree-action" onclick="event.stopPropagation(); handleDeckClick('${encodeHandlerValue(deckSubject)}')" title="${currentAppMode === "review" ? "Review deck" : "Quiz deck"}" aria-label="${currentAppMode === "review" ? "Review deck" : "Quiz deck"}"><i class="fa-solid ${currentAppMode === "review" ? "fa-eye" : "fa-play"}"></i></button>`
+                : "";
+              const mistakesActionIcon =
+                !isGroup && stats.mistakesCount > 0
+                  ? `<button type="button" class="deck-tree-action deck-tree-mistakes-action" onclick="event.stopPropagation(); handleDeckClick('${encodeHandlerValue(deckSubject)}', 'mistakes')" title="Review mistakes (${stats.mistakesCount})" aria-label="Review mistakes (${stats.mistakesCount})"><i class="fa-solid fa-triangle-exclamation"></i></button>`
+                  : "";
+              const resetActionIcon =
+                !isGroup && (stats.correctCount > 0 || stats.mistakesCount > 0)
+                  ? `<button type="button" class="deck-tree-action deck-tree-reset-action" onclick="event.stopPropagation(); resetCategory('${encodeHandlerValue(deckSubject)}')" title="Reset progress" aria-label="Reset progress"><i class="fa-solid fa-rotate-left"></i></button>`
+                  : "";
+              const rowClass = isActive ? "deck-tree-row-active" : "";
+
+              const settingsHtml = isTopLevelGroup
+                ? `<details class="deck-tree-settings" onclick="event.stopPropagation()">
+                    <summary class="deck-tree-settings-trigger" aria-label="Deck settings" title="Deck settings"><i class="fa-solid fa-gear"></i></summary>
+                    <div class="deck-tree-settings-menu" onclick="event.stopPropagation()">
+                      <button type="button" onclick="toggleFavoriteDeck('${encodeHandlerValue(folderSubject)}')">${isFavorite ? "Remove from Favorites" : "Add to Favorites"}</button>
+                      <button type="button" onclick="toggleArchiveDeck('${encodeHandlerValue(folderSubject)}')">${isArchived ? "Unarchive Folder" : "Archive Folder"}</button>
+                    </div>
+                  </details>`
+                : "";
+
+              return `<div data-tree-key="${escapeHTML(childPath.join("::"))}" onclick="${action}" class="deck-tree-row deck-tree-grid ${rowClass} items-center gap-2 px-3 py-2.5 cursor-pointer transition-all duration-150">
+                <div class="min-w-0 flex items-center text-base sm:text-lg text-gray-700 dark:text-gray-200" style="padding-left: ${indent}px">${icon}${typeIcon}<span class="deck-tree-name ${nameCaseClass}">${safeKey}</span>${recentlyViewedIcon}${favoriteIcon}<span class="deck-tree-actions">${mistakesActionIcon}${deckActionIcon}</span></div>
+                ${renderTreeStat(stats.total, allCountColor)}
+                ${renderTreeStat(stats.correctCount, "text-green-400 dark:text-green-300")}
+                ${renderTreeStat(
+                  stats.mistakesCount,
+                  "text-red-400 dark:text-red-300",
+                  !isGroup
+                    ? `handleDeckClick('${encodeHandlerValue(deckSubject)}', 'mistakes')`
+                    : "",
+                )}
+                <div class="flex justify-center">${isTopLevelGroup ? settingsHtml : resetActionIcon}</div>
+              </div>${isGroup && !isCollapsed ? renderTreeRows(item, depth + 1, showAllChildren || (sourceFilter === "favorites" && matchesFavoriteDeck(item, key)), childPath) : ""}`;
+            })
+            .join("");
+        }
+
+        const treeRows = renderTreeRows(tree);
+        html += `<div class="deck-tree-grid gap-2 px-3 py-3 border-b border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-100">
+          <span>Deck</span><span class="tree-stat-label tree-stat-label-all text-right ${allHeaderColor}"><span class="tree-stat-label-text">All</span></span><span class="tree-stat-label text-right text-green-600 dark:text-green-300" title="Correct" aria-label="Correct"><span class="tree-stat-label-text">Correct</span><i class="tree-stat-label-icon fa-solid fa-check"></i></span><span class="tree-stat-label text-right text-red-600 dark:text-red-300" title="Mistakes" aria-label="Mistakes"><span class="tree-stat-label-text">Mistakes</span><i class="tree-stat-label-icon fa-solid fa-xmark"></i></span><span></span>
+        </div>${treeRows || '<div class="col-span-full text-center py-10 text-gray-500 dark:text-gray-400">No decks match your filter.</div>'}`;
+      } else if (visibleKeys.length === 0) {
         html += `<div class="col-span-full text-center py-10 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">No decks match your filter.</div>`;
       }
 
@@ -1602,68 +1860,73 @@
       `;
       }
 
-      visibleKeys.forEach((key, index) => {
-        const item = currentNode[key];
-        const hasChildren = Object.keys(item._children).length > 0;
-        const hasData = item._data !== null;
+      if (!isTree)
+        visibleKeys.forEach((key, index) => {
+          const item = currentNode[key];
+          const hasChildren = Object.keys(item._children).length > 0;
+          const hasData = item._data !== null;
 
-        const isExplicitFolder = hasData && item._data.IsFolder === true;
-        const delay = index * 0.05;
+          const isExplicitFolder = hasData && item._data.IsFolder === true;
+          const delay = index * 0.05;
 
-        if (hasChildren || isExplicitFolder) {
-          const totalCards = getFolderStats(item, folderStatsCache);
-          const folderClass = isGrid ? "h-full min-h-[140px]" : "h-auto";
+          if (hasChildren || isExplicitFolder) {
+            const totalCards = getFolderStats(item, folderStatsCache);
+            const folderClass = isGrid ? "h-full min-h-[140px]" : "h-auto";
 
-          const isReview = currentAppMode === "review";
-          const isRecentlyViewedFolder =
-            getRecentPathDepth(
-              (state.currentPath || []).concat(key).join("::"),
-            ) > 0;
-          const folderColorClass = isReview
-            ? "bg-purple-500 dark:bg-purple-700 group-hover:bg-purple-600 dark:group-hover:bg-purple-600"
-            : "bg-brand-500 dark:bg-brand-700 group-hover:bg-brand-600 dark:group-hover:bg-brand-600";
-          const folderTextHover = isReview
-            ? "group-hover:text-purple-600 dark:group-hover:text-purple-400"
-            : "group-hover:text-brand-600 dark:group-hover:text-brand-400";
+            const isReview = currentAppMode === "review";
+            const isRecentlyViewedFolder =
+              getRecentPathDepth(
+                (state.currentPath || []).concat(key).join("::"),
+              ) > 0;
+            const folderColorClass = isReview
+              ? "bg-purple-500 dark:bg-purple-700 group-hover:bg-purple-600 dark:group-hover:bg-purple-600"
+              : "bg-brand-500 dark:bg-brand-700 group-hover:bg-brand-600 dark:group-hover:bg-brand-600";
+            const folderTextHover = isReview
+              ? "group-hover:text-purple-600 dark:group-hover:text-purple-400"
+              : "group-hover:text-brand-600 dark:group-hover:text-brand-400";
 
-          const folderSubject =
-            (state.currentPath || []).concat(key).join("::") || key;
-          const isLocked =
-            isDeckLocked(folderSubject) || Boolean(item?._data?.Locked);
-          const lockIcon = isLocked
-            ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected Folder"></i>`
-            : "";
+            const folderSubject =
+              (state.currentPath || []).concat(key).join("::") || key;
+            const isLocked =
+              isDeckLocked(folderSubject) || Boolean(item?._data?.Locked);
+            const lockIcon = isLocked
+              ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected Folder"></i>`
+              : "";
 
-          const isRoot = !state.currentPath || state.currentPath.length === 0;
-          let archiveBtnHtml = "";
-          let favoriteBtnHtml = "";
+            const isRoot = !state.currentPath || state.currentPath.length === 0;
+            let archiveBtnHtml = "";
+            let favoriteBtnHtml = "";
 
-          if (isRoot) {
-            const isArchived = (state.prefs?.archivedDecks || []).includes(key);
-            const isFavorite = (state.prefs?.favoriteDecks || []).includes(key);
-            const archiveIconColor = isArchived
-              ? "text-amber-500 hover:text-amber-600"
-              : "text-gray-400 hover:text-brand-500";
-            const favoriteIconColor = isFavorite
-              ? "text-yellow-500 hover:text-yellow-600"
-              : "text-gray-400 hover:text-brand-500";
-            archiveBtnHtml = `
+            if (isRoot) {
+              const isArchived = (state.prefs?.archivedDecks || []).includes(
+                key,
+              );
+              const isFavorite = (state.prefs?.favoriteDecks || []).includes(
+                key,
+              );
+              const archiveIconColor = isArchived
+                ? "text-amber-500 hover:text-amber-600"
+                : "text-gray-400 hover:text-brand-500";
+              const favoriteIconColor = isFavorite
+                ? "text-yellow-500 hover:text-yellow-600"
+                : "text-gray-400 hover:text-brand-500";
+              archiveBtnHtml = `
             <button onclick="event.stopPropagation(); toggleArchiveDeck('${encodeHandlerValue(key)}')"
               class="transition-all transform hover:scale-110 active:scale-90 ${archiveIconColor} p-1 z-10"
               title="${isArchived ? "Unarchive Folder" : "Archive Folder"}">
               <i class="fa-solid fa-box-archive text-lg"></i>
             </button>
           `;
-            favoriteBtnHtml = `
+              favoriteBtnHtml = `
             <button onclick="event.stopPropagation(); toggleFavoriteDeck('${encodeHandlerValue(key)}')"
               class="transition-all transform hover:scale-110 active:scale-90 ${favoriteIconColor} p-1 z-10"
               title="${isFavorite ? "Remove from Favorites" : "Add to Favorites"}">
               <i class="fa-solid fa-star text-lg"></i>
             </button>
           `;
-          }
+            }
 
-          html += `
+            html += `
           <div data-folder-key="${escapeHTML(key)}" onclick="enterFolder(decodeHandlerValue('${encodeHandlerValue(key)}'), ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
             <div class="h-12 ${folderColorClass} transition-colors relative">
               <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
@@ -1684,10 +1947,10 @@
               </div>
             </div>
           </div>`;
-        } else if (hasData && !isExplicitFolder) {
-          html += generateCardHTML(item._data, key, delay);
-        }
-      });
+          } else if (hasData && !isExplicitFolder) {
+            html += generateCardHTML(item._data, key, delay);
+          }
+        });
 
       html += `</div>`;
       if (container) {
@@ -3031,6 +3294,19 @@
     return getRecentPathRelationDepth(activity, latest);
   }
 
+  function setTreeDeckLoading(subject, isLoading) {
+    const normalizedSubject = String(subject || "").trim();
+    if (!normalizedSubject || typeof document === "undefined") return;
+
+    document.querySelectorAll("[data-tree-key]").forEach((row) => {
+      if (String(row.dataset.treeKey || "").trim() !== normalizedSubject) {
+        return;
+      }
+      row.classList.toggle("deck-tree-row-busy", isLoading);
+      row.setAttribute("aria-busy", String(isLoading));
+    });
+  }
+
   async function handleDeckClick(subj, action = "continue") {
     subj = decodeHandlerValue(subj);
     if (!subj) return;
@@ -3045,11 +3321,13 @@
 
     deckInteractionLocked = true;
     activeDeckInteractionKey = nextKey;
+    setTreeDeckLoading(subj, true);
 
     const finishDeckInteraction = () => {
       if (activeDeckInteractionKey === nextKey) {
         deckInteractionLocked = false;
         activeDeckInteractionKey = null;
+        setTreeDeckLoading(subj, false);
       }
     };
 
@@ -3929,6 +4207,7 @@
     reloadAppStateInMemory,
     renderCategoryProgress,
     renderCategoryProgressNow,
+    toggleTreeNode,
     renderCharts,
     resetCategory,
     resetProgress,

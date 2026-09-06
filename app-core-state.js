@@ -35,7 +35,7 @@
     },
     prefs: {
       darkMode: true,
-      layoutMode: "grid",
+      layoutMode: "tree",
       activeRecall: false,
       shuffleChoices: true,
       shuffleQuestions: true,
@@ -59,6 +59,7 @@
       favoriteQuestions: [],
       studyFilterMode: "all",
       recentDecks: [],
+      treeCollapsedPaths: [],
       deletedDecks: [],
       localDownloadDeletedDecks: [],
       lastActivity: null,
@@ -331,6 +332,11 @@
     );
     normalized.clozeEnabled = coerceBoolean(normalized.clozeEnabled, false);
     normalized.srsEnabled = coerceBoolean(normalized.srsEnabled, false);
+    normalized.layoutMode = ["grid", "list", "tree"].includes(
+      normalized.layoutMode,
+    )
+      ? normalized.layoutMode
+      : "tree";
 
     normalized.archivedDecks = Array.isArray(normalized.archivedDecks)
       ? normalized.archivedDecks.filter((entry) => typeof entry === "string")
@@ -345,6 +351,11 @@
       : [];
     normalized.recentDecks = Array.isArray(normalized.recentDecks)
       ? normalized.recentDecks.filter((entry) => typeof entry === "string")
+      : [];
+    normalized.treeCollapsedPaths = Array.isArray(normalized.treeCollapsedPaths)
+      ? normalized.treeCollapsedPaths.filter(
+          (entry) => typeof entry === "string",
+        )
       : [];
     normalized.deletedDecks = Array.isArray(normalized.deletedDecks)
       ? normalized.deletedDecks.filter((entry) => typeof entry === "string")

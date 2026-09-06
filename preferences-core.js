@@ -280,8 +280,10 @@
   }
 
   function toggleLayout() {
+    const layoutModes = ["grid", "list", "tree"];
+    const currentIndex = layoutModes.indexOf(state.prefs.layoutMode);
     state.prefs.layoutMode =
-      state.prefs.layoutMode === "grid" ? "list" : "grid";
+      layoutModes[(currentIndex + 1) % layoutModes.length];
     saveState();
     renderCategoryProgress();
   }
