@@ -12,6 +12,7 @@
   let lastVirtualRenderKey = null;
   let reviewMainElement = null;
   let reviewContainerElement = null;
+  let pendingReviewScrollReset = false;
   let cachedReviewContainerTop = 0;
   const REVIEW_ESTIMATED_CARD_HEIGHT = 420;
   const REVIEW_VIRTUAL_OVERSCAN = 4;
@@ -462,7 +463,13 @@
     navigate("deck-review");
 
     if (!isVirtualScroll) {
-      if (reviewMainElement && layout === "scroll" && progress.scrollY) {
+      const shouldResetScroll = pendingReviewScrollReset;
+      pendingReviewScrollReset = false;
+      if (reviewMainElement && layout === "scroll" && shouldResetScroll) {
+        requestAnimationFrame(() => {
+          if (reviewMainElement) reviewMainElement.scrollTop = 0;
+        });
+      } else if (reviewMainElement && layout === "scroll" && progress.scrollY) {
         requestAnimationFrame(() => {
           if (reviewMainElement)
             reviewMainElement.scrollTop = progress.scrollY || 0;
@@ -522,6 +529,8 @@
     if (!progress) return;
     progress.page = Math.max(1, (progress.page || 1) + delta);
     progress.scrollY = 0;
+    pendingReviewScrollReset = true;
+    if (typeof window !== "undefined") clearTimeout(window.scrollSaveTimeout);
     if (reviewMainElement) reviewMainElement.scrollTop = 0;
     saveState();
     reRenderDeckReview();
@@ -545,6 +554,8 @@
     if (!progress || Number.isNaN(page)) return;
     progress.page = Math.max(1, page);
     progress.scrollY = 0;
+    pendingReviewScrollReset = true;
+    if (typeof window !== "undefined") clearTimeout(window.scrollSaveTimeout);
     if (reviewMainElement) reviewMainElement.scrollTop = 0;
     saveState();
     reRenderDeckReview();
