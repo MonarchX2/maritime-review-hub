@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-release-2026.09.08";
+const APP_VERSION = "mrh-release-2026.09.08-1";
 const FALLBACK_CACHE_VERSION = APP_VERSION;
 
 function getServiceWorkerUrl() {
@@ -87,6 +87,10 @@ const APP_SHELL = [
   "./text-utils.js",
 ].map(resolveAppUrl);
 
+const APP_SHELL_RESOURCE_NAMES = new Set(
+  APP_SHELL.map((url) => new URL(url).pathname.split("/").pop()),
+);
+
 const APP_SHELL_INTEGRITY = Object.freeze({
   "index.html":
     "5bf4c550f042d406ae54ac0d1c2e01a3ab1db4215bc4a0db130a0dade7682b1a",
@@ -97,15 +101,15 @@ const APP_SHELL_INTEGRITY = Object.freeze({
   "app-entry.js":
     "ffa27ecc42d00218891170461001d9313a7f8f2796878eb95fe84c8d8b289fea",
   "app-config.js":
-    "971f3f28cc40cb0b91b581b493436d4934cd6ed27b7349cbd62011f4a7d42dc1",
+    "197938d3dd5e3fb9cd3514bc2709509d2d893d6379d9a612710cd7c914bfc758",
   "app-core.js":
-    "9dd5e82463cc07cc128eb0f2ee3e5db2b829e1f03c47dcbb139221f331dd8b4b",
+    "edb6ce5b8875b1f8d89c62aa0c06456c3ab00ad13f897344fdc906471b372dfd",
   "preferences-core.js":
     "d8c8ce23660af4083e3f779ac193786ce22e10da51089e79031cbb38a59e9c1d",
   "dashboard-core.js":
     "e5f7668b6f3a72a27377c96bfd6f7d3974be6c772dd2292bdee6bfecefe7f202",
   "app-core-state.js":
-    "e388834146cf33ea94e09e3eab6970dce9f9a100a8789b66584516c8b55279d8",
+    "03017bff9a9652651ee76f8b075269e39d7ede394a614f13353397976a8c6351",
   "app-core-network.js":
     "c1d296ce4cf5a39a995a3ab48ab2a45ba2634b97b5f4fbfabab24fc52dcba46d",
   "sync-core.js":
@@ -207,7 +211,12 @@ function isAppShellNavigation(request) {
     return false;
   }
 
-  return APP_SHELL_NAVIGATION_PATHS.has(url.pathname || "/");
+  const appBasePath = getAppBasePath();
+  const normalizedPath = url.pathname || "/";
+  return (
+    APP_SHELL_NAVIGATION_PATHS.has(normalizedPath) ||
+    normalizedPath.startsWith(appBasePath)
+  );
 }
 
 async function getCache() {
@@ -320,6 +329,10 @@ async function networkFirstNavigation(event) {
 
     const response = preloadResponse || (await fetch(event.request));
 
+    if (!response.ok) {
+      throw new Error(`Navigation failed with HTTP ${response.status}`);
+    }
+
     await verifyResponseIntegrity(response, event.request.url);
 
     if (response && response.ok && response.type !== "opaque") {
@@ -371,6 +384,16 @@ async function networkFirstNavigation(event) {
       },
     );
   }
+}
+
+function getAppShellResourceRequest(request) {
+  const url = new URL(request.url);
+  if (!isSameOrigin(url)) return request;
+
+  const resourceName = url.pathname.split("/").pop();
+  if (!APP_SHELL_RESOURCE_NAMES.has(resourceName)) return request;
+
+  return new Request(resolveAppUrl(`./${resourceName}`), request);
 }
 
 async function staleWhileRevalidateStatic(request) {
@@ -459,7 +482,9 @@ self.addEventListener("fetch", (event) => {
 
   // Static resources: cached response first, with a background refresh.
   if (isStaticRequest(request)) {
-    event.respondWith(staleWhileRevalidateStatic(request));
+    event.respondWith(
+      staleWhileRevalidateStatic(getAppShellResourceRequest(request)),
+    );
     return;
   }
 

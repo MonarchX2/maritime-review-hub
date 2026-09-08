@@ -232,6 +232,7 @@
     const mistakes = state.stats?.mistakes;
     const favoriteDecks = state.prefs.favoriteDecks;
     const archivedDecks = state.prefs.archivedDecks;
+    const expandedArchivedPaths = state.prefs.expandedArchivedPaths;
     const accessMetadata = state.accessMetadata || {};
     const getSummarySignature = globalScope.getSummarySignature || (() => "");
 
@@ -274,6 +275,12 @@
       cache.archivedDecksRef = archivedDecks;
       cache.archivedDecksSignature = getCollectionSignature(archivedDecks);
     }
+    if (cache.expandedArchivedPathsRef !== expandedArchivedPaths) {
+      cache.expandedArchivedPathsRef = expandedArchivedPaths;
+      cache.expandedArchivedPathsSignature = getCollectionSignature(
+        expandedArchivedPaths,
+      );
+    }
     if (cache.accessMetadataRef !== accessMetadata) {
       cache.accessMetadataRef = accessMetadata;
       cache.accessMetadataSignature = getAccessMetadataSignature();
@@ -293,6 +300,7 @@
       cache.mistakesSignature,
       cache.favoriteDecksSignature,
       cache.archivedDecksSignature,
+      cache.expandedArchivedPathsSignature,
       cache.accessMetadataSignature,
       isInitialSyncComplete,
     ].join("\u001e");

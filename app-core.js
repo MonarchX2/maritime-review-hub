@@ -1294,6 +1294,7 @@
 
       if (!pathValid) {
         state.currentPath = [];
+        globalScope.persistNavigationPath(state.currentPath);
         currentNode = tree;
       }
 
@@ -1331,6 +1332,18 @@
       html += `<div class="${layoutClass}">`;
       const sortBy = state.prefs.deckSortBy || "letters";
       const sortDirection = state.prefs.deckSortDirection === "desc" ? -1 : 1;
+      const pinnedDecks = new Set(
+        Array.isArray(state.prefs.pinnedDecks)
+          ? state.prefs.pinnedDecks.filter((entry) => typeof entry === "string")
+          : [],
+      );
+      const getPinnedSortKey = (key) => {
+        const fullKey =
+          state.currentPath && state.currentPath.length > 0
+            ? [...state.currentPath, key].join("::")
+            : key;
+        return fullKey;
+      };
       const keys = Object.keys(currentNode)
         .map((key) => {
           const node = currentNode[key];
@@ -1342,6 +1355,17 @@
           return { key, metadata };
         })
         .sort((leftEntry, rightEntry) => {
+          const leftKey = getPinnedSortKey(leftEntry.key);
+          const rightKey = getPinnedSortKey(rightEntry.key);
+          const leftPinned =
+            leftEntry.metadata.isFolder && pinnedDecks.has(leftKey);
+          const rightPinned =
+            rightEntry.metadata.isFolder && pinnedDecks.has(rightKey);
+
+          if (leftPinned !== rightPinned) {
+            return leftPinned ? -1 : 1;
+          }
+
           const leftIsFolder = leftEntry.metadata.isFolder;
           const rightIsFolder = rightEntry.metadata.isFolder;
 
@@ -1366,6 +1390,17 @@
         .map((entry) => entry.key);
 
       const sourceFilter = state.prefs.deckSourceFilter || "all";
+      const archivedDecks = Array.isArray(state.prefs?.archivedDecks)
+        ? state.prefs.archivedDecks
+        : [];
+      const archiveScopePath = (state.currentPath || []).join("::");
+      const expandedArchivedPaths = Array.isArray(
+        state.prefs?.expandedArchivedPaths,
+      )
+        ? state.prefs.expandedArchivedPaths
+        : [];
+      const showArchivedDecks =
+        expandedArchivedPaths.includes(archiveScopePath);
       const favoriteDecks = Array.isArray(state.prefs.favoriteDecks)
         ? state.prefs.favoriteDecks
         : [];
@@ -1409,7 +1444,6 @@
       }
 
       function nodeMatchesFilter(node, filter, currentKey = null) {
-        const archivedDecks = state.prefs?.archivedDecks || [];
         let isArchived = false;
 
         if (
@@ -1442,7 +1476,18 @@
         }
 
         if (filter === "archived") return isArchived;
-        if (isArchived) return false;
+        if (isArchived && !showArchivedDecks) return false;
+
+        const childKeys = Object.keys(node._children || {});
+        const nodePath = [...(state.currentPath || []), currentKey]
+          .filter(Boolean)
+          .join("::");
+        const hasArchivedDescendant = archivedDecks.some((entry) =>
+          String(entry || "").startsWith(`${nodePath}::`),
+        );
+        if (filter === "all" && !isArchived && hasArchivedDescendant) {
+          return true;
+        }
 
         if (filter === "all") return true;
         if (filter === "favorites") {
@@ -1463,7 +1508,6 @@
           if (filter === "cloud") return !isDownloaded;
         }
 
-        const childKeys = Object.keys(node._children || {});
         if (childKeys.length > 0) {
           return childKeys.some((childKey) =>
             nodeMatchesFilter(node._children[childKey], filter, childKey),
@@ -1645,10 +1689,6 @@
                 ? '<i class="fa-solid fa-folder deck-tree-type-icon deck-tree-folder-icon" aria-hidden="true"></i>'
                 : '<i class="fa-regular fa-file-lines deck-tree-type-icon" aria-hidden="true"></i>';
               const nameCaseClass = isGroup ? "uppercase" : "";
-              const deckActionIcon =
-                !isGroup && currentAppMode === "review"
-                  ? `<button type="button" class="deck-tree-action" onclick="event.stopPropagation(); handleDeckClick('${encodeHandlerValue(deckSubject)}')" title="${currentAppMode === "review" ? "Review deck" : "Quiz deck"}" aria-label="${currentAppMode === "review" ? "Review deck" : "Quiz deck"}"><i class="fa-solid ${currentAppMode === "review" ? "fa-eye" : "fa-play"}"></i></button>`
-                  : "";
               const mistakesActionIcon =
                 !isGroup && stats.mistakesCount > 0
                   ? `<button type="button" class="deck-tree-action deck-tree-mistakes-action" onclick="event.stopPropagation(); handleDeckClick('${encodeHandlerValue(deckSubject)}', 'mistakes')" title="Review mistakes (${stats.mistakesCount})" aria-label="Review mistakes (${stats.mistakesCount})"><i class="fa-solid fa-triangle-exclamation"></i></button>`
@@ -1671,7 +1711,7 @@
 
               return `<div data-tree-key="${escapeHTML(childPath.join("::"))}" onclick="${action}" class="deck-tree-row deck-tree-grid ${rowClass} items-center gap-2 px-3 py-2.5 cursor-pointer transition-all duration-150">
                 <div class="min-w-0 flex items-center text-base sm:text-lg text-gray-700 dark:text-gray-200" style="padding-left: ${indent}px">${icon}${typeIcon}<span class="deck-tree-name ${nameCaseClass}">${safeKey}</span>${recentlyViewedIcon}${favoriteIcon}</div>
-                <span class="deck-tree-actions">${mistakesActionIcon}${deckActionIcon}</span>
+                <span class="deck-tree-actions">${mistakesActionIcon}</span>
                 ${renderTreeStat(stats.total, allCountColor)}
                 ${renderTreeStat(stats.correctCount, "text-green-400 dark:text-green-300")}
                 ${renderTreeStat(
@@ -1695,12 +1735,33 @@
         html += `<div class="col-span-full text-center py-10 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">No decks match your filter.</div>`;
       }
 
+      function getDeckTypeBadgeLabel(deckData) {
+        const rawType = String(deckData?.QuestionType ?? "")
+          .trim()
+          .toUpperCase();
+        if (!rawType) return "";
+
+        if (rawType === "ID") return "Identification";
+        if (rawType === "MCQ" || rawType === "MC") return "Multiple Choices";
+        if (
+          rawType === "MX" ||
+          rawType === "MIXED" ||
+          rawType === "MCQ/ID" ||
+          rawType === "ID/MCQ"
+        ) {
+          return "Mixed";
+        }
+
+        return "";
+      }
+
       function generateCardHTML(cat, displayName, delay = 0) {
         const subj = cat.Subject;
         const safeSubj = escapeHTML(subj);
         const encodedSubj = encodeHandlerValue(subj);
         const safeName = escapeHTML(displayName);
         const loaderId = getDeckLoaderId(subj);
+        const deckTypeBadge = getDeckTypeBadgeLabel(cat);
         const deckNameMode =
           state.prefs.deckNameMode === "clip"
             ? "truncate"
@@ -1709,21 +1770,6 @@
         const databaseUnavailable = !isInitialSyncComplete;
 
         const isRoot = !state.currentPath || state.currentPath.length === 0;
-        const isArchived = (state.prefs?.archivedDecks || []).includes(subj);
-        const archiveIconColor = isArchived
-          ? "text-amber-500 hover:text-amber-600"
-          : "text-gray-400 hover:text-brand-500";
-
-        let archiveBtnHTML = "";
-        if (isRoot) {
-          archiveBtnHTML = `
-          <button onclick="event.stopPropagation(); toggleArchiveDeck('${encodedSubj}')" 
-            class="transition-all transform hover:scale-110 active:scale-90 ${archiveIconColor} p-1" 
-            title="${isArchived ? "Unarchive Deck" : "Archive Deck"}">
-            <i class="fa-solid fa-box-archive"></i>
-          </button>
-        `;
-        }
 
         const data = state.stats.subjectAccuracy[subj] || {
           total: 0,
@@ -1752,7 +1798,7 @@
         const isReview = currentAppMode === "review";
         const isRecentlyViewed = getRecentPathDepth(subj) > 0;
         const recentViewedBadge = isRecentlyViewed
-          ? '<i class="fa-regular fa-clock text-xs text-amber-500 mr-2 flex-shrink-0" title="Recently Viewed"></i>'
+          ? '<i class="fa-regular fa-clock text-base text-amber-500 mr-0.5 flex-shrink-0" title="Recently Viewed"></i>'
           : "";
         const primaryActionText = isReview
           ? "Review"
@@ -1826,15 +1872,20 @@
           <div class="flex items-start justify-between mb-4 gap-2">
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2 mb-1 min-w-0">
-                <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors min-w-0">
-                  ${recentViewedBadge}
-                  ${unfinishedBadge}
-                  <span class="${deckNameMode} break-words">${safeName}</span> ${lockIcon}
-                </h3>
+                <div class="min-w-0 flex flex-col">
+                  <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors min-w-0 gap-1">
+                    ${recentViewedBadge}
+                    ${unfinishedBadge}
+                    <span class="${deckNameMode} break-words">${safeName}</span> ${lockIcon}
+                  </h3>
+                  ${deckTypeBadge ? `<span class="text-[10px] font-black uppercase tracking-[0.12em] ${isReview ? "text-purple-600 dark:text-purple-400" : "text-brand-500 dark:text-brand-300"} mt-1">${deckTypeBadge}</span>` : ""}
+                </div>
               </div>
               ${statsHTML}
             </div>
-            ${countBadgeHTML}
+            <div class="flex items-center gap-1.5">
+              ${countBadgeHTML}
+            </div>
           </div>
 
           ${progressBarHTML}
@@ -1889,6 +1940,7 @@
 
             const folderSubject =
               (state.currentPath || []).concat(key).join("::") || key;
+            const deckTypeBadge = getDeckTypeBadgeLabel(item?._data || {});
             const isLocked =
               isDeckLocked(folderSubject) || Boolean(item?._data?.Locked);
             const lockIcon = isLocked
@@ -1896,37 +1948,48 @@
               : "";
 
             const isRoot = !state.currentPath || state.currentPath.length === 0;
+            let pinBtnHtml = "";
             let archiveBtnHtml = "";
             let favoriteBtnHtml = "";
-
-            if (isRoot) {
-              const isArchived = (state.prefs?.archivedDecks || []).includes(
-                key,
-              );
-              const isFavorite = (state.prefs?.favoriteDecks || []).includes(
-                key,
-              );
-              const archiveIconColor = isArchived
-                ? "text-amber-500 hover:text-amber-600"
-                : "text-gray-400 hover:text-brand-500";
-              const favoriteIconColor = isFavorite
-                ? "text-yellow-500 hover:text-yellow-600"
-                : "text-gray-400 hover:text-brand-500";
-              archiveBtnHtml = `
-            <button onclick="event.stopPropagation(); toggleArchiveDeck('${encodeHandlerValue(key)}')"
+            const isArchived = (state.prefs?.archivedDecks || []).includes(
+              folderSubject,
+            );
+            const isFavorite = (state.prefs?.favoriteDecks || []).includes(
+              folderSubject,
+            );
+            const isPinned = (state.prefs?.pinnedDecks || []).includes(
+              folderSubject,
+            );
+            const archiveIconColor = isArchived
+              ? "text-amber-500 hover:text-amber-600"
+              : "text-gray-400 hover:text-brand-500";
+            const favoriteIconColor = isFavorite
+              ? "text-yellow-500 hover:text-yellow-600"
+              : "text-gray-400 hover:text-brand-500";
+            const pinIconColor = isPinned
+              ? "text-amber-500 hover:text-amber-600"
+              : "text-gray-400 hover:text-brand-500";
+            pinBtnHtml = `
+            <button onclick="event.stopPropagation(); togglePinDeck('${encodeHandlerValue(folderSubject)}')"
+              class="transition-all transform hover:scale-110 active:scale-90 ${pinIconColor} p-1 z-10"
+              title="${isPinned ? "Unpin Folder" : "Pin Folder"}">
+              <i class="${isPinned ? "fa-solid fa-thumbtack" : "fa-solid fa-thumbtack opacity-25"} text-lg" style="${isPinned ? "" : "transform: rotate(45deg); display: inline-block;"}"></i>
+            </button>
+          `;
+            archiveBtnHtml = `
+            <button onclick="event.stopPropagation(); toggleArchiveDeck('${encodeHandlerValue(folderSubject)}')"
               class="transition-all transform hover:scale-110 active:scale-90 ${archiveIconColor} p-1 z-10"
               title="${isArchived ? "Unarchive Folder" : "Archive Folder"}">
               <i class="fa-solid fa-box-archive text-lg"></i>
             </button>
           `;
-              favoriteBtnHtml = `
-            <button onclick="event.stopPropagation(); toggleFavoriteDeck('${encodeHandlerValue(key)}')"
+            favoriteBtnHtml = `
+            <button onclick="event.stopPropagation(); toggleFavoriteDeck('${encodeHandlerValue(folderSubject)}')"
               class="transition-all transform hover:scale-110 active:scale-90 ${favoriteIconColor} p-1 z-10"
               title="${isFavorite ? "Remove from Favorites" : "Add to Favorites"}">
               <i class="fa-solid fa-star text-lg"></i>
             </button>
           `;
-            }
 
             html += `
           <div data-folder-key="${escapeHTML(key)}" onclick="enterFolder(decodeHandlerValue('${encodeHandlerValue(key)}'), ${isLocked})" class="cursor-pointer group animate-card-in bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative" style="animation-delay: ${delay}s;">
@@ -1935,11 +1998,15 @@
             </div>
             <div class="p-4 flex-1 flex flex-col justify-between">
               <div class="flex justify-between items-start w-full gap-2">
-                <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg flex items-center min-w-0">
-                  ${isRecentlyViewedFolder ? '<i class="fa-regular fa-clock text-xs text-amber-500 mr-2 flex-shrink-0" title="Recently Viewed"></i>' : ""}
-                  <span class="${state.prefs.deckNameMode === "clip" ? "truncate" : "whitespace-normal break-words"}">${escapeHTML(key)}</span> ${lockIcon}
-                </h3>
+                <div class="min-w-0 flex flex-col">
+                  <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg flex items-center min-w-0 gap-1">
+                    ${isRecentlyViewedFolder ? '<i class="fa-regular fa-clock text-base text-amber-500 mr-0.5 flex-shrink-0" title="Recently Viewed"></i>' : ""}
+                    <span class="${state.prefs.deckNameMode === "clip" ? "truncate" : "whitespace-normal break-words"}">${escapeHTML(key)}</span> ${lockIcon}
+                  </h3>
+                  ${deckTypeBadge ? `<span class="text-[10px] font-black uppercase tracking-[0.12em] ${isReview ? "text-purple-600 dark:text-purple-400" : "text-brand-500 dark:text-brand-300"} mt-1">${deckTypeBadge}</span>` : ""}
+                </div>
                 <div class="flex items-center gap-1.5">
+                  ${pinBtnHtml}
                   ${favoriteBtnHtml}
                   ${archiveBtnHtml}
                 </div>
@@ -1955,6 +2022,24 @@
         });
 
       html += `</div>`;
+      const archivedDeckCount = new Set(
+        archivedDecks.filter((entry) => {
+          if (typeof entry !== "string" || !entry.trim()) return false;
+          return archiveScopePath
+            ? entry === archiveScopePath ||
+                entry.startsWith(`${archiveScopePath}::`)
+            : true;
+        }),
+      ).size;
+      if (archivedDeckCount > 0 && sourceFilter !== "archived") {
+        const archivedToggleLabel = showArchivedDecks ? "Hide" : "Show";
+        const archivedDeckNoun = archivedDeckCount === 1 ? "Deck" : "Decks";
+        html += `<div class="w-full flex justify-center mt-4 mb-2">
+          <button type="button" onclick="toggleArchivedDeckVisibility()" class="text-sm font-bold text-gray-600 dark:text-gray-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors">
+            ${archivedToggleLabel} (${archivedDeckCount}) Archived ${archivedDeckNoun}
+          </button>
+        </div>`;
+      }
       if (container) {
         const template = document.createElement("template");
         template.innerHTML = html;
@@ -2460,6 +2545,41 @@
     invalidateCategoryProgressRenderSignature();
     renderCategoryProgress();
     showToast(isFavorite ? "Removed from Favorites." : "Added to Favorites.");
+  }
+
+  function togglePinDeck(subjectId) {
+    subjectId = decodeHandlerValue(subjectId);
+    if (!subjectId) return;
+
+    if (!Array.isArray(state.prefs.pinnedDecks)) {
+      state.prefs.pinnedDecks = [];
+    }
+
+    const existing = state.prefs.pinnedDecks.filter(Boolean);
+    const isPinned = existing.includes(subjectId);
+
+    state.prefs.pinnedDecks = isPinned
+      ? existing.filter((deck) => deck !== subjectId)
+      : [...existing, subjectId];
+
+    saveState();
+    invalidateCategoryProgressRenderSignature();
+    renderCategoryProgress();
+    showToast(isPinned ? "Removed from Pins." : "Pinned to top.");
+  }
+
+  function toggleArchivedDeckVisibility() {
+    const archiveScopePath = (state.currentPath || []).join("::");
+    const expandedPaths = Array.isArray(state.prefs.expandedArchivedPaths)
+      ? state.prefs.expandedArchivedPaths
+      : [];
+    const isExpanded = expandedPaths.includes(archiveScopePath);
+    state.prefs.expandedArchivedPaths = isExpanded
+      ? expandedPaths.filter((path) => path !== archiveScopePath)
+      : [...expandedPaths, archiveScopePath];
+    saveState();
+    invalidateCategoryProgressRenderSignature();
+    renderCategoryProgress();
   }
 
   async function toggleArchiveDeck(subjectId) {
@@ -4259,9 +4379,11 @@
     toggleActiveRecall,
     toggleAppMode,
     toggleArchiveDeck,
+    toggleArchivedDeckVisibility,
     toggleCurrentQuestionFavorite,
     toggleDeckSortDirection,
     toggleFavoriteDeck,
+    togglePinDeck,
     toggleLayout,
     toggleMainNavigationPosition,
     toggleNavigationPosition,

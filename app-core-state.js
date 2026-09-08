@@ -45,6 +45,7 @@
       clozeEnabled: false,
       srsEnabled: false,
       archivedDecks: [],
+      expandedArchivedPaths: [],
       databaseUpdateMode: "immediate",
       quizNavigationPosition: "top",
       quizNavigationMode: "manual",
@@ -56,6 +57,7 @@
       deckSortDirection: "asc",
       deckNameMode: "wrap",
       favoriteDecks: [],
+      pinnedDecks: [],
       favoriteQuestions: [],
       studyFilterMode: "all",
       recentDecks: [],
@@ -101,6 +103,68 @@
       return StorageUtils.setStoredJSON(key, value);
     } catch (error) {
       return false;
+    }
+  }
+
+  function getNavigationPathFromUrl() {
+    if (typeof window === "undefined" || !window.location) return [];
+
+    const isLocalFile = window.location.protocol === "file:";
+    const source = isLocalFile
+      ? window.location.hash.replace(/^#\/?/, "")
+      : window.location.pathname;
+    const segments = source.split("/").filter(Boolean);
+    if (isLocalFile) {
+      try {
+        return segments
+          .map((segment) => decodeURIComponent(segment))
+          .filter(Boolean);
+      } catch (error) {
+        return [];
+      }
+    }
+
+    const basePath =
+      rootScope.MRH_CONFIG?.appBasePath || rootScope.__MRH_APP_BASE_PATH || "/";
+    const baseSegments = basePath.split("/").filter(Boolean);
+    const baseMatches = baseSegments.every(
+      (segment, index) => segments[index] === segment,
+    );
+    if (!baseMatches) return [];
+    segments.splice(0, baseSegments.length);
+    if (segments[0] === "index.html" || segments[0] === "index.htm") {
+      segments.shift();
+    }
+
+    try {
+      return segments.map((segment) => decodeURIComponent(segment)).filter(Boolean);
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function updateNavigationUrl(path) {
+    if (typeof window === "undefined" || !window.history) return;
+
+    const normalized = Array.isArray(path)
+      ? path.filter((entry) => typeof entry === "string" && entry.trim())
+      : [];
+    const basePath =
+      rootScope.MRH_CONFIG?.appBasePath || rootScope.__MRH_APP_BASE_PATH || "/";
+    const route = normalized.map((entry) => encodeURIComponent(entry.trim())).join("/");
+    if (window.location.protocol === "file:") {
+      const nextHash = route ? `#/${route}` : "";
+      if (nextHash !== window.location.hash) {
+        window.location.hash = nextHash;
+      }
+      return;
+    }
+
+    const pathname = `${basePath.replace(/\/+$/, "/")}${route}`;
+    const nextUrl = `${pathname || "/"}${window.location.search}${window.location.hash}`;
+
+    if (nextUrl !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+      window.history.replaceState({ mrhPath: normalized }, "", nextUrl);
     }
   }
 
@@ -341,8 +405,18 @@
     normalized.archivedDecks = Array.isArray(normalized.archivedDecks)
       ? normalized.archivedDecks.filter((entry) => typeof entry === "string")
       : [];
+    normalized.expandedArchivedPaths = Array.isArray(
+      normalized.expandedArchivedPaths,
+    )
+      ? normalized.expandedArchivedPaths.filter(
+          (entry) => typeof entry === "string",
+        )
+      : [];
     normalized.favoriteDecks = Array.isArray(normalized.favoriteDecks)
       ? normalized.favoriteDecks.filter((entry) => typeof entry === "string")
+      : [];
+    normalized.pinnedDecks = Array.isArray(normalized.pinnedDecks)
+      ? normalized.pinnedDecks.filter((entry) => typeof entry === "string")
       : [];
     normalized.favoriteQuestions = Array.isArray(normalized.favoriteQuestions)
       ? normalized.favoriteQuestions.filter(
@@ -654,8 +728,9 @@
       document.documentElement.classList.add("dark");
     }
 
-    state.currentPath =
-      Array.isArray(savedPath) && savedPath.length > 0 ? savedPath : [];
+    const urlPath = getNavigationPathFromUrl();
+    state.currentPath = urlPath.length > 0 ? urlPath : savedPath;
+    updateNavigationUrl(state.currentPath);
 
     const dbSizeEl =
       typeof document !== "undefined"
@@ -783,6 +858,7 @@
                 .map((entry) => String(entry).trim())
             : [];
           if (globalScope.state) globalScope.state.currentPath = normalized;
+          updateNavigationUrl(normalized);
           try {
             setStoredItem("mrh_navigation_path", JSON.stringify(normalized));
           } catch (e) {
@@ -805,6 +881,8 @@
             return [];
           }
         };
+  globalScope.getNavigationPathFromUrl = getNavigationPathFromUrl;
+  globalScope.updateNavigationUrl = updateNavigationUrl;
   globalScope.getStoredItem = getStoredItem;
   globalScope.getAnyNamespaceStoredItem = getAnyNamespaceStoredItem;
   globalScope.setStoredItem = setStoredItem;

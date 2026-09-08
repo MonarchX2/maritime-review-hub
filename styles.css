@@ -123,8 +123,16 @@
   text-align: right;
 }
 
-.deck-tree-grid > :nth-child(3) {
-  text-align: left;
+.deck-tree-grid > :nth-child(3),
+.deck-tree-grid > :nth-child(4),
+.deck-tree-grid > :nth-child(5) {
+  text-align: right;
+}
+
+.deck-tree-grid > :nth-child(6) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .deck-tree-row:hover,
