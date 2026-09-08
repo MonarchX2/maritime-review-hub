@@ -137,7 +137,9 @@
     }
 
     try {
-      return segments.map((segment) => decodeURIComponent(segment)).filter(Boolean);
+      return segments
+        .map((segment) => decodeURIComponent(segment))
+        .filter(Boolean);
     } catch (error) {
       return [];
     }
@@ -151,7 +153,9 @@
       : [];
     const basePath =
       rootScope.MRH_CONFIG?.appBasePath || rootScope.__MRH_APP_BASE_PATH || "/";
-    const route = normalized.map((entry) => encodeURIComponent(entry.trim())).join("/");
+    const route = normalized
+      .map((entry) => encodeURIComponent(entry.trim()))
+      .join("/");
     if (window.location.protocol === "file:") {
       const nextHash = route ? `#/${route}` : "";
       if (nextHash !== window.location.hash) {
@@ -163,7 +167,10 @@
     const pathname = `${basePath.replace(/\/+$/, "/")}${route}`;
     const nextUrl = `${pathname || "/"}${window.location.search}${window.location.hash}`;
 
-    if (nextUrl !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+    if (
+      nextUrl !==
+      `${window.location.pathname}${window.location.search}${window.location.hash}`
+    ) {
       window.history.replaceState({ mrhPath: normalized }, "", nextUrl);
     }
   }
