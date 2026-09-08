@@ -170,12 +170,9 @@
     }
 
     const pathname = `${basePath.replace(/\/+$/, "/")}${route}`;
-    const nextUrl = `${pathname || "/"}${window.location.search}${window.location.hash}`;
+    const nextUrl = `${pathname || "/"}${window.location.search}`;
 
-    if (
-      nextUrl !==
-      `${window.location.pathname}${window.location.search}${window.location.hash}`
-    ) {
+    if (nextUrl !== `${window.location.pathname}${window.location.search}`) {
       window.history.replaceState({ mrhPath: normalized }, "", nextUrl);
     }
   }

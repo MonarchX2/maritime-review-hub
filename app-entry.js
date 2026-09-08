@@ -1,9 +1,17 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-release-2026.09.08";
+  const APP_VERSION = "mrh-release-2026.09.08-2";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
   const bootstrapLogger = () => rootScope.DebugUtils || console;
+
+  if (typeof window !== "undefined") {
+    const controllerUrl = navigator.serviceWorker?.controller?.scriptURL;
+    const scriptUrl =
+      controllerUrl || document.currentScript?.src || window.location.href;
+    const scriptPath = new URL(".", scriptUrl).pathname;
+    rootScope.__MRH_APP_BASE_PATH = scriptPath;
+  }
 
   rootScope.__MRH_APP__ = rootScope.__MRH_APP__ || {
     version: APP_VERSION,
@@ -187,7 +195,11 @@
       return;
     }
 
-    const swUrl = new URL("./sw.js", window.location.href);
+    const swBaseUrl = new URL(
+      rootScope.__MRH_APP_BASE_PATH || "/",
+      window.location.origin,
+    );
+    const swUrl = new URL("sw.js", swBaseUrl);
     swUrl.searchParams.set("v", rootScope.__MRH_APP__?.version || APP_VERSION);
 
     const controllerUrl = navigator.serviceWorker.controller?.scriptURL || "";

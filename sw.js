@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-release-2026.09.08-1";
+const APP_VERSION = "mrh-release-2026.09.08-2";
 const FALLBACK_CACHE_VERSION = APP_VERSION;
 
 function getServiceWorkerUrl() {
@@ -93,15 +93,15 @@ const APP_SHELL_RESOURCE_NAMES = new Set(
 
 const APP_SHELL_INTEGRITY = Object.freeze({
   "index.html":
-    "5bf4c550f042d406ae54ac0d1c2e01a3ab1db4215bc4a0db130a0dade7682b1a",
+    "5acb25de2e7ea469174fc1e8843ebb70e6a8407de428cfb38c8976abc50e295d",
   "tailwind.generated.css":
     "b8660785a8ba0756314bcd068fd43e2bd218228a574db158e0c5496d2330d37c",
   "styles.css":
     "098f08286d4a3b083186440224fb054b70c0e4dda472b9b4d2629f413097ce9a",
   "app-entry.js":
-    "ffa27ecc42d00218891170461001d9313a7f8f2796878eb95fe84c8d8b289fea",
+    "6259612901e16748cc3151f4bfdf654230347191976968af99a8501a330ef5de",
   "app-config.js":
-    "197938d3dd5e3fb9cd3514bc2709509d2d893d6379d9a612710cd7c914bfc758",
+    "8672f81f9a60377745c2c9b0077f5e09ff4a1340c181803370f6125357d995c8",
   "app-core.js":
     "edb6ce5b8875b1f8d89c62aa0c06456c3ab00ad13f897344fdc906471b372dfd",
   "preferences-core.js":
@@ -109,7 +109,7 @@ const APP_SHELL_INTEGRITY = Object.freeze({
   "dashboard-core.js":
     "e5f7668b6f3a72a27377c96bfd6f7d3974be6c772dd2292bdee6bfecefe7f202",
   "app-core-state.js":
-    "48845a169e78468f6a40a4d627c959d099332e1cd9f28caa561b6fefc71819f7",
+    "717d54c39c8fa45694690df5704499d00637bfc7095516206a117c9dfabd6b71",
   "app-core-network.js":
     "c1d296ce4cf5a39a995a3ab48ab2a45ba2634b97b5f4fbfabab24fc52dcba46d",
   "sync-core.js":

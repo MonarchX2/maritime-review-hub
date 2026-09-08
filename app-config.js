@@ -2,7 +2,7 @@
   "use strict";
 
   globalScope.MRH_CONFIG = Object.freeze({
-    appBasePath: "/",
+    appBasePath: "",
     databaseUrl:
       "https://script.google.com/macros/s/AKfycbyM7L_Fam7UT8iRrCVy09ktV5VPPJxMLF2in6kwUewUJJ-La-BYd8okAsPVC8Tkcaw/exec",
     syncIntervalMs: 60 * 1000,
