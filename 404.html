@@ -16,7 +16,11 @@
           .filter(Boolean);
         const candidates = [];
 
-        for (let baseLength = pathSegments.length; baseLength >= 0; baseLength--) {
+        for (
+          let baseLength = pathSegments.length;
+          baseLength >= 0;
+          baseLength--
+        ) {
           const baseSegments = pathSegments.slice(0, baseLength);
           const basePath = `/${baseSegments.join("/")}${baseSegments.length ? "/" : ""}`;
           candidates.push({ baseLength, basePath });

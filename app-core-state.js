@@ -137,10 +137,7 @@
     }
     if (segments.length === 0 && window.location.hash.startsWith("#/")) {
       segments.push(
-        ...window.location.hash
-          .replace(/^#\/?/, "")
-          .split("/")
-          .filter(Boolean),
+        ...window.location.hash.replace(/^#\/?/, "").split("/").filter(Boolean),
       );
     }
 
