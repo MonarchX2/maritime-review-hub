@@ -37,9 +37,13 @@
               .slice(candidate.baseLength)
               .map((segment) => {
                 try {
-                  return encodeURIComponent(decodeURIComponent(segment));
+                  return encodeURIComponent(
+                    decodeURIComponent(segment.replace(/\+/g, " ")),
+                  ).replace(/%20/g, "+");
                 } catch (error) {
-                  return encodeURIComponent(segment);
+                  return encodeURIComponent(
+                    segment.replace(/\+/g, " "),
+                  ).replace(/%20/g, "+");
                 }
               })
               .join("/");
@@ -51,7 +55,15 @@
           }
         }
 
-        window.location.replace(`./index.html#/${pathSegments.join("/")}`);
+        const fallbackRoute = pathSegments
+          .map((segment) =>
+            encodeURIComponent(segment.replace(/\+/g, " ")).replace(
+              /%20/g,
+              "+",
+            ),
+          )
+          .join("/");
+        window.location.replace(`./index.html#/${fallbackRoute}`);
       })();
     </script>
   </body>

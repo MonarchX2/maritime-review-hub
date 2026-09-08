@@ -106,6 +106,14 @@
     }
   }
 
+  function encodeNavigationSegment(value) {
+    return encodeURIComponent(String(value || "")).replace(/%20/g, "+");
+  }
+
+  function decodeNavigationSegment(value) {
+    return decodeURIComponent(String(value || "").replace(/\+/g, " "));
+  }
+
   function getNavigationPathFromUrl() {
     if (typeof window === "undefined" || !window.location) return [];
 
@@ -117,7 +125,7 @@
     if (isLocalFile) {
       try {
         return segments
-          .map((segment) => decodeURIComponent(segment))
+          .map((segment) => decodeNavigationSegment(segment))
           .filter(Boolean);
       } catch (error) {
         return [];
@@ -143,7 +151,7 @@
 
     try {
       return segments
-        .map((segment) => decodeURIComponent(segment))
+        .map((segment) => decodeNavigationSegment(segment))
         .filter(Boolean);
     } catch (error) {
       return [];
@@ -159,7 +167,7 @@
     const basePath =
       rootScope.MRH_CONFIG?.appBasePath || rootScope.__MRH_APP_BASE_PATH || "/";
     const route = normalized
-      .map((entry) => encodeURIComponent(entry.trim()))
+      .map((entry) => encodeNavigationSegment(entry.trim()))
       .join("/");
     if (window.location.protocol === "file:") {
       const nextHash = route ? `#/${route}` : "";

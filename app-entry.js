@@ -1,7 +1,7 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-release-2026.09.08-2";
+  const APP_VERSION = "mrh-release-2026.09.08-5";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
   const bootstrapLogger = () => rootScope.DebugUtils || console;
 
@@ -66,7 +66,14 @@
         const raw = String(src || "").trim();
         if (!raw) return raw;
         try {
-          const url = new URL(raw, window.location.href);
+          const baseHref =
+            window.location.protocol === "file:"
+              ? window.location.href
+              : new URL(
+                  rootScope.__MRH_APP_BASE_PATH || "/",
+                  window.location.origin,
+                ).href;
+          const url = new URL(raw, baseHref);
           url.searchParams.set("v", APP_VERSION);
           return url.href;
         } catch (error) {

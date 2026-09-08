@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-release-2026.09.08-2";
+const APP_VERSION = "mrh-release-2026.09.08-5";
 const FALLBACK_CACHE_VERSION = APP_VERSION;
 
 function getServiceWorkerUrl() {
@@ -64,6 +64,8 @@ const APP_SHELL_NAVIGATION_PATHS = getAppShellNavigationPaths();
 
 const APP_SHELL = [
   "./index.html",
+  "./manifest.json",
+  "./icon.svg",
   "./tailwind.generated.css",
   "./styles.css",
   "./app-entry.js",
@@ -93,13 +95,17 @@ const APP_SHELL_RESOURCE_NAMES = new Set(
 
 const APP_SHELL_INTEGRITY = Object.freeze({
   "index.html":
-    "5acb25de2e7ea469174fc1e8843ebb70e6a8407de428cfb38c8976abc50e295d",
+    "351d3230e29d82aadaf98772a37d880b83b02fab0e0623b71d6d7b6db5717562",
+  "manifest.json":
+    "7bd842d298ba80a98729151b94f99f5514956b9999ae33c03d7827f641aa610f",
+  "icon.svg":
+    "a9a2e1c6dd6f3169cadec129b72e815c163e6de59b5a8347230bff731f30fa79",
   "tailwind.generated.css":
     "b8660785a8ba0756314bcd068fd43e2bd218228a574db158e0c5496d2330d37c",
   "styles.css":
     "098f08286d4a3b083186440224fb054b70c0e4dda472b9b4d2629f413097ce9a",
   "app-entry.js":
-    "6259612901e16748cc3151f4bfdf654230347191976968af99a8501a330ef5de",
+    "b3e357f57f9dc6219c496e6f0dc242ac2ec526816228f6c7e088bd10fab39ae0",
   "app-config.js":
     "8672f81f9a60377745c2c9b0077f5e09ff4a1340c181803370f6125357d995c8",
   "app-core.js":
@@ -109,7 +115,7 @@ const APP_SHELL_INTEGRITY = Object.freeze({
   "dashboard-core.js":
     "e5f7668b6f3a72a27377c96bfd6f7d3974be6c772dd2292bdee6bfecefe7f202",
   "app-core-state.js":
-    "717d54c39c8fa45694690df5704499d00637bfc7095516206a117c9dfabd6b71",
+    "23be129da643c15060b529b466bf1ab063585c3dda88aa6144d3881b2318933d",
   "app-core-network.js":
     "c1d296ce4cf5a39a995a3ab48ab2a45ba2634b97b5f4fbfabab24fc52dcba46d",
   "sync-core.js":
@@ -198,7 +204,10 @@ function isStaticRequest(request) {
   // For same-origin requests, only intercept actual static resources.
   // fetch()/XHR requests normally have an empty destination and will
   // therefore pass through untouched.
-  return STATIC_DESTINATIONS.has(request.destination);
+  return (
+    STATIC_DESTINATIONS.has(request.destination) ||
+    APP_SHELL_RESOURCE_NAMES.has(url.pathname.split("/").pop())
+  );
 }
 
 function isAppShellNavigation(request) {
