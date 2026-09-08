@@ -1645,9 +1645,10 @@
                 ? '<i class="fa-solid fa-folder deck-tree-type-icon deck-tree-folder-icon" aria-hidden="true"></i>'
                 : '<i class="fa-regular fa-file-lines deck-tree-type-icon" aria-hidden="true"></i>';
               const nameCaseClass = isGroup ? "uppercase" : "";
-              const deckActionIcon = !isGroup
-                ? `<button type="button" class="deck-tree-action" onclick="event.stopPropagation(); handleDeckClick('${encodeHandlerValue(deckSubject)}')" title="${currentAppMode === "review" ? "Review deck" : "Quiz deck"}" aria-label="${currentAppMode === "review" ? "Review deck" : "Quiz deck"}"><i class="fa-solid ${currentAppMode === "review" ? "fa-eye" : "fa-play"}"></i></button>`
-                : "";
+              const deckActionIcon =
+                !isGroup && currentAppMode === "review"
+                  ? `<button type="button" class="deck-tree-action" onclick="event.stopPropagation(); handleDeckClick('${encodeHandlerValue(deckSubject)}')" title="${currentAppMode === "review" ? "Review deck" : "Quiz deck"}" aria-label="${currentAppMode === "review" ? "Review deck" : "Quiz deck"}"><i class="fa-solid ${currentAppMode === "review" ? "fa-eye" : "fa-play"}"></i></button>`
+                  : "";
               const mistakesActionIcon =
                 !isGroup && stats.mistakesCount > 0
                   ? `<button type="button" class="deck-tree-action deck-tree-mistakes-action" onclick="event.stopPropagation(); handleDeckClick('${encodeHandlerValue(deckSubject)}', 'mistakes')" title="Review mistakes (${stats.mistakesCount})" aria-label="Review mistakes (${stats.mistakesCount})"><i class="fa-solid fa-triangle-exclamation"></i></button>`
@@ -1669,7 +1670,8 @@
                 : "";
 
               return `<div data-tree-key="${escapeHTML(childPath.join("::"))}" onclick="${action}" class="deck-tree-row deck-tree-grid ${rowClass} items-center gap-2 px-3 py-2.5 cursor-pointer transition-all duration-150">
-                <div class="min-w-0 flex items-center text-base sm:text-lg text-gray-700 dark:text-gray-200" style="padding-left: ${indent}px">${icon}${typeIcon}<span class="deck-tree-name ${nameCaseClass}">${safeKey}</span>${recentlyViewedIcon}${favoriteIcon}<span class="deck-tree-actions">${mistakesActionIcon}${deckActionIcon}</span></div>
+                <div class="min-w-0 flex items-center text-base sm:text-lg text-gray-700 dark:text-gray-200" style="padding-left: ${indent}px">${icon}${typeIcon}<span class="deck-tree-name ${nameCaseClass}">${safeKey}</span>${recentlyViewedIcon}${favoriteIcon}</div>
+                <span class="deck-tree-actions">${mistakesActionIcon}${deckActionIcon}</span>
                 ${renderTreeStat(stats.total, allCountColor)}
                 ${renderTreeStat(stats.correctCount, "text-green-400 dark:text-green-300")}
                 ${renderTreeStat(
@@ -1687,7 +1689,7 @@
 
         const treeRows = renderTreeRows(tree);
         html += `<div class="deck-tree-grid gap-2 px-3 py-3 border-b border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-100">
-          <span>Deck</span><span class="tree-stat-label tree-stat-label-all text-right ${allHeaderColor}"><span class="tree-stat-label-text">All</span></span><span class="tree-stat-label text-right text-green-600 dark:text-green-300" title="Correct" aria-label="Correct"><span class="tree-stat-label-text">Correct</span><i class="tree-stat-label-icon fa-solid fa-check"></i></span><span class="tree-stat-label text-right text-red-600 dark:text-red-300" title="Mistakes" aria-label="Mistakes"><span class="tree-stat-label-text">Mistakes</span><i class="tree-stat-label-icon fa-solid fa-xmark"></i></span><span></span>
+          <span>Deck</span><span></span><span class="tree-stat-label tree-stat-label-all text-right ${allHeaderColor}"><span class="tree-stat-label-text">All</span></span><span class="tree-stat-label text-right text-green-600 dark:text-green-300" title="Correct" aria-label="Correct"><span class="tree-stat-label-text">Correct</span><i class="tree-stat-label-icon fa-solid fa-check"></i></span><span class="tree-stat-label text-right text-red-600 dark:text-red-300" title="Mistakes" aria-label="Mistakes"><span class="tree-stat-label-text">Mistakes</span><i class="tree-stat-label-icon fa-solid fa-xmark"></i></span><span></span>
         </div>${treeRows || '<div class="col-span-full text-center py-10 text-gray-500 dark:text-gray-400">No decks match your filter.</div>'}`;
       } else if (visibleKeys.length === 0) {
         html += `<div class="col-span-full text-center py-10 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">No decks match your filter.</div>`;
@@ -1742,7 +1744,7 @@
           : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700";
         const unfinishedBadge =
           mistakesCount > 0
-            ? '<i class="fa-solid fa-file-circle-xmark text-orange-500 mr-2 flex-shrink-0" title="Unfinished"></i>'
+            ? '<i class="fa-solid fa-file-circle-xmark text-white mr-2 flex-shrink-0" title="Unfinished"></i>'
             : "";
         const availabilityClasses = databaseUnavailable
           ? "opacity-40 cursor-not-allowed pointer-events-none"
