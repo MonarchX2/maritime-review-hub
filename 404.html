@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Loading Maritime Review Hub</title>
+  </head>
+  <body>
+    <p>Loading Maritime Review Hub...</p>
+    <script>
+      (async function () {
+        "use strict";
+
+        const pathSegments = window.location.pathname
+          .split("/")
+          .filter(Boolean);
+        const candidates = [];
+
+        for (let baseLength = pathSegments.length; baseLength >= 0; baseLength--) {
+          const baseSegments = pathSegments.slice(0, baseLength);
+          const basePath = `/${baseSegments.join("/")}${baseSegments.length ? "/" : ""}`;
+          candidates.push({ baseLength, basePath });
+        }
+
+        for (const candidate of candidates) {
+          try {
+            const response = await fetch(`${candidate.basePath}index.html`, {
+              cache: "no-store",
+            });
+            if (!response.ok) continue;
+
+            const route = pathSegments
+              .slice(candidate.baseLength)
+              .map((segment) => {
+                try {
+                  return encodeURIComponent(decodeURIComponent(segment));
+                } catch (error) {
+                  return encodeURIComponent(segment);
+                }
+              })
+              .join("/");
+            const hash = route ? `#/${route}` : "";
+            window.location.replace(`${candidate.basePath}index.html${hash}`);
+            return;
+          } catch (error) {
+            // Try the next possible app base path.
+          }
+        }
+
+        window.location.replace(`./index.html#/${pathSegments.join("/")}`);
+      })();
+    </script>
+  </body>
+</html>

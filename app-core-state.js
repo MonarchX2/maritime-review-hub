@@ -135,6 +135,14 @@
     if (segments[0] === "index.html" || segments[0] === "index.htm") {
       segments.shift();
     }
+    if (segments.length === 0 && window.location.hash.startsWith("#/")) {
+      segments.push(
+        ...window.location.hash
+          .replace(/^#\/?/, "")
+          .split("/")
+          .filter(Boolean),
+      );
+    }
 
     try {
       return segments

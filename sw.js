@@ -109,7 +109,7 @@ const APP_SHELL_INTEGRITY = Object.freeze({
   "dashboard-core.js":
     "e5f7668b6f3a72a27377c96bfd6f7d3974be6c772dd2292bdee6bfecefe7f202",
   "app-core-state.js":
-    "03017bff9a9652651ee76f8b075269e39d7ede394a614f13353397976a8c6351",
+    "48845a169e78468f6a40a4d627c959d099332e1cd9f28caa561b6fefc71819f7",
   "app-core-network.js":
     "c1d296ce4cf5a39a995a3ab48ab2a45ba2634b97b5f4fbfabab24fc52dcba46d",
   "sync-core.js":
