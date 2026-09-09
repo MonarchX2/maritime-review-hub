@@ -746,8 +746,18 @@
     }
 
     const urlPath = getNavigationPathFromUrl();
-    state.currentPath = urlPath.length > 0 ? urlPath : savedPath;
-    updateNavigationUrl(state.currentPath);
+    const isSettingsRoute =
+      urlPath.length === 1 && urlPath[0].toLowerCase() === "settings";
+    state.currentPath = isSettingsRoute
+      ? []
+      : urlPath.length > 0
+        ? urlPath
+        : savedPath;
+    if (isSettingsRoute) {
+      globalScope.navigate?.("settings");
+    } else {
+      updateNavigationUrl(state.currentPath);
+    }
 
     const dbSizeEl =
       typeof document !== "undefined"

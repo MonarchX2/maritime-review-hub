@@ -68,6 +68,11 @@
       .querySelectorAll(".view-section")
       .forEach((el) => el.classList.remove("active"));
     viewElement.classList.add("active");
+    if (viewId === "settings") {
+      globalScope.updateNavigationUrl?.(["settings"]);
+    } else if (globalScope.getNavigationPathFromUrl?.()[0] === "settings") {
+      globalScope.updateNavigationUrl?.(state.currentPath || []);
+    }
     globalScope.updateDashboard();
     if (viewId === "stats") globalScope.renderCharts();
   }
