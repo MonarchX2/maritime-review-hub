@@ -225,7 +225,17 @@
   function normalizeQuestionRecord(question, subjectOverride = null) {
     if (!question || typeof question !== "object") return {};
 
-    const source = question;
+    const source = Array.isArray(question)
+      ? {
+          i: question[0],
+          q: question[1],
+          c: question[2],
+          a: question[3],
+          t: question[4],
+          ...(question[5] != null ? { e: question[5] } : {}),
+          ...(question[6] != null ? { u: question[6] } : {}),
+        }
+      : question;
     const choices = Array.isArray(source.c) ? source.c : null;
     const normalized = {
       Subject: firstAvailableValue(subjectOverride, source.Subject, source.s),
