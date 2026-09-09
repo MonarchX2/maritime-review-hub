@@ -194,9 +194,10 @@
 
     function schedulePoll() {
       if (disposed || !options.isLeader()) return cancelPoll();
+      if (pollTimer !== null) return;
       const activeToken = ++pollLoopToken;
-      cancelPoll();
       pollTimer = lifecycle.setTimeout(() => {
+        pollTimer = null;
         if (activeToken !== pollLoopToken) return;
         if (typeof document !== "undefined" && document.hidden) return;
         optimizedBackgroundSync().finally(() => {
@@ -208,6 +209,8 @@
 
     function scheduleRetry(showOverlay = true) {
       if (disposed) return;
+      cancelPoll();
+      if (retryTimer !== null) return;
       lifecycle.clearTimeout(retryTimer);
       lifecycle.clearInterval(countdownTimer);
       const retryCount = Math.max(0, Number(attempt || 1) - 1);
@@ -231,10 +234,12 @@
       };
       renderCountdown();
       countdownTimer = lifecycle.setInterval(renderCountdown, 1000);
-      retryTimer = lifecycle.setTimeout(
-        () => syncDatabase(true, !effectiveShowOverlay),
-        delay,
-      );
+      retryTimer = lifecycle.setTimeout(() => {
+        retryTimer = null;
+        lifecycle.clearInterval(countdownTimer);
+        countdownTimer = null;
+        syncDatabase(true, !effectiveShowOverlay);
+      }, delay);
     }
 
     function normalizeSummary(summary) {
@@ -255,6 +260,7 @@
     async function optimizedBackgroundSync() {
       if (disposed) return;
       if (backgroundPromise) return backgroundPromise;
+      if (inFlightPromise) return inFlightPromise;
       backgroundPromise = (async () => {
         if (disposed) return;
         if (!options.isLeader()) return;
@@ -333,7 +339,9 @@
       if (inFlightPromise) return inFlightPromise;
       inFlightPromise = (async () => {
         lifecycle.clearTimeout(retryTimer);
+        retryTimer = null;
         lifecycle.clearInterval(countdownTimer);
+        countdownTimer = null;
         cancelPoll();
         abortController?.abort();
         const silent = isBackgroundCheck || options.hasActiveSession();
@@ -472,7 +480,9 @@
         disposed = true;
         cancelPoll();
         lifecycle.clearTimeout(retryTimer);
+        retryTimer = null;
         lifecycle.clearInterval(countdownTimer);
+        countdownTimer = null;
         abortController?.abort();
       },
     };

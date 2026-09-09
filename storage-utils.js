@@ -66,38 +66,29 @@
 
   function getStorage(kind) {
     const isSession = kind === "session";
-
-    if (isSession ? sessionStorageResolved : localStorageResolved) {
-      return isSession ? sessionStorageRef : localStorageRef;
-    }
-
     const property = isSession ? "sessionStorage" : "localStorage";
-    let resolved = null;
+    const nativeStorage = root[property];
 
-    try {
-      const nativeStorage = root[property];
-      if (isStorageLike(nativeStorage)) {
-        // Probe once per storage type because browsers can expose storage while
-        // still denying access at runtime.
-        const probeKey = "__mrh_storage_probe__";
-        nativeStorage.setItem(probeKey, "1");
-        nativeStorage.removeItem(probeKey);
-        resolved = nativeStorage;
+    if (nativeStorage && isStorageLike(nativeStorage)) {
+      if (isSession) {
+        sessionStorageRef = nativeStorage;
+        sessionStorageResolved = true;
+      } else {
+        localStorageRef = nativeStorage;
+        localStorageResolved = true;
       }
-    } catch (error) {
-      resolved = null;
+      return nativeStorage;
     }
 
-    if (!resolved) resolved = getMemoryStorage(kind);
-
+    const fallbackStorage = getMemoryStorage(kind);
     if (isSession) {
-      sessionStorageRef = resolved;
+      sessionStorageRef = fallbackStorage;
       sessionStorageResolved = true;
     } else {
-      localStorageRef = resolved;
+      localStorageRef = fallbackStorage;
       localStorageResolved = true;
     }
-    return resolved;
+    return fallbackStorage;
   }
 
   function getLocalStorage() {
@@ -293,28 +284,9 @@
 
   function getAnyNamespaceStoredItem(key, fallback = null) {
     const store = getLocalStorage();
-    const suffix = `:${normalizeStorageKey(key)}`;
     const activeKey = getStorageKey(key);
-
-    for (let i = 0; i < store.length; i += 1) {
-      let storedKey = null;
-      try {
-        storedKey = store.key(i);
-      } catch (error) {
-        continue;
-      }
-      if (
-        !storedKey ||
-        storedKey === activeKey ||
-        !storedKey.startsWith("mrh_") ||
-        !storedKey.endsWith(suffix)
-      )
-        continue;
-
-      const value = safeGetItem(store, storedKey);
-      if (value !== null) return value;
-    }
-    return fallback;
+    const activeValue = safeGetItem(store, activeKey);
+    return activeValue !== null ? activeValue : fallback;
   }
 
   function setStoredItem(key, value) {
@@ -325,7 +297,7 @@
     const store = getLocalStorage();
     const removedCurrent = safeRemoveItem(store, getStorageKey(key));
     const removedLegacy = safeRemoveItem(store, getLegacyStorageKey(key));
-    return removedCurrent && removedLegacy;
+    return removedCurrent || removedLegacy;
   }
 
   function getStoredJSON(key, fallback = null) {
@@ -364,7 +336,7 @@
     const store = getSessionStorage();
     const removedCurrent = safeRemoveItem(store, getStorageKey(key));
     const removedLegacy = safeRemoveItem(store, getLegacyStorageKey(key));
-    return removedCurrent && removedLegacy;
+    return removedCurrent || removedLegacy;
   }
 
   function getSessionStoredJSON(key, fallback = null) {
