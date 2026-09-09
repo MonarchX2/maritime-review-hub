@@ -28,7 +28,12 @@
 
         for (const candidate of candidates) {
           try {
-            const response = await fetch(`${candidate.basePath}index.html`, {
+            const candidateUrl = new URL(
+              `${candidate.basePath}index.html`,
+              window.location.origin,
+            );
+            candidateUrl.search = window.location.search;
+            const response = await fetch(candidateUrl.href, {
               cache: "no-store",
             });
             if (!response.ok) continue;
@@ -48,7 +53,14 @@
               })
               .join("/");
             const hash = route ? `#/${route}` : "";
-            window.location.replace(`${candidate.basePath}index.html${hash}`);
+            const target = new URL(
+              `${candidate.basePath}index.html${hash}`,
+              window.location.origin,
+            );
+            target.search = window.location.search;
+            window.location.replace(
+              target.pathname + target.search + target.hash,
+            );
             return;
           } catch (error) {
             // Try the next possible app base path.
@@ -63,7 +75,12 @@
             ),
           )
           .join("/");
-        window.location.replace(`./index.html#/${fallbackRoute}`);
+        const fallback = new URL("/index.html", window.location.origin);
+        fallback.search = window.location.search;
+        fallback.hash = fallbackRoute ? `/${fallbackRoute}` : "";
+        window.location.replace(
+          fallback.pathname + fallback.search + fallback.hash,
+        );
       })();
     </script>
   </body>

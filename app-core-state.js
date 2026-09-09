@@ -114,6 +114,24 @@
     return decodeURIComponent(String(value || "").replace(/\+/g, " "));
   }
 
+  function getAppBasePath() {
+    const configuredPath =
+      rootScope.MRH_CONFIG?.appBasePath || rootScope.__MRH_APP_BASE_PATH || "/";
+    const rawPath = String(configuredPath).trim() || "/";
+    const pathOnly = rawPath.split(/[?#]/, 1)[0] || "/";
+    const withLeadingSlash = pathOnly.startsWith("/")
+      ? pathOnly
+      : `/${pathOnly}`;
+    const normalized = withLeadingSlash.replace(/\/+/g, "/");
+    return normalized === "/" ? "/" : `${normalized.replace(/\/+$/, "")}/`;
+  }
+
+  function getHashNavigationSegments() {
+    const hash = String(window.location.hash || "");
+    if (!hash.startsWith("#/")) return [];
+    return hash.slice(2).split("/").filter(Boolean);
+  }
+
   function getNavigationPathFromUrl() {
     if (typeof window === "undefined" || !window.location) return [];
 
@@ -128,12 +146,12 @@
           .map((segment) => decodeNavigationSegment(segment))
           .filter(Boolean);
       } catch (error) {
-        return [];
+        console.warn("Invalid navigation URL segment.", error);
+        return null;
       }
     }
 
-    const basePath =
-      rootScope.MRH_CONFIG?.appBasePath || rootScope.__MRH_APP_BASE_PATH || "/";
+    const basePath = getAppBasePath();
     const baseSegments = basePath.split("/").filter(Boolean);
     const baseMatches = baseSegments.every(
       (segment, index) => segments[index] === segment,
@@ -143,29 +161,25 @@
     if (segments[0] === "index.html" || segments[0] === "index.htm") {
       segments.shift();
     }
-    if (segments.length === 0 && window.location.hash.startsWith("#/")) {
-      segments.push(
-        ...window.location.hash.replace(/^#\/?/, "").split("/").filter(Boolean),
-      );
-    }
+    if (segments.length === 0) segments.push(...getHashNavigationSegments());
 
     try {
       return segments
         .map((segment) => decodeNavigationSegment(segment))
         .filter(Boolean);
     } catch (error) {
-      return [];
+      console.warn("Invalid navigation URL segment.", error);
+      return null;
     }
   }
 
-  function updateNavigationUrl(path) {
+  function updateNavigationUrl(path, options = {}) {
     if (typeof window === "undefined" || !window.history) return;
 
     const normalized = Array.isArray(path)
       ? path.filter((entry) => typeof entry === "string" && entry.trim())
       : [];
-    const basePath =
-      rootScope.MRH_CONFIG?.appBasePath || rootScope.__MRH_APP_BASE_PATH || "/";
+    const basePath = getAppBasePath();
     const route = normalized
       .map((entry) => encodeNavigationSegment(entry.trim()))
       .join("/");
@@ -177,12 +191,67 @@
       return;
     }
 
-    const pathname = `${basePath.replace(/\/+$/, "/")}${route}`;
+    const pathname = `${basePath}${route}`;
     const nextUrl = `${pathname || "/"}${window.location.search}`;
 
     if (nextUrl !== `${window.location.pathname}${window.location.search}`) {
-      window.history.replaceState({ mrhPath: normalized }, "", nextUrl);
+      const updateHistory = options.replace
+        ? window.history.replaceState
+        : window.history.pushState;
+      updateHistory.call(window.history, { mrhPath: normalized }, "", nextUrl);
     }
+  }
+
+  let navigationChangeInFlight = false;
+
+  async function handleNavigationUrlChange() {
+    if (navigationChangeInFlight) return;
+
+    const urlPath = getNavigationPathFromUrl();
+    if (urlPath === null) return;
+    const isSettingsRoute =
+      urlPath.length === 1 && urlPath[0].toLowerCase() === "settings";
+    const targetView = isSettingsRoute ? "settings" : "dashboard";
+    const previousView =
+      typeof document !== "undefined"
+        ? document
+            .querySelector(".view-section.active")
+            ?.id.replace(/^view-/, "")
+        : "";
+    const previousPath = Array.isArray(state.currentPath)
+      ? [...state.currentPath]
+      : [];
+    const previousRoute =
+      previousView === "settings" ? ["settings"] : previousPath;
+
+    if (previousView === targetView) {
+      if (!isSettingsRoute) {
+        state.currentPath = urlPath;
+        globalScope.renderCategoryProgress?.();
+      }
+      return;
+    }
+
+    if (typeof globalScope.navigate !== "function") return;
+
+    navigationChangeInFlight = true;
+    try {
+      const navigated = await globalScope.navigate(targetView);
+      if (navigated !== true) {
+        updateNavigationUrl(previousRoute, { replace: true });
+        return;
+      }
+
+      state.currentPath = isSettingsRoute ? [] : urlPath;
+      if (!isSettingsRoute) globalScope.renderCategoryProgress?.();
+    } finally {
+      navigationChangeInFlight = false;
+    }
+  }
+
+  if (typeof window !== "undefined") {
+    window.addEventListener("hashchange", handleNavigationUrlChange);
+    window.addEventListener("popstate", handleNavigationUrlChange);
   }
 
   function getSessionStoredItem(key, fallback = null) {
@@ -756,17 +825,20 @@
     }
 
     const urlPath = getNavigationPathFromUrl();
+    const hasInvalidUrl = urlPath === null;
     const isSettingsRoute =
-      urlPath.length === 1 && urlPath[0].toLowerCase() === "settings";
+      !hasInvalidUrl &&
+      urlPath.length === 1 &&
+      urlPath[0].toLowerCase() === "settings";
     state.currentPath = isSettingsRoute
       ? []
-      : urlPath.length > 0
+      : !hasInvalidUrl && urlPath.length > 0
         ? urlPath
         : savedPath;
     if (isSettingsRoute) {
-      globalScope.navigate?.("settings");
-    } else {
-      updateNavigationUrl(state.currentPath);
+      await globalScope.navigate?.("settings");
+    } else if (!hasInvalidUrl) {
+      updateNavigationUrl(state.currentPath, { replace: true });
     }
 
     const dbSizeEl =
@@ -827,7 +899,9 @@
         setStoredJSON("summary", state.categorySummary || []);
       if (saveMask & SAVE_PATH) {
         if (typeof globalScope.persistNavigationPath === "function") {
-          globalScope.persistNavigationPath(state.currentPath || []);
+          globalScope.persistNavigationPath(state.currentPath || [], {
+            updateUrl: false,
+          });
         } else {
           setStoredItem(
             "mrh_navigation_path",
@@ -888,14 +962,14 @@
   globalScope.persistNavigationPath =
     typeof globalScope.persistNavigationPath === "function"
       ? globalScope.persistNavigationPath
-      : (path) => {
+      : (path, options = {}) => {
           const normalized = Array.isArray(path)
             ? path
                 .filter((entry) => typeof entry === "string" && entry.trim())
                 .map((entry) => String(entry).trim())
             : [];
           if (globalScope.state) globalScope.state.currentPath = normalized;
-          updateNavigationUrl(normalized);
+          if (options.updateUrl !== false) updateNavigationUrl(normalized);
           try {
             setStoredItem("mrh_navigation_path", JSON.stringify(normalized));
           } catch (e) {

@@ -42,6 +42,20 @@
   }
 
   // ===================== VIEW NAVIGATION =====================
+  async function confirmNavigationAwayFromSession() {
+    const message =
+      "You have an active session. Do you want to pause and return? Your progress will be saved.";
+    const title = "Pause Session";
+
+    if (typeof globalScope.requestConfirmation === "function") {
+      return Boolean(await globalScope.requestConfirmation(message, title));
+    }
+
+    return typeof globalScope.confirm === "function"
+      ? Boolean(globalScope.confirm(message))
+      : false;
+  }
+
   async function navigate(viewId) {
     const viewElement = document.getElementById(`view-${viewId}`);
     if (!viewElement) return false;
@@ -49,19 +63,17 @@
     if (
       state.session.active &&
       viewId !== "practice" &&
-      !(await globalScope.requestConfirmation?.(
-        "You have an active session. Do you want to pause and return? Your progress will be saved.",
-        "Pause Session",
-      ))
+      !(await confirmNavigationAwayFromSession())
     )
-      return;
+      return false;
 
     if (viewElement.classList.contains("active")) return true;
 
     if (state.session.active && viewId !== "practice") {
       saveSessionProgress();
       state.session.active = false;
-      saveState();
+      if (viewId === "settings") state.currentPath = [];
+      await saveState();
     }
 
     document
@@ -75,6 +87,7 @@
     }
     globalScope.updateDashboard();
     if (viewId === "stats") globalScope.renderCharts();
+    return true;
   }
 
   // ===================== CATEGORY VISIBILITY & FILTERING =====================

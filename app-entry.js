@@ -6,11 +6,14 @@
   const bootstrapLogger = () => rootScope.DebugUtils || console;
 
   if (typeof window !== "undefined") {
-    const controllerUrl = navigator.serviceWorker?.controller?.scriptURL;
     const scriptUrl =
-      controllerUrl || document.currentScript?.src || window.location.href;
+      document.currentScript?.src ||
+      navigator.serviceWorker?.controller?.scriptURL ||
+      window.location.href;
     const scriptPath = new URL(".", scriptUrl).pathname;
-    rootScope.__MRH_APP_BASE_PATH = scriptPath;
+    rootScope.__MRH_APP_BASE_PATH = scriptPath.endsWith("/")
+      ? scriptPath
+      : `${scriptPath}/`;
   }
 
   rootScope.__MRH_APP__ = rootScope.__MRH_APP__ || {
@@ -241,7 +244,10 @@
 
     navigator.serviceWorker
       .register(swUrl.href, {
-        scope: "./",
+        scope: new URL(
+          rootScope.__MRH_APP_BASE_PATH || "/",
+          window.location.origin,
+        ).pathname,
         updateViaCache: "none",
       })
       .then((registration) => registration.update())
