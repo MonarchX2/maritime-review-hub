@@ -8,7 +8,6 @@
   const {
     state,
     saveState,
-    requestConfirmation,
     saveSessionProgress,
     getQuestionsForSubject,
     decodeHandlerValue,
@@ -46,17 +45,18 @@
   async function navigate(viewId) {
     const viewElement = document.getElementById(`view-${viewId}`);
     if (!viewElement) return false;
-    if (viewElement.classList.contains("active")) return true;
 
     if (
       state.session.active &&
       viewId !== "practice" &&
-      !(await requestConfirmation(
+      !(await globalScope.requestConfirmation?.(
         "You have an active session. Do you want to pause and return? Your progress will be saved.",
         "Pause Session",
       ))
     )
       return;
+
+    if (viewElement.classList.contains("active")) return true;
 
     if (state.session.active && viewId !== "practice") {
       saveSessionProgress();

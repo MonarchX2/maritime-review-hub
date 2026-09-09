@@ -2695,14 +2695,27 @@
     return SessionCore.trackStats(q, isCorrect);
   }
 
-  function endSession(silent = false) {
+  async function endSession(silent = false) {
     if (
       typeof SessionCore === "undefined" ||
       typeof SessionCore.endSession !== "function"
     ) {
       throw new Error("SessionCore is required before ending a session.");
     }
-    return SessionCore.endSession(silent);
+
+    if (!silent && state.session.active) {
+      const confirmed = await globalScope.requestConfirmation?.(
+        "Are you sure you want to exit this quiz? Your progress will be saved.",
+        "Exit Quiz",
+      );
+      if (!confirmed) return false;
+    }
+
+    SessionCore.endSession(true);
+    if (!silent && typeof globalScope.navigate === "function") {
+      await globalScope.navigate("dashboard");
+    }
+    return true;
   }
 
   function getAnalyticsCore() {
