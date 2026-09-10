@@ -1755,6 +1755,23 @@
         return "";
       }
 
+      function getFolderDeckTypeBadgeLabel(folderNode) {
+        const directBadge = getDeckTypeBadgeLabel(folderNode?._data);
+        if (directBadge) return directBadge;
+
+        const badges = new Set();
+        const collectChildBadges = (node) => {
+          if (!node) return;
+          const childBadge = getDeckTypeBadgeLabel(node._data);
+          if (childBadge) badges.add(childBadge);
+          Object.values(node._children || {}).forEach(collectChildBadges);
+        };
+        Object.values(folderNode?._children || {}).forEach(collectChildBadges);
+
+        if (badges.size === 1) return [...badges][0];
+        return badges.size > 1 ? "Mixed" : "";
+      }
+
       function generateCardHTML(cat, displayName, delay = 0) {
         const subj = cat.Subject;
         const safeSubj = escapeHTML(subj);
@@ -1878,7 +1895,7 @@
                     ${unfinishedBadge}
                     <span class="${deckNameMode} break-words">${safeName}</span> ${lockIcon}
                   </h3>
-                  ${deckTypeBadge ? `<span class="text-[10px] font-black uppercase tracking-[0.12em] ${isReview ? "text-purple-600 dark:text-purple-400" : "text-brand-500 dark:text-brand-300"} mt-1">${deckTypeBadge}</span>` : ""}
+                  ${deckTypeBadge ? `<span class="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600 dark:text-slate-400 mt-1">${deckTypeBadge}</span>` : ""}
                 </div>
               </div>
               ${statsHTML}
@@ -1940,7 +1957,7 @@
 
             const folderSubject =
               (state.currentPath || []).concat(key).join("::") || key;
-            const deckTypeBadge = getDeckTypeBadgeLabel(item?._data || {});
+            const deckTypeBadge = getFolderDeckTypeBadgeLabel(item);
             const isLocked =
               isDeckLocked(folderSubject) || Boolean(item?._data?.Locked);
             const lockIcon = isLocked
@@ -2003,7 +2020,7 @@
                     ${isRecentlyViewedFolder ? '<i class="fa-regular fa-clock text-base text-amber-500 mr-0.5 flex-shrink-0" title="Recently Viewed"></i>' : ""}
                     <span class="${state.prefs.deckNameMode === "clip" ? "truncate" : "whitespace-normal break-words"}">${escapeHTML(key)}</span> ${lockIcon}
                   </h3>
-                  ${deckTypeBadge ? `<span class="text-[10px] font-black uppercase tracking-[0.12em] ${isReview ? "text-purple-600 dark:text-purple-400" : "text-brand-500 dark:text-brand-300"} mt-1">${deckTypeBadge}</span>` : ""}
+                  ${deckTypeBadge ? `<span class="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600 dark:text-slate-400 mt-1">${deckTypeBadge}</span>` : ""}
                 </div>
                 <div class="flex items-center gap-1.5">
                   ${pinBtnHtml}
