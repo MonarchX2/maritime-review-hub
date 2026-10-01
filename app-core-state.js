@@ -191,10 +191,11 @@
       return;
     }
 
-    const pathname = `${basePath}${route}`;
-    const nextUrl = `${pathname || "/"}${window.location.search}`;
+    const pathname = `${basePath}index.html`;
+    const nextUrl = `${pathname}${window.location.search}${route ? `#/${route}` : ""}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
 
-    if (nextUrl !== `${window.location.pathname}${window.location.search}`) {
+    if (nextUrl !== currentUrl) {
       const updateHistory = options.replace
         ? window.history.replaceState
         : window.history.pushState;
