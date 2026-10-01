@@ -162,6 +162,9 @@
       segments.shift();
     }
     if (segments.length === 0) segments.push(...getHashNavigationSegments());
+    if (["index.html", "index.htm"].includes(segments.at(-1)?.toLowerCase())) {
+      segments.pop();
+    }
 
     try {
       return segments
