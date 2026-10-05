@@ -39,16 +39,26 @@
             if (!response.ok) continue;
 
             const appHtml = await response.text();
+            const baseElement = `<base href="${candidate.basePath}">`;
             const appHtmlWithBase = appHtml.replace(
               /<head(?:\s[^>]*)?>/i,
-              (head) => `${head}<base href="${candidate.basePath}">`,
+              (head) => `${head}${baseElement}`,
             );
-            if (appHtmlWithBase === appHtml) {
-              throw new Error("Application entry point has no head element.");
+            const appHtmlWithFallbackBase =
+              appHtmlWithBase === appHtml
+                ? appHtml.replace(
+                    /<html(?:\s[^>]*)?>/i,
+                    (html) => `${html}<head>${baseElement}`,
+                  )
+                : appHtmlWithBase;
+            if (appHtmlWithFallbackBase === appHtml) {
+              throw new Error(
+                  "Application entry point has no HTML root element.",
+              );
             }
 
             document.open();
-            document.write(appHtmlWithBase);
+            document.write(appHtmlWithFallbackBase);
             document.close();
             return;
           } catch (error) {

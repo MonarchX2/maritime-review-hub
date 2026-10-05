@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-release-2026.10.06";
+const APP_VERSION = "mrh-release-2026.10.06-1";
 const FALLBACK_CACHE_VERSION = APP_VERSION;
 
 function getServiceWorkerUrl() {
@@ -379,18 +379,28 @@ async function networkFirstNavigation(event) {
 
     if (cached) {
       const cachedHtml = await cached.text();
+      const baseElement = `<base href="${getAppBasePath()}">`;
       const appHtml = cachedHtml.replace(
         /<head(?:\s[^>]*)?>/i,
-        (head) => `${head}<base href="${getAppBasePath()}">`,
+        (head) => `${head}${baseElement}`,
       );
-      if (appHtml === cachedHtml) {
-        throw new Error("Cached application entry point has no head element.");
+      const appHtmlWithFallbackBase =
+        appHtml === cachedHtml
+          ? cachedHtml.replace(
+              /<html(?:\s[^>]*)?>/i,
+              (html) => `${html}<head>${baseElement}`,
+            )
+          : appHtml;
+      if (appHtmlWithFallbackBase === cachedHtml) {
+        throw new Error(
+          "Cached application entry point has no HTML root element.",
+        );
       }
 
       const headers = new Headers(cached.headers);
       headers.delete("content-length");
       headers.delete("content-encoding");
-      return new Response(appHtml, {
+      return new Response(appHtmlWithFallbackBase, {
         status: cached.status,
         statusText: cached.statusText,
         headers,
