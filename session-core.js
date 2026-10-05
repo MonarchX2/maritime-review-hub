@@ -99,6 +99,41 @@
     return state.session || null;
   }
 
+  function persistSessionPreferences() {
+    if (typeof globalScope.saveState === "function") {
+      try {
+        Promise.resolve(globalScope.saveState("prefs")).then(
+          (saved) => {
+            if (saved === false) {
+              DebugUtils.warn(
+                "Unable to persist session activity preferences.",
+              );
+            }
+          },
+          (error) => {
+            DebugUtils.warn(
+              "Unable to persist session activity preferences.",
+              error,
+            );
+          },
+        );
+      } catch (error) {
+        DebugUtils.warn(
+          "Unable to persist session activity preferences.",
+          error,
+        );
+      }
+      return;
+    }
+
+    if (
+      typeof globalScope.setStoredJSON === "function" &&
+      !globalScope.setStoredJSON("prefs", getPrefs())
+    ) {
+      DebugUtils.warn("Unable to persist session activity preferences.");
+    }
+  }
+
   function normalizeText(value) {
     return String(value ?? "").trim();
   }
@@ -891,25 +926,28 @@
     }
 
     try {
-      globalScope.setStoredJSON("saved_session", session);
+      let saveSucceeded = globalScope.setStoredJSON("saved_session", session);
+      if (!saveSucceeded) {
+        DebugUtils.warn("Unable to persist session progress.");
+      }
       prefs.lastActivity = {
         mode: "quiz",
         subject: session.questions?.[session.currentIndex]?.Subject || null,
         updatedAt: new Date().toISOString(),
       };
       state.prefs = prefs;
-      globalScope.setStoredJSON("prefs", prefs);
+      persistSessionPreferences();
       sessionSaveRequested = false;
-      return true;
+      return saveSucceeded;
     } catch (error) {
       sessionSaveRequested = false;
       DebugUtils.warn(
-        "Storage quota exceeded. Could not save session progress.",
+        "Unable to save session progress.",
         error,
       );
       if (typeof globalScope.showToast === "function") {
         globalScope.showToast(
-          "Storage full. Progress won't be saved.",
+          "Unable to save session progress. Changes may not be saved.",
           "error",
         );
       }
@@ -944,6 +982,9 @@
   }
 
   function cleanup() {
+    if (sessionSaveRequested) {
+      saveSessionProgress(true);
+    }
     elementCache.clear();
     choiceHandlerController?.abort();
     choiceHandlerController = null;
@@ -1038,8 +1079,7 @@
     const state = getState();
     if (!state.prefs || typeof state.prefs !== "object") state.prefs = {};
     state.prefs.lastActivity = null;
-    if (typeof globalScope.setStoredJSON === "function")
-      globalScope.setStoredJSON("prefs", state.prefs);
+    persistSessionPreferences();
     getElement("resume-container")?.classList.add("hidden");
   }
 

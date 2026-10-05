@@ -154,7 +154,11 @@
       if (reconnecting) return Promise.resolve();
       reconnecting = true;
       activeConnections = 0;
-      queue.length = 0;
+      const reconnectError = new Error(
+        "Connection pool reconnected while request was queued.",
+      );
+      reconnectError.name = "ReconnectError";
+      queue.splice(0).forEach(({ reject }) => reject(reconnectError));
       if (keepAliveTimer) {
         lifecycle.clearInterval(keepAliveTimer);
         keepAliveTimer = null;
@@ -180,7 +184,7 @@
       scheduleHealthCheck();
       const next = queue.shift();
       if (next) {
-        next();
+        next.resolve();
       }
     }
 
@@ -202,8 +206,8 @@
       }
 
       if (activeConnections >= settings.maxConnections) {
-        await new Promise((resolve) => {
-          queue.push(resolve);
+        await new Promise((resolve, reject) => {
+          queue.push({ resolve, reject });
         });
       }
 

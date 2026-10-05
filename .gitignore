@@ -1,6 +1,9 @@
 backend/
 old/
 tests/
+!tests/
+!tests/app-core-state-concurrency.test.js
+!tests/session-core-pagehide.test.js
 scripts/
 !scripts/
 !scripts/frontend-architecture-check.js

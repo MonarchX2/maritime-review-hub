@@ -17,7 +17,7 @@
   let sessionStorageResolved = false;
   let cachedStorageIdentity = null;
   let cachedStorageNamespace = null;
-  let lastQuotaWarningAt = 0;
+  let lastStorageWarningAt = 0;
 
   function createMemoryStorage(existing) {
     const store = existing && typeof existing === "object" ? existing : {};
@@ -241,16 +241,13 @@
     );
   }
 
-  function notifyQuotaExceeded() {
+  function notifyStorageFailure(message) {
     const now = Date.now();
-    if (now - lastQuotaWarningAt < 10000) return;
-    lastQuotaWarningAt = now;
+    if (now - lastStorageWarningAt < 10000) return;
+    lastStorageWarningAt = now;
 
     if (typeof root.showToast === "function") {
-      root.showToast(
-        "Storage is full. Some changes may not be saved. Free up browser storage and try again.",
-        "error",
-      );
+      root.showToast(message, "error");
     }
   }
 
@@ -259,7 +256,11 @@
       store.setItem(key, String(value));
       return true;
     } catch (error) {
-      if (isQuotaExceededError(error)) notifyQuotaExceeded();
+      notifyStorageFailure(
+        isQuotaExceededError(error)
+          ? "Storage is full. Some changes may not be saved. Free up browser storage and try again."
+          : "Unable to save data to browser storage. Some changes may not be saved.",
+      );
       return false;
     }
   }
@@ -309,11 +310,67 @@
     try {
       const serialized = JSON.stringify(value);
       if (serialized.length > MAX_JSON_PAYLOAD_BYTES) {
+        notifyStorageFailure(
+          "Saved data is too large for browser storage. Some changes may not be saved.",
+        );
         return false;
       }
       return setStoredItem(key, serialized);
     } catch (error) {
+      notifyStorageFailure(
+        "Unable to serialize data for browser storage. Some changes may not be saved.",
+      );
       return false;
+    }
+  }
+
+  async function mergeStoredJSON(key, value, merge) {
+    const storageKey = getStorageKey(key);
+    const writeMergedValue = () => {
+      const storedValue = getStoredJSON(key);
+      const nextValue = merge(storedValue, value);
+      return {
+        saved: setStoredJSON(key, nextValue),
+        value: nextValue,
+      };
+    };
+    const lockManager = root.navigator?.locks;
+
+    if (lockManager && typeof lockManager.request === "function") {
+      return lockManager.request(`mrh-storage:${storageKey}`, writeMergedValue);
+    }
+
+    const store = getLocalStorage();
+    const lockKey = `__mrh_storage_lock:${storageKey}`;
+    const lockToken = `${generateUserId()}:${Date.now()}`;
+    while (true) {
+      const currentLock = safeParseJSON(safeGetItem(store, lockKey));
+      if (!currentLock || currentLock.expiresAt <= Date.now()) {
+        const lockValue = JSON.stringify({
+          token: lockToken,
+          expiresAt: Date.now() + 5000,
+        });
+        if (!safeSetItem(store, lockKey, lockValue)) {
+          throw new Error("Unable to acquire the browser storage write lock.");
+        }
+
+        await new Promise((resolve) =>
+          root.setTimeout(resolve, 5 + Math.random() * 15),
+        );
+        const acquiredLock = safeParseJSON(safeGetItem(store, lockKey));
+        if (acquiredLock?.token === lockToken) {
+          try {
+            return writeMergedValue();
+          } finally {
+            const finalLock = safeParseJSON(safeGetItem(store, lockKey));
+            if (finalLock?.token === lockToken) {
+              safeRemoveItem(store, lockKey);
+            }
+          }
+        }
+      }
+
+      await new Promise((resolve) => root.setTimeout(resolve, 10));
     }
   }
 
@@ -348,10 +405,16 @@
     try {
       const serialized = JSON.stringify(value);
       if (serialized.length > MAX_JSON_PAYLOAD_BYTES) {
+        notifyStorageFailure(
+          "Saved data is too large for browser storage. Some changes may not be saved.",
+        );
         return false;
       }
       return setSessionStoredItem(key, serialized);
     } catch (error) {
+      notifyStorageFailure(
+        "Unable to serialize data for browser storage. Some changes may not be saved.",
+      );
       return false;
     }
   }
@@ -491,6 +554,7 @@
     removeStoredItem,
     getStoredJSON,
     setStoredJSON,
+    mergeStoredJSON,
     getSessionStoredItem,
     setSessionStoredItem,
     removeSessionStoredItem,

@@ -398,6 +398,98 @@
     return String(value).trim();
   }
 
+  function cloneStoredValue(value) {
+    return value === undefined
+      ? undefined
+      : JSON.parse(JSON.stringify(value));
+  }
+
+  function storedValuesEqual(left, right) {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+
+  function mergeSetArray(base, local, remote) {
+    const keyOf = (value) => JSON.stringify(value);
+    const baseKeys = new Set(base.map(keyOf));
+    const localKeys = new Set(local.map(keyOf));
+    const localRemoved = new Set(
+      base.filter((value) => !localKeys.has(keyOf(value))).map(keyOf),
+    );
+    const merged = remote.filter((value) => !localRemoved.has(keyOf(value)));
+    const mergedKeys = new Set(merged.map(keyOf));
+
+    local.forEach((value) => {
+      const key = keyOf(value);
+      if (!baseKeys.has(key) && !mergedKeys.has(key)) {
+        merged.push(value);
+        mergedKeys.add(key);
+      }
+    });
+    return merged;
+  }
+
+  function mergeStoredStateValue(key, base, local, remote, path = key) {
+    if (storedValuesEqual(local, base)) return cloneStoredValue(remote);
+    if (storedValuesEqual(remote, base)) return cloneStoredValue(local);
+
+    if (Array.isArray(base) && Array.isArray(local) && Array.isArray(remote)) {
+      if (
+        key === "stats" &&
+        ["stats.mistakes", "stats.completedQs"].includes(path)
+      ) {
+        return mergeSetArray(base, local, remote);
+      }
+      return cloneStoredValue(local);
+    }
+
+    const isStatsCounter =
+      key === "stats" &&
+      (["stats.totalAnswered", "stats.correct"].includes(path) ||
+        /^stats\.subjectAccuracy\.[^.]+\.(total|correct)$/.test(path));
+    if (isStatsCounter) {
+      const baseNumber = Number.isFinite(Number(base)) ? Number(base) : 0;
+      const delta = Number(local) - baseNumber;
+      if (Number.isFinite(delta) && Number.isFinite(Number(remote))) {
+        return Math.max(0, Number(remote) + delta);
+      }
+    }
+
+    const baseIsObject =
+      base !== null && typeof base === "object" && !Array.isArray(base);
+    const localIsObject =
+      local !== null && typeof local === "object" && !Array.isArray(local);
+    const remoteIsObject =
+      remote !== null && typeof remote === "object" && !Array.isArray(remote);
+
+    if (
+      localIsObject &&
+      remoteIsObject &&
+      (baseIsObject || base === null || base === undefined)
+    ) {
+      const baseObject = baseIsObject ? base : {};
+      const merged = {};
+      const keys = new Set([
+        ...Object.keys(baseObject),
+        ...Object.keys(local),
+        ...Object.keys(remote),
+      ]);
+      keys.forEach((childKey) => {
+        const childPath = `${path}.${childKey}`;
+        const value = mergeStoredStateValue(
+          key,
+          baseObject[childKey],
+          local[childKey],
+          remote[childKey],
+          childPath,
+        );
+        if (value !== undefined) merged[childKey] = value;
+      });
+      return merged;
+    }
+
+    return cloneStoredValue(local);
+  }
+
   function coerceBoolean(value, fallback = false) {
     if (typeof value === "boolean") return value;
     if (typeof value === "string") {
@@ -821,6 +913,11 @@
       globalScope.currentAppMode = state.prefs.lastActivity.mode;
     }
 
+    persistedStateBaseline = {
+      stats: cloneStoredValue(state.stats),
+      prefs: cloneStoredValue(state.prefs),
+    };
+
     if (!state.stats.subjectAccuracy) state.stats.subjectAccuracy = {};
     if (!["idle", "immediate"].includes(state.prefs.databaseUpdateMode)) {
       state.prefs.databaseUpdateMode = "idle";
@@ -874,6 +971,8 @@
   let stateSavePromise = null;
   let resolveStateSave = null;
   let stateSaveQueued = false;
+  let stateSaveFlushing = false;
+  let stateSaveSucceeded = true;
   let pendingSaveMask = 0;
 
   const SAVE_STATS = 1;
@@ -881,11 +980,39 @@
   const SAVE_SUMMARY = 4;
   const SAVE_PATH = 8;
   const SAVE_ALL = SAVE_STATS | SAVE_PREFS | SAVE_SUMMARY | SAVE_PATH;
+  let persistedStateBaseline = {
+    stats: cloneStoredValue(state.stats),
+    prefs: cloneStoredValue(state.prefs),
+  };
 
-  function flushStateSave() {
+  async function persistMergedState(key) {
+    const baseline = persistedStateBaseline[key];
+    const localValue = state[key];
+    const result = await StorageUtils.mergeStoredJSON(
+      key,
+      localValue,
+      (storedValue) =>
+        mergeStoredStateValue(
+          key,
+          baseline,
+          localValue,
+          storedValue ?? baseline,
+        ),
+    );
+
+    if (result.saved) {
+      state[key] = result.value;
+      persistedStateBaseline[key] = cloneStoredValue(result.value);
+    }
+    return result.saved;
+  }
+
+  async function flushStateSave() {
     stateSaveQueued = false;
+    stateSaveFlushing = true;
     const saveMask = pendingSaveMask || SAVE_ALL;
     pendingSaveMask = 0;
+    let saveSucceeded = true;
 
     try {
       if (typeof globalScope.emitDebugState === "function") {
@@ -898,25 +1025,51 @@
 
       // State is normalized at load/mutation boundaries. Avoid re-walking large
       // arrays and rebuilding objects every time a small statistic changes.
-      if (saveMask & SAVE_STATS) setStoredJSON("stats", state.stats);
-      if (saveMask & SAVE_PREFS) setStoredJSON("prefs", state.prefs);
-      if (saveMask & SAVE_SUMMARY)
-        setStoredJSON("summary", state.categorySummary || []);
+      if (saveMask & SAVE_STATS) {
+        if (!(await persistMergedState("stats"))) {
+          saveSucceeded = false;
+          DebugUtils.warn("Unable to persist application stats.");
+        }
+      }
+      if (saveMask & SAVE_PREFS) {
+        if (!(await persistMergedState("prefs"))) {
+          saveSucceeded = false;
+          DebugUtils.warn("Unable to persist application preferences.");
+        }
+      }
+      if (
+        (saveMask & SAVE_SUMMARY) &&
+        !setStoredJSON("summary", state.categorySummary || [])
+      ) {
+        saveSucceeded = false;
+        DebugUtils.warn("Unable to persist category summary.");
+      }
       if (saveMask & SAVE_PATH) {
         if (typeof globalScope.persistNavigationPath === "function") {
-          globalScope.persistNavigationPath(state.currentPath || [], {
-            updateUrl: false,
-          });
+          if (
+            globalScope.persistNavigationPath(state.currentPath || [], {
+              updateUrl: false,
+            }) === false
+          ) {
+            saveSucceeded = false;
+            DebugUtils.warn("Unable to persist navigation path.");
+          }
         } else {
-          setStoredItem(
-            "mrh_navigation_path",
-            JSON.stringify(
-              Array.isArray(state.currentPath) ? state.currentPath : [],
-            ),
-          );
+          if (
+            !setStoredItem(
+              "mrh_navigation_path",
+              JSON.stringify(
+                Array.isArray(state.currentPath) ? state.currentPath : [],
+              ),
+            )
+          ) {
+            saveSucceeded = false;
+            DebugUtils.warn("Unable to persist navigation path.");
+          }
         }
       }
     } catch (e) {
+      saveSucceeded = false;
       DebugUtils.error(e);
     }
 
@@ -925,17 +1078,40 @@
         dbCount: state.db.length,
         summaryCount: state.categorySummary.length,
         saveMask,
+        saveSucceeded,
       });
+    }
+
+    stateSaveSucceeded = stateSaveSucceeded && saveSucceeded;
+    stateSaveFlushing = false;
+    if (pendingSaveMask) {
+      queueStateSave();
+      return;
     }
 
     const resolve = resolveStateSave;
     stateSavePromise = null;
     resolveStateSave = null;
-    if (resolve) resolve();
+    if (resolve) resolve(stateSaveSucceeded);
+  }
+
+  function queueStateSave() {
+    if (stateSaveQueued || stateSaveFlushing) return;
+    stateSaveQueued = true;
+    if (typeof requestIdleCallback === "function") {
+      requestIdleCallback(flushStateSave, { timeout: 300 });
+    } else if (typeof setTimeout === "function") {
+      lifecycle.setTimeout(flushStateSave, 100);
+    } else if (typeof queueMicrotask === "function") {
+      queueMicrotask(flushStateSave);
+    } else {
+      Promise.resolve().then(flushStateSave);
+    }
   }
 
   function saveState(dirty = "all") {
     if (!stateSavePromise) {
+      stateSaveSucceeded = true;
       stateSavePromise = new Promise((resolve) => {
         resolveStateSave = resolve;
       });
@@ -947,18 +1123,7 @@
     else if (dirty === "path") pendingSaveMask |= SAVE_PATH;
     else pendingSaveMask |= SAVE_ALL;
 
-    if (!stateSaveQueued) {
-      stateSaveQueued = true;
-      if (typeof requestIdleCallback === "function") {
-        requestIdleCallback(flushStateSave, { timeout: 300 });
-      } else if (typeof setTimeout === "function") {
-        lifecycle.setTimeout(flushStateSave, 100);
-      } else if (typeof queueMicrotask === "function") {
-        queueMicrotask(flushStateSave);
-      } else {
-        Promise.resolve().then(flushStateSave);
-      }
-    }
+    queueStateSave();
 
     return stateSavePromise;
   }
@@ -976,9 +1141,17 @@
           if (globalScope.state) globalScope.state.currentPath = normalized;
           if (options.updateUrl !== false) updateNavigationUrl(normalized);
           try {
-            setStoredItem("mrh_navigation_path", JSON.stringify(normalized));
+            const saved = setStoredItem(
+              "mrh_navigation_path",
+              JSON.stringify(normalized),
+            );
+            if (!saved) {
+              DebugUtils.warn("Unable to persist navigation path.");
+            }
+            return saved;
           } catch (e) {
             DebugUtils.warn("Unable to persist navigation path.", e);
+            return false;
           }
         };
   globalScope.readStoredNavigationPath =

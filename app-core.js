@@ -4003,8 +4003,18 @@
 
   let appResourcesCleanedUp = false;
 
-  function cleanupAppResources() {
+  function cleanupAppResources(event) {
     if (appResourcesCleanedUp) return;
+
+    if (typeof SessionCore?.saveSessionProgress === "function") {
+      SessionCore.saveSessionProgress(true);
+    }
+
+    if (event?.persisted) {
+      syncScheduler.handleVisibility(true);
+      return;
+    }
+
     appResourcesCleanedUp = true;
 
     lifecycle.cleanup();
@@ -4042,6 +4052,15 @@
     window.addEventListener("pagehide", cleanupAppResources, {
       signal: uiEventController.signal,
     });
+    window.addEventListener(
+      "pageshow",
+      (event) => {
+        if (!event.persisted) return;
+        appResourcesCleanedUp = false;
+        syncScheduler.handleVisibility(false);
+      },
+      { signal: uiEventController.signal },
+    );
   }
 
   function calculateBackoffDelay(retryCount) {
