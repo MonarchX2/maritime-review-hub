@@ -209,6 +209,7 @@
       rootScope.__MRH_APP_BASE_PATH || "/",
       window.location.origin,
     );
+    const swScopeUrl = new URL(swBaseUrl.pathname, swBaseUrl.origin);
     const swUrl = new URL("sw.js", swBaseUrl);
     swUrl.searchParams.set("v", rootScope.__MRH_APP__?.version || APP_VERSION);
 
@@ -231,7 +232,13 @@
         .getRegistrations()
         .then((registrations) => {
           return Promise.all(
-            registrations.map((registration) => registration.unregister()),
+            registrations
+              .filter(
+                (registration) =>
+                  new URL(registration.scope, swScopeUrl.origin).href ===
+                  swScopeUrl.href,
+              )
+              .map((registration) => registration.unregister()),
           );
         })
         .catch((error) => {
@@ -244,10 +251,7 @@
 
     navigator.serviceWorker
       .register(swUrl.href, {
-        scope: new URL(
-          rootScope.__MRH_APP_BASE_PATH || "/",
-          window.location.origin,
-        ).pathname,
+        scope: swScopeUrl.pathname,
         updateViaCache: "none",
       })
       .then((registration) => registration.update())

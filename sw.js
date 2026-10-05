@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-release-2026.10.06-1";
+const APP_VERSION = "mrh-release-2026.10.06-2";
 const FALLBACK_CACHE_VERSION = APP_VERSION;
 
 function getServiceWorkerUrl() {
@@ -105,7 +105,7 @@ const APP_SHELL_INTEGRITY = Object.freeze({
   "styles.css":
     "098f08286d4a3b083186440224fb054b70c0e4dda472b9b4d2629f413097ce9a",
   "app-entry.js":
-    "86356f9b24ce267ad2906a4c027fc53d9fa2f521969a2479b936b8a59bf0e9f9",
+    "2727da9873f18657e856d2178e9e3579c9201627aaef82ca80a0625e6188012c",
   "app-config.js":
     "8672f81f9a60377745c2c9b0077f5e09ff4a1340c181803370f6125357d995c8",
   "app-core.js":
@@ -177,7 +177,10 @@ function isAllowedCdn(url) {
 function isAppRequest(request) {
   const url = new URL(request.url);
 
-  return isSameOrigin(url) || isAllowedCdn(url);
+  return (
+    (isSameOrigin(url) && url.pathname.startsWith(getAppBasePath())) ||
+    isAllowedCdn(url)
+  );
 }
 
 function isStaticRequest(request) {
