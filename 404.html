@@ -38,49 +38,26 @@
             });
             if (!response.ok) continue;
 
-            const route = pathSegments
-              .slice(candidate.baseLength)
-              .map((segment) => {
-                try {
-                  return encodeURIComponent(
-                    decodeURIComponent(segment.replace(/\+/g, " ")),
-                  ).replace(/%20/g, "+");
-                } catch (error) {
-                  return encodeURIComponent(
-                    segment.replace(/\+/g, " "),
-                  ).replace(/%20/g, "+");
-                }
-              })
-              .join("/");
-            const hash = route ? `#/${route}` : "";
-            const target = new URL(
-              `${candidate.basePath}index.html${hash}`,
-              window.location.origin,
+            const appHtml = await response.text();
+            const appHtmlWithBase = appHtml.replace(
+              /<head(?:\s[^>]*)?>/i,
+              (head) => `${head}<base href="${candidate.basePath}">`,
             );
-            target.search = window.location.search;
-            window.location.replace(
-              target.pathname + target.search + target.hash,
-            );
+            if (appHtmlWithBase === appHtml) {
+              throw new Error("Application entry point has no head element.");
+            }
+
+            document.open();
+            document.write(appHtmlWithBase);
+            document.close();
             return;
           } catch (error) {
-            // Try the next possible app base path.
+            console.warn("Unable to load application entry point.", error);
           }
         }
 
-        const fallbackRoute = pathSegments
-          .map((segment) =>
-            encodeURIComponent(segment.replace(/\+/g, " ")).replace(
-              /%20/g,
-              "+",
-            ),
-          )
-          .join("/");
-        const fallback = new URL("/index.html", window.location.origin);
-        fallback.search = window.location.search;
-        fallback.hash = fallbackRoute ? `/${fallbackRoute}` : "";
-        window.location.replace(
-          fallback.pathname + fallback.search + fallback.hash,
-        );
+        document.body.innerHTML =
+          "<p>Unable to load Maritime Review Hub. Please check your connection and try again.</p>";
       })();
     </script>
   </body>

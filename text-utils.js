@@ -12,9 +12,8 @@
   const MATH_SEGMENT_RE = /(\$\$[\s\S]*?\$\$|\$[\s\S]*?\$)/g;
   const MATH_EXPRESSION_RE = /^(\$\$?)([\s\S]*?)\1$/;
   const CLOZE_RE = /\{\{c\d+::([^{}]+)\}\}/g;
-  // Only break on explicit list markers like "I.", "ii.", "A.", or "a.".
-  // This avoids splitting ordinary text such as "5 cm." or other non-list abbreviations.
-  const LIST_RE = /(?:\s|^)((?:[IVXLCDMivxlcdm]+|[A-Za-z])\.)\s/g;
+  // Only break on the first five explicit Roman-numeral list markers.
+  const LIST_RE = /(?:\s|^)((?:IV|III|II|I|V)\.)\s/gi;
   const QUESTION_NUMBER_RE = /^\s*\d+[\).\-:]\s*/;
   const QUESTION_NUMBER_DOT_RE = /^\s*\d+\.\s*/;
   const NATURAL_SORT_COLLATOR =

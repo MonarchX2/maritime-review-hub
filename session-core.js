@@ -1,6 +1,6 @@
 (function (globalScope) {
   const lifecycle = globalScope.LifecycleUtils || globalScope;
-  const CHOICE_KEYS = ["A", "B", "C", "D"];
+  const CHOICE_KEYS = ["A", "B", "C", "D", "E"];
   const DAY_MS = 24 * 60 * 60 * 1000;
   const HOUR_MS = 60 * 60 * 1000;
   const preloadedImageUrls = new Set();

@@ -2382,6 +2382,7 @@
             String(question?.ChoiceB || "").trim(),
             String(question?.ChoiceC || "").trim(),
             String(question?.ChoiceD || "").trim(),
+            String(question?.ChoiceE || "").trim(),
             String(question?.Explanation || "").trim(),
           ].join("||");
         const getStableIdBySignature = (question) => {
@@ -2959,6 +2960,8 @@
           document.querySelector('.choice-btn[data-choice="C"]')?.click();
         if (["4", "D"].includes(key))
           document.querySelector('.choice-btn[data-choice="D"]')?.click();
+        if (["5", "E"].includes(key))
+          document.querySelector('.choice-btn[data-choice="E"]')?.click();
         if (e.code === "Space") {
           e.preventDefault();
           revealAnswer();
@@ -3095,16 +3098,17 @@
 
         const realCorrectText = freshQ[`Choice${freshQ.Answer}`];
 
-        if (savedQ.ChoiceA === realCorrectText) savedQ.Answer = "A";
-        else if (savedQ.ChoiceB === realCorrectText) savedQ.Answer = "B";
-        else if (savedQ.ChoiceC === realCorrectText) savedQ.Answer = "C";
-        else if (savedQ.ChoiceD === realCorrectText) savedQ.Answer = "D";
-        else {
+        const matchingChoice = ["A", "B", "C", "D", "E"].find(
+          (letter) => savedQ[`Choice${letter}`] === realCorrectText,
+        );
+
+        if (matchingChoice) {
+          savedQ.Answer = matchingChoice;
+        } else {
           const freshShuffled = prepareSessionPool([freshQ])[0];
-          savedQ.ChoiceA = freshShuffled.ChoiceA;
-          savedQ.ChoiceB = freshShuffled.ChoiceB;
-          savedQ.ChoiceC = freshShuffled.ChoiceC;
-          savedQ.ChoiceD = freshShuffled.ChoiceD;
+          for (const letter of ["A", "B", "C", "D", "E"]) {
+            savedQ[`Choice${letter}`] = freshShuffled[`Choice${letter}`];
+          }
           savedQ.Answer = freshShuffled.Answer;
 
           if (state.session.userAnswers[index]) {
@@ -3230,7 +3234,7 @@
           hour12: true,
         });
 
-        const choices = ["A", "B", "C", "D"]
+        const choices = ["A", "B", "C", "D", "E"]
           .map((letter) => r[`option${letter}`] || r.choices?.[letter])
           .filter((choice) => choice && String(choice).trim());
         const questionType = choices.length <= 1 ? "Identification" : "MCQ";
@@ -3852,7 +3856,7 @@
       isPureIdent = q.QuestionType === "ID";
     } else {
       // Fallback: calculate from choices once.
-      for (const ch of ["A", "B", "C", "D"]) {
+      for (const ch of ["A", "B", "C", "D", "E"]) {
         const choiceText = q?.[`Choice${ch}`];
         if (
           choiceText &&

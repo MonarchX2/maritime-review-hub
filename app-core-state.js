@@ -194,8 +194,8 @@
       return;
     }
 
-    const pathname = `${basePath}index.html`;
-    const nextUrl = `${pathname}${window.location.search}${route ? `#/${route}` : ""}`;
+    const pathname = route ? `${basePath}${route}` : basePath;
+    const nextUrl = `${pathname}${window.location.search}`;
     const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
 
     if (nextUrl !== currentUrl) {
@@ -318,6 +318,7 @@
       ChoiceB: firstAvailableValue(source.ChoiceB, choices?.[1]),
       ChoiceC: firstAvailableValue(source.ChoiceC, choices?.[2]),
       ChoiceD: firstAvailableValue(source.ChoiceD, choices?.[3]),
+      ChoiceE: firstAvailableValue(source.ChoiceE, choices?.[4]),
       Answer: firstAvailableValue(source.Answer, source.a),
       Explanation: firstAvailableValue(source.Explanation, source.e),
       ImageURL: firstAvailableValue(source.ImageURL, source.u),
@@ -325,7 +326,7 @@
     };
 
     if (typeof normalized.Answer === "number") {
-      normalized.Answer = ["A", "B", "C", "D"][normalized.Answer] || "";
+      normalized.Answer = ["A", "B", "C", "D", "E"][normalized.Answer] || "";
     }
 
     if (normalized.Answer) {

@@ -417,13 +417,13 @@
         throw new Error("Backend field 'choices' must be an object.");
       Object.keys(payload.choices).forEach((key) => {
         if (
-          !/^[ABCD]$/.test(key) ||
+          !/^[ABCDE]$/.test(key) ||
           (payload.choices[key] !== null &&
             payload.choices[key] !== undefined &&
             typeof payload.choices[key] !== "string")
         ) {
           throw new Error(
-            "Backend choices must contain only A-D string values.",
+            "Backend choices must contain only A-E string values.",
           );
         }
       });

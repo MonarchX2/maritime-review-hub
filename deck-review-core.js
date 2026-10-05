@@ -234,7 +234,7 @@
     let navigationHTML = "";
     if (layout === "single") {
       navigationHTML = `
-        <div class="flex justify-between items-center mb-6 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 sticky top-4 z-20 gap-2">
+        <div class="flex justify-between items-center {{navigation-placement}} p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 gap-2">
             <button onclick="changeStudyIndex(-1)" ${currentIndex === 0 ? "disabled" : ""} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
                 <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Prev</span>
             </button>
@@ -246,7 +246,7 @@
     `;
     } else if (pageSize !== "All" && totalPages > 1) {
       navigationHTML = `
-            <div class="flex justify-between items-center mt-6 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 sticky bottom-4 z-10 gap-2">
+            <div class="flex justify-between items-center {{navigation-placement}} p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 gap-2">
                 <button onclick="changeStudyPage(-1)" ${currentPage === 1 ? "disabled" : ""} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
                     <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Prev</span>
                 </button>
@@ -281,8 +281,15 @@
     const showBottomNavigation = ["bottom", "both"].includes(
       reviewNavigationPosition,
     );
+    const renderNavigation = (placement) =>
+      navigationHTML.replace(
+        "{{navigation-placement}}",
+        placement === "top"
+          ? "mb-6 sticky top-4 z-20"
+          : "mt-6",
+      );
 
-    if (showTopNavigation) html += navigationHTML;
+    if (showTopNavigation) html += renderNavigation("top");
 
     if (pageSize === "All" && virtualStartIndex > 0) {
       html += `<div aria-hidden="true" style="height: ${virtualStartIndex * REVIEW_ESTIMATED_CARD_HEIGHT}px"></div>`;
@@ -302,6 +309,13 @@
 
       let rawQuestionText = q.Question ? String(q.Question) : "";
       let cleanQuestionText = rawQuestionText.replace(/^\s*\d+\.\s*/, "");
+      const imageUrl = String(q.ImageURL || "").trim();
+      const imageHTML =
+        imageUrl &&
+        typeof globalScope.isSafeImageURL === "function" &&
+        globalScope.isSafeImageURL(imageUrl)
+          ? `<img src="${escapeHTML(imageUrl)}" alt="${escapeHTML(cleanQuestionText)}" loading="lazy" decoding="async" class="block w-full max-w-2xl max-h-96 object-contain rounded-lg mt-3 mb-4">`
+          : "";
 
       let ansStr = q.Answer ? String(q.Answer).trim() : "";
       const { isIdent: isPureIdent } = getQuestionTypeMode(q);
@@ -322,7 +336,7 @@
 
       let choicesHTML = "";
       if (isMultipleChoice && showWrongForThisQ) {
-        const letters = ["A", "B", "C", "D"];
+        const letters = ["A", "B", "C", "D", "E"];
         choicesHTML = `<div class="mt-4 flex flex-col gap-2">`;
         letters.forEach((letter) => {
           let choiceText = q[`Choice${letter}`];
@@ -405,6 +419,7 @@
 
                 <p class="font-medium text-gray-800 dark:text-gray-100 mb-2 text-lg">${formatQuestionText(cleanQuestionText)}</p>
 
+                ${imageHTML}
 
                 ${choicesHTML}
 
@@ -421,7 +436,7 @@
         `;
     });
 
-    if (showBottomNavigation) html += navigationHTML;
+    if (showBottomNavigation) html += renderNavigation("bottom");
 
     if (pageSize === "All" && virtualEndIndex < filteredQuestions.length) {
       html += `<div aria-hidden="true" style="height: ${(filteredQuestions.length - virtualEndIndex) * REVIEW_ESTIMATED_CARD_HEIGHT}px"></div>`;

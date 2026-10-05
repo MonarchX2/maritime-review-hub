@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-release-2026.10.01-1";
+const APP_VERSION = "mrh-release-2026.10.05";
 const FALLBACK_CACHE_VERSION = APP_VERSION;
 
 function getServiceWorkerUrl() {
@@ -378,7 +378,23 @@ async function networkFirstNavigation(event) {
       (await cache.match(event.request)) || (await cache.match(appEntryUrl));
 
     if (cached) {
-      return cached;
+      const cachedHtml = await cached.text();
+      const appHtml = cachedHtml.replace(
+        /<head(?:\s[^>]*)?>/i,
+        (head) => `${head}<base href="${getAppBasePath()}">`,
+      );
+      if (appHtml === cachedHtml) {
+        throw new Error("Cached application entry point has no head element.");
+      }
+
+      const headers = new Headers(cached.headers);
+      headers.delete("content-length");
+      headers.delete("content-encoding");
+      return new Response(appHtml, {
+        status: cached.status,
+        statusText: cached.statusText,
+        headers,
+      });
     }
 
     return new Response(

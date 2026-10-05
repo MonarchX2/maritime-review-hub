@@ -276,7 +276,13 @@
         errorType: typeEl.value,
         lesson: lesson,
         comments: comments,
-        choices: { A: q.ChoiceA, B: q.ChoiceB, C: q.ChoiceC, D: q.ChoiceD },
+        choices: {
+          A: q.ChoiceA,
+          B: q.ChoiceB,
+          C: q.ChoiceC,
+          D: q.ChoiceD,
+          E: q.ChoiceE,
+        },
         correctAnswer: q.Answer,
       });
 
