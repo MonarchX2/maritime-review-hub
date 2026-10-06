@@ -75,7 +75,6 @@
       revealedCloze: false,
     },
     currentPath: [],
-    reportQuestion: null,
     unlockedFolders: {},
   };
   function getStoredItem(key, fallback = null) {
@@ -702,19 +701,6 @@
       "toggle-srs-mode": state.prefs.srsEnabled === true,
       "toggle-main-srs-mode": state.prefs.srsEnabled === true,
       "toggle-wrong-choices": state.prefs.showWrongChoices !== false,
-      "toggle-main-navigation-quiz":
-        state.prefs.quizNavigationPosition === "bottom",
-      "toggle-main-navigation-single":
-        state.prefs.studySingleNavigationPosition === "bottom",
-      "toggle-main-navigation-scroll":
-        state.prefs.studyScrollNavigationPosition === "bottom",
-      "toggle-session-navigation-bottom":
-        state.prefs.quizNavigationPosition === "bottom",
-      "toggle-review-navigation-bottom":
-        typeof globalScope.getStudyNavigationPosition === "function" &&
-        globalScope.getStudyNavigationPosition(
-          state.prefs.studyLayout || "scroll",
-        ) === "bottom",
       globalModeToggle: state.prefs.lastActivity?.mode === "review",
     };
 
@@ -722,6 +708,8 @@
       const control = document.getElementById(id);
       if (control) control.checked = checked;
     });
+
+    globalScope.syncNavigationButtonLabels?.();
 
     const databaseUpdateMode = document.getElementById("database-update-mode");
     if (databaseUpdateMode) {

@@ -9,7 +9,7 @@
     globalScope.MRH_CONFIG?.storageMaxJsonPayloadBytes ?? 250000;
 
   // Cache storage handles and the resolved namespace. Repeated storage access is
-  // on hot paths (settings, progress, reports); probing native storage on every
+  // on hot paths (settings and progress); probing native storage on every
   // call adds synchronous work for no functional benefit.
   let localStorageRef = null;
   let sessionStorageRef = null;
@@ -426,7 +426,6 @@
     "saved_session",
     "progress_meta",
     "user_session",
-    "reported_qs",
     "login_suggestion_dismissed",
     "pending_sync_queue",
     "recovery_snapshot",

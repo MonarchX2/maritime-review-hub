@@ -12,7 +12,7 @@
   let lastVirtualRenderKey = null;
   let reviewMainElement = null;
   let reviewContainerElement = null;
-  let pendingReviewScrollReset = false;
+  let pendingReviewScrollPosition = null;
   let cachedReviewContainerTop = 0;
   const REVIEW_ESTIMATED_CARD_HEIGHT = 420;
   const REVIEW_VIRTUAL_OVERSCAN = 4;
@@ -376,16 +376,6 @@
                 </div>`;
       }
 
-      const isProtectedDeck = getIsProtected(q.Subject);
-      const isReported =
-        typeof globalScope.hasReportedQuestion === "function" &&
-        globalScope.hasReportedQuestion(q.ID);
-      let reportClass = isReported
-        ? "text-red-500 bg-red-50 dark:bg-red-900/30"
-        : isProtectedDeck
-          ? "text-gray-300 bg-gray-100 dark:bg-gray-700/40 cursor-not-allowed opacity-60"
-          : "text-gray-400 bg-white dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-500";
-
       html += `
             <div data-question-id="${escapeHTML(String(q.ID))}" class="review-question-card bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 animate-card-in">
                 <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 dark:border-gray-700">
@@ -405,15 +395,6 @@
                             <i class="fa-solid fa-star"></i>
                         </button>
 
-                        ${
-                          isProtectedDeck
-                            ? `<button type="button" class="${reportClass} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm transition-all" title="Reporting disabled for password-protected decks" disabled>
-                                <i class="fa-solid fa-triangle-exclamation"></i>
-                            </button>`
-                            : `<button onclick="openReportModalFromStudy('${encodeHandlerValue(q.ID)}')" class="${reportClass} text-xs font-bold flex items-center justify-center w-7 h-7 border border-gray-200 dark:border-gray-700 rounded-md shadow-sm active:scale-95 transition-all" title="${isReported ? "Active Community Report" : "Report Issue"}">
-                                <i class="fa-solid fa-triangle-exclamation"></i>
-                            </button>`
-                        }
                     </div>
                 </div>
 
@@ -478,11 +459,15 @@
     navigate("deck-review");
 
     if (!isVirtualScroll) {
-      const shouldResetScroll = pendingReviewScrollReset;
-      pendingReviewScrollReset = false;
-      if (reviewMainElement && layout === "scroll" && shouldResetScroll) {
+      const requestedScrollPosition = pendingReviewScrollPosition;
+      pendingReviewScrollPosition = null;
+      if (
+        reviewMainElement &&
+        layout === "scroll" &&
+        requestedScrollPosition
+      ) {
         requestAnimationFrame(() => {
-          if (reviewMainElement) reviewMainElement.scrollTop = 0;
+          scrollReviewContent(requestedScrollPosition);
         });
       } else if (reviewMainElement && layout === "scroll" && progress.scrollY) {
         requestAnimationFrame(() => {
@@ -492,6 +477,25 @@
       }
       if (typeof applyTitleMode === "function") applyTitleMode();
     }
+  }
+
+  function scrollReviewContent(position) {
+    const main = reviewMainElement;
+    const mainIsScrollable =
+      main && main.scrollHeight > main.clientHeight + 1;
+    const scrollContainer = mainIsScrollable
+      ? main
+      : document.scrollingElement || document.documentElement || document.body;
+    if (!scrollContainer) return;
+
+    const top =
+      position === "bottom"
+        ? Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight)
+        : 0;
+    const previousScrollBehavior = scrollContainer.style.scrollBehavior;
+    scrollContainer.style.scrollBehavior = "auto";
+    scrollContainer.scrollTop = top;
+    scrollContainer.style.scrollBehavior = previousScrollBehavior;
   }
 
   if (typeof globalThis !== "undefined") {
@@ -529,24 +533,42 @@
   }
 
   function changeStudyPageSize(size) {
-    const validSizes = [10, 25, 50, 100, "All"];
-    if (!validSizes.includes(Number(size)) && size !== "All") return;
-    state.prefs.studyPageSize = size === "" ? 50 : Number(size) || size;
+    const pageSizeInput = document.getElementById("review-page-size-input");
+    const normalizedSize =
+      size === "" ? 50 : size === "All" ? "All" : Number(size);
+    if (
+      normalizedSize !== "All" &&
+      (!Number.isSafeInteger(normalizedSize) || normalizedSize < 1)
+    ) {
+      if (pageSizeInput) {
+        pageSizeInput.setCustomValidity(
+          "Enter a positive whole number of items per page.",
+        );
+        pageSizeInput.reportValidity();
+      }
+      return false;
+    }
+    if (pageSizeInput) pageSizeInput.setCustomValidity("");
+
+    state.prefs.studyPageSize = normalizedSize;
     if (state.prefs.studyProgress[currentReviewSubject]) {
       state.prefs.studyProgress[currentReviewSubject].page = 1;
     }
     saveState();
     reRenderDeckReview();
+    return true;
   }
 
   function changeStudyPage(delta) {
     const progress = state.prefs.studyProgress[currentReviewSubject];
     if (!progress) return;
-    progress.page = Math.max(1, (progress.page || 1) + delta);
+    const currentPage = progress.page || 1;
+    const nextPage = Math.max(1, currentPage + delta);
+    if (nextPage === currentPage) return;
+    progress.page = nextPage;
     progress.scrollY = 0;
-    pendingReviewScrollReset = true;
+    pendingReviewScrollPosition = delta > 0 ? "top" : "bottom";
     if (typeof window !== "undefined") clearTimeout(window.scrollSaveTimeout);
-    if (reviewMainElement) reviewMainElement.scrollTop = 0;
     saveState();
     reRenderDeckReview();
   }
@@ -569,9 +591,8 @@
     if (!progress || Number.isNaN(page)) return;
     progress.page = Math.max(1, page);
     progress.scrollY = 0;
-    pendingReviewScrollReset = true;
+    pendingReviewScrollPosition = "top";
     if (typeof window !== "undefined") clearTimeout(window.scrollSaveTimeout);
-    if (reviewMainElement) reviewMainElement.scrollTop = 0;
     saveState();
     reRenderDeckReview();
   }

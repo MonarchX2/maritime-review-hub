@@ -297,24 +297,6 @@
       required: ["subject", "password"],
       allowed: ["type", "subject", "password"],
     },
-    submit_report: {
-      required: ["questionId", "subject", "errorType"],
-      allowed: [
-        "type",
-        "questionId",
-        "subject",
-        "questionText",
-        "errorType",
-        "lesson",
-        "comments",
-        "choices",
-        "correctAnswer",
-      ],
-    },
-    get_reports: {
-      required: [],
-      allowed: ["type", "role", "page", "limit"],
-    },
     get_cache_version: { required: [], allowed: ["type"] },
     get_sync_status: { required: [], allowed: ["type"] },
   });
@@ -323,13 +305,6 @@
     type: 64,
     subject: 500,
     password: 500,
-    questionId: 200,
-    questionText: 10000,
-    errorType: 200,
-    lesson: 500,
-    comments: 10000,
-    correctAnswer: 200,
-    role: 64,
   });
   const MAX_BACKEND_PAYLOAD_BYTES = 500000;
 
@@ -730,18 +705,6 @@
   }
 
   const backendApi = {
-    submitReport: (payload) =>
-      callBackend({ type: "submit_report", ...payload }),
-    getReports: (options = {}) =>
-      callBackend(
-        {
-          type: "get_reports",
-          ...(options.role !== undefined ? { role: options.role } : {}),
-          ...(options.page !== undefined ? { page: options.page } : {}),
-          ...(options.limit !== undefined ? { limit: options.limit } : {}),
-        },
-        options,
-      ),
     getCacheVersion: () => callBackend({ type: "get_cache_version" }),
     getSyncStatus: (options = {}) =>
       callBackend({ type: "get_sync_status" }, options),

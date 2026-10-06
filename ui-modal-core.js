@@ -5,13 +5,11 @@
 
 (function (globalScope) {
   // Import global utilities
-  const { getStoredItem, setStoredItem, callBackend } = globalScope;
   const lifecycle = globalScope.LifecycleUtils || globalScope;
 
   // ===================== CORE MODAL CONTROL =====================
   const modalTimers = new WeakMap();
   const modalInnerCache = new WeakMap();
-  let reportedQuestionIdSet = null;
   let dropdownMenusCache = null;
 
   function getModalInner(modal) {
@@ -109,218 +107,6 @@
     }
   }
 
-  function setButtonStatus(button, iconClass, label) {
-    const icon = document.createElement("i");
-    icon.className = iconClass;
-    button.replaceChildren(icon, document.createTextNode(` ${label}`));
-  }
-
-  function restoreButtonContent(button, originalNodes) {
-    button.replaceChildren(
-      ...originalNodes.map((node) => node.cloneNode(true)),
-    );
-  }
-
-  function readReportedQuestionIds() {
-    if (reportedQuestionIdSet) return [...reportedQuestionIdSet];
-    try {
-      const raw =
-        typeof getStoredItem === "function"
-          ? getStoredItem("reported_qs", "[]")
-          : "[]";
-      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-      reportedQuestionIdSet = new Set(
-        Array.isArray(parsed) ? parsed.map(String) : [],
-      );
-      return [...reportedQuestionIdSet];
-    } catch (_) {
-      reportedQuestionIdSet = new Set();
-      return [];
-    }
-  }
-
-  function hasReportedQuestion(id) {
-    const ids = readReportedQuestionIds();
-    return reportedQuestionIdSet?.has(String(id)) || ids.includes(String(id));
-  }
-
-  function rememberReportedQuestion(id) {
-    const normalizedId = String(id);
-    if (!reportedQuestionIdSet) readReportedQuestionIds();
-    reportedQuestionIdSet.add(normalizedId);
-    if (typeof setStoredItem === "function") {
-      setStoredItem("reported_qs", JSON.stringify([...reportedQuestionIdSet]));
-    }
-  }
-  // ===================== REPORT MODAL =====================
-  function openReportModal() {
-    const state = globalScope.state;
-    const q = state.session?.questions?.[state.session?.currentIndex];
-    if (!q) return;
-
-    const reportedQs = readReportedQuestionIds();
-
-    if (hasReportedQuestion(q.ID)) {
-      globalScope.showToast?.(
-        "You have already reported this question. Thank you for your feedback!",
-        "info",
-      );
-      return;
-    }
-
-    state.reportQuestion = q;
-
-    const reportType = document.getElementById("report-type");
-    const reportLesson = document.getElementById("report-lesson");
-    const reportComments = document.getElementById("report-comments");
-    const reportTypeError = document.getElementById("report-type-error");
-    if (reportType) reportType.value = "";
-    if (reportLesson) reportLesson.value = "";
-    if (reportComments) reportComments.value = "";
-    if (reportTypeError) setInlineError(reportTypeError, "");
-
-    toggleModal("report-modal", true);
-  }
-
-  function closeReportModal() {
-    const state = globalScope.state;
-    state.reportQuestion = null;
-    toggleModal("report-modal", false);
-  }
-
-  function openReportModalFromStudy(questionId) {
-    const state = globalScope.state;
-    questionId = globalScope.decodeHandlerValue(questionId);
-    const q =
-      state.subjectIndex?.byId?.get?.(String(questionId)) ||
-      (state.db || []).find((item) => item.ID === questionId);
-    if (!q) return;
-
-    const reportedQs = readReportedQuestionIds();
-
-    if (hasReportedQuestion(q.ID)) {
-      globalScope.showToast?.(
-        "You have already reported this question. Thank you for your feedback!",
-        "info",
-      );
-      return;
-    }
-
-    state.reportQuestion = q;
-
-    const reportType = document.getElementById("report-type");
-    const reportComments = document.getElementById("report-comments");
-    const reportTypeError = document.getElementById("report-type-error");
-    if (reportType) reportType.value = "";
-    if (reportComments) reportComments.value = "";
-    if (reportTypeError) setInlineError(reportTypeError, "");
-
-    toggleModal("report-modal", true);
-  }
-
-  async function submitReport() {
-    const state = globalScope.state;
-    const typeEl = document.getElementById("report-type");
-    const lessonEl = document.getElementById("report-lesson");
-    const commentsEl = document.getElementById("report-comments");
-    if (!typeEl) return false;
-    const lesson = String(lessonEl?.value || "").trim();
-    const comments = String(commentsEl?.value || "").trim();
-
-    const typeErrorEl = document.getElementById("report-type-error");
-    setInlineError(typeErrorEl, "");
-    if (!typeEl.value) {
-      setInlineError(typeErrorEl, "Please select an error type.");
-      typeEl.focus();
-      return;
-    }
-
-    const btn = document.getElementById("btn-submit-report");
-    if (!btn) return false;
-    const originalNodes = Array.from(btn.childNodes).map((node) =>
-      node.cloneNode(true),
-    );
-    setButtonStatus(btn, "fa-solid fa-spinner fa-spin mr-2", "Sending...");
-    btn.disabled = true;
-
-    const q =
-      state.reportQuestion ||
-      state.session?.questions?.[state.session.currentIndex];
-
-    if (!q) {
-      globalScope.showToast?.("Error: No question found to report.", "error");
-      restoreButtonContent(btn, originalNodes);
-      btn.disabled = false;
-      return;
-    }
-
-    if (
-      typeof globalScope.isDeckPasswordProtected === "function" &&
-      globalScope.isDeckPasswordProtected(q.Subject)
-    ) {
-      globalScope.showToast?.(
-        "Reporting is disabled for password-protected decks.",
-        "warning",
-      );
-      restoreButtonContent(btn, originalNodes);
-      btn.disabled = false;
-      return;
-    }
-
-    try {
-      const result = await callBackend({
-        type: "submit_report",
-        questionId: q.ID,
-        subject: q.Subject,
-        questionText: q.Question,
-        errorType: typeEl.value,
-        lesson: lesson,
-        comments: comments,
-        choices: {
-          A: q.ChoiceA,
-          B: q.ChoiceB,
-          C: q.ChoiceC,
-          D: q.ChoiceD,
-          E: q.ChoiceE,
-        },
-        correctAnswer: q.Answer,
-      });
-
-      if (result.status === "success") {
-        rememberReportedQuestion(q.ID);
-
-        setButtonStatus(btn, "fa-solid fa-check mr-2", "Report Submitted!");
-        btn.classList.remove("bg-red-500", "hover:bg-red-600");
-        btn.classList.add("bg-green-500", "hover:bg-green-600");
-
-        lifecycle.setTimeout(() => {
-          closeReportModal();
-          lifecycle.setTimeout(() => {
-            restoreButtonContent(btn, originalNodes);
-            btn.disabled = false;
-            btn.classList.remove("bg-green-500", "hover:bg-green-600");
-            btn.classList.add("bg-red-500", "hover:bg-red-600");
-          }, 500);
-
-          if (!state.reportQuestion) {
-            if (state.session.userAnswers[state.session.currentIndex]) {
-              globalScope.nextQuestion();
-            } else {
-              globalScope.revealAnswer();
-            }
-          }
-
-          state.reportQuestion = null;
-        }, 1500);
-      }
-    } catch (err) {
-      DebugUtils.error(err);
-      globalScope.showToast?.("Network error. Please try again.", "error");
-      restoreButtonContent(btn, originalNodes);
-      btn.disabled = false;
-    }
-  }
-
   // ===================== SESSION SETTINGS MODAL =====================
   function openSessionSettingsModal() {
     const state = globalScope.state;
@@ -358,14 +144,7 @@
     );
     if (navigationSelect)
       navigationSelect.value = globalScope.getQuizNavigationPosition();
-    const navigationButton = document.getElementById(
-      "toggle-session-navigation-bottom",
-    );
-    if (navigationButton) {
-      navigationButton.textContent = globalScope.getScrollNavigationButtonLabel(
-        state.prefs.quizNavigationPosition || "top",
-      );
-    }
+    globalScope.syncNavigationButtonLabels?.();
 
     toggleModal("session-settings-modal", true);
   }
@@ -379,16 +158,7 @@
     const modal = document.getElementById("review-settings-modal");
     if (!modal) return false;
 
-    const navigationButton = document.getElementById(
-      "toggle-review-navigation-bottom",
-    );
-    if (navigationButton) {
-      navigationButton.textContent = globalScope.getScrollNavigationButtonLabel(
-        globalScope.getStudyNavigationPosition(
-          globalScope.state.prefs.studyLayout || "scroll",
-        ),
-      );
-    }
+    globalScope.syncNavigationButtonLabels?.();
     updateStudyFilterToggle();
     modal.setAttribute("aria-hidden", "false");
     // Small delay allows the browser to render 'block' before applying opacity for the transition
@@ -415,10 +185,6 @@
     const perPageContainer = document.getElementById(
       "review-per-page-container",
     );
-    const navigationToggle = document.getElementById(
-      "toggle-review-navigation-bottom",
-    );
-
     if (perPageContainer) {
       if (layoutType === "single") {
         perPageContainer.classList.add("hidden");
@@ -427,13 +193,8 @@
       }
     }
 
-    if (navigationToggle) {
-      navigationToggle.textContent = globalScope.getScrollNavigationButtonLabel(
-        globalScope.getStudyNavigationPosition(layoutType),
-      );
-    }
-
     globalScope.changeStudyLayout(layoutType);
+    globalScope.syncNavigationButtonLabels?.();
   }
 
   // ===================== STUDY FILTER MANAGEMENT =====================
@@ -606,16 +367,11 @@
 
   // ===================== MODULE EXPORT =====================
   const ModalCore = {
-    hasReportedQuestion,
     toggleModal,
     openAboutModal,
     closeAboutModal,
     requestConfirmation,
     closeConfirmModal,
-    openReportModal,
-    closeReportModal,
-    openReportModalFromStudy,
-    submitReport,
     openSessionSettingsModal,
     closeSessionSettingsModal,
     openReviewSettingsModal,
@@ -654,11 +410,6 @@
   globalScope.closeAboutModal = closeAboutModal;
   globalScope.requestConfirmation = requestConfirmation;
   globalScope.closeConfirmModal = closeConfirmModal;
-  globalScope.openReportModal = openReportModal;
-  globalScope.hasReportedQuestion = hasReportedQuestion;
-  globalScope.closeReportModal = closeReportModal;
-  globalScope.openReportModalFromStudy = openReportModalFromStudy;
-  globalScope.submitReport = submitReport;
   globalScope.openSessionSettingsModal = openSessionSettingsModal;
   globalScope.closeSessionSettingsModal = closeSessionSettingsModal;
   globalScope.openReviewSettingsModal = openReviewSettingsModal;

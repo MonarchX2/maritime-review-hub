@@ -144,6 +144,33 @@
     return "on TOP";
   }
 
+  function syncNavigationButtonLabels() {
+    const label = globalScope.getScrollNavigationButtonLabel;
+    const getQuizPosition = globalScope.getQuizNavigationPosition;
+    const getStudyPosition = globalScope.getStudyNavigationPosition;
+    if (
+      typeof label !== "function" ||
+      typeof getQuizPosition !== "function" ||
+      typeof getStudyPosition !== "function"
+    ) {
+      return;
+    }
+
+    const studyLayout = state.prefs.studyLayout || "scroll";
+    const positions = {
+      "toggle-main-navigation-quiz": getQuizPosition(),
+      "toggle-main-navigation-single": getStudyPosition("single"),
+      "main-navigation-scroll-button": getStudyPosition("scroll"),
+      "toggle-session-navigation-bottom": getQuizPosition(),
+      "toggle-review-navigation-bottom": getStudyPosition(studyLayout),
+    };
+
+    Object.entries(positions).forEach(([id, position]) => {
+      const button = document.getElementById(id);
+      if (button) button.textContent = label(position);
+    });
+  }
+
   function cycleNavigationModeButton(mode, button) {
     const layoutType =
       mode === "study"
@@ -189,6 +216,7 @@
     ) {
       globalScope.reRenderDeckReview?.();
     }
+    syncNavigationButtonLabels();
     if (button) button.textContent = getScrollNavigationButtonLabel(next);
   }
 
@@ -249,6 +277,7 @@
     }
     saveState();
     applyNavigationPosition();
+    syncNavigationButtonLabels();
     const select = document.getElementById("navigation-position-select");
     if (select) select.value = normalized;
   }
@@ -263,6 +292,7 @@
     }
     saveState();
     applyNavigationPosition();
+    syncNavigationButtonLabels();
     if (
       document.getElementById("view-deck-review")?.classList.contains("active")
     ) {
@@ -473,6 +503,7 @@
     getStudyNavigationPosition,
     setStudyNavigationPosition,
     getScrollNavigationButtonLabel,
+    syncNavigationButtonLabels,
     cycleNavigationModeButton,
     cycleScrollNavigationPosition,
     applyNavigationPosition,

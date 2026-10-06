@@ -1,7 +1,3 @@
-// ============================================================================
-// Analytics & Charts Core - Quiz statistics visualization and theme management
-// ============================================================================
-
 (function (globalScope) {
   "use strict";
 

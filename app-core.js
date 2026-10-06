@@ -2937,16 +2937,12 @@
   document.addEventListener(
     "keydown",
     (e) => {
-      const reportModal = document.getElementById("report-modal");
       const settingsModal = document.getElementById("session-settings-modal");
 
-      const isReportModalOpen =
-        reportModal && reportModal.getAttribute("aria-hidden") !== "true";
       const isSettingsModalOpen =
         settingsModal && settingsModal.getAttribute("aria-hidden") !== "true";
 
-      if (!state.session.active || isReportModalOpen || isSettingsModalOpen)
-        return;
+      if (!state.session.active || isSettingsModalOpen) return;
 
       const key = e.key.toUpperCase();
       const isAnswered = state.session.userAnswers[state.session.currentIndex];
@@ -2979,8 +2975,6 @@
     },
     { signal: uiEventController.signal },
   );
-
-  let globallyReportedQs = new Set();
 
   window.addEventListener(
     "resize",
@@ -3193,87 +3187,6 @@
 
   function getCurrentReviewSubject() {
     return DeckReviewCore?.getCurrentReviewSubject?.() || "";
-  }
-
-  async function loadReports() {
-    return false;
-
-    ensureAppReady();
-
-    const pendingContainer = document.getElementById("public-pending-reports");
-    const resolvedContainer = document.getElementById(
-      "public-resolved-reports",
-    );
-    if (pendingContainer)
-      pendingContainer.innerHTML = `<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500"></i><p class="mt-2 text-gray-500">Fetching community reports...</p></div>`;
-
-    try {
-      const reports = await AppNetwork.getReports({ role: "user" });
-      if (!Array.isArray(reports) || reports.length === 0) {
-        if (pendingContainer)
-          pendingContainer.innerHTML = `<p class="text-center text-gray-500 py-4">No pending reports.</p>`;
-        if (resolvedContainer)
-          resolvedContainer.innerHTML = `<p class="text-center text-gray-500 py-4">No resolved reports.</p>`;
-        return;
-      }
-
-      let pendingHTML = "";
-      let resolvedHTML = "";
-      reports.forEach((r) => {
-        const isResolved = r.status === "Resolved";
-        const statusBadge = isResolved
-          ? `<span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold uppercase tracking-wide"><i class="fa-solid fa-check mr-1"></i> Resolved</span>`
-          : `<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold uppercase tracking-wide"><i class="fa-solid fa-clock mr-1"></i> Pending</span>`;
-        const phtDate = new Date(r.timestamp).toLocaleString("en-US", {
-          timeZone: "Asia/Manila",
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
-        });
-
-        const choices = ["A", "B", "C", "D", "E"]
-          .map((letter) => r[`option${letter}`] || r.choices?.[letter])
-          .filter((choice) => choice && String(choice).trim());
-        const questionType = choices.length <= 1 ? "Identification" : "MCQ";
-        const choicesHTML = choices.length
-          ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-xs">${choices
-              .map(
-                (choice, index) =>
-                  `<div class="bg-gray-50 dark:bg-gray-900/50 p-2 rounded"><strong>${String.fromCharCode(65 + index)}:</strong> ${escapeHTML(choice)}</div>`,
-              )
-              .join("")}</div>`
-          : `<p class="text-xs text-gray-500 mt-3">No choices recorded.</p>`;
-        const reportHTML = `
-                <div class="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm animate-card-in">
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">${escapeHTML(r.questionId)}</span>
-                        ${statusBadge}
-                    </div>
-                    <h4 class="font-bold text-gray-800 dark:text-gray-100 mb-1">${escapeHTML(r.errorType)}</h4>
-                    <div class="text-xs text-brand-600 dark:text-brand-400 font-bold uppercase">Question Type: ${questionType}</div>
-                    <p class="text-sm text-gray-600 dark:text-gray-300 line-clamp-2 italic border-l-2 border-brand-500 pl-3 my-2">"${escapeHTML(r.questionText)}"</p>
-                    ${choicesHTML}
-                    ${r.lesson ? `<p class="text-sm text-gray-500 dark:text-gray-400 mt-2"><strong>Lesson / Topic:</strong> ${escapeHTML(r.lesson)}</p>` : ""}
-                    ${r.comments ? `<p class="text-sm text-gray-500 dark:text-gray-400 mt-2 bg-gray-50 dark:bg-gray-900/50 p-2 rounded"><i class="fa-solid fa-comment-dots mr-1"></i> ${escapeHTML(r.comments)}</p>` : ""}
-                    <div class="text-xs text-gray-400 mt-3 text-right">Reported: ${phtDate}</div>
-                </div>
-            `;
-        if (isResolved) resolvedHTML += reportHTML;
-        else pendingHTML += reportHTML;
-      });
-      document.getElementById("public-pending-reports").innerHTML =
-        pendingHTML ||
-        `<p class="text-center text-gray-500 py-4">No pending reports.</p>`;
-      document.getElementById("public-resolved-reports").innerHTML =
-        resolvedHTML ||
-        `<p class="text-center text-gray-500 py-4">No resolved reports.</p>`;
-    } catch (err) {
-      if (pendingContainer)
-        pendingContainer.innerHTML = `<div class="text-red-500 text-center p-4">Failed to load reports. Check your connection.</div>`;
-    }
   }
 
   function showToast(message, type = "success", duration = 3000) {
@@ -4362,7 +4275,6 @@
     isFolderUnlocked,
     isRecentlyViewedPath,
     jumpToStudyPage,
-    loadReports,
     loadState,
     markLocalDownloadDeleted,
     nextQuestion,
