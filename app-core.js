@@ -323,10 +323,19 @@
   }
 
   async function safeIdbDel(key) {
-    if (typeof idbKeyval !== "undefined") {
-      await idbKeyval.del(
-        key.includes(":") || key.startsWith("mrh_") ? key : getStorageKey(key),
-      );
+    if (
+      typeof idbKeyval === "undefined" ||
+      typeof idbKeyval.del !== "function" ||
+      typeof idbKeyval.get !== "function"
+    ) {
+      throw new Error("IndexedDB storage is unavailable.");
+    }
+
+    const storageKey =
+      key.includes(":") || key.startsWith("mrh_") ? key : getStorageKey(key);
+    await idbKeyval.del(storageKey);
+    if ((await idbKeyval.get(storageKey)) !== undefined) {
+      throw new Error(`Unable to remove IndexedDB entry "${storageKey}".`);
     }
   }
 
@@ -2804,9 +2813,13 @@
         "Reset All Progress",
       )
     ) {
-      if (state.session?.autoNextTimeout) {
-        lifecycle.clearTimeout(state.session.autoNextTimeout);
-      }
+      const previousStats = state.stats;
+      const previousSession = state.session;
+      const previousProgress = state.prefs.studyProgress;
+      const previousToggles = state.prefs.qToggles;
+      const previousLastActivity = state.prefs.lastActivity;
+      const previousSavedSession = getStoredItem("saved_session");
+      const pausedAutoNext = SessionCore.pauseAutoNext();
       stopVisualTimer();
 
       state.stats = {
@@ -2830,9 +2843,50 @@
       state.prefs.qToggles = {};
       state.prefs.lastActivity = null;
 
-      clearSessionProgress();
-      await saveState();
+      try {
+        if (!clearSessionProgress()) {
+          throw new Error("Unable to remove the saved session.");
+        }
+        if (!(await saveState())) {
+          throw new Error("Unable to save the reset progress.");
+        }
+      } catch (error) {
+        state.stats = previousStats;
+        state.session = previousSession;
+        state.prefs.studyProgress = previousProgress;
+        state.prefs.qToggles = previousToggles;
+        state.prefs.lastActivity = previousLastActivity;
+        try {
+          if (
+            previousSavedSession !== null &&
+            (typeof setStoredItem !== "function" ||
+              !setStoredItem("saved_session", previousSavedSession))
+          ) {
+            throw new Error("Unable to restore the previous saved session.");
+          }
+          if (!(await saveState())) {
+            throw new Error("Unable to restore the previous saved progress.");
+          }
+        } catch (restoreError) {
+          appLogger.error("Unable to restore progress after reset failed.", {
+            resetError: error,
+            restoreError,
+          });
+        }
+        if (pausedAutoNext && !SessionCore.resumeAutoNext(pausedAutoNext)) {
+          appLogger.warn("Unable to resume the active session auto-advance.");
+        }
+        appLogger.error("Unable to reset progress.", error);
+        updateDashboard();
+        showToast(
+          "Progress could not be fully reset. Your previous progress was restored where possible.",
+          "error",
+        );
+        return;
+      }
+
       updateDashboard();
+      checkSavedSession();
       showToast("Progress Reset.", "success");
 
       const statsView = document.getElementById("view-stats");
@@ -2850,13 +2904,25 @@
         "Clear Local Database",
       )
     ) {
-      await safeIdbDel("mrh_db");
-      state.db = [];
-      rebuildQuestionIndex();
-      clearSessionProgress();
-      state.prefs.lastActivity = null;
-      await saveState();
-      window.location.reload();
+      try {
+        await safeIdbDel("mrh_db");
+        state.db = [];
+        rebuildQuestionIndex();
+        if (!clearSessionProgress()) {
+          throw new Error("Unable to remove the saved session.");
+        }
+        state.prefs.lastActivity = null;
+        if (!(await saveState())) {
+          throw new Error("Unable to save the cleared database state.");
+        }
+        window.location.reload();
+      } catch (error) {
+        appLogger.error("Unable to clear the local database.", error);
+        showToast(
+          "The local database could not be fully cleared. Please try again.",
+          "error",
+        );
+      }
     }
   }
 
@@ -2878,29 +2944,41 @@
 
       if (
         !(await requestConfirmation(
-          "Final confirmation: only data owned by this app will be erased. Other same-origin website data will be left untouched.",
+          "Final confirmation: only data owned by this app will be erased, including this app's cached files. Other same-origin website data will be left untouched.",
           "Confirm Permanent Deletion",
         ))
       ) {
         return;
       }
 
-      if (
-        typeof idbKeyval !== "undefined" &&
-        typeof idbKeyval.del === "function"
-      ) {
-        await idbKeyval.del("mrh_db");
+      if (typeof caches !== "undefined") {
+        if (
+          typeof caches.keys !== "function" ||
+          typeof caches.delete !== "function"
+        ) {
+          throw new Error("App cache storage is unavailable.");
+        }
+        const appCacheNames = (await caches.keys()).filter((name) =>
+          name.startsWith("mrh-cache-"),
+        );
+        const cacheResults = await Promise.all(
+          appCacheNames.map((name) => caches.delete(name)),
+        );
+        if (cacheResults.some((deleted) => !deleted)) {
+          throw new Error("Unable to remove one or more app cache entries.");
+        }
       }
 
-      if (
-        typeof StorageUtils !== "undefined" &&
-        typeof StorageUtils.clearCurrentNamespace === "function"
-      ) {
-        StorageUtils.clearCurrentNamespace({ includeLegacy: true });
-      }
+      await safeIdbDel("mrh_db");
 
-      // Intentionally do not clear every IndexedDB database, CacheStorage entry,
-      // or service worker on this origin.
+      if (
+        typeof StorageUtils === "undefined" ||
+        typeof StorageUtils.clearCurrentNamespace !== "function"
+      ) {
+        throw new Error("App storage cleanup is unavailable.");
+      }
+      StorageUtils.clearCurrentNamespace({ includeLegacy: true });
+
       state.db = [];
       state.categorySummary = [];
       state.accessMetadata = {};

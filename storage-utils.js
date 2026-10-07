@@ -298,7 +298,7 @@
     const store = getLocalStorage();
     const removedCurrent = safeRemoveItem(store, getStorageKey(key));
     const removedLegacy = safeRemoveItem(store, getLegacyStorageKey(key));
-    return removedCurrent || removedLegacy;
+    return removedCurrent && removedLegacy;
   }
 
   function getStoredJSON(key, fallback = null) {
@@ -393,7 +393,7 @@
     const store = getSessionStorage();
     const removedCurrent = safeRemoveItem(store, getStorageKey(key));
     const removedLegacy = safeRemoveItem(store, getLegacyStorageKey(key));
-    return removedCurrent || removedLegacy;
+    return removedCurrent && removedLegacy;
   }
 
   function getSessionStoredJSON(key, fallback = null) {
@@ -487,16 +487,24 @@
     collectNamespacedKeys(sessionStore, `${getStorageNamespace()}:`);
 
     let removed = 0;
+    let failed = 0;
     currentKeys.forEach(([store, key]) => {
       if (safeRemoveItem(store, key)) removed += 1;
+      else failed += 1;
     });
 
     if (includeLegacy) {
       LEGACY_KEYS.forEach((key) => {
         if (safeRemoveItem(localStore, getLegacyStorageKey(key))) removed += 1;
+        else failed += 1;
         if (safeRemoveItem(sessionStore, getLegacyStorageKey(key)))
           removed += 1;
+        else failed += 1;
       });
+    }
+
+    if (failed > 0) {
+      throw new Error(`Unable to remove ${failed} app storage entries.`);
     }
 
     return removed;

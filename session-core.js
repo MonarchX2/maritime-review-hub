@@ -12,6 +12,8 @@
   let sessionSaveTimer = 0;
   let _statsRenderTimeout = 0;
   let sessionSaveRequested = false;
+  const autoNextDeadlines = new WeakMap();
+  const AUTO_NEXT_DELAY_MS = 2000;
 
   function getElement(id) {
     if (typeof document === "undefined") return null;
@@ -179,7 +181,42 @@
     if (session?.autoNextTimeout) {
       lifecycle.clearTimeout(session.autoNextTimeout);
       session.autoNextTimeout = null;
+      autoNextDeadlines.delete(session);
     }
+  }
+
+  function scheduleAutoNext(session, delayMs = AUTO_NEXT_DELAY_MS) {
+    safeClearAutoNextTimeout();
+    const delay = Math.max(0, delayMs);
+    autoNextDeadlines.set(session, Date.now() + delay);
+    session.autoNextTimeout = lifecycle.setTimeout(() => {
+      autoNextDeadlines.delete(session);
+      session.autoNextTimeout = null;
+      if (getSession() === session && session.active) nextQuestion();
+    }, delay);
+  }
+
+  function pauseAutoNext() {
+    const session = getSession();
+    if (!session?.autoNextTimeout) return null;
+
+    const deadline = autoNextDeadlines.get(session);
+    const remainingMs =
+      deadline === undefined
+        ? AUTO_NEXT_DELAY_MS
+        : Math.max(0, deadline - Date.now());
+    safeClearAutoNextTimeout();
+    return { session, remainingMs };
+  }
+
+  function resumeAutoNext(paused) {
+    if (!paused || getSession() !== paused.session || !paused.session.active) {
+      return false;
+    }
+
+    scheduleAutoNext(paused.session, paused.remainingMs);
+    startVisualTimer(paused.remainingMs);
+    return true;
   }
 
   function stopTimerSafely() {
@@ -685,10 +722,7 @@
 
     saveSessionProgress();
     startTimerSafely();
-    safeClearAutoNextTimeout();
-    session.autoNextTimeout = lifecycle.setTimeout(() => {
-      if (getSession()?.active) nextQuestion();
-    }, 2000);
+    scheduleAutoNext(session);
     return true;
   }
 
@@ -1074,13 +1108,15 @@
       sessionSaveTimer = 0;
     }
     sessionSaveRequested = false;
-    if (typeof globalScope.removeStoredItem === "function")
+    const savedSessionRemoved =
+      typeof globalScope.removeStoredItem === "function" &&
       globalScope.removeStoredItem("saved_session");
     const state = getState();
     if (!state.prefs || typeof state.prefs !== "object") state.prefs = {};
     state.prefs.lastActivity = null;
     persistSessionPreferences();
     getElement("resume-container")?.classList.add("hidden");
+    return savedSessionRemoved;
   }
 
   function revealAnswer() {
@@ -1113,10 +1149,7 @@
     if (!isPureIdent) startTimerSafely();
 
     if (!isPureIdent) {
-      safeClearAutoNextTimeout();
-      session.autoNextTimeout = lifecycle.setTimeout(() => {
-        if (getSession()?.active) nextQuestion();
-      }, 2000);
+      scheduleAutoNext(session);
     }
     return true;
   }
@@ -1150,12 +1183,13 @@
     return true;
   }
 
-  function startVisualTimer() {
+  function startVisualTimer(durationMs = AUTO_NEXT_DELAY_MS) {
     const container = getElement("auto-next-timer-container");
     const bar = getElement("auto-next-timer-bar");
     if (!container || !bar) return;
 
     container.classList.remove("hidden");
+    bar.style.animationDuration = `${Math.max(0, durationMs)}ms`;
 
     if (timerAnimationFrame) {
       cancelAnimationFrame(timerAnimationFrame);
@@ -1198,6 +1232,8 @@
     showExplanation,
     nextQuestion,
     prevQuestion,
+    pauseAutoNext,
+    resumeAutoNext,
     getDefaultSrsEntry,
     updateSrsForQuestion,
     computeSrsInterval,
