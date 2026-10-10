@@ -9,7 +9,10 @@ const calls = {
   requests: [],
 };
 const cachedEntries = new Map();
-const appVersion = "mrh-release-2026.10.10-1";
+const workerSource = fs.readFileSync("sw.js", "utf8");
+const appVersionMatch = workerSource.match(/^const APP_VERSION = "([^"]+)";$/m);
+assert.ok(appVersionMatch, "service worker must declare its release version");
+const appVersion = appVersionMatch[1];
 const appOrigin = "https://example.test";
 const appBasePath = "/app/";
 let skippedWaiting = false;
@@ -122,7 +125,7 @@ function captureWaitUntil(handler, event) {
 }
 
 async function main() {
-  vm.runInNewContext(fs.readFileSync("sw.js", "utf8"), context, {
+  vm.runInNewContext(workerSource, context, {
     filename: "sw.js",
   });
 
