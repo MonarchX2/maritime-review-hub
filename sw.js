@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-release-2026.10.07";
+const APP_VERSION = "mrh-release-2026.10.10";
 const FALLBACK_CACHE_VERSION = APP_VERSION;
 
 function getServiceWorkerUrl() {
@@ -93,56 +93,59 @@ const APP_SHELL_RESOURCE_NAMES = new Set(
   APP_SHELL.map((url) => new URL(url).pathname.split("/").pop()),
 );
 
-const APP_SHELL_INTEGRITY = Object.freeze({
-  "index.html":
-    "351d3230e29d82aadaf98772a37d880b83b02fab0e0623b71d6d7b6db5717562",
-  "manifest.json":
-    "7bd842d298ba80a98729151b94f99f5514956b9999ae33c03d7827f641aa610f",
-  "icon.svg":
-    "a9a2e1c6dd6f3169cadec129b72e815c163e6de59b5a8347230bff731f30fa79",
-  "tailwind.generated.css":
-    "b8660785a8ba0756314bcd068fd43e2bd218228a574db158e0c5496d2330d37c",
-  "styles.css":
-    "098f08286d4a3b083186440224fb054b70c0e4dda472b9b4d2629f413097ce9a",
-  "app-entry.js":
-    "2727da9873f18657e856d2178e9e3579c9201627aaef82ca80a0625e6188012c",
-  "app-config.js":
-    "8672f81f9a60377745c2c9b0077f5e09ff4a1340c181803370f6125357d995c8",
-  "app-core.js":
-    "edb6ce5b8875b1f8d89c62aa0c06456c3ab00ad13f897344fdc906471b372dfd",
-  "preferences-core.js":
-    "d8c8ce23660af4083e3f779ac193786ce22e10da51089e79031cbb38a59e9c1d",
-  "dashboard-core.js":
-    "e5f7668b6f3a72a27377c96bfd6f7d3974be6c772dd2292bdee6bfecefe7f202",
-  "app-core-state.js":
-    "23be129da643c15060b529b466bf1ab063585c3dda88aa6144d3881b2318933d",
-  "app-core-network.js":
-    "c1d296ce4cf5a39a995a3ab48ab2a45ba2634b97b5f4fbfabab24fc52dcba46d",
-  "sync-core.js":
-    "3a53797eec263aebfa1d7cd7d23eaade483fa82a4ee4ede871b724e6ca83277a",
-  "session-core.js":
-    "1e4016afc34f708c59a56dfd134a718d4319517bc87d85aa87fba5092dec3a13",
-  "analytics-core.js":
-    "43df22f3bd7120d670fa1ca5b5d446038917d12aeeab5297e85a93abde37a78d",
-  "ui-modal-core.js":
-    "0e7a895c23874c86b3d83a0aeb45b7bdf29baf64cb6167aed79728ed73b4b324",
-  "deck-nav-core.js":
-    "e0c75fca277b17ab3a1302f6fb4f7ba3366a9f0305ab895dd6491e24f8110bb8",
-  "deck-review-core.js":
-    "30c50fe3094aab97f7eead27f0ebbe9cd0cd1ddca99f6d70865622486d7d0f49",
-  "quiz-rendering-core.js":
-    "c8182f54592ae5f6082cebbbcdc1a4b46d97cd4005dfa32615bf5bb196258b9d",
-  "debug-utils.js":
-    "825e96cb1ab6be2c4c92d9b63f1c60c5d28260561b6e6637c51955a5303e9961",
-  "lifecycle-utils.js":
-    "ac5c52a5f255bef28d1243954407149bd54708de67a62be7f2d7dffafa94d82e",
-  "rendering-core.js":
-    "99a62476baa27888e6ef31d546d1c2c8a8120a4b443dadffa8a8238a03402e17",
-  "storage-utils.js":
-    "118047fc8693853e23f66c4b3e49e0f62adfeff5ee30a5c4fa1008881234b853",
-  "text-utils.js":
-    "570b0eef2969aefdd44302fcc367151e43afb6a365ecf257abd2aaaf391aa226",
-});
+const APP_SHELL_INTEGRITY = Object.create(null);
+
+async function hashResponse(response) {
+  if (!response || !response.ok) return null;
+
+  const subtleCrypto = self.crypto?.subtle;
+  if (!subtleCrypto) return null;
+
+  const digest = await subtleCrypto.digest(
+    "SHA-256",
+    await response.clone().arrayBuffer(),
+  );
+
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+async function refreshAppShellIntegrity() {
+  const nextIntegrity = Object.create(null);
+
+  await Promise.all(
+    APP_SHELL.map(async (url) => {
+      try {
+        const response = await fetch(
+          new Request(url, {
+            method: "GET",
+            cache: "no-cache",
+            credentials: "same-origin",
+          }),
+        );
+
+        if (!response.ok) return;
+
+        const resourceName = getAppResourceName(url);
+        if (!resourceName) return;
+
+        const digest = await hashResponse(response);
+        if (digest) {
+          nextIntegrity[resourceName] = digest;
+        }
+      } catch (error) {
+        swLogger.warn("[SW] Unable to refresh shell integrity:", url, error);
+      }
+    }),
+  );
+
+  Object.keys(APP_SHELL_INTEGRITY).forEach(
+    (key) => delete APP_SHELL_INTEGRITY[key],
+  );
+  Object.assign(APP_SHELL_INTEGRITY, nextIntegrity);
+  return APP_SHELL_INTEGRITY;
+}
 
 self.__MRH_SW__ = {
   getRuntimeCacheVersion,
@@ -246,22 +249,17 @@ function getAppResourceName(url) {
   return APP_SHELL_NAVIGATION_PATHS.has(path) ? "index.html" : resourceName;
 }
 
-async function verifyResponseIntegrity(response, url) {
-  const expectedHash = APP_SHELL_INTEGRITY[getAppResourceName(url)];
+async function verifyResponseIntegrity(
+  response,
+  url,
+  expectedHash = APP_SHELL_INTEGRITY[getAppResourceName(url)],
+) {
   if (!expectedHash) return;
 
-  const subtleCrypto = self.crypto?.subtle;
-  if (!subtleCrypto) {
+  const actualHash = await hashResponse(response);
+  if (!actualHash) {
     throw new Error(`Web Crypto is unavailable for ${url}`);
   }
-
-  const digest = await subtleCrypto.digest(
-    "SHA-256",
-    await response.clone().arrayBuffer(),
-  );
-  const actualHash = Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
 
   if (actualHash !== expectedHash) {
     swLogger.warn(
@@ -291,6 +289,7 @@ async function cacheResponse(cache, request, response) {
 
 async function precacheAppShell() {
   const cache = await getCache();
+  await refreshAppShellIntegrity();
 
   await Promise.all(
     APP_SHELL.map(async (url) => {
@@ -309,7 +308,13 @@ async function precacheAppShell() {
           );
         }
 
-        await verifyResponseIntegrity(response, url);
+        const resourceName = getAppResourceName(url);
+        const expectedHash = resourceName
+          ? APP_SHELL_INTEGRITY[resourceName]
+          : null;
+        if (expectedHash) {
+          await verifyResponseIntegrity(response, url, expectedHash);
+        }
         await cache.put(url, response);
       } catch (error) {
         swLogger.error("[SW] Failed to precache:", url, error);
@@ -411,7 +416,60 @@ async function networkFirstNavigation(event) {
     }
 
     return new Response(
-      '<!doctype html><html><head><meta charset="utf-8"><title>Offline</title></head><body><h1>Offline</h1><p>The application is currently unavailable.</p></body></html>',
+      `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#111217">
+    <title>Offline - Maritime Review Hub</title>
+    <style>
+      body {
+        box-sizing: border-box;
+        display: grid;
+        min-height: 100vh;
+        margin: 0;
+        padding: 24px;
+        place-items: center;
+        background: #f8fafc;
+        color: #111827;
+        font: 16px/1.5 system-ui, sans-serif;
+      }
+      main { max-width: 440px; }
+      h1 { margin: 0 0 12px; font-size: 1.75rem; }
+      p { margin: 0 0 16px; }
+      button {
+        border: 0;
+        border-radius: 8px;
+        padding: 12px 18px;
+        background: #1d4ed8;
+        color: white;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:focus-visible { outline: 3px solid #93c5fd; outline-offset: 3px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>You're offline</h1>
+      <p>The app's offline copy isn't available. Clearing app data removes saved app files, so connect to the internet to load the app again.</p>
+      <p id="connection-status" role="status" aria-live="polite"></p>
+      <button id="retry-button" type="button">Try again</button>
+    </main>
+    <script>
+      const status = document.getElementById("connection-status");
+      status.textContent = navigator.onLine
+        ? "The connection may be temporarily unavailable. Try loading again."
+        : "Waiting for an internet connection...";
+      document
+        .getElementById("retry-button")
+        .addEventListener("click", () => location.reload());
+      window.addEventListener("online", () => location.reload());
+    </script>
+  </body>
+</html>`,
       {
         status: 503,
         statusText: "Service Unavailable",

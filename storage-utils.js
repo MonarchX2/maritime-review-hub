@@ -131,8 +131,20 @@
       return `user_${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
     }
 
-    // Last-resort uniqueness only; this is not a cryptographic identifier.
-    return `user_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 14)}`;
+    const performanceApi =
+      typeof performance !== "undefined" ? performance : null;
+    const fallbackSeed = [
+      Date.now().toString(36),
+      (performanceApi?.timeOrigin ?? Date.now()).toString(36),
+      (performanceApi?.now?.() ?? 0).toString(36),
+      (typeof globalThis !== "undefined" && globalThis.__MRH_APP__?.version)
+        ? String(globalThis.__MRH_APP__.version)
+        : "fallback",
+    ]
+      .join("-")
+      .replace(/[^a-zA-Z0-9_-]+/g, "_");
+
+    return `user_${fallbackSeed}`;
   }
 
   function normalizeIdentity(identity) {
