@@ -5,6 +5,6 @@
   },
   "devDependencies": {
     "@types/google-apps-script": "^2.0.12",
-    "tailwindcss": "^3.4.17"
+    "tailwindcss": "^4.3.3"
   }
 }
