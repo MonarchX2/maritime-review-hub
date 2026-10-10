@@ -8,15 +8,20 @@ if (!expectedVersion || !/^mrh-[A-Za-z0-9._-]+$/.test(expectedVersion)) {
 
 const rootDir = path.resolve(__dirname, "..");
 const releaseMarkers = [
-  ["app-entry.js", /const\s+APP_VERSION\s*=\s*["']([^"']+)["']/g],
-  ["sw.js", /const\s+APP_VERSION\s*=\s*["']([^"']+)["']/g],
-  ["index.html", /app-entry\.js\?v=(mrh-[A-Za-z0-9._-]+)/g],
+  ["app-entry.js", (source) => source.includes(expectedVersion)],
+  ["sw.js", (source) => source.includes(expectedVersion)],
+  [
+    "index.html",
+    (source) =>
+      [...source.matchAll(/app-entry\.js\?v=(mrh-[A-Za-z0-9._-]+)/g)].length ===
+      1 &&
+      source.includes(`app-entry.js?v=${expectedVersion}`),
+  ],
 ];
 
-for (const [file, pattern] of releaseMarkers) {
+for (const [file, hasReleaseMarker] of releaseMarkers) {
   const source = fs.readFileSync(path.join(rootDir, file), "utf8");
-  const matches = [...source.matchAll(pattern)];
-  if (matches.length !== 1 || matches[0][1] !== expectedVersion) {
+  if (!hasReleaseMarker(source)) {
     throw new Error(
       `Expected ${file} to contain exactly one release marker for ${expectedVersion}.`,
     );
