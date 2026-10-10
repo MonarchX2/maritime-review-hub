@@ -1999,7 +1999,7 @@
             <button onclick="event.stopPropagation(); togglePinDeck('${encodeHandlerValue(folderSubject)}')"
               class="transition-all transform hover:scale-110 active:scale-90 ${pinIconColor} p-1 z-10"
               title="${isPinned ? "Unpin Folder" : "Pin Folder"}">
-              <i class="${isPinned ? "fa-solid fa-thumbtack" : "fa-solid fa-thumbtack opacity-25"} text-lg" style="${isPinned ? "" : "transform: rotate(45deg); display: inline-block;"}"></i>
+              <i class="fa-solid fa-thumbtack text-lg" style="${isPinned ? "" : "transform: rotate(45deg); display: inline-block;"}"></i>
             </button>
           `;
             archiveBtnHtml = `

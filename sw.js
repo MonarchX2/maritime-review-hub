@@ -2,16 +2,10 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-release-2026.10.10";
-const FALLBACK_CACHE_VERSION = APP_VERSION;
-
-function getServiceWorkerUrl() {
-  return new URL(self.location.href);
-}
+const APP_VERSION = "mrh-release-2026.10.10-1";
 
 function getRuntimeCacheVersion() {
-  const version = getServiceWorkerUrl().searchParams.get("v");
-  return version || FALLBACK_CACHE_VERSION;
+  return APP_VERSION;
 }
 
 const CACHE_VERSION = getRuntimeCacheVersion();
@@ -338,13 +332,48 @@ async function cleanupOldCaches() {
   );
 }
 
+async function reloadAppClients() {
+  // Previous app versions may not have a listener that reloads on updates.
+  const clients = await self.clients.matchAll({
+    type: "window",
+    includeUncontrolled: true,
+  });
+  const appBasePath = getAppBasePath();
+  const normalizedBasePath =
+    appBasePath === "/" ? "/" : appBasePath.replace(/\/+$/, "");
+
+  await Promise.all(
+    clients.map(async (client) => {
+      const url = new URL(client.url);
+      if (
+        !isSameOrigin(url) ||
+        !(
+          normalizedBasePath === "/" ||
+          url.pathname === normalizedBasePath ||
+          url.pathname.startsWith(`${normalizedBasePath}/`)
+        )
+      ) {
+        return;
+      }
+
+      try {
+        await client.navigate(client.url);
+      } catch (error) {
+        swLogger.warn(
+          "[SW] Failed to refresh an open app tab:",
+          client.url,
+          error,
+        );
+      }
+    }),
+  );
+}
+
 async function networkFirstNavigation(event) {
   const cache = await getCache();
 
   try {
-    const preloadResponse = await event.preloadResponse;
-
-    const response = preloadResponse || (await fetch(event.request));
+    const response = await fetch(event.request, { cache: "no-store" });
 
     if (!response.ok) {
       throw new Error(`Navigation failed with HTTP ${response.status}`);
@@ -535,16 +564,8 @@ self.addEventListener("activate", (event) => {
     (async () => {
       await cleanupOldCaches();
 
-      // Enable navigation preload where supported.
-      if (self.registration.navigationPreload) {
-        try {
-          await self.registration.navigationPreload.enable();
-        } catch (error) {
-          swLogger.warn("[SW] Navigation preload could not be enabled:", error);
-        }
-      }
-
       await self.clients.claim();
+      await reloadAppClients();
     })(),
   );
 });

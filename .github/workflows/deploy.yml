@@ -9,6 +9,10 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
 jobs:
   security:
     runs-on: ubuntu-latest
@@ -33,6 +37,12 @@ jobs:
         shell: bash
         run: find . -maxdepth 1 -name '*.js' -print0 | xargs -0 -n1 node --check
 
+      - name: Check frontend architecture
+        run: npm run check:architecture
+
+      - name: Check service-worker update lifecycle
+        run: node scripts/check-service-worker-updates.js
+
   deploy:
     needs: security
     environment:
@@ -45,8 +55,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Stamp release version
+        env:
+          RELEASE_VERSION: mrh-${{ github.sha }}
+        run: node scripts/stamp-release-version.js
+
+      - name: Check stamped JavaScript syntax
+        run: node --check app-entry.js && node --check sw.js
+
       - name: Minify files
         uses: dra1ex/minify-action@v1.0.3
+
+      - name: Check minified JavaScript syntax
+        run: node --check app-entry.js && node --check sw.js
+
+      - name: Verify deployed release version
+        env:
+          RELEASE_VERSION: mrh-${{ github.sha }}
+        run: node scripts/verify-release-version.js
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

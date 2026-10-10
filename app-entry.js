@@ -1,7 +1,7 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-release-2026.09.08-5";
+  const APP_VERSION = "mrh-release-2026.10.10-1";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
   const bootstrapLogger = () => rootScope.DebugUtils || console;
 
@@ -213,48 +213,39 @@
     const swUrl = new URL("sw.js", swBaseUrl);
     swUrl.searchParams.set("v", rootScope.__MRH_APP__?.version || APP_VERSION);
 
-    const controllerUrl = navigator.serviceWorker.controller?.scriptURL || "";
-    const controllerVersion = (() => {
-      try {
-        const controller = new URL(controllerUrl);
-        return controller.searchParams.get("v") || "";
-      } catch (error) {
-        return "";
-      }
-    })();
-
-    if (
-      controllerUrl &&
-      controllerVersion &&
-      controllerVersion !== APP_VERSION
-    ) {
-      navigator.serviceWorker
-        .getRegistrations()
-        .then((registrations) => {
-          return Promise.all(
-            registrations
-              .filter(
-                (registration) =>
-                  new URL(registration.scope, swScopeUrl.origin).href ===
-                  swScopeUrl.href,
-              )
-              .map((registration) => registration.unregister()),
-          );
-        })
-        .catch((error) => {
-          bootstrapLogger().warn(
-            "Service worker refresh cleanup failed:",
-            error,
-          );
-        });
-    }
-
     navigator.serviceWorker
       .register(swUrl.href, {
         scope: swScopeUrl.pathname,
         updateViaCache: "none",
       })
-      .then((registration) => registration.update())
+      .then((registration) => {
+        let updateCheck = null;
+        const checkForUpdate = () => {
+          if (!navigator.onLine || updateCheck) return updateCheck;
+
+          updateCheck = registration
+            .update()
+            .catch((error) => {
+              bootstrapLogger().warn(
+                "Service worker update check failed:",
+                error,
+              );
+            })
+            .finally(() => {
+              updateCheck = null;
+            });
+          return updateCheck;
+        };
+
+        checkForUpdate();
+        window.setInterval(() => {
+          if (document.visibilityState === "visible") checkForUpdate();
+        }, 5 * 60 * 1000);
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") checkForUpdate();
+        });
+        window.addEventListener("online", checkForUpdate);
+      })
       .catch((error) => {
         bootstrapLogger().warn("Service worker registration failed:", error);
       });
