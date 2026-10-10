@@ -408,7 +408,8 @@
                   q.Explanation && q.Explanation.trim() !== ""
                     ? `
                     <div class="mt-4 text-sm text-gray-700 dark:text-gray-300 bg-blue-50 dark:bg-gray-900/50 p-3 rounded-lg border border-blue-100 dark:border-gray-700">
-                        <strong class="text-blue-800 dark:text-blue-400"><i class="fa-solid fa-lightbulb mr-1"></i> Explanation:</strong> ${escapeHTML(q.Explanation)}
+                        <strong class="text-blue-800 dark:text-blue-400"><i class="fa-solid fa-lightbulb mr-1"></i> Explanation:</strong>
+                        <div class="mt-2 leading-relaxed">${formatQuestionText(q.Explanation)}</div>
                     </div>
                 `
                     : ""
