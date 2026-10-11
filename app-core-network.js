@@ -618,10 +618,13 @@
     );
 
     if (!options.signal) {
-      deckSummaryInFlight = request.finally(() => {
-        deckSummaryInFlight = null;
+      const trackedRequest = request.finally(() => {
+        if (deckSummaryInFlight === trackedRequest) {
+          deckSummaryInFlight = null;
+        }
       });
-      return deckSummaryInFlight;
+      deckSummaryInFlight = trackedRequest;
+      return trackedRequest;
     }
 
     return request;

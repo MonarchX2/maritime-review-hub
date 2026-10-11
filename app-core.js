@@ -54,6 +54,7 @@
   const BROADCAST_PROTOCOL = "mrh-broadcast-v1";
   let __mrhAppInitialized = false;
   let __mrhAppReady = false;
+  let __mrhAppInitializationPromise = null;
   let __mrhInitializationTimer = null;
   let __mrhPollLoopToken = 0;
   const collapsedTreePaths = new Set();
@@ -4106,10 +4107,16 @@
 
   async function initializeApp() {
     if (window.__MRH_BOOTSTRAP__?.status === "ready") {
-      return false;
+      return true;
     }
 
-    if (__mrhAppInitialized) return false;
+    if (__mrhAppInitializationPromise) {
+      return __mrhAppInitializationPromise;
+    }
+
+    if (__mrhAppInitialized) {
+      return true;
+    }
 
     if (!hasRequiredAppRuntime()) {
       appLogger.warn(
@@ -4119,147 +4126,156 @@
       return false;
     }
 
-    __mrhAppInitialized = true;
+    __mrhAppInitializationPromise = (async () => {
+      __mrhAppInitialized = true;
 
-    const bindUi = () => {
-      const mainEl = document.querySelector("main");
-      const headerEl = document.querySelector("header");
-      if (headerEl)
-        headerEl.classList.add("transition-transform", "duration-300");
+      const bindUi = () => {
+        const mainEl = document.querySelector("main");
+        const headerEl = document.querySelector("header");
+        if (headerEl)
+          headerEl.classList.add("transition-transform", "duration-300");
 
-      if (mainEl && headerEl) {
-        mainEl.addEventListener(
-          "scroll",
-          (e) => {
-            if (!isTicking) {
-              scheduleAppAnimationFrame(() => {
-                const currentScroll = e.target.scrollTop;
+        if (mainEl && headerEl) {
+          mainEl.addEventListener(
+            "scroll",
+            (e) => {
+              if (!isTicking) {
+                scheduleAppAnimationFrame(() => {
+                  const currentScroll = e.target.scrollTop;
 
-                if (currentScroll > lastScrollTop && currentScroll > 50) {
-                  headerEl.classList.add("-translate-y-full");
-                } else {
-                  headerEl.classList.remove("-translate-y-full");
-                }
-                lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
+                  if (currentScroll > lastScrollTop && currentScroll > 50) {
+                    headerEl.classList.add("-translate-y-full");
+                  } else {
+                    headerEl.classList.remove("-translate-y-full");
+                  }
+                  lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
 
-                if (
-                  typeof globalThis.scheduleVirtualReviewRender === "function"
-                ) {
-                  globalThis.scheduleVirtualReviewRender();
-                }
+                  if (
+                    typeof globalThis.scheduleVirtualReviewRender === "function"
+                  ) {
+                    globalThis.scheduleVirtualReviewRender();
+                  }
 
-                const reviewSubject = getCurrentReviewSubject();
-                if (
-                  document
-                    .getElementById("view-deck-review")
-                    .classList.contains("active") &&
-                  reviewSubject
-                ) {
-                  latestReviewScrollY = currentScroll;
-                  clearTimeout(window.scrollSaveTimeout);
-                  window.scrollSaveTimeout = lifecycle.setTimeout(() => {
-                    if (!state.prefs.studyProgress)
-                      state.prefs.studyProgress = {};
-                    if (!state.prefs.studyProgress[reviewSubject]) {
-                      state.prefs.studyProgress[reviewSubject] = {
-                        page: 1,
-                        index: 0,
-                        scrollY: 0,
-                      };
-                    }
-                    state.prefs.studyProgress[reviewSubject].scrollY =
-                      latestReviewScrollY;
-                    saveState("prefs");
-                  }, 1000);
-                }
+                  const reviewSubject = getCurrentReviewSubject();
+                  if (
+                    document
+                      .getElementById("view-deck-review")
+                      .classList.contains("active") &&
+                    reviewSubject
+                  ) {
+                    latestReviewScrollY = currentScroll;
+                    clearTimeout(window.scrollSaveTimeout);
+                    window.scrollSaveTimeout = lifecycle.setTimeout(() => {
+                      if (!state.prefs.studyProgress)
+                        state.prefs.studyProgress = {};
+                      if (!state.prefs.studyProgress[reviewSubject]) {
+                        state.prefs.studyProgress[reviewSubject] = {
+                          page: 1,
+                          index: 0,
+                          scrollY: 0,
+                        };
+                      }
+                      state.prefs.studyProgress[reviewSubject].scrollY =
+                        latestReviewScrollY;
+                      saveState("prefs");
+                    }, 1000);
+                  }
 
-                isTicking = false;
-              });
+                  isTicking = false;
+                });
 
-              isTicking = true;
-            }
-          },
-          { signal: uiEventController.signal },
-        );
+                isTicking = true;
+              }
+            },
+            { signal: uiEventController.signal },
+          );
+        }
+      };
+
+      const applyThemeFromPrefs = () => {
+        const enableDark = state.prefs?.darkMode !== false;
+        document.documentElement.classList.toggle("dark", enableDark);
+        document.documentElement.style.colorScheme = enableDark
+          ? "dark"
+          : "light";
+      };
+
+      const renderSkeleton = () => {
+        const htmlRoot = document.documentElement;
+        if (htmlRoot) {
+          htmlRoot.setAttribute("data-app-ready", "false");
+        }
+
+        const status = document.getElementById("connection-status");
+        if (status) {
+          status.classList.remove("hidden");
+        }
+      };
+
+      try {
+        if (typeof window !== "undefined") {
+          window.__MRH_BOOTSTRAP__ = window.__MRH_BOOTSTRAP__ || {
+            status: "idle",
+            ready: null,
+            error: null,
+          };
+          window.__MRH_BOOTSTRAP__.status = "loading";
+        }
+
+        await loadState();
+
+        const toggleElement = document.getElementById("globalModeToggle");
+        if (toggleElement) {
+          currentAppMode = toggleElement.checked ? "review" : "quiz";
+        }
+
+        bindUi();
+        applyThemeFromPrefs();
+        renderSkeleton();
+
+        __mrhAppReady = true;
+        if (typeof window !== "undefined") {
+          window.__mrhAppReady = true;
+          window.__MRH_BOOTSTRAP__.status = "ready";
+          window.__MRH_BOOTSTRAP__.error = null;
+          document.documentElement.setAttribute("data-app-ready", "true");
+        }
+
+        setupCacheInvalidationListener();
+        startCacheVersionChecking();
+        initDetailsExclusivity();
+
+        scheduleStartupSync();
+
+        lifecycle.setTimeout(() => {
+          applyTitleMode();
+          updateTitleModeButton();
+        }, 100);
+
+        return true;
+      } catch (error) {
+        __mrhAppReady = false;
+        __mrhAppInitialized = false;
+        if (typeof window !== "undefined") {
+          window.__mrhAppReady = false;
+          window.__MRH_BOOTSTRAP__.status = "failed";
+          window.__MRH_BOOTSTRAP__.error = error;
+        }
+        appLogger.error("Application data initialization failed:", error);
+        if (
+          typeof window !== "undefined" &&
+          typeof window.showBootstrapError === "function"
+        ) {
+          window.showBootstrapError(error);
+        }
+        return false;
       }
-    };
-
-    const applyThemeFromPrefs = () => {
-      const enableDark = state.prefs?.darkMode !== false;
-      document.documentElement.classList.toggle("dark", enableDark);
-      document.documentElement.style.colorScheme = enableDark
-        ? "dark"
-        : "light";
-    };
-
-    const renderSkeleton = () => {
-      const htmlRoot = document.documentElement;
-      if (htmlRoot) {
-        htmlRoot.setAttribute("data-app-ready", "false");
-      }
-
-      const status = document.getElementById("connection-status");
-      if (status) {
-        status.classList.remove("hidden");
-      }
-    };
+    })();
 
     try {
-      if (typeof window !== "undefined") {
-        window.__MRH_BOOTSTRAP__ = window.__MRH_BOOTSTRAP__ || {
-          status: "idle",
-          ready: null,
-          error: null,
-        };
-        window.__MRH_BOOTSTRAP__.status = "loading";
-      }
-
-      await loadState();
-
-      const toggleElement = document.getElementById("globalModeToggle");
-      if (toggleElement) {
-        currentAppMode = toggleElement.checked ? "review" : "quiz";
-      }
-
-      bindUi();
-      applyThemeFromPrefs();
-      renderSkeleton();
-
-      __mrhAppReady = true;
-      if (typeof window !== "undefined") {
-        window.__mrhAppReady = true;
-        window.__MRH_BOOTSTRAP__.status = "ready";
-        window.__MRH_BOOTSTRAP__.error = null;
-        document.documentElement.setAttribute("data-app-ready", "true");
-      }
-
-      setupCacheInvalidationListener();
-      startCacheVersionChecking();
-      initDetailsExclusivity();
-
-      scheduleStartupSync();
-
-      lifecycle.setTimeout(() => {
-        applyTitleMode();
-        updateTitleModeButton();
-      }, 100);
-
-      return true;
-    } catch (error) {
-      __mrhAppReady = false;
-      if (typeof window !== "undefined") {
-        window.__mrhAppReady = false;
-        window.__MRH_BOOTSTRAP__.status = "failed";
-        window.__MRH_BOOTSTRAP__.error = error;
-      }
-      appLogger.error("Application data initialization failed:", error);
-      if (
-        typeof window !== "undefined" &&
-        typeof window.showBootstrapError === "function"
-      ) {
-        window.showBootstrapError(error);
-      }
-      return false;
+      return await __mrhAppInitializationPromise;
+    } finally {
+      __mrhAppInitializationPromise = null;
     }
   }
 

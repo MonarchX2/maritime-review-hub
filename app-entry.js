@@ -310,7 +310,10 @@
         await waitForRuntimeDependencies();
 
         if (typeof rootScope.initializeApp === "function") {
-          rootScope.initializeApp();
+          const initialized = await rootScope.initializeApp();
+          if (initialized !== true) {
+            throw new Error("Application initialization did not complete successfully.");
+          }
         }
 
         bootstrap.status = "ready";
