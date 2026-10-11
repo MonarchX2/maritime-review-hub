@@ -1375,13 +1375,6 @@
             return leftPinned ? -1 : 1;
           }
 
-          const leftIsFolder = leftEntry.metadata.isFolder;
-          const rightIsFolder = rightEntry.metadata.isFolder;
-
-          if (leftIsFolder !== rightIsFolder) {
-            return leftIsFolder ? -1 : 1;
-          }
-
           const left = leftEntry.key;
           const right = rightEntry.key;
 
