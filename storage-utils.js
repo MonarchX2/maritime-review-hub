@@ -67,17 +67,20 @@
   function getStorage(kind) {
     const isSession = kind === "session";
     const property = isSession ? "sessionStorage" : "localStorage";
-    const nativeStorage = root[property];
-
-    if (nativeStorage && isStorageLike(nativeStorage)) {
-      if (isSession) {
-        sessionStorageRef = nativeStorage;
-        sessionStorageResolved = true;
-      } else {
-        localStorageRef = nativeStorage;
-        localStorageResolved = true;
+    try {
+      const nativeStorage = root[property];
+      if (nativeStorage && isStorageLike(nativeStorage)) {
+        if (isSession) {
+          sessionStorageRef = nativeStorage;
+          sessionStorageResolved = true;
+        } else {
+          localStorageRef = nativeStorage;
+          localStorageResolved = true;
+        }
+        return nativeStorage;
       }
-      return nativeStorage;
+    } catch (error) {
+      // Storage getters can throw in restricted browser contexts.
     }
 
     const fallbackStorage = getMemoryStorage(kind);
@@ -253,6 +256,34 @@
     );
   }
 
+  function getUtf8ByteLength(value) {
+    if (typeof TextEncoder === "function") {
+      return new TextEncoder().encode(value).byteLength;
+    }
+
+    let byteLength = 0;
+    for (let index = 0; index < value.length; index += 1) {
+      const codeUnit = value.charCodeAt(index);
+      if (codeUnit <= 0x7f) {
+        byteLength += 1;
+      } else if (codeUnit <= 0x7ff) {
+        byteLength += 2;
+      } else if (
+        codeUnit >= 0xd800 &&
+        codeUnit <= 0xdbff &&
+        index + 1 < value.length &&
+        value.charCodeAt(index + 1) >= 0xdc00 &&
+        value.charCodeAt(index + 1) <= 0xdfff
+      ) {
+        byteLength += 4;
+        index += 1;
+      } else {
+        byteLength += 3;
+      }
+    }
+    return byteLength;
+  }
+
   function notifyStorageFailure(message) {
     const now = Date.now();
     if (now - lastStorageWarningAt < 10000) return;
@@ -321,7 +352,7 @@
   function setStoredJSON(key, value) {
     try {
       const serialized = JSON.stringify(value);
-      if (serialized.length > MAX_JSON_PAYLOAD_BYTES) {
+      if (getUtf8ByteLength(serialized) > MAX_JSON_PAYLOAD_BYTES) {
         notifyStorageFailure(
           "Saved data is too large for browser storage. Some changes may not be saved.",
         );
@@ -416,7 +447,7 @@
   function setSessionStoredJSON(key, value) {
     try {
       const serialized = JSON.stringify(value);
-      if (serialized.length > MAX_JSON_PAYLOAD_BYTES) {
+      if (getUtf8ByteLength(serialized) > MAX_JSON_PAYLOAD_BYTES) {
         notifyStorageFailure(
           "Saved data is too large for browser storage. Some changes may not be saved.",
         );

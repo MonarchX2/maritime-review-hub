@@ -17,6 +17,8 @@ const appOrigin = "https://example.test";
 const appBasePath = "/app/";
 let skippedWaiting = false;
 let claimedClients = false;
+let deferStaticRefresh = false;
+let finishStaticRefresh = null;
 
 const clients = [
   {
@@ -96,6 +98,12 @@ const context = {
   async fetch(request, options) {
     calls.requests.push({ request, options });
     const url = typeof request === "string" ? request : request.url;
+    if (deferStaticRefresh && new URL(url).pathname.endsWith("/styles.css")) {
+      deferStaticRefresh = false;
+      return new Promise((resolve) => {
+        finishStaticRefresh = resolve;
+      });
+    }
     if (url === `${appOrigin}${appBasePath}offline`) {
       throw new Error("Simulated offline navigation");
     }
@@ -192,6 +200,43 @@ async function main() {
   const fallback = await offlineResponse;
   assert.equal(fallback.status, 200, "offline navigation must use the cached shell");
   assert.match(await fallback.text(), /<base href="\/app\/">/);
+
+  const staticRequest = new Request(
+    `${appOrigin}${appBasePath}styles.css`,
+    { method: "GET" },
+  );
+  let staticResponse;
+  let staticRefresh;
+  let staticRefreshComplete = false;
+  deferStaticRefresh = true;
+  events.get("fetch")({
+    request: staticRequest,
+    respondWith(promise) {
+      staticResponse = promise;
+    },
+    waitUntil(promise) {
+      staticRefresh = promise;
+    },
+  });
+  assert.ok(staticRefresh, "cached static refresh must extend worker lifetime");
+  staticRefresh.then(() => {
+    staticRefreshComplete = true;
+  });
+  assert.equal((await staticResponse).status, 200);
+  await Promise.resolve();
+  assert.equal(typeof finishStaticRefresh, "function");
+  assert.equal(
+    staticRefreshComplete,
+    false,
+    "the worker lifetime must remain extended while refresh is in flight",
+  );
+  finishStaticRefresh(
+    new Response("fresh stylesheet", {
+      headers: { "Content-Type": "text/css" },
+    }),
+  );
+  await staticRefresh;
+  assert.equal(staticRefreshComplete, true);
 
   console.log("Service-worker update lifecycle checks passed.");
 }

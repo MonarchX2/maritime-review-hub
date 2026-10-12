@@ -43,6 +43,13 @@ jobs:
       - name: Check service-worker update lifecycle
         run: node scripts/check-service-worker-updates.js
 
+      - name: Check runtime reliability
+        run: npm run check:runtime
+
+      - name: Check state-save concurrency
+        run: npm run check:state-save
+
+
   deploy:
     needs: security
     environment:

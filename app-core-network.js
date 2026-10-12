@@ -38,6 +38,7 @@
 
   function isRetryableError(error) {
     if (!error) return false;
+    if (error.isBackendError) return false;
     const status = Number(error?.status);
     if (Number.isFinite(status) && status >= 500) return true;
     if (status === 429) return true;
@@ -92,6 +93,9 @@
     let healthCheckTimer = null;
     let reconnectTimer = null;
     let reconnecting = false;
+    let reconnectPromise = null;
+    let resolveReconnect = null;
+    let poolDestroyed = false;
     let lastActivityAt = Date.now();
     let lastSuccessfulResponseAt = Date.now();
 
@@ -128,7 +132,7 @@
             databaseUrl,
             globalScope.location?.href || undefined,
           );
-          await fetchWithTimeout(
+          const response = await fetchWithTimeout(
             url.toString(),
             {
               method: "GET",
@@ -139,11 +143,16 @@
             },
             settings.healthCheckTimeoutMs,
           );
+          if (!response.ok) {
+            throw new Error(
+              `Connection pool health check failed with HTTP ${response.status}.`,
+            );
+          }
           lastSuccessfulResponseAt = Date.now();
           lastActivityAt = Date.now();
         } catch (error) {
           networkLogger.warn("Connection pool health check failed.", error);
-          if (settings.autoReconnect) {
+          if (settings.autoReconnect && !poolDestroyed) {
             await reconnect();
           }
         }
@@ -151,9 +160,11 @@
     }
 
     function reconnect() {
-      if (reconnecting) return Promise.resolve();
+      if (poolDestroyed) {
+        return Promise.reject(new Error("Connection pool has been destroyed."));
+      }
+      if (reconnecting) return reconnectPromise || Promise.resolve();
       reconnecting = true;
-      activeConnections = 0;
       const reconnectError = new Error(
         "Connection pool reconnected while request was queued.",
       );
@@ -163,29 +174,52 @@
         lifecycle.clearInterval(keepAliveTimer);
         keepAliveTimer = null;
       }
-      return new Promise((resolve) => {
+      reconnectPromise = new Promise((resolve) => {
+        resolveReconnect = resolve;
         reconnectTimer = lifecycle.setTimeout(() => {
           reconnectTimer = null;
           reconnecting = false;
           lastActivityAt = Date.now();
           lastSuccessfulResponseAt = Date.now();
-          scheduleIdleKeepAlive();
-          scheduleHealthCheck();
+          resolveReconnect = null;
+          if (!poolDestroyed) {
+            scheduleIdleKeepAlive();
+            scheduleHealthCheck();
+          }
+          reconnectPromise = null;
           resolve();
         }, settings.reconnectDelayMs);
       });
+      return reconnectPromise;
     }
 
     function releaseConnection() {
-      activeConnections = Math.max(0, activeConnections - 1);
       lastActivityAt = Date.now();
       lastSuccessfulResponseAt = Date.now();
-      scheduleIdleKeepAlive();
-      scheduleHealthCheck();
       const next = queue.shift();
       if (next) {
         next.resolve();
+      } else {
+        activeConnections = Math.max(0, activeConnections - 1);
       }
+      if (!poolDestroyed) {
+        scheduleIdleKeepAlive();
+        scheduleHealthCheck();
+      }
+    }
+
+    function acquireConnection() {
+      if (poolDestroyed) {
+        return Promise.reject(new Error("Connection pool has been destroyed."));
+      }
+      if (activeConnections < settings.maxConnections && queue.length === 0) {
+        activeConnections += 1;
+        return Promise.resolve();
+      }
+
+      return new Promise((resolve, reject) => {
+        queue.push({ resolve, reject });
+      });
     }
 
     async function request(operation, requestOptions = {}) {
@@ -199,36 +233,33 @@
         requestOptions.maxRetryDelayMs ?? settings.maxRetryDelayMs,
       );
 
-      if (reconnecting) {
-        await new Promise((resolve) =>
-          lifecycle.setTimeout(resolve, settings.reconnectDelayMs),
-        );
-      }
-
-      if (activeConnections >= settings.maxConnections) {
-        await new Promise((resolve, reject) => {
-          queue.push({ resolve, reject });
-        });
-      }
-
-      activeConnections += 1;
-      lastActivityAt = Date.now();
-      scheduleIdleKeepAlive();
-      scheduleHealthCheck();
-
+      let acquired = false;
       try {
+        await acquireConnection();
+        acquired = true;
+        if (reconnecting) await reconnectPromise;
+        if (poolDestroyed) {
+          throw new Error("Connection pool has been destroyed.");
+        }
+        lastActivityAt = Date.now();
+        scheduleIdleKeepAlive();
+        scheduleHealthCheck();
         return await retryWithBackoff(operation, {
           maxRetries: attemptLimit,
           baseRetryDelayMs: baseDelay,
           maxRetryDelayMs: maxDelay,
         });
       } catch (error) {
-        if (settings.autoReconnect && isRetryableError(error)) {
+        if (
+          !poolDestroyed &&
+          settings.autoReconnect &&
+          isRetryableError(error)
+        ) {
           await reconnect();
         }
         throw error;
       } finally {
-        releaseConnection();
+        if (acquired) releaseConnection();
       }
     }
 
@@ -247,6 +278,8 @@
         lastSuccessfulResponseAt,
       }),
       destroy: () => {
+        if (poolDestroyed) return;
+        poolDestroyed = true;
         if (keepAliveTimer) {
           lifecycle.clearInterval(keepAliveTimer);
           keepAliveTimer = null;
@@ -259,6 +292,14 @@
           lifecycle.clearTimeout(reconnectTimer);
           reconnectTimer = null;
         }
+        if (reconnecting) {
+          reconnecting = false;
+          reconnectPromise = null;
+          resolveReconnect?.();
+          resolveReconnect = null;
+        }
+        const destroyedError = new Error("Connection pool has been destroyed.");
+        queue.splice(0).forEach(({ reject }) => reject(destroyedError));
       },
     };
   }
@@ -422,6 +463,7 @@
       (result.status === "error" ||
         result.ok === false ||
         result.success === false ||
+        (typeof result.error === "string" && result.error.trim() !== "") ||
         (Number.isFinite(statusCode) && statusCode >= 400));
     if (response.ok && !hasErrorEnvelope) return null;
 
@@ -436,6 +478,7 @@
     error.status = response.ok ? statusCode || 500 : response.status;
     error.code = result?.code || "HTTP_ERROR";
     error.payload = result;
+    error.isBackendError = true;
     return error;
   }
 
@@ -681,7 +724,7 @@
         if (backendError) throw backendError;
         return result;
       } catch (error) {
-        if (options.allowFallback !== false) {
+        if (options.allowFallback !== false && !error?.isBackendError) {
           return callBackend(
             {
               type: "get_deck",

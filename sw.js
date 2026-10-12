@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-release-2026.10.12";
+const APP_VERSION = "mrh-release-2026.10.12.1";
 
 function getRuntimeCacheVersion() {
   return APP_VERSION;
@@ -521,31 +521,46 @@ function getAppShellResourceRequest(request) {
   return new Request(resolveAppUrl(`./${resourceName}`), request);
 }
 
-async function staleWhileRevalidateStatic(request) {
-  const cache = await getCache();
-  const cached = await cache.match(request);
-  const refresh = fetch(request)
-    .then(async (response) => {
-      if (response && response.ok && response.type !== "opaque") {
-        await cacheResponse(cache, request, response);
-      }
-      return response;
-    })
-    .catch((error) => {
-      if (!cached) throw error;
-      swLogger.warn(
-        "[SW] Static refresh failed; using cached response:",
-        request.url,
-      );
+function staleWhileRevalidateStatic(request, event) {
+  let finishBackgroundRefresh;
+  const backgroundRefresh = new Promise((resolve) => {
+    finishBackgroundRefresh = resolve;
+  });
+  event.waitUntil(backgroundRefresh);
+
+  const response = (async () => {
+    const cache = await getCache();
+    const cached = await cache.match(request);
+    const refresh = fetch(request)
+      .then(async (networkResponse) => {
+        if (networkResponse && networkResponse.ok && networkResponse.type !== "opaque") {
+          await cacheResponse(cache, request, networkResponse);
+        }
+        return networkResponse;
+      })
+      .catch((error) => {
+        if (!cached) throw error;
+        swLogger.warn(
+          "[SW] Static refresh failed; using cached response:",
+          request.url,
+        );
+        return cached;
+      });
+
+    if (cached) {
+      refresh.then(finishBackgroundRefresh, finishBackgroundRefresh);
       return cached;
-    });
+    }
 
-  if (cached) {
-    return cached;
-  }
+    finishBackgroundRefresh();
+    // First visits still wait for the network and populate the cache.
+    return refresh;
+  })();
 
-  // First visits still wait for the network and populate the cache.
-  return refresh;
+  return response.catch((error) => {
+    finishBackgroundRefresh();
+    throw error;
+  });
 }
 
 self.addEventListener("install", (event) => {
@@ -600,7 +615,10 @@ self.addEventListener("fetch", (event) => {
   // Static resources: cached response first, with a background refresh.
   if (isStaticRequest(request)) {
     event.respondWith(
-      staleWhileRevalidateStatic(getAppShellResourceRequest(request)),
+      staleWhileRevalidateStatic(
+        getAppShellResourceRequest(request),
+        event,
+      ),
     );
     return;
   }

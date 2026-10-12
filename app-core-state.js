@@ -975,7 +975,7 @@
 
   async function persistMergedState(key) {
     const baseline = persistedStateBaseline[key];
-    const localValue = state[key];
+    const localValue = cloneStoredValue(state[key]);
     const result = await StorageUtils.mergeStoredJSON(
       key,
       localValue,
@@ -989,7 +989,15 @@
     );
 
     if (result.saved) {
-      state[key] = result.value;
+      const latestLocalValue = state[key];
+      state[key] = storedValuesEqual(latestLocalValue, localValue)
+        ? result.value
+        : mergeStoredStateValue(
+            key,
+            localValue,
+            latestLocalValue,
+            result.value,
+          );
       persistedStateBaseline[key] = cloneStoredValue(result.value);
     }
     return result.saved;
