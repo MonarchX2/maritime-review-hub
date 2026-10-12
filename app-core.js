@@ -49,9 +49,17 @@
   // invalidates the cached value.
   const arraySignatureCache = new WeakMap();
   const subjectListSignatureCache = new WeakMap();
-  const SYNC_STATUS_STORAGE_KEY = "mrh_last_sync_status_timestamp";
+  const SYNC_STATUS_STORAGE_KEY = "mrh_last_applied_sync_status_timestamp";
   const SYNC_REQUEST_TIMEOUT_MS = appConfig.syncRequestTimeoutMs ?? 60000;
   const BROADCAST_PROTOCOL = "mrh-broadcast-v1";
+  const inFlightDeckDatabaseWrites = new Set();
+  const inFlightDeckMutations = new Set();
+  const deckFetchGenerations = new Map();
+  const deckMutationsInProgress = new Set();
+  let appDataClearInProgress = false;
+  let appDataClearGeneration = 0;
+  let clearDatabaseInProgress = false;
+  let clearAppDataInProgress = false;
   let __mrhAppInitialized = false;
   let __mrhAppReady = false;
   let __mrhAppInitializationPromise = null;
@@ -315,12 +323,60 @@
   }
 
   async function safeIdbSet(key, value) {
-    if (typeof idbKeyval !== "undefined") {
-      await idbKeyval.set(
-        key.includes(":") || key.startsWith("mrh_") ? key : getStorageKey(key),
-        value,
-      );
+    if (appDataClearInProgress) {
+      throw new Error("Deck persistence is paused while app data is cleared.");
     }
+
+    if (typeof idbKeyval !== "undefined") {
+      const write = Promise.resolve().then(() =>
+        idbKeyval.set(
+          key.includes(":") || key.startsWith("mrh_")
+            ? key
+            : getStorageKey(key),
+          value,
+        ),
+      );
+      inFlightDeckDatabaseWrites.add(write);
+      try {
+        await write;
+      } finally {
+        inFlightDeckDatabaseWrites.delete(write);
+      }
+    }
+  }
+
+  function isDeckFetchCurrent(generation) {
+    return (
+      !appDataClearInProgress && generation === appDataClearGeneration
+    );
+  }
+
+  function getDeckFetchGeneration(subject) {
+    const key = String(subject || "").trim();
+    return deckFetchGenerations.get(key) || 0;
+  }
+
+  function invalidateDeckFetch(subject) {
+    const key = String(subject || "").trim();
+    if (!key) return;
+    deckFetchGenerations.set(key, getDeckFetchGeneration(key) + 1);
+  }
+
+  function canFetchDeck(subject) {
+    const key = String(subject || "").trim();
+    return (
+      !appDataClearInProgress &&
+      !clearDatabaseInProgress &&
+      !clearAppDataInProgress &&
+      !deckMutationsInProgress.has(key)
+    );
+  }
+
+  function isDeckFetchCurrentForSubject(subject, generation) {
+    return (
+      canFetchDeck(subject) &&
+      getDeckFetchGeneration(subject) === generation
+    );
   }
 
   async function safeIdbDel(key) {
@@ -668,6 +724,16 @@
       normalizeSummaryData,
       readStoredSyncStatusTimestamp,
       persistSyncStatusTimestamp,
+      persistSummaryData: async () => {
+        const saved = await saveState("summary");
+        if (saved === false) {
+          throw new Error("Unable to persist the synchronized summary.");
+        }
+        return true;
+      },
+      setPendingSummaryData: (summary) => {
+        pendingSummaryData = summary;
+      },
       applySummaryData,
       setAccessMetadata: (summary) => {
         state.accessMetadata = buildAccessMetadataMap(summary);
@@ -992,6 +1058,8 @@
         ? getSummarySignature(state.categorySummary || []) !==
           getSummarySignature(summaryData || [])
         : Boolean(knownChanged);
+    const pendingSummaryToApply = pendingSummaryData;
+    const applyingPendingSummary = Boolean(pendingSummaryToApply);
 
     if (!Array.isArray(summaryData)) {
       return false;
@@ -1005,7 +1073,39 @@
     if (!isInitialSyncComplete) {
       isInitialSyncComplete = true;
     }
-    saveState();
+    const summaryStateSavePromise = Promise.resolve(saveState());
+    summaryStateSavePromise.then(
+      (saved) => {
+        if (saved === false) {
+          appLogger.error(
+            applyingPendingSummary
+              ? "Unable to persist the deferred database summary."
+              : "Unable to persist the database summary.",
+          );
+          return;
+        }
+        if (
+          !applyingPendingSummary ||
+          pendingSummaryData !== pendingSummaryToApply
+        ) {
+          return;
+        }
+        pendingSummaryData = null;
+        syncController?.confirmPendingSummaryApplied?.();
+        updateSyncStatus(
+          '<i class="fa-solid fa-check mr-1"></i> Database update applied after your session.',
+          "success",
+        );
+      },
+      (error) => {
+        appLogger.error(
+          applyingPendingSummary
+            ? "Unable to persist the deferred database summary."
+            : "Unable to persist the database summary.",
+          error,
+        );
+      },
+    );
     populateFilters();
     renderCategoryProgress();
     return changed;
@@ -2140,6 +2240,23 @@
         "Delete Downloaded Data",
       )
     ) {
+      if (
+        appDataClearInProgress ||
+        clearDatabaseInProgress ||
+        clearAppDataInProgress
+      ) {
+        return;
+      }
+      let finishMutation;
+      const mutation = new Promise((resolve) => {
+        finishMutation = resolve;
+      });
+      inFlightDeckMutations.add(mutation);
+      const clearGeneration = appDataClearGeneration;
+      invalidateDeckFetch(subject);
+      deckMutationsInProgress.add(String(subject || "").trim());
+
+      try {
       // Clear any pending sync timers - deletion is a local operation
       lifecycle.clearTimeout(syncRetryTimer);
       lifecycle.clearInterval(syncCountdownTimer);
@@ -2184,7 +2301,10 @@
       ).filter((deck) => deck !== subject);
 
       saveState();
+      await Promise.allSettled([...inFlightDeckDatabaseWrites]);
+      if (!isDeckFetchCurrent(clearGeneration)) return;
       await safeIdbSet("mrh_db", state.db);
+      if (!isDeckFetchCurrent(clearGeneration)) return;
       renderCategoryProgress();
 
       const saved = getStoredItem("saved_session");
@@ -2269,6 +2389,11 @@
       }
 
       updateDashboard();
+      } finally {
+        deckMutationsInProgress.delete(String(subject || "").trim());
+        inFlightDeckMutations.delete(mutation);
+        finishMutation();
+      }
     }
   }
 
@@ -2284,6 +2409,7 @@
   ) {
     const subjectKey = String(subject || "").trim();
     if (!subjectKey) return [];
+    if (!canFetchDeck(subjectKey)) return [];
 
     return await fetchDeckQuestionsFromNetwork(
       subject,
@@ -2306,11 +2432,15 @@
     customFilter,
     loaderElement = null,
   ) {
+    if (!canFetchDeck(subject)) return [];
+
     const subjectKey = getDeckFetchKey(subject, pass, customFilter);
     if (deckFetchInFlight.has(subjectKey)) {
       return deckFetchInFlight.get(subjectKey);
     }
 
+    const clearGeneration = appDataClearGeneration;
+    const deckGeneration = getDeckFetchGeneration(subject);
     const request = (async () => {
       if (loaderElement) {
         loaderElement.classList.remove("hidden");
@@ -2338,6 +2468,12 @@
         const response = await AppNetwork.getDeck(subject, pass || "", {
           timeoutMs: 15000,
         });
+        if (
+          !isDeckFetchCurrent(clearGeneration) ||
+          !isDeckFetchCurrentForSubject(subject, deckGeneration)
+        ) {
+          return [];
+        }
 
         let newQuestions = response;
         if (newQuestions && newQuestions.error) {
@@ -2893,12 +3029,24 @@
 
   async function clearDatabase() {
     if (
-      await requestConfirmation(
+      clearDatabaseInProgress ||
+      clearAppDataInProgress ||
+      appDataClearInProgress
+    ) {
+      return;
+    }
+    clearDatabaseInProgress = true;
+    try {
+      const confirmed = await requestConfirmation(
         "WARNING: Are you sure you want to clear the locally saved database? You will need an active internet connection to sync the questions again. The app will reload to apply changes.",
         "Clear Local Database",
-      )
-    ) {
+      );
+      if (!confirmed || clearAppDataInProgress || appDataClearInProgress) return;
+      await Promise.allSettled([...inFlightDeckMutations]);
+      appDataClearInProgress = true;
+      appDataClearGeneration += 1;
       try {
+        await Promise.allSettled([...inFlightDeckDatabaseWrites]);
         await safeIdbDel("mrh_db");
         state.db = [];
         rebuildQuestionIndex();
@@ -2911,25 +3059,39 @@
         }
         window.location.reload();
       } catch (error) {
+        appDataClearInProgress = false;
+        appDataClearGeneration += 1;
         appLogger.error("Unable to clear the local database.", error);
         showToast(
           "The local database could not be fully cleared. Please try again.",
           "error",
         );
       }
+    } catch (error) {
+      appLogger.error("Unable to confirm local database clearing.", error);
+      showToast(
+        "The local database could not be cleared. Please try again.",
+        "error",
+      );
+    } finally {
+      clearDatabaseInProgress = false;
     }
   }
 
-  let clearAppDataInProgress = false;
-
   async function clearAppData() {
-    if (clearAppDataInProgress) return;
+    if (
+      clearAppDataInProgress ||
+      clearDatabaseInProgress ||
+      appDataClearInProgress
+    ) {
+      return;
+    }
     clearAppDataInProgress = true;
 
     try {
       if (
         !(await requestConfirmation(
-          "This permanently deletes this app's locally saved decks, progress, preferences, saved sessions, and app cache. Continue?",
+          "This permanently deletes this app's locally saved decks, progress, preferences, saved sessions, and cached files. The app shell will be downloaded again after reload. Continue?",
           "Clear App Data",
         ))
       ) {
@@ -2938,12 +3100,22 @@
 
       if (
         !(await requestConfirmation(
-          "Final confirmation: only data owned by this app will be erased, including this app's cached files. Other same-origin website data will be left untouched.",
+          "Final confirmation: only data owned by this app will be erased, including cached downloaded files. The app will cache its current offline shell again after reload; other same-origin website data will be left untouched.",
           "Confirm Permanent Deletion",
         ))
       ) {
         return;
       }
+
+      if (clearDatabaseInProgress || appDataClearInProgress) return;
+      if (typeof rootScope.AppState?.stopStatePersistence !== "function") {
+        throw new Error("App state persistence control is unavailable.");
+      }
+      await Promise.allSettled([...inFlightDeckMutations]);
+      await rootScope.AppState.stopStatePersistence();
+      appDataClearInProgress = true;
+      appDataClearGeneration += 1;
+      await Promise.allSettled([...inFlightDeckDatabaseWrites]);
 
       if (typeof caches !== "undefined") {
         if (
@@ -2964,6 +3136,9 @@
       }
 
       await safeIdbDel("mrh_db");
+
+      if (state.session) state.session.active = false;
+      rootScope.SessionCore?.cleanup?.();
 
       if (
         typeof StorageUtils === "undefined" ||
@@ -2996,6 +3171,8 @@
       rebuildQuestionIndex();
       window.location.reload();
     } catch (error) {
+      appDataClearInProgress = false;
+      rootScope.AppState?.resumeStatePersistence?.();
       appLogger.error("Unable to clear app data.", error);
       showToast(
         "Some app data could not be cleared. Please try again.",

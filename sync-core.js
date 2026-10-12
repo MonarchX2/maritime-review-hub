@@ -166,6 +166,7 @@
     let attempt = 0;
     let initialSuccessShown = false;
     let pendingSummaryData = null;
+    let pendingSyncTimestamp = "";
     let connected = false;
     let coldStart = false;
     let inFlightPromise = null;
@@ -294,8 +295,19 @@
             setIsColdStart(false);
             return;
           }
-          if (timestamp) options.persistSyncStatusTimestamp(timestamp);
-          await syncDatabase(true, true);
+          if (timestamp && pendingSyncTimestamp === timestamp) {
+            if (options.hasActiveSession()) {
+              setConnected(true);
+              setIsColdStart(false);
+              return;
+            }
+            pendingSyncTimestamp = "";
+          }
+          const synchronized = await syncDatabase(true, true);
+          if (timestamp && synchronized) {
+            if (pendingSummaryData) pendingSyncTimestamp = timestamp;
+            else options.persistSyncStatusTimestamp(timestamp);
+          }
         } catch (error) {
           options.logger.error(
             "[SYNC] Simplified background sync error:",
@@ -328,7 +340,8 @@
       return {
         changed,
         canApply,
-        shouldApply: canApply && (changed || !wasConnected),
+        shouldApply:
+          canApply && (changed || !wasConnected || Boolean(pendingSummaryData)),
         shouldQueue: !canApply && changed,
       };
     }
@@ -391,11 +404,21 @@
             const decision = getDecision(summaryData, wasConnected);
             if (decision.shouldApply) {
               pendingSummaryData = null;
+              options.setPendingSummaryData?.(null);
               options.applySummaryData(summaryData, decision.changed);
               options.setAccessMetadata(summaryData);
             } else if (!decision.canApply) {
-              if (decision.shouldQueue) pendingSummaryData = summaryData;
+              if (decision.shouldQueue) {
+                pendingSummaryData = summaryData;
+                options.setPendingSummaryData?.(summaryData);
+              }
               if (!wasConnected) options.renderCategoryProgress();
+            }
+            if (
+              typeof options.persistSummaryData === "function" &&
+              (await options.persistSummaryData()) === false
+            ) {
+              throw new Error("Unable to persist the synchronized summary.");
             }
             options.updateSyncStatus(
               `<i class="fa-solid fa-check mr-1"></i> Connected. ${decision.changed && !decision.canApply ? "Update waiting until your session ends." : `Checked ${summaryData.length} subjects.`}`,
@@ -474,6 +497,15 @@
           optimizedBackgroundSync().finally(() => {
             if (options.isLeader() && !document.hidden) schedulePoll();
           });
+      },
+      confirmPendingSummaryApplied() {
+        if (!pendingSummaryData) return false;
+        pendingSummaryData = null;
+        if (pendingSyncTimestamp) {
+          options.persistSyncStatusTimestamp(pendingSyncTimestamp);
+          pendingSyncTimestamp = "";
+        }
+        return true;
       },
       getStatus: () => ({ connected, coldStart, pendingSummaryData }),
       cleanup() {

@@ -935,13 +935,8 @@
     if (globalScope.pendingSummaryData) {
       if (typeof globalScope.applySummaryData === "function") {
         globalScope.applySummaryData(globalScope.pendingSummaryData);
-      }
-      globalScope.pendingSummaryData = null;
-      if (typeof globalScope.updateSyncStatus === "function") {
-        globalScope.updateSyncStatus(
-          '<i class="fa-solid fa-check mr-1"></i> Database update applied after your session.',
-          "success",
-        );
+      } else {
+        globalScope.pendingSummaryData = null;
       }
     }
 

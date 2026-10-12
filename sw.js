@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-release-2026.10.12.1";
+const APP_VERSION = "mrh-release-2026.10.12.2";
 
 function getRuntimeCacheVersion() {
   return APP_VERSION;
@@ -533,7 +533,11 @@ function staleWhileRevalidateStatic(request, event) {
     const cached = await cache.match(request);
     const refresh = fetch(request)
       .then(async (networkResponse) => {
-        if (networkResponse && networkResponse.ok && networkResponse.type !== "opaque") {
+        if (
+          networkResponse &&
+          networkResponse.ok &&
+          networkResponse.type !== "opaque"
+        ) {
           await cacheResponse(cache, request, networkResponse);
         }
         return networkResponse;
@@ -615,10 +619,7 @@ self.addEventListener("fetch", (event) => {
   // Static resources: cached response first, with a background refresh.
   if (isStaticRequest(request)) {
     event.respondWith(
-      staleWhileRevalidateStatic(
-        getAppShellResourceRequest(request),
-        event,
-      ),
+      staleWhileRevalidateStatic(getAppShellResourceRequest(request), event),
     );
     return;
   }

@@ -49,6 +49,11 @@ jobs:
       - name: Check state-save concurrency
         run: npm run check:state-save
 
+      - name: Check deck-clear concurrency
+        run: npm run check:deck-clear
+
+      - name: Check sync timestamp recovery
+        run: npm run check:sync-timestamp
 
   deploy:
     needs: security

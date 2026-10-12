@@ -123,4 +123,63 @@ assert.equal(
   "FORBIDDEN",
 );
 
+const rateLimitValues = new Map();
+let rateLimitLockHeld = false;
+let canAcquireRateLimitLock = true;
+let rateLimitLockReleases = 0;
+context.LockService = {
+  getUserLock() {
+    return {
+      tryLock(timeoutMs) {
+        assert.equal(timeoutMs, 5000);
+        if (!canAcquireRateLimitLock || rateLimitLockHeld) return false;
+        rateLimitLockHeld = true;
+        return true;
+      },
+      releaseLock() {
+        assert.equal(rateLimitLockHeld, true);
+        rateLimitLockHeld = false;
+        rateLimitLockReleases += 1;
+      },
+    };
+  },
+};
+context.CacheService = {
+  getScriptCache() {
+    return {
+      get(key) {
+        assert.equal(
+          rateLimitLockHeld,
+          true,
+          "rate-limit reads must be protected by the user lock",
+        );
+        return rateLimitValues.get(key) || null;
+      },
+      put(key, value, ttlSeconds) {
+        assert.equal(
+          rateLimitLockHeld,
+          true,
+          "rate-limit writes must be protected by the same user lock",
+        );
+        assert.equal(ttlSeconds, 60);
+        rateLimitValues.set(key, value);
+      },
+    };
+  },
+};
+assert.equal(context.incrementRateLimit("password", 2, 60), true);
+assert.equal(context.incrementRateLimit("password", 2, 60), true);
+assert.equal(context.incrementRateLimit("password", 2, 60), false);
+assert.equal(rateLimitValues.get("password"), "2");
+assert.equal(rateLimitLockReleases, 3);
+
+canAcquireRateLimitLock = false;
+assert.equal(
+  context.incrementRateLimit("contended", 2, 60),
+  false,
+  "rate-limit updates must fail closed when the lock cannot be acquired",
+);
+assert.equal(rateLimitValues.has("contended"), false);
+assert.equal(rateLimitLockReleases, 3);
+
 console.log("Backend cache recovery checks passed.");

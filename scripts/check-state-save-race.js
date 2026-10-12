@@ -127,7 +127,63 @@ async function checkReplacementDuringPendingSave() {
   );
 }
 
+async function checkPersistenceStopBeforeClear() {
+  const appState = context.module.exports;
+  appState.state.stats = {
+    totalAnswered: 8,
+    correct: 5,
+    mistakes: [],
+    subjectAccuracy: {},
+    completedQs: [],
+    srsMap: {},
+  };
+
+  appState.saveState("stats");
+  assert.equal(idleCallbacks.length, 1);
+  const staleIdleCallback = idleCallbacks[0];
+  const stopped = appState.stopStatePersistence();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(pendingWrites.length, 1);
+
+  completeNextWrite();
+  assert.equal(await stopped, true);
+
+  storedValues.clear();
+  assert.equal(
+    await appState.saveState("stats"),
+    false,
+    "state saves must be rejected after persistence is stopped",
+  );
+  assert.equal(
+    idleCallbacks.length,
+    1,
+    "stopping persistence must leave only the already-scheduled stale callback",
+  );
+  assert.equal(
+    storedValues.size,
+    0,
+    "finishing the in-flight save before clearing must prevent data resurrection",
+  );
+
+  appState.resumeStatePersistence();
+  appState.state.stats.totalAnswered = 9;
+  appState.saveState("stats");
+  const currentIdleCallback = idleCallbacks.shift();
+  assert.equal(typeof currentIdleCallback, "function");
+  const staleFlush = staleIdleCallback();
+  const currentFlush = currentIdleCallback();
+  assert.equal(
+    pendingWrites.length,
+    1,
+    "a stale idle callback must not start a second concurrent state flush",
+  );
+  completeNextWrite();
+  await Promise.all([staleFlush, currentFlush]);
+  assert.equal(storedValues.get("stats").totalAnswered, 9);
+}
+
 checkReplacementDuringPendingSave()
+  .then(checkPersistenceStopBeforeClear)
   .then(() => console.log("State-save race checks passed."))
   .catch((error) => {
     console.error(error);

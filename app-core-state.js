@@ -961,6 +961,7 @@
   let stateSaveQueued = false;
   let stateSaveFlushing = false;
   let stateSaveSucceeded = true;
+  let statePersistenceStopped = false;
   let pendingSaveMask = 0;
 
   const SAVE_STATS = 1;
@@ -1004,6 +1005,7 @@
   }
 
   async function flushStateSave() {
+    if (stateSaveFlushing || !stateSaveQueued || !stateSavePromise) return;
     stateSaveQueued = false;
     stateSaveFlushing = true;
     const saveMask = pendingSaveMask || SAVE_ALL;
@@ -1080,10 +1082,11 @@
 
     stateSaveSucceeded = stateSaveSucceeded && saveSucceeded;
     stateSaveFlushing = false;
-    if (pendingSaveMask) {
+    if (pendingSaveMask && !statePersistenceStopped) {
       queueStateSave();
       return;
     }
+    pendingSaveMask = 0;
 
     const resolve = resolveStateSave;
     stateSavePromise = null;
@@ -1106,6 +1109,8 @@
   }
 
   function saveState(dirty = "all") {
+    if (statePersistenceStopped) return Promise.resolve(false);
+
     if (!stateSavePromise) {
       stateSaveSucceeded = true;
       stateSavePromise = new Promise((resolve) => {
@@ -1122,6 +1127,18 @@
     queueStateSave();
 
     return stateSavePromise;
+  }
+
+  function stopStatePersistence() {
+    statePersistenceStopped = true;
+    if (stateSaveQueued && !stateSaveFlushing) {
+      void flushStateSave();
+    }
+    return stateSavePromise || Promise.resolve(stateSaveSucceeded);
+  }
+
+  function resumeStatePersistence() {
+    statePersistenceStopped = false;
   }
 
   globalScope.state = state;
@@ -1220,6 +1237,8 @@
     saveState: async function saveStateAlias(dirty = "all") {
       return saveState(dirty);
     },
+    stopStatePersistence,
+    resumeStatePersistence,
   };
 
   if (typeof module !== "undefined" && module.exports) {
