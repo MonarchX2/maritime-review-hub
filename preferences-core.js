@@ -333,7 +333,13 @@
       : "letters";
 
     const menu = document.getElementById("deck-sort-menu");
-    if (menu) menu.open = false;
+    if (menu) {
+      if (typeof globalScope.closeDropdownMenu === "function") {
+        globalScope.closeDropdownMenu(menu);
+      } else {
+        menu.open = false;
+      }
+    }
 
     saveState();
     renderCategoryProgress();
@@ -370,7 +376,13 @@
     });
 
     const menu = document.getElementById("deck-source-menu");
-    if (menu) menu.open = false;
+    if (menu) {
+      if (typeof globalScope.closeDropdownMenu === "function") {
+        globalScope.closeDropdownMenu(menu);
+      } else {
+        menu.open = false;
+      }
+    }
 
     const select = document.getElementById("deck-source-filter");
     if (select) select.value = state.prefs.deckSourceFilter;

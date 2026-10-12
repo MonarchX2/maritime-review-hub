@@ -204,6 +204,37 @@
           q.ChoiceB.trim() !== ""
       : null;
 
+    if (!state.stats.completedQs) state.stats.completedQs = [];
+    const completedSet = new Set(state.stats.completedQs);
+    if (mode === "continue") {
+      const summaryEntry = (state.categorySummary || []).find(
+        (category) => category?.Subject === subject,
+      );
+      const summaryQuestionCount = Number(summaryEntry?.QuestionCount || 0);
+      const localSubjectQuestions = (state.db || []).filter(
+        (question) => question?.Subject === subject,
+      );
+      const availableLocalQuestions = customFilter
+        ? localSubjectQuestions.filter(customFilter)
+        : localSubjectQuestions;
+      const isKnownComplete =
+        summaryQuestionCount > 0 &&
+        localSubjectQuestions.length >= summaryQuestionCount &&
+        availableLocalQuestions.length > 0 &&
+        availableLocalQuestions.every((question) =>
+          completedSet.has(question.ID),
+        );
+
+      if (isKnownComplete) {
+        triggerDeckResetBounce(subject);
+        globalScope.showToast?.(
+          "You have answered all available questions. Reset to start over.",
+          "info",
+        );
+        return;
+      }
+    }
+
     // Always attempt to fetch fresh data for gameplay sessions
     if (typeof globalScope.fetchDeckQuestions !== "function") {
       throw new Error("fetchDeckQuestions is not available.");
@@ -234,12 +265,10 @@
       return;
     }
 
-    if (!state.stats.completedQs) state.stats.completedQs = [];
     if (!state.stats.srsMap) state.stats.srsMap = {};
 
     // Set membership turns repeated O(n) includes() checks into O(1) lookups
     // for large question banks.
-    const completedSet = new Set(state.stats.completedQs);
     const mistakesSet = new Set(state.stats.mistakes || []);
 
     let pool = [];
@@ -341,9 +370,15 @@
 
   async function resetCategory(subject) {
     subject = decodeHandlerValue(subject);
+    const deckName = String(subject || "").split("::").pop().trim();
     if (
       await requestConfirmation(
-        `Are you sure you want to reset your accuracy and progress statistics for "${subject}"? This cannot be undone.`,
+        {
+          before:
+            "Are you sure you want to reset your accuracy and progress statistics for ",
+          emphasis: deckName,
+          after: "? This cannot be undone.",
+        },
         "Reset Progress",
       )
     ) {

@@ -10,6 +10,7 @@
   // ===================== CORE MODAL CONTROL =====================
   const modalTimers = new WeakMap();
   const modalInnerCache = new WeakMap();
+  const dropdownCloseTimers = new WeakMap();
   let dropdownMenusCache = null;
 
   function getModalInner(modal) {
@@ -73,9 +74,13 @@
       confirmRequest = { resolve };
       const modal = document.getElementById("confirm-modal");
       if (!modal) {
+        const fallbackMessage =
+          message && typeof message === "object"
+            ? `${message.before || ""}${message.emphasis || ""}${message.after || ""}`
+            : message;
         const result =
           typeof globalScope.confirm === "function"
-            ? globalScope.confirm(message)
+            ? globalScope.confirm(fallbackMessage)
             : false;
         confirmRequest = null;
         resolve(result);
@@ -93,7 +98,23 @@
           document.createTextNode(String(title ?? "")),
         );
       }
-      if (messageEl) messageEl.textContent = String(message ?? "");
+      if (messageEl) {
+        if (
+          message &&
+          typeof message === "object" &&
+          typeof message.emphasis === "string"
+        ) {
+          const emphasis = document.createElement("strong");
+          emphasis.textContent = message.emphasis;
+          messageEl.replaceChildren(
+            document.createTextNode(String(message.before || "")),
+            emphasis,
+            document.createTextNode(String(message.after || "")),
+          );
+        } else {
+          messageEl.textContent = String(message ?? "");
+        }
+      }
       toggleModal("confirm-modal", true);
     });
   }
@@ -320,6 +341,51 @@
   }
 
   // ===================== DROPDOWN MENU MANAGEMENT =====================
+  function closeDropdownMenu(menu) {
+    if (!menu?.open) return false;
+    if (menu.classList.contains("dropdown-closing")) return true;
+
+    const previousTimer = dropdownCloseTimers.get(menu);
+    if (previousTimer) {
+      lifecycle.clearTimeout(previousTimer);
+      dropdownCloseTimers.delete(menu);
+    }
+
+    menu.classList.remove("dropdown-visible");
+    menu.classList.add("dropdown-closing");
+    const timer = lifecycle.setTimeout(() => {
+      menu.open = false;
+      menu.classList.remove("dropdown-closing");
+      dropdownCloseTimers.delete(menu);
+    }, 500);
+    dropdownCloseTimers.set(menu, timer);
+    return true;
+  }
+
+  function openDropdownMenu(menu) {
+    if (!menu) return false;
+
+    const previousTimer = dropdownCloseTimers.get(menu);
+    if (previousTimer) {
+      lifecycle.clearTimeout(previousTimer);
+      dropdownCloseTimers.delete(menu);
+    }
+    menu.classList.remove("dropdown-closing");
+    menu.open = true;
+    closeAllDropdownMenus(menu);
+    const showPanel = () => {
+      if (menu.open && !menu.classList.contains("dropdown-closing")) {
+        menu.classList.add("dropdown-visible");
+      }
+    };
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(showPanel);
+    } else {
+      lifecycle.setTimeout(showPanel, 0);
+    }
+    return true;
+  }
+
   function closeAllDropdownMenus(exceptElement = null) {
     const menus =
       dropdownMenusCache ||
@@ -327,7 +393,7 @@
         "#deck-source-menu, #deck-sort-menu, #quiz-filter-menu",
       ));
     menus.forEach((menu) => {
-      if (menu !== exceptElement) menu.open = false;
+      if (menu !== exceptElement) closeDropdownMenu(menu);
     });
   }
 
@@ -346,11 +412,23 @@
       return;
     document.documentElement.dataset.mrhDetailsExclusivityInitialized = "true";
     detailsElements.forEach((details) => {
+      details.addEventListener("click", (event) => {
+        const target =
+          event.target instanceof Element ? event.target : null;
+        const summary = target?.closest("summary");
+        if (summary?.parentElement !== details) return;
+        event.preventDefault();
+        if (details.open && !details.classList.contains("dropdown-closing")) {
+          closeDropdownMenu(details);
+        } else {
+          openDropdownMenu(details);
+        }
+      }, true);
       details.addEventListener("toggle", (e) => {
         if (e.target.open) {
           detailsElements.forEach((other) => {
             if (other !== e.target && other.open) {
-              other.open = false;
+              closeDropdownMenu(other);
             }
           });
         }
@@ -358,7 +436,8 @@
     });
 
     document.addEventListener("click", (event) => {
-      const clickedInsideDetails = event.target.closest("details");
+      const target = event.target instanceof Element ? event.target : null;
+      const clickedInsideDetails = target?.closest("details");
       if (!clickedInsideDetails) {
         closeAllDropdownMenus();
       }
@@ -385,6 +464,8 @@
     openDeckPasswordModal,
     closeDeckPasswordModal,
     closeAllDropdownMenus,
+    closeDropdownMenu,
+    openDropdownMenu,
     initDetailsExclusivity,
     // Expose state for external access
     getPendingLockedFolderPath: () => pendingLockedFolderPath,
@@ -423,7 +504,10 @@
   globalScope.openDeckPasswordModal = openDeckPasswordModal;
   globalScope.closeDeckPasswordModal = closeDeckPasswordModal;
   globalScope.closeAllDropdownMenus = closeAllDropdownMenus;
+  globalScope.closeDropdownMenu = closeDropdownMenu;
+  globalScope.openDropdownMenu = openDropdownMenu;
   globalScope.initDetailsExclusivity = initDetailsExclusivity;
+  initDetailsExclusivity();
 
   // For Node.js testing - export as CommonJS if in test environment
   if (typeof module !== "undefined" && module.exports) {

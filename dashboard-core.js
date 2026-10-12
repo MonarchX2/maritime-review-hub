@@ -138,7 +138,13 @@
     hiddenSelect.value = filterValue;
 
     const menu = document.getElementById("quiz-filter-menu");
-    if (menu) menu.open = false;
+    if (menu) {
+      if (typeof globalScope.closeDropdownMenu === "function") {
+        globalScope.closeDropdownMenu(menu);
+      } else {
+        menu.open = false;
+      }
+    }
   }
 
   function getShortSubjectLabel(subject, fallback = "General") {
@@ -150,7 +156,7 @@
       .map((part) => part.trim())
       .filter(Boolean);
 
-    return parts.length >= 2 ? parts.slice(-2).join(" :: ") : raw;
+    return parts.at(-1) || fallback;
   }
 
   function getSubjectProgressStats(

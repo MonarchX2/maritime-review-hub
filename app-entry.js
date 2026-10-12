@@ -49,11 +49,11 @@
     "app-core-network.js",
     "sync-core.js",
     "deck-nav-core.js",
+    "ui-modal-core.js",
   ];
   const FEATURE_SCRIPTS = [
     "session-core.js",
     "analytics-core.js",
-    "ui-modal-core.js",
     "deck-review-core.js",
     "quiz-rendering-core.js",
   ];

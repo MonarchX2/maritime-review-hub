@@ -427,10 +427,7 @@
     const parts = fullSubject.split("::");
     const subjectEl = getElement("q-subject");
     if (subjectEl) {
-      subjectEl.textContent =
-        parts.length >= 2
-          ? `${normalizeText(parts[parts.length - 2])} :: ${normalizeText(parts[parts.length - 1])}`
-          : fullSubject;
+      subjectEl.textContent = normalizeText(parts[parts.length - 1]);
     }
 
     let displayId = normalizeText(q.ID ?? `Q-${currentCard}`);
@@ -547,6 +544,26 @@
         ? globalScope.getQuestionTypeMode(q) || {}
         : {};
     const isPureIdent = typeMode.isIdent === true;
+    const identificationStatus = getElement(
+      "identification-answer-status",
+    );
+    if (identificationStatus) {
+      const rating =
+        hasIdentificationRating && isPureIdent
+          ? session.identificationRatings[session.currentIndex]
+          : null;
+      identificationStatus.textContent =
+        rating === true ? "Marked correct" : rating === false ? "Marked wrong" : "";
+      identificationStatus.classList.toggle("hidden", rating === null);
+      identificationStatus.classList.toggle(
+        "identification-answer-status-correct",
+        rating === true,
+      );
+      identificationStatus.classList.toggle(
+        "identification-answer-status-wrong",
+        rating === false,
+      );
+    }
     const isForcedMCQ = prefs.qTypeOverride === "mcq";
     const hideABCD = prefs.quizHideABCD === true || isPureIdent;
 
@@ -617,8 +634,10 @@
       showExplanation(q);
       if (btnNext) btnNext.disabled = awaitingIdentificationRating;
       if (btnReveal) btnReveal.disabled = true;
-      answerRating?.classList.toggle("hidden", !awaitingIdentificationRating);
-      answerRating?.classList.toggle("flex", awaitingIdentificationRating);
+      const canRateIdentification =
+        isPureIdent && userAnswer === "REVEALED";
+      answerRating?.classList.toggle("hidden", !canRateIdentification);
+      answerRating?.classList.toggle("flex", canRateIdentification);
     } else {
       expBox?.classList.add("hidden");
       if (btnNext) btnNext.disabled = false;
@@ -765,11 +784,60 @@
       return;
     }
 
-    if (typeof alert === "function")
-      alert("Practice Session Complete! Great job.");
+    openPracticeCompletionModal(session);
     endSession(true);
-    if (typeof globalScope.navigate === "function")
-      globalScope.navigate("dashboard");
+  }
+
+  let practiceCompletionClosing = false;
+
+  function openPracticeCompletionModal(session) {
+    const modal = getElement("practice-completion-modal");
+    if (!modal) {
+      throw new Error("Practice completion modal is missing from the page.");
+    }
+
+    const questions = Array.isArray(session?.questions) ? session.questions : [];
+    const answers = session?.userAnswers || {};
+    const identificationRatings = session?.identificationRatings || {};
+    const answeredCount = questions.reduce((count, _question, index) => {
+      const answer = answers[index];
+      const answered =
+        Boolean(answer) &&
+        (answer !== "REVEALED" ||
+          Object.prototype.hasOwnProperty.call(identificationRatings, index));
+      return count + Number(answered);
+    }, 0);
+    const message = getElement("practice-completion-message");
+    if (message) {
+      message.textContent = `You have answered ${answeredCount} of ${questions.length} questions in this session.`;
+    }
+
+    const inner = modal.querySelector(":scope > div");
+    practiceCompletionClosing = false;
+    modal.setAttribute("aria-hidden", "false");
+    lifecycle.setTimeout(() => {
+      if (modal.getAttribute("aria-hidden") === "true") return;
+      modal.classList.remove("opacity-0");
+      inner?.classList.remove("scale-95", "opacity-0");
+      modal.querySelector("button")?.focus();
+    }, 10);
+  }
+
+  function closePracticeCompletionModal() {
+    const modal = getElement("practice-completion-modal");
+    if (!modal || practiceCompletionClosing) return;
+
+    practiceCompletionClosing = true;
+    const inner = modal.querySelector(":scope > div");
+    modal.classList.add("opacity-0");
+    inner?.classList.add("scale-95", "opacity-0");
+    lifecycle.setTimeout(() => {
+      modal.setAttribute("aria-hidden", "true");
+      practiceCompletionClosing = false;
+      if (typeof globalScope.navigate === "function") {
+        globalScope.navigate("dashboard");
+      }
+    }, 300);
   }
 
   function prevQuestion() {
@@ -906,6 +974,81 @@
       }
     }, 600);
 
+    if (typeof globalScope.saveState === "function") {
+      globalScope.saveState("stats");
+    }
+  }
+
+  function trackIdentificationRating(
+    q,
+    session,
+    index,
+    previousRating,
+    nextRating,
+  ) {
+    const snapshotKey = String(index);
+    if (!session.identificationSrsSnapshots) {
+      session.identificationSrsSnapshots = {};
+    }
+
+    if (previousRating === undefined) {
+      const qId = normalizeText(q?.ID) || normalizeText(q?.Question);
+      const existingSrs = getStats().srsMap?.[qId];
+      session.identificationSrsSnapshots[snapshotKey] = existingSrs
+        ? { ...existingSrs }
+        : null;
+      trackStats(q, nextRating);
+      return;
+    }
+
+    if (previousRating === nextRating) return;
+
+    const stats = getStats();
+    const subject = normalizeText(q.Subject) || "General";
+    const subjectStats = stats.subjectAccuracy?.[subject];
+    const correctDelta = Number(nextRating) - Number(previousRating);
+    stats.correct = Math.max(0, (Number(stats.correct) || 0) + correctDelta);
+    if (subjectStats) {
+      subjectStats.correct = Math.max(
+        0,
+        (Number(subjectStats.correct) || 0) + correctDelta,
+      );
+    }
+
+    if (!Array.isArray(stats.mistakes)) stats.mistakes = [];
+    if (q.ID != null) {
+      const mistakeIndex = stats.mistakes.indexOf(q.ID);
+      if (nextRating && mistakeIndex !== -1) {
+        stats.mistakes.splice(mistakeIndex, 1);
+      } else if (!nextRating && mistakeIndex === -1) {
+        stats.mistakes.push(q.ID);
+      }
+    }
+
+    const qId = normalizeText(q.ID) || normalizeText(q.Question);
+    if (
+      qId &&
+      Object.prototype.hasOwnProperty.call(
+        session.identificationSrsSnapshots,
+        snapshotKey,
+      )
+    ) {
+      if (!stats.srsMap || typeof stats.srsMap !== "object") {
+        stats.srsMap = {};
+      }
+      const srsSnapshot = session.identificationSrsSnapshots[snapshotKey];
+      if (srsSnapshot) stats.srsMap[qId] = { ...srsSnapshot };
+      else delete stats.srsMap[qId];
+      updateSrsForQuestion(q, nextRating);
+    }
+
+    globalScope.invalidateCategoryProgressRenderSignature?.();
+    clearTimeout(_statsRenderTimeout);
+    _statsRenderTimeout = lifecycle.setTimeout(() => {
+      if (typeof globalScope.renderCategoryProgress === "function") {
+        globalScope.renderCategoryProgress();
+      }
+    }, 600);
     if (typeof globalScope.saveState === "function") {
       globalScope.saveState("stats");
     }
@@ -1157,11 +1300,16 @@
         ? globalScope.getQuestionTypeMode(q) || {}
         : {};
 
+    const currentIndex = session?.currentIndex;
+    const hasExistingRating = Object.prototype.hasOwnProperty.call(
+      session?.identificationRatings || {},
+      currentIndex,
+    );
     if (
       !session?.active ||
       !q ||
       typeMode.isIdent !== true ||
-      session.userAnswers?.[session.currentIndex] !== "REVEALED"
+      session.userAnswers?.[currentIndex] !== "REVEALED"
     ) {
       return false;
     }
@@ -1172,8 +1320,18 @@
     ) {
       session.identificationRatings = {};
     }
-    session.identificationRatings[session.currentIndex] = Boolean(isCorrect);
-    trackStats(q, Boolean(isCorrect));
+    const nextRating = Boolean(isCorrect);
+    const previousRating = hasExistingRating
+      ? session.identificationRatings[currentIndex]
+      : undefined;
+    session.identificationRatings[currentIndex] = nextRating;
+    trackIdentificationRating(
+      q,
+      session,
+      currentIndex,
+      previousRating,
+      nextRating,
+    );
     nextQuestion();
     return true;
   }
@@ -1241,6 +1399,7 @@
     rateIdentificationAnswer,
     startVisualTimer,
     stopVisualTimer,
+    closePracticeCompletionModal,
     cleanup,
   };
 
@@ -1266,4 +1425,5 @@
   globalScope.rateIdentificationAnswer = rateIdentificationAnswer;
   globalScope.startVisualTimer = startVisualTimer;
   globalScope.stopVisualTimer = stopVisualTimer;
+  globalScope.closePracticeCompletionModal = closePracticeCompletionModal;
 })(typeof window !== "undefined" ? window : globalThis);
