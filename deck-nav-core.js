@@ -42,6 +42,8 @@
   }
 
   // ===================== VIEW NAVIGATION =====================
+  const viewTransitionDuration = 100;
+
   async function confirmNavigationAwayFromSession() {
     const message =
       "You have an active session. Do you want to pause and return? Your progress will be saved.";
@@ -76,9 +78,17 @@
       await saveState();
     }
 
-    document
-      .querySelectorAll(".view-section")
-      .forEach((el) => el.classList.remove("active"));
+    const currentView = document.querySelector(".view-section.active");
+    if (currentView) {
+      currentView.setAttribute("inert", "");
+      currentView.classList.add("is-leaving");
+      await new Promise((resolve) =>
+        lifecycle.setTimeout(resolve, viewTransitionDuration),
+      );
+      currentView.classList.remove("active", "is-leaving");
+    }
+
+    viewElement.removeAttribute("inert");
     viewElement.classList.add("active");
     if (viewId === "settings") {
       globalScope.updateNavigationUrl?.(["settings"]);

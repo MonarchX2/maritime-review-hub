@@ -38,6 +38,8 @@
 
     if (isVisible) {
       modal.setAttribute("aria-hidden", "false");
+      modal.removeAttribute("inert");
+      modal.classList.remove("is-closing");
       const show = lifecycle.setTimeout(() => {
         if (modal.getAttribute("aria-hidden") === "true") return;
         modal.classList.remove("opacity-0");
@@ -46,10 +48,12 @@
       modalTimers.set(modal, { show, hide: null });
     } else {
       modal.setAttribute("aria-hidden", "true");
+      modal.setAttribute("inert", "");
+      modal.classList.add("is-closing");
       modal.classList.add("opacity-0");
       if (inner) inner.classList.add("scale-95", "opacity-0");
       const hide = lifecycle.setTimeout(() => {
-        modal.setAttribute("aria-hidden", "true");
+        modal.classList.remove("is-closing");
       }, 300);
       modalTimers.set(modal, { show: null, hide });
     }

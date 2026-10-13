@@ -57,7 +57,8 @@ assert.ok(
     appCore.includes("overflow-hidden flex flex-col transform hover:-translate-y-1 relative"),
   "Folder cards should size from their content without a forced height.",
 );
-assert.match(styles, /main\s*\{\s*scrollbar-gutter:\s*stable;/);
+assert.match(styles, /\*\s*\{\s*scrollbar-width:\s*none;/);
+assert.match(styles, /::-webkit-scrollbar\s*\{\s*display:\s*none;/);
 assert.match(
   styles,
   /\.deck-card-title-text\s*\{\s*overflow-wrap:\s*anywhere;/,

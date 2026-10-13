@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-13.5" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-13.6" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-13.5"
+      href="icon.svg?v=mrh-release-13.6"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-13.5" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-13.6" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-13.5"
+      href="tailwind.generated.css?v=mrh-release-13.6"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-13.5"
+      href="styles.css?v=mrh-release-13.6"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-13.5"
+      href="tailwind.generated.css?v=mrh-release-13.6"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-13.5"
+      href="styles.css?v=mrh-release-13.6"
       media="print"
       onload="
         this.media = 'all';
@@ -377,11 +377,18 @@
         <div
           class="dashboard-header-row flex justify-between items-center mb-4 gap-2 flex-nowrap"
         >
-          <div class="min-w-0 overflow-hidden flex-1">
+          <div class="dashboard-subject-heading min-w-0 overflow-hidden flex-1">
             <h2
+              aria-label="Subjects"
               class="text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100 truncate min-w-0 overflow-hidden block"
             >
-              Subjects
+              <span class="dashboard-subject-label" aria-hidden="true"
+                >Subjects</span
+              >
+              <i
+                class="dashboard-subject-icon fa-solid fa-book-open"
+                aria-hidden="true"
+              ></i>
             </h2>
           </div>
 
@@ -557,6 +564,10 @@
         </div>
 
         <div id="category-list" class="transition-all duration-500"></div>
+        <p
+          id="dashboard-version"
+          class="mt-8 text-xs text-gray-400 dark:text-gray-500"
+        ></p>
       </section>
 
       <!-- ============================================================ -->
@@ -1653,7 +1664,7 @@
             Maritime Review Hub
           </p>
           <p class="user-text-content mt-2 text-xs text-gray-500 dark:text-gray-400">
-            Version 2.0.0
+            <span id="about-version"></span>
           </p>
           <a
             href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -2119,7 +2130,7 @@
         panel.setAttribute("aria-hidden", String(isHidden));
       }
     </script>
-    <script src="app-entry.js?v=mrh-release-13.5" defer></script>
+    <script src="app-entry.js?v=mrh-release-13.6" defer></script>
 
     <div
       id="app-update-notice"

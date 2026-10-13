@@ -43,6 +43,11 @@
   display: none;
 }
 
+.modal-layout[aria-hidden="true"].is-closing {
+  display: flex;
+  pointer-events: none;
+}
+
 #active-recall-mask:not(.hidden),
 #danger-zone-panel:not(.hidden) {
   flex-direction: column;
@@ -910,15 +915,16 @@ body.title-mode-clip {
   max-width: 100%;
 }
 
-/* Keep native scrollbars available for discoverability and keyboard users. */
-html,
-body,
-main {
-  scrollbar-width: auto;
+/* Keep scrolling usable while hiding the scrollbar UI across browsers. */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-main {
-  scrollbar-gutter: stable;
+::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .deck-card-title-text {
@@ -1078,6 +1084,39 @@ input {
   white-space: nowrap;
 }
 
+.dashboard-subject-heading {
+  container: dashboard-subject-heading / inline-size;
+}
+
+.dashboard-subject-icon {
+  display: none;
+  color: #3b82f6;
+}
+
+.dark .dashboard-subject-icon {
+  color: #60a5fa;
+}
+
+#view-dashboard:has(#globalModeToggle:checked) .dashboard-subject-icon {
+  color: #9333ea;
+}
+
+.dark
+  #view-dashboard:has(#globalModeToggle:checked)
+  .dashboard-subject-icon {
+  color: #c084fc;
+}
+
+@container dashboard-subject-heading (max-width: 3.5rem) {
+  .dashboard-subject-label {
+    display: none;
+  }
+
+  .dashboard-subject-icon {
+    display: inline-block;
+  }
+}
+
 .dashboard-controls {
   display: grid;
   grid-template-columns: repeat(4, max-content);
@@ -1231,6 +1270,34 @@ button:active:not(:disabled) {
 .view-section.active {
   display: block;
   opacity: 1;
+  animation: viewFadeIn 100ms ease both;
+}
+
+.view-section.is-leaving {
+  pointer-events: none;
+  animation: viewFadeOut 100ms ease both;
+}
+
+@keyframes viewFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes viewFadeOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
 }
 
 .auth-panel-hidden {
