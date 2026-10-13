@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const vm = require("node:vm");
 
@@ -25,6 +26,26 @@ assert.doesNotMatch(
   /script\.integrity\s*=|integrity:\s*"sha384-/,
   "runtime QR loading must allow the deployment-minified local vendor scripts",
 );
+for (const [filename, expectedHash] of [
+  [
+    "qrcode-generator.js",
+    "8FWZA6BGMXhsfO+BLtrJK0We6gg5o1JyO8xQm6peWDEUs17ACA5ziE/NIAkl9z2k",
+  ],
+  [
+    "jsQR.js",
+    "b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx",
+  ],
+]) {
+  const actualHash = crypto
+    .createHash("sha384")
+    .update(fs.readFileSync(`qr-vendor/${filename}`))
+    .digest("base64");
+  assert.equal(
+    actualHash,
+    expectedHash,
+    `${filename} must remain byte-for-byte compatible with cached app versions`,
+  );
+}
 assert.doesNotMatch(
   qrSource,
   /https:\/\/cdn\.jsdelivr\.net\/npm\/(?:qrcode-generator|jsqr)/,

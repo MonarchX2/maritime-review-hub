@@ -144,6 +144,11 @@ for (const asset of [
   );
 }
 assert.match(workflow, /Stamp release version[\s\S]*?Verify deployed release version/);
+assert.match(
+  workflow,
+  /Preserve QR vendor assets[\s\S]*?Minify files[\s\S]*?Restore original QR vendor assets[\s\S]*?Verify QR vendor integrity/,
+  "deployment must preserve the QR library bytes expected by cached app versions",
+);
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mrh-release-stamp-"));
 try {
