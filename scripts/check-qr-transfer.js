@@ -39,6 +39,8 @@ assert.doesNotMatch(
 assert.match(transferHome, /QRTransfer\.exportFile\(\)/);
 assert.match(transferHome, /QRTransfer\.importFile\(this\)/);
 assert.match(transferHome, /id="qr-transfer-file-export-button"/);
+assert.match(transferHome, /Save transfer file\s*<\/button>/);
+assert.doesNotMatch(transferHome, /Save transfer file \(recommended\)/);
 assert.doesNotMatch(
   transferHome,
   /startDirectSend|startDirectReceive|startExport|startScan/,

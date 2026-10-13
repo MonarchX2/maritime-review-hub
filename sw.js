@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-release-14.8";
+const APP_VERSION = "mrh-release-14.8.0";
 
 function getRuntimeCacheVersion() {
   return APP_VERSION;
@@ -20,8 +20,16 @@ const APP_BASE_PATH = APP_BASE_URL.pathname || "/";
 
 function resolveAppUrl(pathname) {
   const url = new URL(pathname, APP_BASE_URL);
-  url.searchParams.set("v", CACHE_VERSION);
+  if (!/\.[0-9a-f]{16}\.(?:js|css|svg)$/.test(url.pathname)) {
+    url.searchParams.set("v", CACHE_VERSION);
+  }
   return url.toString();
+}
+
+function getAssetFetchCacheMode(url) {
+  return /\.[0-9a-f]{16}\.(?:js|css|svg)$/.test(new URL(url).pathname)
+    ? "force-cache"
+    : "no-cache";
 }
 
 function getAppBasePath() {
@@ -91,7 +99,7 @@ const APP_SHELL = [
 ].map(resolveAppUrl);
 
 const APP_SHELL_RESOURCE_NAMES = new Set(
-  APP_SHELL.map((url) => new URL(url).pathname.split("/").pop()),
+  APP_SHELL.map((url) => getAppResourceName(url)),
 );
 
 const APP_SHELL_INTEGRITY = Object.create(null);
@@ -121,7 +129,7 @@ async function refreshAppShellIntegrity() {
         const response = await fetch(
           new Request(url, {
             method: "GET",
-            cache: "no-cache",
+            cache: getAssetFetchCacheMode(url),
             credentials: "same-origin",
           }),
         );
@@ -213,7 +221,7 @@ function isStaticRequest(request) {
   // therefore pass through untouched.
   return (
     STATIC_DESTINATIONS.has(request.destination) ||
-    APP_SHELL_RESOURCE_NAMES.has(url.pathname.split("/").pop())
+    APP_SHELL_RESOURCE_NAMES.has(getAppResourceName(url))
   );
 }
 
@@ -263,9 +271,11 @@ async function verifyResponseIntegrity(
   }
 
   if (actualHash !== expectedHash) {
-    swLogger.warn(
-      `[SW] Integrity mismatch for ${url}: expected ${expectedHash}, got ${actualHash}`,
+    const error = new Error(
+      `Integrity mismatch for ${url}: expected ${expectedHash}, got ${actualHash}`,
     );
+    swLogger.error("[SW] Refusing an inconsistent app-shell resource:", error);
+    throw error;
   }
 }
 
@@ -298,7 +308,7 @@ async function precacheAppShell() {
         const response = await fetch(
           new Request(url, {
             method: "GET",
-            cache: "no-cache",
+            cache: getAssetFetchCacheMode(url),
             credentials: "same-origin",
           }),
         );
@@ -316,6 +326,17 @@ async function precacheAppShell() {
         if (expectedHash) {
           await verifyResponseIntegrity(response, url, expectedHash);
         }
+        if (resourceName === "index.html") {
+          const entryScript = APP_SHELL.map(
+            (assetUrl) => getAppResourceName(assetUrl),
+          ).find((name) => /^app-entry(?:\.[0-9a-f]{16})?\.js$/.test(name));
+          const html = await response.clone().text();
+          if (!entryScript || !html.includes(entryScript)) {
+            throw new Error(
+              "The app entry point does not reference this release's entry script.",
+            );
+          }
+        }
         await cache.put(url, response);
       } catch (error) {
         swLogger.error("[SW] Failed to precache:", url, error);
@@ -327,6 +348,30 @@ async function precacheAppShell() {
       }
     }),
   );
+}
+
+async function verifyCurrentReleaseMetadata() {
+  const versionUrl = new URL("version.json", APP_BASE_URL);
+  versionUrl.searchParams.set("check", CACHE_VERSION);
+  const response = await fetch(
+    new Request(versionUrl, {
+      method: "GET",
+      cache: "no-store",
+      credentials: "same-origin",
+    }),
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Release metadata check failed with HTTP ${response.status}.`,
+    );
+  }
+
+  const release = await response.json();
+  if (release?.version !== APP_VERSION) {
+    throw new Error(
+      `Release metadata mismatch: expected ${APP_VERSION}, got ${release?.version}.`,
+    );
+  }
 }
 
 function isAppClient(client) {
@@ -571,7 +616,7 @@ function getAppShellResourceRequest(request) {
   const url = new URL(request.url);
   if (!isSameOrigin(url)) return request;
 
-  const resourceName = url.pathname.split("/").pop();
+  const resourceName = getAppResourceName(url);
   if (!APP_SHELL_RESOURCE_NAMES.has(resourceName)) return request;
 
   return new Request(resolveAppUrl(`./${resourceName}`), request);
@@ -626,6 +671,7 @@ function staleWhileRevalidateStatic(request, event) {
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
+      await verifyCurrentReleaseMetadata();
       await precacheAppShell();
 
       // Activate the new worker as soon as its installation succeeds.

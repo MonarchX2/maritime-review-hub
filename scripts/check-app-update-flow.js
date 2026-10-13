@@ -54,6 +54,11 @@ assert.match(
 assert.equal(workerVersion, appVersion);
 assert.equal(release.version, appVersion);
 assert.equal(
+  JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf8")).version,
+  appDisplayVersion,
+  "the package must define the SemVer baseline used for displayed releases",
+);
+assert.equal(
   manifest.icons[0].src,
   `icon.svg?v=${appVersion}`,
   "the installed-app icon must use the release asset version",
@@ -66,7 +71,17 @@ const versionedLocalAssets = [
 ];
 assert.equal(versionedLocalAssets.length, 7);
 assert.ok(versionedLocalAssets.every((match) => match[2] === appVersion));
-assert.match(html, new RegExp(`app-entry\\.js\\?v=${appVersion}`));
+assert.match(html, /<script src="app-entry\.js" defer><\/script>/);
+assert.doesNotMatch(
+  html,
+  /<script\b[^>]*\bsrc="[^"]+\.js\?[^"]*"[^>]*>/,
+  "script URLs must not include query-string suffixes",
+);
+assert.doesNotMatch(
+  appEntry,
+  /url\.searchParams\.set\("v",\s*APP_VERSION\)/,
+  "dynamically loaded script URLs must remain clean in DevTools",
+);
 assert.equal([...html.matchAll(/id="site-version"/g)].length, 1);
 assert.doesNotMatch(html, /id="dashboard-version"/);
 assert.ok(
@@ -76,6 +91,12 @@ assert.ok(
 assert.match(html, new RegExp(`Version ${appDisplayVersion}`));
 assert.match(appEntry, /const versionLabel = `Version \$\{APP_DISPLAY_VERSION\}`/);
 assert.match(appEntry, /\["site-version", "about-version"\]/);
+assert.match(appEntry, /APP_UPDATE_CHECK_INTERVAL_MS = 5 \* 60 \* 1000/);
+assert.match(appEntry, /document\.addEventListener\("visibilitychange"/);
+assert.match(appEntry, /window\.addEventListener\("focus"/);
+assert.match(appEntry, /window\.addEventListener\("online"/);
+assert.match(appEntry, /serviceWorkerRegistration\.update\(\)/);
+assert.match(appEntry, /updateViaCache:\s*"none"/);
 assert.equal(
   [...html.matchAll(/id="app-update-notice"/g)].length,
   1,
@@ -94,6 +115,11 @@ assert.match(appEntry, /rootScope\.state\?\.session\?\.active/);
 assert.match(appEntry, /#view-practice\.active, #view-deck-review\.active/);
 assert.match(appEntry, /const saved = await rootScope\.saveState\(\)/);
 assert.match(appEntry, /if \(saved === false\)/);
+assert.match(
+  appEntry,
+  /UPDATE_QUERY_PARAMETER[\s\S]*?searchParams\.set\([\s\S]*?pendingAppUpdateVersion[\s\S]*?location\.replace/,
+  "a no-service-worker update must force a fresh HTML request",
+);
 assert.ok(
   appEntry.indexOf("const saved = await rootScope.saveState()") <
     appEntry.indexOf("rootScope.location.reload()"),
@@ -108,6 +134,10 @@ assert.doesNotMatch(worker, /client\.navigate\(/);
 assert.match(worker, /MRH_UPDATE_AVAILABLE/);
 assert.match(worker, /MRH_QUERY_CLIENT_VERSION/);
 assert.match(worker, /cleanupOldCachesWhenSafe/);
+assert.match(worker, /getAssetFetchCacheMode/);
+assert.match(worker, /\?\s*"force-cache"/);
+assert.match(worker, /verifyCurrentReleaseMetadata/);
+assert.match(worker, /Release metadata mismatch/);
 assert.doesNotMatch(worker, /"\\.\/version\.json"/);
 assert.match(
   html,
@@ -146,6 +176,18 @@ for (const asset of [
 assert.match(workflow, /Stamp release version[\s\S]*?Verify deployed release version/);
 assert.match(
   workflow,
+  /Resolve semantic release version[\s\S]*?RELEASE_VERSION:\s*\$\{\{\s*steps\.release\.outputs\.release_version\s*\}\}[\s\S]*?DISPLAY_VERSION:\s*\$\{\{\s*steps\.release\.outputs\.display_version\s*\}\}/,
+  "deployments must stamp both unique build and SemVer display versions",
+);
+assert.match(workflow, /fetch-depth:\s*0/);
+assert.match(workflow, /Tag semantic release[\s\S]*?git push origin "\$RELEASE_TAG"/);
+assert.match(
+  workflow,
+  /Prepare content-hashed Pages assets[\s\S]*?upload-pages-artifact[\s\S]*?path:\s*\$\{\{\s*runner\.temp\s*\}\}\/mrh-pages/,
+  "deployment must publish the generated immutable-asset site",
+);
+assert.match(
+  workflow,
   /Preserve QR vendor assets[\s\S]*?Minify files[\s\S]*?Restore original QR vendor assets[\s\S]*?Verify QR vendor integrity/,
   "deployment must preserve the QR library bytes expected by cached app versions",
 );
@@ -170,7 +212,12 @@ try {
   }
 
   const nextVersion = "mrh-check-release-stamp";
-  const env = { ...process.env, RELEASE_VERSION: nextVersion };
+  const nextDisplayVersion = "14.9.0";
+  const env = {
+    ...process.env,
+    RELEASE_VERSION: nextVersion,
+    DISPLAY_VERSION: nextDisplayVersion,
+  };
   execFileSync(
     process.execPath,
     [path.join(tempRoot, "scripts", "stamp-release-version.js")],
@@ -188,8 +235,8 @@ try {
   );
   assert.match(
     stampedAppEntry,
-    new RegExp(`const APP_DISPLAY_VERSION = "${appDisplayVersion}"`),
-    "release stamping must preserve the human-readable display version",
+    new RegExp(`const APP_DISPLAY_VERSION = "${nextDisplayVersion}"`),
+    "release stamping must write the SemVer display version",
   );
 
   const stampedHtml = fs.readFileSync(
@@ -203,6 +250,12 @@ try {
   ];
   assert.equal(stampedAssetVersions.length, 7);
   assert.ok(stampedAssetVersions.every((match) => match[1] === nextVersion));
+  assert.ok(
+    stampedHtml.includes(
+      `<p id="site-version" class="site-version">Version ${nextDisplayVersion}</p>`,
+    ),
+    "release stamping must update the visible site version",
+  );
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }

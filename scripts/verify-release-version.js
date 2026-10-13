@@ -5,17 +5,30 @@ const expectedVersion = process.env.RELEASE_VERSION;
 if (!expectedVersion || !/^mrh-[A-Za-z0-9._-]+$/.test(expectedVersion)) {
   throw new Error("RELEASE_VERSION must be a non-empty mrh- release identifier.");
 }
+const expectedDisplayVersion = process.env.DISPLAY_VERSION;
+if (!expectedDisplayVersion || !/^\d+\.\d+\.\d+$/.test(expectedDisplayVersion)) {
+  throw new Error("DISPLAY_VERSION must be a valid MAJOR.MINOR.PATCH version.");
+}
 
 const rootDir = path.resolve(__dirname, "..");
 const releaseMarkers = [
-  ["app-entry.js", (source) => source.includes(expectedVersion)],
+  [
+    "app-entry.js",
+    (source) =>
+      source.includes(`const APP_VERSION = "${expectedVersion}"`) &&
+      source.includes(
+        `const APP_DISPLAY_VERSION = "${expectedDisplayVersion}"`,
+      ),
+  ],
   ["sw.js", (source) => source.includes(expectedVersion)],
   [
     "index.html",
     (source) =>
-      [...source.matchAll(/app-entry\.js\?v=(mrh-[A-Za-z0-9._-]+)/g)].length ===
-      1 &&
-      source.includes(`app-entry.js?v=${expectedVersion}`) &&
+      [...source.matchAll(/<script\b[^>]*\bsrc="[^"]+\.js\?[^"]*"[^>]*>/g)]
+        .length === 0 &&
+      /<script\b[^>]*\bsrc=["']?app-entry\.js["']?[^>]*><\/script>/i.test(
+        source,
+      ) &&
       [
         ...source.matchAll(
           /href="(?:manifest\.json|icon\.svg|tailwind\.generated\.css|styles\.css)\?v=(mrh-[A-Za-z0-9._-]+)"/g,
@@ -27,6 +40,9 @@ const releaseMarkers = [
         ),
       ].every(
         (match) => match[1] === expectedVersion,
+      ) &&
+      source.includes(
+        `<p id="site-version" class="site-version">Version ${expectedDisplayVersion}</p>`,
       ),
   ],
   [

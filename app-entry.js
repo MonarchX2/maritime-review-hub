@@ -1,8 +1,9 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-release-14.8";
-  const APP_DISPLAY_VERSION = "14.8";
+  const APP_VERSION = "mrh-release-14.8.0";
+  const APP_DISPLAY_VERSION = "14.8.0";
+  const UPDATE_QUERY_PARAMETER = "__mrh_update";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
   const bootstrapLogger = () => rootScope.DebugUtils || console;
   let serviceWorkerRegistration = null;
@@ -25,6 +26,16 @@
     rootScope.__MRH_APP_BASE_PATH = scriptPath.endsWith("/")
       ? scriptPath
       : `${scriptPath}/`;
+
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.has(UPDATE_QUERY_PARAMETER)) {
+      currentUrl.searchParams.delete(UPDATE_QUERY_PARAMETER);
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`,
+      );
+    }
   }
 
   rootScope.__MRH_APP__ = rootScope.__MRH_APP__ || {
@@ -174,7 +185,16 @@
         rootScope.navigator?.serviceWorker?.controller,
         serviceWorkerRegistration?.active,
       );
-      rootScope.location.reload();
+      if (!serviceWorkerRegistration && serviceWorkerRegistrationFailed) {
+        const updateUrl = new URL(rootScope.location.href);
+        updateUrl.searchParams.set(
+          UPDATE_QUERY_PARAMETER,
+          pendingAppUpdateVersion,
+        );
+        rootScope.location.replace(updateUrl.href);
+      } else {
+        rootScope.location.reload();
+      }
     } catch (error) {
       bootstrapLogger().error("Unable to safely apply the app update:", error);
       nextUpdateApplyAttemptAt = Date.now() + 60 * 1000;
@@ -265,7 +285,6 @@
       "icon.svg",
       "tailwind.generated.css",
       "styles.css",
-      "app-entry.js",
       "app-config.js",
       "storage-utils.js",
       "text-utils.js",
@@ -290,7 +309,9 @@
     ];
     const checks = assetNames.map(async (name) => {
       const assetUrl = new URL(name, baseUrl);
-      assetUrl.searchParams.set("v", version);
+      if (!/\.[0-9a-f]{16}\.(?:js|css|svg)$/.test(assetUrl.pathname)) {
+        assetUrl.searchParams.set("v", version);
+      }
       const response = await rootScope.fetch(assetUrl.href, {
         method: name === "app-entry.js" ? "GET" : "HEAD",
         cache: "no-store",
@@ -405,7 +426,7 @@
         return;
       }
 
-      const versionedSrc = (() => {
+      const resolvedSrc = (() => {
         const raw = String(src || "").trim();
         if (!raw) return raw;
         try {
@@ -416,18 +437,14 @@
                   rootScope.__MRH_APP_BASE_PATH || "/",
                   window.location.origin,
                 ).href;
-          const url = new URL(raw, baseHref);
-          url.searchParams.set("v", APP_VERSION);
-          return url.href;
-        } catch (error) {
-          return raw.includes("?")
-            ? `${raw}&v=${APP_VERSION}`
-            : `${raw}?v=${APP_VERSION}`;
+          return new URL(raw, baseHref).href;
+        } catch {
+          return raw;
         }
       })();
 
       const script = document.createElement("script");
-      script.src = versionedSrc;
+      script.src = resolvedSrc;
       script.async = false;
       script.defer = false;
 
@@ -574,7 +591,6 @@
     );
     const swScopeUrl = new URL(swBaseUrl.pathname, swBaseUrl.origin);
     const swUrl = new URL("sw.js", swBaseUrl);
-    swUrl.searchParams.set("v", rootScope.__MRH_APP__?.version || APP_VERSION);
 
     serviceWorkerRegistrationPromise = navigator.serviceWorker
       .register(swUrl.href, {

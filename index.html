@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-14.8" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-14.8.0" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -241,37 +241,37 @@
       "
     />
     <script
-      src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js?v=mrh-release-2026.09.03"
+      src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"
       defer
     ></script>
 
     <!-- idb-keyval for IndexedDB (Bypasses 5MB localStorage limit) -->
     <script
-      src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js?v=mrh-release-2026.09.03"
+      src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js"
       defer
     ></script>
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-14.8"
+      href="icon.svg?v=mrh-release-14.8.0"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-14.8" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-14.8.0" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-14.8"
+      href="tailwind.generated.css?v=mrh-release-14.8.0"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-14.8"
+      href="styles.css?v=mrh-release-14.8.0"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-14.8"
+      href="tailwind.generated.css?v=mrh-release-14.8.0"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-14.8"
+      href="styles.css?v=mrh-release-14.8.0"
       media="print"
       onload="
         this.media = 'all';
@@ -2234,7 +2234,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 14.8</p>
+    <p id="site-version" class="site-version">Version 14.8.0</p>
 
     <div
       id="qr-transfer-modal"
@@ -2286,7 +2286,7 @@
               class="w-full rounded-lg bg-brand-600 px-4 py-3 font-bold text-white hover:bg-brand-700"
             >
               <i class="fa-solid fa-file-arrow-down mr-2" aria-hidden="true"></i>
-              Save transfer file (recommended)
+              Save transfer file
             </button>
             <button
               type="button"
@@ -2592,7 +2592,7 @@
         trigger.textContent = isExpanded ? "Show Less" : "Show More";
       }
     </script>
-    <script src="app-entry.js?v=mrh-release-14.8" defer></script>
+    <script src="app-entry.js" defer></script>
 
     <div
       id="app-update-notice"

@@ -5,6 +5,10 @@ const version = process.env.RELEASE_VERSION;
 if (!version || !/^mrh-[A-Za-z0-9._-]+$/.test(version)) {
   throw new Error("RELEASE_VERSION must be a non-empty mrh- release identifier.");
 }
+const displayVersion = process.env.DISPLAY_VERSION;
+if (!displayVersion || !/^\d+\.\d+\.\d+$/.test(displayVersion)) {
+  throw new Error("DISPLAY_VERSION must be a valid MAJOR.MINOR.PATCH version.");
+}
 
 const rootDir = path.resolve(__dirname, "..");
 
@@ -22,6 +26,11 @@ replaceExactlyOne(
   "app-entry.js",
   /(const APP_VERSION = ")[^"]+(";)/,
   `$1${version}$2`,
+);
+replaceExactlyOne(
+  "app-entry.js",
+  /(const APP_DISPLAY_VERSION = ")[^"]+(";)/,
+  `$1${displayVersion}$2`,
 );
 replaceExactlyOne(
   "sw.js",
@@ -53,11 +62,14 @@ indexSource = indexSource.replace(
   assetVersionPattern,
   `$1?v=${version}$2`,
 );
-
-const appEntryPattern = /(app-entry\.js\?v=)mrh-[^"]+/g;
-const appEntryMatches = [...indexSource.matchAll(appEntryPattern)];
-if (appEntryMatches.length !== 1) {
-  throw new Error("Expected exactly one app-entry.js release version in index.html.");
+const siteVersionPattern =
+  /(<p id="site-version" class="site-version">Version )[^<]+(<\/p>)/;
+if (!siteVersionPattern.test(indexSource)) {
+  throw new Error("Expected exactly one site version label in index.html.");
 }
-indexSource = indexSource.replace(appEntryPattern, `$1${version}`);
+indexSource = indexSource.replace(
+  siteVersionPattern,
+  `$1${displayVersion}$2`,
+);
+
 fs.writeFileSync(indexPath, indexSource);

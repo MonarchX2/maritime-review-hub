@@ -1,8 +1,11 @@
 {
+  "version": "14.8.0",
   "scripts": {
     "build:css": "tailwindcss -c tailwind.config.js -i tailwind.input.css -o tailwind.generated.css --minify",
     "check:architecture": "node scripts/frontend-architecture-check.js",
     "check:runtime": "node scripts/check-runtime-reliability.js",
+    "check:deployment-assets": "node scripts/check-deployment-assets.js",
+    "check:semver-version": "node scripts/check-semver-version.js",
     "check:practice-completion": "node scripts/check-practice-completion.js",
     "check:practice-suspension": "node scripts/check-practice-suspension.js",
     "check:question-answer-ux": "node scripts/check-question-answer-ux.js",
