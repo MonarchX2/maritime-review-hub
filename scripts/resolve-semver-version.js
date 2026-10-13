@@ -41,6 +41,48 @@ function calculateNextVersion(baseVersion, commitMessages) {
   return baseVersion;
 }
 
+function getVersionBumpCommit(repositoryDir, version, previousTag) {
+  const range = previousTag ? `${previousTag}..HEAD` : "HEAD";
+  const commits = execFileSync(
+    "git",
+    ["log", "--format=%H", range, "--", "package.json"],
+    { cwd: repositoryDir, encoding: "utf8" },
+  )
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean);
+
+  for (const commit of commits) {
+    const commitPackage = JSON.parse(
+      execFileSync("git", ["show", `${commit}:package.json`], {
+        cwd: repositoryDir,
+        encoding: "utf8",
+      }),
+    );
+    if (commitPackage.version !== version) continue;
+
+    let parentVersion = "";
+    try {
+      const parent = execFileSync("git", ["rev-parse", `${commit}^`], {
+        cwd: repositoryDir,
+        encoding: "utf8",
+      }).trim();
+      parentVersion = JSON.parse(
+        execFileSync("git", ["show", `${parent}:package.json`], {
+          cwd: repositoryDir,
+          encoding: "utf8",
+        }),
+      ).version;
+    } catch (error) {
+      if (error.code !== "ENOENT" && error.status !== 128) throw error;
+    }
+
+    if (parentVersion !== version) return commit;
+  }
+
+  return "";
+}
+
 function getReleaseContext(repositoryDir = rootDir, commitSha = process.env.GITHUB_SHA) {
   const tags = execFileSync(
     "git",
@@ -54,14 +96,19 @@ function getReleaseContext(repositoryDir = rootDir, commitSha = process.env.GITH
   const packageJson = JSON.parse(
     fs.readFileSync(path.join(repositoryDir, "package.json"), "utf8"),
   );
-  const baseVersion = previousTag
-    ? previousTag.slice(1)
-    : packageJson.version;
+  const taggedVersion = previousTag ? previousTag.slice(1) : packageJson.version;
+  const versionBumpCommit = previousTag
+    ? getVersionBumpCommit(repositoryDir, packageJson.version, previousTag)
+    : "";
+  const baseVersion = versionBumpCommit
+    ? packageJson.version
+    : taggedVersion;
   parseVersion(baseVersion);
-  const commitMessages = previousTag
+  const commitRangeStart = versionBumpCommit || previousTag;
+  const commitMessages = commitRangeStart
     ? execFileSync(
         "git",
-        ["log", "--format=%B%x00", `${previousTag}..HEAD`],
+        ["log", "--format=%B%x00", `${commitRangeStart}..HEAD`],
         { cwd: repositoryDir, encoding: "utf8" },
       )
         .split("\0")
@@ -83,7 +130,7 @@ function getReleaseContext(repositoryDir = rootDir, commitSha = process.env.GITH
     displayVersion,
     releaseVersion: `mrh-${displayVersion}-${sha}`,
     releaseTag: `v${displayVersion}`,
-    shouldTag: displayVersion !== baseVersion,
+    shouldTag: displayVersion !== taggedVersion,
   };
 }
 
@@ -102,4 +149,8 @@ if (require.main === module) {
   }
 }
 
-module.exports = { calculateNextVersion, getReleaseContext };
+module.exports = {
+  calculateNextVersion,
+  getReleaseContext,
+  getVersionBumpCommit,
+};

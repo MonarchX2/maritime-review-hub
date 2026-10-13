@@ -1,7 +1,7 @@
 {
-  "version": "14.9.0",
+  "version": "14.9.1",
   "scripts": {
-    "build:css": "tailwindcss -c tailwind.config.js -i tailwind.input.css -o tailwind.generated.css --minify",
+    "build:css": "node scripts/build-css.js",
     "check:architecture": "node scripts/frontend-architecture-check.js",
     "check:runtime": "node scripts/check-runtime-reliability.js",
     "check:deployment-assets": "node scripts/check-deployment-assets.js",
@@ -26,7 +26,6 @@
   "devDependencies": {
     "@types/google-apps-script": "^2.0.12",
     "jsqr": "^1.4.0",
-    "qrcode-generator": "^1.4.4",
-    "tailwindcss": "^3.4.17"
+    "qrcode-generator": "^1.4.4"
   }
 }

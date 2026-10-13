@@ -186,10 +186,17 @@ assert.match(
   /Prepare content-hashed Pages assets[\s\S]*?upload-pages-artifact[\s\S]*?path:\s*\$\{\{\s*runner\.temp\s*\}\}\/mrh-pages/,
   "deployment must publish the generated immutable-asset site",
 );
+const minificationStep = workflow.match(
+  /- name: Minify deploy assets[\s\S]*?(?=\n      - name:)/,
+);
+assert.ok(minificationStep, "deployment must minify its static assets");
+assert.match(minificationStep[0], /find \. -maxdepth 1/);
+assert.match(minificationStep[0], /! -name 'tailwind\.config\.js'/);
+assert.match(minificationStep[0], /! -name 'tailwind\.input\.css'/);
 assert.match(
-  workflow,
-  /Preserve QR vendor assets[\s\S]*?Minify files[\s\S]*?Restore original QR vendor assets[\s\S]*?Verify QR vendor integrity/,
-  "deployment must preserve the QR library bytes expected by cached app versions",
+  minificationStep[0],
+  /minify "\$file" > "\$output"[\s\S]*?test -s "\$output"[\s\S]*?mv "\$output" "\$file"/,
+  "deployment must only replace source assets after successful non-empty minification",
 );
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mrh-release-stamp-"));
@@ -212,7 +219,7 @@ try {
   }
 
   const nextVersion = "mrh-check-release-stamp";
-  const nextDisplayVersion = "14.9.0";
+  const nextDisplayVersion = "14.9.1";
   const env = {
     ...process.env,
     RELEASE_VERSION: nextVersion,
@@ -238,11 +245,31 @@ try {
     new RegExp(`const APP_DISPLAY_VERSION = "${nextDisplayVersion}"`),
     "release stamping must write the SemVer display version",
   );
+  fs.writeFileSync(
+    path.join(tempRoot, "app-entry.js"),
+    `!function(){const a="${nextVersion}";document.textContent="Version ${nextDisplayVersion}"}();`,
+  );
+  execFileSync(
+    process.execPath,
+    [path.join(tempRoot, "scripts", "verify-release-version.js")],
+    { cwd: tempRoot, env, stdio: "pipe" },
+  );
 
   const stampedHtml = fs.readFileSync(
     path.join(tempRoot, "index.html"),
     "utf8",
   );
+  const minifiedHtml = stampedHtml.replace(
+    `<p id="site-version" class="site-version">Version ${nextDisplayVersion}</p>`,
+    `<p id=site-version class=site-version>Version ${nextDisplayVersion}`,
+  );
+  fs.writeFileSync(path.join(tempRoot, "index.html"), minifiedHtml);
+  execFileSync(
+    process.execPath,
+    [path.join(tempRoot, "scripts", "verify-release-version.js")],
+    { cwd: tempRoot, env, stdio: "pipe" },
+  );
+
   const stampedAssetVersions = [
     ...stampedHtml.matchAll(
       /href="(?:manifest\.json|icon\.svg|tailwind\.generated\.css|styles\.css)\?v=([^"]+)"/g,

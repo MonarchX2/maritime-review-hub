@@ -94,14 +94,22 @@ jobs:
       - name: Check stamped JavaScript syntax
         run: node --check app-entry.js && node --check sw.js
 
-      - name: Preserve QR vendor assets for cached app versions
-        run: cp -R qr-vendor "$RUNNER_TEMP/qr-vendor-original"
+      - name: Install Minify CLI
+        run: npm install --global minify@9.1.0
 
-      - name: Minify files
-        uses: dra1ex/minify-action@v1.0.3
-
-      - name: Restore original QR vendor assets
-        run: cp -R "$RUNNER_TEMP/qr-vendor-original/." qr-vendor/
+      - name: Minify deploy assets
+        shell: bash
+        run: |
+          while IFS= read -r -d '' file; do
+            output="$RUNNER_TEMP/$(basename "$file").minified"
+            minify "$file" > "$output"
+            test -s "$output"
+            mv "$output" "$file"
+          done < <(find . -maxdepth 1 -type f \
+            \( -name '*.html' -o -name '*.js' -o -name '*.css' \) \
+            ! -name 'tailwind.config.js' \
+            ! -name 'tailwind.input.css' \
+            -print0)
 
       - name: Verify QR vendor integrity
         run: node scripts/verify-qr-vendor-integrity.js

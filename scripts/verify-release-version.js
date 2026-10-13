@@ -11,14 +11,17 @@ if (!expectedDisplayVersion || !/^\d+\.\d+\.\d+$/.test(expectedDisplayVersion)) 
 }
 
 const rootDir = path.resolve(__dirname, "..");
+const hasStringLiteral = (source, value) => {
+  const escapedValue = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`["']${escapedValue}["']`).test(source);
+};
 const releaseMarkers = [
   [
     "app-entry.js",
     (source) =>
-      source.includes(`const APP_VERSION = "${expectedVersion}"`) &&
-      source.includes(
-        `const APP_DISPLAY_VERSION = "${expectedDisplayVersion}"`,
-      ),
+      hasStringLiteral(source, expectedVersion) &&
+      (hasStringLiteral(source, expectedDisplayVersion) ||
+        source.includes(`Version ${expectedDisplayVersion}`)),
   ],
   ["sw.js", (source) => source.includes(expectedVersion)],
   [
@@ -41,9 +44,9 @@ const releaseMarkers = [
       ].every(
         (match) => match[1] === expectedVersion,
       ) &&
-      source.includes(
-        `<p id="site-version" class="site-version">Version ${expectedDisplayVersion}</p>`,
-      ),
+      new RegExp(
+        `<p\\b(?=[^>]*\\bid=["']?site-version["']?(?:\\s|>))(?=[^>]*\\bclass=["']?site-version["']?(?:\\s|>))[^>]*>Version ${expectedDisplayVersion}(?:<\\/p>)?`,
+      ).test(source),
   ],
   [
     "version.json",

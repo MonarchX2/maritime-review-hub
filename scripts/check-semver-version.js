@@ -68,12 +68,23 @@ try {
   assert.equal(featureRelease.releaseTag, "v1.3.0");
   assert.equal(featureRelease.shouldTag, true);
 
-  git(["tag", "v1.3.0"]);
+  fs.writeFileSync(
+    path.join(fixture, "package.json"),
+    JSON.stringify({ version: "1.3.1" }),
+  );
+  git(["add", "package.json"]);
+  git(["commit", "-m", "chore: bump version to 1.3.1"]);
+  const explicitVersionRelease = getReleaseContext(fixture);
+  assert.equal(explicitVersionRelease.displayVersion, "1.3.1");
+  assert.equal(explicitVersionRelease.releaseTag, "v1.3.1");
+  assert.equal(explicitVersionRelease.shouldTag, true);
+
+  git(["tag", "v1.3.1"]);
   fs.writeFileSync(path.join(fixture, "fix.txt"), "fix\n");
   git(["add", "fix.txt"]);
   git(["commit", "-m", "fix: correct fixture"]);
   const fixRelease = getReleaseContext(fixture);
-  assert.equal(fixRelease.displayVersion, "1.3.1");
+  assert.equal(fixRelease.displayVersion, "1.3.2");
   assert.equal(fixRelease.shouldTag, true);
 } finally {
   fs.rmSync(fixture, { recursive: true, force: true });
