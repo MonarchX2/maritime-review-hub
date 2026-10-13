@@ -22,6 +22,11 @@ assert.match(qrSource, /src: "qr-vendor\/qrcode-generator\.js"/);
 assert.match(qrSource, /src: "qr-vendor\/jsQR\.js"/);
 assert.doesNotMatch(
   qrSource,
+  /script\.integrity\s*=|integrity:\s*"sha384-/,
+  "runtime QR loading must allow the deployment-minified local vendor scripts",
+);
+assert.doesNotMatch(
+  qrSource,
   /https:\/\/cdn\.jsdelivr\.net\/npm\/(?:qrcode-generator|jsqr)/,
   "QR generation and scanning must not require a CDN at runtime",
 );

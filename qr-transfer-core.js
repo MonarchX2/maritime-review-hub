@@ -17,14 +17,10 @@
     {
       name: "qrcode",
       src: "qr-vendor/qrcode-generator.js",
-      integrity:
-        "sha384-8FWZA6BGMXhsfO+BLtrJK0We6gg5o1JyO8xQm6peWDEUs17ACA5ziE/NIAkl9z2k",
     },
     {
       name: "jsQR",
       src: "qr-vendor/jsQR.js",
-      integrity:
-        "sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx",
     },
   ];
 
@@ -1167,7 +1163,7 @@
     if (libraryPromise) return libraryPromise;
     libraryPromise = Promise.all(
       QR_LIBRARIES.map(
-        ({ name, src, integrity }) =>
+        ({ name, src }) =>
           new Promise((resolve, reject) => {
             if (globalScope[name]) {
               resolve();
@@ -1187,8 +1183,6 @@
               libraryUrl.searchParams.set("v", appVersion);
             }
             script.src = libraryUrl.href;
-            script.crossOrigin = "anonymous";
-            script.integrity = integrity;
             const timeout = setTimeout(() => {
               script.remove();
               reject(
