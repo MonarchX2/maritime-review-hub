@@ -114,6 +114,8 @@ for (const asset of [
   "deck-review-core.js",
   "quiz-rendering-core.js",
   "qr-transfer-core.js",
+  "qr-vendor/qrcode-generator.js",
+  "qr-vendor/jsQR.js",
 ]) {
   assert.ok(
     appEntry.includes(`"${asset}"`),

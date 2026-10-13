@@ -11,9 +11,20 @@ const qrContext = {
   Map,
   Date,
   Math,
+  setTimeout,
+  clearTimeout,
+  clearInterval,
   btoa,
   atob,
 };
+const qrSource = fs.readFileSync("qr-transfer-core.js", "utf8");
+assert.match(qrSource, /src: "qr-vendor\/qrcode-generator\.js"/);
+assert.match(qrSource, /src: "qr-vendor\/jsQR\.js"/);
+assert.doesNotMatch(
+  qrSource,
+  /https:\/\/cdn\.jsdelivr\.net\/npm\/(?:qrcode-generator|jsqr)/,
+  "QR generation and scanning must not require a CDN at runtime",
+);
 qrContext.window = qrContext;
 vm.createContext(qrContext);
 vm.runInContext(
@@ -109,6 +120,24 @@ assert.throws(
   () => qr.parseTransferFileText(" ".repeat(qr.MAX_TRANSFER_FILE_BYTES + 1)),
   /10 MB limit/,
 );
+const directOffer = {
+  type: "offer",
+  sdp: "v=0\r\no=- 123 2 IN IP4 127.0.0.1\r\n",
+};
+const parsedDirectOffer = qr.parseDirectSignal(
+  qr.createDirectSignal(directOffer),
+  "offer",
+);
+assert.equal(parsedDirectOffer.type, directOffer.type);
+assert.equal(parsedDirectOffer.sdp, directOffer.sdp);
+assert.throws(
+  () => qr.parseDirectSignal(qr.createDirectSignal(directOffer), "answer"),
+  /not a valid direct connection answer/,
+);
+assert.throws(
+  () => qr.parseDirectSignal("MRH-DIRECT-1|not-base64", "offer"),
+  /could not be read/,
+);
 
 qrContext.state = {
   stats: transfer.stats,
@@ -200,12 +229,166 @@ assert.match(
   /^maritime-review-hub-progress-\d{4}-\d{2}-\d{2}\.mrh-transfer\.json$/,
 );
 
+async function checkDirectConnectionSetup() {
+  let peerConfiguration = null;
+  let createdChannel = null;
+  const sentMessages = [];
+  class MockPeerConnection {
+    constructor(configuration) {
+      peerConfiguration = configuration;
+      this.iceGatheringState = "complete";
+      this.connectionState = "new";
+      this.signalingState = "stable";
+      this.localDescription = null;
+    }
+
+    async createOffer() {
+      return directOffer;
+    }
+
+    async setLocalDescription(description) {
+      this.localDescription = description;
+    }
+
+    async setRemoteDescription(description) {
+      this.remoteDescription = description;
+      this.connectionState = "connected";
+      this.dataChannel.readyState = "open";
+      this.onconnectionstatechange();
+      this.dataChannel.onopen();
+    }
+
+    createDataChannel(label, options) {
+      assert.equal(label, "mrh-progress-transfer");
+      assert.equal(options.ordered, true);
+      createdChannel = {
+        readyState: "connecting",
+        bufferedAmount: 0,
+        send(message) {
+          sentMessages.push(JSON.parse(message));
+        },
+        addEventListener() {},
+        removeEventListener() {},
+        close() {
+          this.readyState = "closed";
+        },
+      };
+      this.dataChannel = createdChannel;
+      return createdChannel;
+    }
+
+    close() {
+      this.signalingState = "closed";
+    }
+  }
+  qrContext.RTCPeerConnection = MockPeerConnection;
+  qrContext.qrcode = () => ({
+    addData() {},
+    make() {},
+    createDataURL: () => "data:image/png;base64,test",
+  });
+  qrContext.jsQR = () => null;
+  await qrContext.QRTransfer.startDirectSend();
+  assert.equal(peerConfiguration.iceServers.length, 0);
+  assert.equal(
+    qr.parseDirectSignal(
+      getUiElement("qr-transfer-direct-code").value,
+      "offer",
+    ).type,
+    "offer",
+    "the direct sender displays a valid local-network offer",
+  );
+  assert.equal(
+    getUiElement("qr-transfer-direct").classList.contains("hidden"),
+    false,
+  );
+  assert.ok(createdChannel);
+  const input = getUiElement("qr-transfer-signal-input");
+  input.value = qr.createDirectSignal({ ...directOffer, type: "answer" });
+  let timeoutCount = 0;
+  qrContext.setTimeout = () => {
+    timeoutCount += 1;
+    return timeoutCount;
+  };
+  await qrContext.QRTransfer.submitDirectSignal();
+  await Promise.resolve();
+  assert.equal(timeoutCount, 0, "an already-open data channel needs no timeout");
+  assert.equal(sentMessages[0]?.type, "mrh-transfer-start");
+  assert.equal(sentMessages[1]?.type, "mrh-transfer-chunk");
+  assert.equal(input.value, "");
+  qrContext.QRTransfer.showHome();
+  delete qrContext.RTCPeerConnection;
+  delete qrContext.qrcode;
+  delete qrContext.jsQR;
+}
+
 async function checkFileImport() {
   let importedTransfer = null;
   qrContext.AppState.importTransferredState = async (value, replaceSettings) => {
     importedTransfer = { value, replaceSettings };
     return true;
   };
+  const directTransfer = {
+    ...transfer,
+    settings: { ...transfer.settings, transferNote: "direct-data-".repeat(1400) },
+  };
+  const directEncoded = Buffer.from(JSON.stringify(directTransfer)).toString(
+    "base64url",
+  );
+  const directId = "direct01";
+  const directChunkSize = 12000;
+  const directParts = [];
+  for (
+    let offset = 0;
+    offset < directEncoded.length;
+    offset += directChunkSize
+  ) {
+    directParts.push(directEncoded.slice(offset, offset + directChunkSize));
+  }
+  const directChannelMessages = [];
+  const directChannel = {
+    send(message) {
+      directChannelMessages.push(JSON.parse(message));
+    },
+  };
+  qrContext.module.exports.internals.receiveDirectMessage(
+    JSON.stringify({
+      type: "mrh-transfer-start",
+      id: directId,
+      total: directParts.length,
+      encodedLength: directEncoded.length,
+      checksum: qr.crc32(directEncoded),
+    }),
+    directChannel,
+  );
+  for (const index of directParts.map((_, partIndex) => partIndex).reverse()) {
+    qrContext.module.exports.internals.receiveDirectMessage(
+      JSON.stringify({
+        type: "mrh-transfer-chunk",
+        id: directId,
+        index,
+        data: directParts[index],
+      }),
+      directChannel,
+    );
+  }
+  assert.equal(
+    directChannelMessages[0]?.type,
+    "mrh-transfer-verified",
+    "direct transfer acknowledges only a complete, integrity-checked payload",
+  );
+  assert.equal(
+    getUiElement("qr-transfer-import").classList.contains("hidden"),
+    false,
+    "a direct transfer opens the same import confirmation as QR and files",
+  );
+  assert.equal(
+    getUiElement("qr-transfer-status").textContent,
+    "Transfer verified. Importing progress replaces this device’s saved progress; choose whether to replace its settings too.",
+  );
+  await qrContext.module.exports.importProgress(false);
+  assert.equal(importedTransfer.value.settings.transferNote, directTransfer.settings.transferNote);
+  importedTransfer = null;
   let resolveSlowFile;
   const slowInput = {
     files: [
@@ -371,7 +554,8 @@ async function checkStateImport() {
   );
 }
 
-checkFileImport()
+checkDirectConnectionSetup()
+  .then(checkFileImport)
   .then(checkStateImport)
   .then(() => console.log("QR transfer checks passed."))
   .catch((error) => {

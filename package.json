@@ -15,12 +15,15 @@
     "check:tree-view-readability": "node scripts/check-tree-view-readability.js",
     "check:state-save": "node scripts/check-state-save-race.js",
     "check:qr-transfer": "node scripts/check-qr-transfer.js",
+    "vendor:qr": "node scripts/vendor-qr-libraries.js",
     "check:deck-clear": "node scripts/check-deck-clear-race.js",
     "check:sync-timestamp": "node scripts/check-sync-timestamp-recovery.js",
     "check:app-update-flow": "node scripts/check-app-update-flow.js"
   },
   "devDependencies": {
     "@types/google-apps-script": "^2.0.12",
+    "jsqr": "^1.4.0",
+    "qrcode-generator": "^1.4.4",
     "tailwindcss": "^3.4.17"
   }
 }

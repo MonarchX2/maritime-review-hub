@@ -3,6 +3,9 @@
 
   const MAX_TRANSFER_BYTES = 1000000;
   const MAX_TRANSFER_FILE_BYTES = 10 * 1024 * 1024;
+  const MAX_DIRECT_SIGNAL_CHARACTERS = 20000;
+  const DIRECT_DATA_CHUNK_SIZE = 12000;
+  const DIRECT_CONNECTION_TIMEOUT_MS = 45000;
   const FRAME_CHUNK_SIZE = 700;
   const FRAME_INTERVAL_MS = 500;
   const MAX_SCAN_WIDTH = 720;
@@ -13,13 +16,13 @@
   const QR_LIBRARIES = [
     {
       name: "qrcode",
-      src: "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js",
+      src: "qr-vendor/qrcode-generator.js",
       integrity:
         "sha384-8FWZA6BGMXhsfO+BLtrJK0We6gg5o1JyO8xQm6peWDEUs17ACA5ziE/NIAkl9z2k",
     },
     {
       name: "jsQR",
-      src: "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js",
+      src: "qr-vendor/jsQR.js",
       integrity:
         "sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx",
     },
@@ -39,6 +42,14 @@
   let pendingImport = null;
   let receivedFrames = null;
   let fileImportGeneration = 0;
+  let directGeneration = 0;
+  let directRole = null;
+  let directPhase = null;
+  let directPeer = null;
+  let directChannel = null;
+  let directReceive = null;
+  let directTransferId = null;
+  let directConnectionTimer = 0;
 
   function getElement(id) {
     return typeof document === "undefined" ? null : document.getElementById(id);
@@ -61,8 +72,453 @@
       "qr-transfer-scan",
       "qr-transfer-import",
       "qr-transfer-done",
+      "qr-transfer-direct",
+      "qr-transfer-direct-wait",
     ]) {
       getElement(id)?.classList.toggle("hidden", id !== panelId);
+    }
+  }
+
+  function setDirectStatus(message, isError = false) {
+    setStatus(message, isError);
+    for (const id of [
+      "qr-transfer-direct-status",
+      "qr-transfer-direct-wait-status",
+    ]) {
+      const status = getElement(id);
+      if (!status) continue;
+      status.textContent = message;
+      status.classList.toggle("text-red-600", isError);
+      status.classList.toggle("dark:text-red-300", isError);
+    }
+  }
+
+  function renderDirectSignal(description, role) {
+    const signal = createDirectSignal(description);
+    const image = getElement("qr-transfer-direct-image");
+    const code = getElement("qr-transfer-direct-code");
+    if (code) code.value = signal;
+    if (image && globalScope.qrcode) {
+      try {
+        const qr = globalScope.qrcode(0, "L");
+        qr.addData(signal);
+        qr.make();
+        image.src = qr.createDataURL(4, 8);
+        image.alt = `Direct transfer ${description.type} connection QR code`;
+        image.classList.remove("hidden");
+      } catch {
+        image.removeAttribute("src");
+        image.classList.add("hidden");
+      }
+    }
+    const scanButton = getElement("qr-transfer-direct-scan-answer");
+    if (scanButton) scanButton.classList.toggle("hidden", role !== "sender");
+    const heading = getElement("qr-transfer-direct-heading");
+    if (heading) {
+      heading.textContent =
+        role === "sender"
+          ? "Scan this code on the receiving device"
+          : "Scan this response on the sending device";
+    }
+    showPanel("qr-transfer-direct");
+    setDirectStatus(
+      image?.classList.contains("hidden")
+        ? "The code is too large for one QR image. Copy it and enter it on the other device."
+        : "Scan this short code on the other device. Progress is sent only after the devices connect.",
+    );
+  }
+
+  async function copyDirectSignal() {
+    const code = getElement("qr-transfer-direct-code");
+    if (!code?.value) {
+      setDirectStatus("There is no connection code to copy.", true);
+      return;
+    }
+    try {
+      await globalScope.navigator.clipboard.writeText(code.value);
+      setDirectStatus("Connection code copied.");
+    } catch (error) {
+      setDirectStatus(
+        error.message || "Unable to copy the connection code.",
+        true,
+      );
+    }
+  }
+
+  function createDirectPeer(role, generation) {
+    if (typeof globalScope.RTCPeerConnection !== "function") {
+      throw new Error(
+        "Direct transfer is not supported in this browser. Use a transfer file instead.",
+      );
+    }
+    directRole = role;
+    const peer = new globalScope.RTCPeerConnection({ iceServers: [] });
+    directPeer = peer;
+    peer.onconnectionstatechange = () => {
+      if (generation !== directGeneration) return;
+      if (peer.connectionState === "failed") {
+        globalScope.clearTimeout(directConnectionTimer);
+        directConnectionTimer = 0;
+        setDirectStatus(
+          "A direct connection could not be made. Check that both devices are on the same Wi-Fi, then try again or use a transfer file.",
+          true,
+        );
+      } else if (peer.connectionState === "connected") {
+        globalScope.clearTimeout(directConnectionTimer);
+        directConnectionTimer = 0;
+        setDirectStatus("Direct encrypted connection established.");
+      }
+    };
+    if (role === "sender") {
+      directChannel = peer.createDataChannel("mrh-progress-transfer", {
+        ordered: true,
+      });
+      configureDirectChannel(directChannel, role, generation);
+    } else {
+      peer.ondatachannel = (event) => {
+        if (generation !== directGeneration) {
+          event.channel.close();
+          return;
+        }
+        directChannel = event.channel;
+        configureDirectChannel(directChannel, role, generation);
+      };
+    }
+    return peer;
+  }
+
+  function armDirectConnectionTimeout(generation) {
+    globalScope.clearTimeout(directConnectionTimer);
+    directConnectionTimer = globalScope.setTimeout(() => {
+      if (generation !== directGeneration) return;
+      setDirectStatus(
+        "The direct connection timed out. Check that both devices are on the same Wi-Fi and try again, or use a transfer file.",
+        true,
+      );
+      cleanupDirect();
+    }, DIRECT_CONNECTION_TIMEOUT_MS);
+  }
+
+  function waitForIceGathering(peer, generation) {
+    if (peer.iceGatheringState === "complete") return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      let timeout = 0;
+      const finish = (error) => {
+        globalScope.clearTimeout(timeout);
+        peer.removeEventListener("icegatheringstatechange", onStateChange);
+        if (error) reject(error);
+        else resolve();
+      };
+      const onStateChange = () => {
+        if (generation !== directGeneration) {
+          finish(new Error("Direct transfer was cancelled."));
+        } else if (peer.iceGatheringState === "complete") {
+          finish();
+        }
+      };
+      peer.addEventListener("icegatheringstatechange", onStateChange);
+      timeout = globalScope.setTimeout(
+        () => finish(new Error("Preparing the direct connection timed out.")),
+        15000,
+      );
+    });
+  }
+
+  async function startDirectSend() {
+    cleanupDirect();
+    const generation = directGeneration;
+    directPhase = "creating-offer";
+    showPanel("qr-transfer-direct-wait");
+    setDirectStatus("Preparing a direct connection. No server is used.");
+    try {
+      await loadQrLibraries();
+      if (generation !== directGeneration) return;
+      const peer = createDirectPeer("sender", generation);
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      await waitForIceGathering(peer, generation);
+      if (generation !== directGeneration) return;
+      directPhase = "awaiting-answer";
+      renderDirectSignal(peer.localDescription, "sender");
+    } catch (error) {
+      if (generation === directGeneration) {
+        cleanupDirect();
+        showPanel("qr-transfer-home");
+        setStatus(error.message || "Unable to prepare a direct transfer.", true);
+      }
+    }
+  }
+
+  async function startDirectReceive() {
+    cleanupDirect();
+    if (!globalScope.isSecureContext) {
+      setStatus("Direct transfer requires a secure HTTPS connection.", true);
+      return;
+    }
+    directRole = "receiver";
+    directPhase = "awaiting-offer";
+    setDirectStatus("Scan the connection code shown on the sending device.");
+    await startScan();
+  }
+
+  async function handleDirectSignal(signal, expectedType) {
+    const description = parseDirectSignal(signal, expectedType);
+    cleanupMedia();
+    const generation = directGeneration;
+    try {
+      if (expectedType === "offer") {
+        directPhase = "creating-answer";
+        showPanel("qr-transfer-direct-wait");
+        setDirectStatus("Preparing a secure direct connection…");
+        await loadQrLibraries();
+        if (generation !== directGeneration) return;
+        const peer = createDirectPeer("receiver", generation);
+        await peer.setRemoteDescription(description);
+        const answer = await peer.createAnswer();
+        await peer.setLocalDescription(answer);
+        await waitForIceGathering(peer, generation);
+        if (generation !== directGeneration) return;
+        directPhase = "answer-shown";
+        renderDirectSignal(peer.localDescription, "receiver");
+      } else {
+        directPhase = "connecting";
+        showPanel("qr-transfer-direct-wait");
+        setDirectStatus("Connecting directly to the other device…");
+        await directPeer.setRemoteDescription(description);
+        if (generation !== directGeneration) return;
+        if (
+          directChannel?.readyState !== "open" &&
+          directPeer?.connectionState !== "connected"
+        ) {
+          armDirectConnectionTimeout(generation);
+        }
+      }
+    } catch (error) {
+      if (generation === directGeneration) {
+        cleanupDirect();
+        showPanel("qr-transfer-home");
+        setStatus(error.message || "Unable to establish a direct transfer.", true);
+      }
+    }
+  }
+
+  function configureDirectChannel(channel, role, generation) {
+    channel.onopen = () => {
+      if (generation !== directGeneration) return;
+      globalScope.clearTimeout(directConnectionTimer);
+      directConnectionTimer = 0;
+      if (role === "sender") {
+        sendDirectTransfer(channel, generation).catch((error) => {
+          if (generation === directGeneration) {
+            setDirectStatus(error.message || "Unable to send progress directly.", true);
+          }
+        });
+      } else {
+        showPanel("qr-transfer-direct-wait");
+        setDirectStatus("Connected securely. Receiving progress directly…");
+      }
+    };
+    channel.onmessage = (event) => {
+      if (generation !== directGeneration) return;
+      if (role === "receiver") {
+        receiveDirectMessage(event.data, channel);
+        return;
+      }
+      try {
+        const message = JSON.parse(event.data);
+        if (
+          message?.type === "mrh-transfer-verified" &&
+          message.id === directTransferId
+        ) {
+          directPhase = "verified";
+          setDirectStatus(
+            "The receiving device verified the data. It still needs to confirm the import.",
+          );
+        }
+      } catch (error) {
+        setDirectStatus(
+          error.message || "The direct connection sent an invalid response.",
+          true,
+        );
+      }
+    };
+    channel.onerror = () => {
+      if (generation === directGeneration) {
+        setDirectStatus("The direct transfer connection encountered an error.", true);
+      }
+    };
+    channel.onclose = () => {
+      if (
+        generation === directGeneration &&
+        role === "receiver" &&
+        !pendingImport
+      ) {
+        setDirectStatus(
+          "The direct connection closed before transfer completed.",
+          true,
+        );
+      }
+    };
+  }
+
+  async function sendDirectTransfer(channel, generation) {
+    const bytes = new TextEncoder().encode(createTransferData());
+    if (bytes.byteLength > MAX_TRANSFER_FILE_BYTES) {
+      throw new RangeError("Saved progress is larger than the 10 MB transfer limit.");
+    }
+    const encoded = bytesToBase64Url(bytes);
+    const transferId =
+      Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+    directTransferId = transferId;
+    const total = Math.ceil(encoded.length / DIRECT_DATA_CHUNK_SIZE);
+    channel.bufferedAmountLowThreshold = 128 * 1024;
+    channel.send(
+      JSON.stringify({
+        type: "mrh-transfer-start",
+        id: transferId,
+        total,
+        encodedLength: encoded.length,
+        checksum: crc32(encoded),
+      }),
+    );
+    for (let index = 0; index < total; index += 1) {
+      if (generation !== directGeneration || channel.readyState !== "open") {
+        throw new Error("The direct connection closed before transfer completed.");
+      }
+      while (channel.bufferedAmount > 256 * 1024) {
+        await new Promise((resolve, reject) => {
+          const onLow = () => {
+            channel.removeEventListener("bufferedamountlow", onLow);
+            channel.removeEventListener("close", onClose);
+            resolve();
+          };
+          const onClose = () => {
+            channel.removeEventListener("bufferedamountlow", onLow);
+            channel.removeEventListener("close", onClose);
+            reject(new Error("The direct connection closed during transfer."));
+          };
+          channel.addEventListener("bufferedamountlow", onLow, { once: true });
+          channel.addEventListener("close", onClose, { once: true });
+          if (channel.bufferedAmount <= channel.bufferedAmountLowThreshold) {
+            onLow();
+          }
+        });
+      }
+      channel.send(
+        JSON.stringify({
+          type: "mrh-transfer-chunk",
+          id: transferId,
+          index,
+          data: encoded.slice(
+            index * DIRECT_DATA_CHUNK_SIZE,
+            (index + 1) * DIRECT_DATA_CHUNK_SIZE,
+          ),
+        }),
+      );
+    }
+    if (generation === directGeneration) {
+      directPhase = "sent";
+      showPanel("qr-transfer-direct-wait");
+      setDirectStatus(
+        "Progress sent directly. The receiving device must confirm the import.",
+      );
+    }
+  }
+
+  function receiveDirectMessage(data, channel) {
+    try {
+      if (typeof data !== "string" || data.length > DIRECT_DATA_CHUNK_SIZE + 500) {
+        throw new TypeError("The direct transfer sent an invalid message.");
+      }
+      const message = JSON.parse(data);
+      if (!isRecord(message)) {
+        throw new TypeError("The direct transfer sent an invalid message.");
+      }
+      if (message.type === "mrh-transfer-start") {
+        if (
+          typeof message.id !== "string" ||
+          !/^[A-Za-z0-9_-]{6,32}$/.test(message.id) ||
+          !Number.isSafeInteger(message.total) ||
+          message.total < 1 ||
+          message.total > Math.ceil(
+            ((MAX_TRANSFER_FILE_BYTES * 4) / 3) / DIRECT_DATA_CHUNK_SIZE,
+          ) ||
+          !Number.isSafeInteger(message.encodedLength) ||
+          message.encodedLength < 1 ||
+          message.encodedLength > Math.ceil((MAX_TRANSFER_FILE_BYTES * 4) / 3) ||
+          message.total !==
+            Math.ceil(message.encodedLength / DIRECT_DATA_CHUNK_SIZE) ||
+          typeof message.checksum !== "string" ||
+          !/^[a-f0-9]{8}$/.test(message.checksum)
+        ) {
+          throw new TypeError("The direct transfer header is invalid.");
+        }
+        directReceive = {
+          id: message.id,
+          total: message.total,
+          encodedLength: message.encodedLength,
+          checksum: message.checksum,
+          chunks: new Map(),
+        };
+        setDirectStatus(`Receiving progress (0 of ${message.total} parts)…`);
+        return;
+      }
+      if (message.type !== "mrh-transfer-chunk") return;
+      const transfer = directReceive;
+      if (
+        !transfer ||
+        message.id !== transfer.id ||
+        !Number.isSafeInteger(message.index) ||
+        message.index < 0 ||
+        message.index >= transfer.total ||
+        typeof message.data !== "string" ||
+        !/^[A-Za-z0-9_-]+$/.test(message.data) ||
+        message.data.length > DIRECT_DATA_CHUNK_SIZE
+      ) {
+        throw new TypeError("The direct transfer part is invalid.");
+      }
+      const expectedLength =
+        message.index === transfer.total - 1
+          ? transfer.encodedLength -
+            message.index * DIRECT_DATA_CHUNK_SIZE
+          : DIRECT_DATA_CHUNK_SIZE;
+      if (message.data.length !== expectedLength) {
+        throw new TypeError("The direct transfer part has an invalid size.");
+      }
+      const previous = transfer.chunks.get(message.index);
+      if (previous !== undefined && previous !== message.data) {
+        throw new TypeError("The direct transfer contains conflicting parts.");
+      }
+      if (previous === undefined) transfer.chunks.set(message.index, message.data);
+      if (transfer.chunks.size !== transfer.total) {
+        setDirectStatus(
+          `Receiving progress (${transfer.chunks.size} of ${transfer.total} parts)…`,
+        );
+        return;
+      }
+      let encoded = "";
+      for (let index = 0; index < transfer.total; index += 1) {
+        const part = transfer.chunks.get(index);
+        if (typeof part !== "string") return;
+        encoded += part;
+      }
+      if (
+        encoded.length !== transfer.encodedLength ||
+        crc32(encoded) !== transfer.checksum
+      ) {
+        throw new TypeError("The direct transfer failed its integrity check.");
+      }
+      pendingImport = parseTransferFileText(base64UrlToText(encoded));
+      directPhase = "received";
+      channel.send(JSON.stringify({ type: "mrh-transfer-verified", id: transfer.id }));
+      cleanupMedia();
+      showPanel("qr-transfer-import");
+      setStatus(
+        "Transfer verified. Importing progress replaces this device’s saved progress; choose whether to replace its settings too.",
+      );
+    } catch (error) {
+      directReceive = null;
+      setDirectStatus(error.message || "The direct transfer could not be verified.", true);
     }
   }
 
@@ -71,6 +527,7 @@
     if (!modal) throw new Error("The progress-transfer dialog is unavailable.");
     modalGeneration += 1;
     cleanupMedia();
+    cleanupDirect();
     clearInterval(frameTimer);
     frameTimer = 0;
     frameGeneration += 1;
@@ -126,6 +583,7 @@
       modalKeydownHandler = null;
     }
     cleanupMedia();
+    cleanupDirect();
     clearInterval(frameTimer);
     frameTimer = 0;
     frameGeneration += 1;
@@ -140,6 +598,7 @@
 
   function showHome() {
     cleanupMedia();
+    cleanupDirect();
     clearInterval(frameTimer);
     frameTimer = 0;
     frameGeneration += 1;
@@ -161,6 +620,22 @@
     }
     const video = getElement("qr-transfer-video");
     if (video) video.srcObject = null;
+  }
+
+  function cleanupDirect() {
+    directGeneration += 1;
+    directRole = null;
+    directPhase = null;
+    directReceive = null;
+    directTransferId = null;
+    globalScope.clearTimeout(directConnectionTimer);
+    directConnectionTimer = 0;
+    const channel = directChannel;
+    const peer = directPeer;
+    directChannel = null;
+    directPeer = null;
+    if (channel && channel.readyState !== "closed") channel.close();
+    if (peer && peer.signalingState !== "closed") peer.close();
   }
 
   function crc32(value) {
@@ -192,6 +667,60 @@
     const binary = globalScope.atob(padded);
     const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  }
+
+  function createDirectSignal(description) {
+    if (
+      !isRecord(description) ||
+      !["offer", "answer"].includes(description.type) ||
+      typeof description.sdp !== "string" ||
+      description.sdp.length === 0
+    ) {
+      throw new TypeError("The direct connection code is invalid.");
+    }
+    const signal = `MRH-DIRECT-1|${bytesToBase64Url(
+      new TextEncoder().encode(
+        JSON.stringify({ type: description.type, sdp: description.sdp }),
+      ),
+    )}`;
+    if (signal.length > MAX_DIRECT_SIGNAL_CHARACTERS) {
+      throw new RangeError(
+        "The direct connection code is too large. Try the transfer file instead.",
+      );
+    }
+    return signal;
+  }
+
+  function parseDirectSignal(signal, expectedType) {
+    if (
+      typeof signal !== "string" ||
+      signal.length > MAX_DIRECT_SIGNAL_CHARACTERS
+    ) {
+      throw new TypeError("This is not a valid direct connection QR code.");
+    }
+    const match = signal.match(/^MRH-DIRECT-1\|([A-Za-z0-9_-]+)$/);
+    if (!match) {
+      throw new TypeError("This is not a valid direct connection QR code.");
+    }
+    let description;
+    try {
+      description = JSON.parse(base64UrlToText(match[1]));
+    } catch {
+      throw new TypeError("The direct connection code could not be read.");
+    }
+    if (
+      !isRecord(description) ||
+      description.type !== expectedType ||
+      typeof description.sdp !== "string" ||
+      !description.sdp ||
+      description.sdp.length > 15000 ||
+      !/^v=0\r?\n/.test(description.sdp)
+    ) {
+      throw new TypeError(
+        `This code is not a valid direct connection ${expectedType}.`,
+      );
+    }
+    return { type: description.type, sdp: description.sdp };
   }
 
   function createFrames(text, id) {
@@ -645,7 +1174,19 @@
               return;
             }
             const script = document.createElement("script");
-            script.src = src;
+            const baseHref =
+              globalScope.location?.protocol === "file:"
+                ? globalScope.location.href
+                : new URL(
+                    globalScope.__MRH_APP_BASE_PATH || "/",
+                    globalScope.location.origin,
+                  ).href;
+            const libraryUrl = new URL(src, baseHref);
+            const appVersion = globalScope.__MRH_APP__?.version;
+            if (typeof appVersion === "string") {
+              libraryUrl.searchParams.set("v", appVersion);
+            }
+            script.src = libraryUrl.href;
             script.crossOrigin = "anonymous";
             script.integrity = integrity;
             const timeout = setTimeout(() => {
@@ -668,7 +1209,7 @@
               script.remove();
               reject(
                 new Error(
-                  `Could not load the QR transfer tools. Check your internet connection and try again.`,
+                  "Could not load the QR transfer tools. Reload the page and try again.",
                 ),
               );
             };
@@ -737,6 +1278,16 @@
     showPanel("qr-transfer-scan");
     setStatus("Requesting camera access…");
     const generation = ++scannerGeneration;
+    const isDirectScan =
+      directPhase === "awaiting-offer" || directPhase === "awaiting-answer";
+    getElement("qr-transfer-signal-input")?.classList.toggle(
+      "hidden",
+      !isDirectScan,
+    );
+    getElement("qr-transfer-use-signal-button")?.classList.toggle(
+      "hidden",
+      !isDirectScan,
+    );
     const video = getElement("qr-transfer-video");
     const canvas = getElement("qr-transfer-canvas");
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -802,36 +1353,60 @@
           return;
         }
         if (result?.data) {
-          try {
-            const accepted = acceptFrame(receivedFrames, result.data);
-            receivedFrames = accepted.frameSet;
-            if (accepted.isNewFrame) {
-              const progress = getElement("qr-transfer-scan-progress");
-              if (progress) {
-                progress.textContent = `Scanned ${receivedFrames.chunks.size} of ${receivedFrames.total} frames`;
+          if (
+            directPhase === "awaiting-offer" ||
+            directPhase === "awaiting-answer"
+          ) {
+            const expectedType =
+              directPhase === "awaiting-offer" ? "offer" : "answer";
+            if (result.data.startsWith("MRH-DIRECT-1|")) {
+              directPhase = `processing-${expectedType}`;
+              handleDirectSignal(result.data, expectedType).catch((error) => {
+                if (generation === scannerGeneration) {
+                  directPhase =
+                    expectedType === "offer"
+                      ? "awaiting-offer"
+                      : "awaiting-answer";
+                  setStatus(error.message, true);
+                }
+              });
+            }
+          } else {
+            try {
+              const accepted = acceptFrame(receivedFrames, result.data);
+              receivedFrames = accepted.frameSet;
+              if (accepted.isNewFrame) {
+                const progress = getElement("qr-transfer-scan-progress");
+                if (progress) {
+                  progress.textContent = `Scanned ${receivedFrames.chunks.size} of ${receivedFrames.total} frames`;
+                }
               }
-            }
-            if (accepted.complete && accepted.isNewFrame) {
-              pendingImport = validateTransfer(JSON.parse(accepted.text));
-              cleanupMedia();
-              showPanel("qr-transfer-import");
-              setStatus(
-                "Transfer verified. Importing progress replaces this device’s saved progress; choose whether to replace its settings too.",
-              );
-              return;
-            }
-          } catch (error) {
-            if (/not a Maritime Review Hub transfer QR/.test(error.message)) {
-              // Ignore unrelated QR codes while continuing the current transfer.
-            } else if (/different transfers/.test(error.message)) {
-              receivedFrames = null;
-            } else {
-              receivedFrames = null;
-              setStatus(error.message, true);
+              if (accepted.complete && accepted.isNewFrame) {
+                pendingImport = validateTransfer(JSON.parse(accepted.text));
+                cleanupMedia();
+                showPanel("qr-transfer-import");
+                setStatus(
+                  "Transfer verified. Importing progress replaces this device’s saved progress; choose whether to replace its settings too.",
+                );
+                return;
+              }
+            } catch (error) {
+              if (
+                /not a Maritime Review Hub transfer QR/.test(error.message)
+              ) {
+                // Ignore unrelated QR codes while continuing the current transfer.
+              } else if (/different transfers/.test(error.message)) {
+                receivedFrames = null;
+              } else {
+                receivedFrames = null;
+                setStatus(error.message, true);
+              }
             }
           }
         }
-        scannerFrame = requestAnimationFrame(scan);
+        if (generation === scannerGeneration) {
+          scannerFrame = requestAnimationFrame(scan);
+        }
       };
       setStatus("Point the camera at the other device’s QR code.");
       scannerFrame = requestAnimationFrame(scan);
@@ -885,12 +1460,48 @@
     }
   }
 
+  function scanDirectAnswer() {
+    if (directRole !== "sender" || directPhase !== "awaiting-answer") {
+      setStatus("Start a direct send before scanning its response.", true);
+      return;
+    }
+    startScan();
+  }
+
+  async function submitDirectSignal() {
+    const input = getElement("qr-transfer-signal-input");
+    if (
+      !input?.value ||
+      !["awaiting-offer", "awaiting-answer"].includes(directPhase)
+    ) {
+      setStatus("Paste a connection code while a direct transfer is waiting.", true);
+      return;
+    }
+    const expectedType = directPhase === "awaiting-offer" ? "offer" : "answer";
+    const signal = input.value.trim();
+    try {
+      parseDirectSignal(signal, expectedType);
+      directPhase = `processing-${expectedType}`;
+      await handleDirectSignal(signal, expectedType);
+      input.value = "";
+    } catch (error) {
+      directPhase =
+        expectedType === "offer" ? "awaiting-offer" : "awaiting-answer";
+      setStatus(error.message || "The connection code could not be read.", true);
+    }
+  }
+
   const QRTransfer = {
     open,
     close,
     showHome,
     startExport,
     startScan,
+    startDirectSend,
+    startDirectReceive,
+    scanDirectAnswer,
+    submitDirectSignal,
+    copyDirectSignal,
     exportFile,
     importFile,
     importProgress,
@@ -901,9 +1512,13 @@
       validateTransfer,
       createTransferData,
       parseTransferFileText,
+      createDirectSignal,
+      parseDirectSignal,
+      receiveDirectMessage,
       base64UrlToText,
       MAX_TRANSFER_BYTES,
       MAX_TRANSFER_FILE_BYTES,
+      MAX_DIRECT_SIGNAL_CHARACTERS,
     },
   };
   globalScope.QRTransfer = QRTransfer;
