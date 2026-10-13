@@ -3,9 +3,19 @@
     "build:css": "tailwindcss -c tailwind.config.js -i tailwind.input.css -o tailwind.generated.css --minify",
     "check:architecture": "node scripts/frontend-architecture-check.js",
     "check:runtime": "node scripts/check-runtime-reliability.js",
+    "check:practice-completion": "node scripts/check-practice-completion.js",
+    "check:practice-suspension": "node scripts/check-practice-suspension.js",
+    "check:question-answer-ux": "node scripts/check-question-answer-ux.js",
+    "check:explanation-visibility": "node scripts/check-explanation-visibility.js",
+    "check:explanation-summary": "node scripts/check-explanation-summary.js",
+    "check:review-choice-toggle": "node scripts/check-review-choice-toggle.js",
+    "check:text-alignment": "node scripts/check-text-alignment.js",
+    "check:deck-layout-spacing": "node scripts/check-deck-layout-spacing.js",
+    "check:tree-view-readability": "node scripts/check-tree-view-readability.js",
     "check:state-save": "node scripts/check-state-save-race.js",
     "check:deck-clear": "node scripts/check-deck-clear-race.js",
-    "check:sync-timestamp": "node scripts/check-sync-timestamp-recovery.js"
+    "check:sync-timestamp": "node scripts/check-sync-timestamp-recovery.js",
+    "check:app-update-flow": "node scripts/check-app-update-flow.js"
   },
   "devDependencies": {
     "@types/google-apps-script": "^2.0.12",

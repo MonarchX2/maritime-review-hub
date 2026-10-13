@@ -68,6 +68,62 @@
   border-color: #374151;
 }
 
+.tree-view-readability-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.75rem;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 0.875rem;
+}
+
+.tree-view-readability-notice[hidden] {
+  display: none;
+}
+
+.dark .tree-view-readability-notice {
+  border-color: #1e40af;
+  background: rgb(30 58 138 / 0.25);
+  color: #dbeafe;
+}
+
+.tree-view-readability-message {
+  margin: 0;
+}
+
+.tree-view-readability-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.tree-view-readability-actions button {
+  min-height: 2rem;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  background: transparent;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tree-view-readability-actions button:hover {
+  background: rgb(59 130 246 / 0.12);
+}
+
+.tree-view-readability-actions #tree-view-landscape-status {
+  max-width: 16rem;
+  font-size: 0.75rem;
+}
+
 .deck-tree-row {
   position: relative;
   border-radius: 1.1rem;
@@ -82,6 +138,7 @@
 
 .deck-interaction-blocked {
   cursor: wait !important;
+  opacity: 0.55;
   pointer-events: none !important;
 }
 
@@ -127,6 +184,22 @@
   font-weight: 700;
   line-height: 1.25rem;
   white-space: nowrap;
+}
+
+body.text-align-left .user-text-content {
+  text-align: left;
+}
+
+body.text-align-center .user-text-content {
+  text-align: center;
+}
+
+body.text-align-right .user-text-content {
+  text-align: right;
+}
+
+body.text-align-justify .user-text-content {
+  text-align: justify;
 }
 
 .deck-label-icon {
@@ -203,6 +276,24 @@
 
 .dark .deck-label-icon-popular {
   color: #fdba74;
+}
+
+.deck-label-explanations {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.deck-label-icon-explanations {
+  color: #166534;
+}
+
+.dark .deck-label-explanations {
+  background-color: rgb(20 83 45 / 0.4);
+  color: #bbf7d0;
+}
+
+.dark .deck-label-icon-explanations {
+  color: #bbf7d0;
 }
 
 .deck-label-other {
@@ -608,6 +699,16 @@
 }
 
 @media (max-width: 639px) {
+  .tree-view-readability-notice {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .tree-view-readability-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
   .deck-tree-view {
     padding-inline: 0.35rem;
   }
@@ -814,6 +915,72 @@ html,
 body,
 main {
   scrollbar-width: auto;
+}
+
+main {
+  scrollbar-gutter: stable;
+}
+
+.deck-card-title-text {
+  overflow-wrap: anywhere;
+}
+
+.deck-card-title-text.deck-card-title-clip {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.deck-card-badges {
+  align-content: flex-start;
+}
+
+.app-update-notice {
+  position: fixed;
+  z-index: 60;
+  right: 1rem;
+  bottom: 1rem;
+  display: flex;
+  width: min(34rem, calc(100vw - 2rem));
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.75rem;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 0.875rem;
+  box-shadow: 0 10px 25px rgb(15 23 42 / 0.16);
+}
+
+.app-update-notice[hidden],
+.app-update-notice button[hidden] {
+  display: none;
+}
+
+.dark .app-update-notice {
+  border-color: #1e40af;
+  background: #172554;
+  color: #dbeafe;
+}
+
+.app-update-notice button {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  background: transparent;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+@supports (align-self: start) {
+  #category-list [data-deck-list-layout].grid > [data-deck-key],
+  #category-list [data-deck-list-layout].grid > [data-folder-key] {
+    align-self: start;
+  }
 }
 
 button,

@@ -65,8 +65,78 @@
   let __mrhAppInitializationPromise = null;
   let __mrhInitializationTimer = null;
   let __mrhPollLoopToken = 0;
+  let treeViewNoticeDismissed = false;
+  let treeViewResizeListenerInstalled = false;
   const collapsedTreePaths = new Set();
   let treeCollapseInitialized = false;
+
+  function isTreeViewConstrained() {
+    const treeView = document.querySelector(".deck-tree-view");
+    if (
+      state.prefs.layoutMode !== "tree" ||
+      !treeView?.querySelector(".deck-tree-row")
+    ) {
+      return false;
+    }
+
+    const availableWidth = treeView.getBoundingClientRect().width;
+    return availableWidth > 0 && availableWidth < 600;
+  }
+
+  function updateTreeViewReadabilityNotice() {
+    const notice = document.getElementById("tree-view-readability-notice");
+    if (!notice) return;
+
+    notice.hidden = treeViewNoticeDismissed || !isTreeViewConstrained();
+  }
+
+  function dismissTreeViewReadabilityNotice() {
+    treeViewNoticeDismissed = true;
+    updateTreeViewReadabilityNotice();
+  }
+
+  async function switchTreeViewToLandscape() {
+    const orientation = rootScope.screen?.orientation;
+    const action = document.getElementById("tree-view-landscape-action");
+    const status = document.getElementById("tree-view-landscape-status");
+
+    if (!orientation || typeof orientation.lock !== "function") {
+      if (status) {
+        status.textContent =
+          "Your browser cannot change orientation here. Please rotate your device manually.";
+      }
+      if (action) action.hidden = true;
+      return;
+    }
+
+    try {
+      await orientation.lock("landscape");
+      if (status) {
+        status.textContent =
+          "Landscape mode requested. If your screen does not rotate, rotate your device manually.";
+      }
+    } catch {
+      if (status) {
+        status.textContent =
+          "Your browser cannot change orientation here. Please rotate your device manually.";
+      }
+      if (action) action.hidden = true;
+    }
+  }
+
+  function supportsMobileLandscapeAction() {
+    const navigator = rootScope.navigator || {};
+    const isMobile =
+      navigator.userAgentData?.mobile === true ||
+      (Number(navigator.maxTouchPoints) > 0 &&
+        Number(rootScope.innerWidth) <= 900) ||
+      (typeof rootScope.matchMedia === "function" &&
+        rootScope.matchMedia("(pointer: coarse)").matches);
+    return (
+      isMobile &&
+      typeof rootScope.screen?.orientation?.lock === "function"
+    );
+  }
 
   function scheduleAppAnimationFrame(callback) {
     return renderingScheduler.schedule(callback);
@@ -750,13 +820,19 @@
   }
 
   function stripAccessMetadataFromSummary(summaryData) {
-    // Backend response includes: Subject, QuestionCount, QuestionType, Locked
+    // Backend response includes deck counts, type, access, and explanation availability.
     // This function ensures no Password/Hidden fields are in stored data
     if (!Array.isArray(summaryData)) return summaryData;
     return summaryData.map((deck) => {
       if (!deck || typeof deck !== "object") return deck;
-      const { Subject, QuestionCount, QuestionType, Locked } = deck;
-      return { Subject, QuestionCount, QuestionType, Locked };
+      const {
+        Subject,
+        QuestionCount,
+        QuestionType,
+        Locked,
+        HasExplanations,
+      } = deck;
+      return { Subject, QuestionCount, QuestionType, Locked, HasExplanations };
     });
   }
 
@@ -777,6 +853,7 @@
           c: row[2],
           t: row[3],
           ...(row[4] ? { l: "t" } : {}),
+          ...(row.length > 5 ? { e: "t" } : {}),
         };
       });
     }
@@ -790,12 +867,18 @@
       const questionCount = deck.c !== undefined ? deck.c : deck.QuestionCount;
       const questionType = deck.t !== undefined ? deck.t : deck.QuestionType;
       const locked = deck.l !== undefined ? deck.l : deck.Locked;
+      const hasExplanations =
+        Object.prototype.hasOwnProperty.call(deck, "e") ||
+        (typeof deck.HasExplanations === "boolean"
+          ? deck.HasExplanations
+          : normalizeAccessFlag(deck.HasExplanations));
 
       return {
         Subject: subject,
         QuestionCount: Number(questionCount || 0),
         QuestionType: questionType || "ID",
         Locked: normalizeAccessFlag(locked),
+        HasExplanations: hasExplanations,
       };
     });
   }
@@ -934,6 +1017,7 @@
           deck?.QuestionCount,
           deck?.QuestionType,
           deck?.Locked,
+          deck?.HasExplanations,
           deck?.Hidden,
           deck?.IsFolder,
           deck?.Downloaded,
@@ -1231,7 +1315,6 @@
   let categoryTreeCache = null;
   let categoryTreeFolderStatsCache = null;
   let categoryTreeNodeMetadataCache = null;
-
   function invalidateCategoryProgressRenderSignature() {
     globalScope.invalidateCategoryProgressSignatureCache?.();
     categoryProgressLastRenderSignature = "";
@@ -1332,6 +1415,39 @@
       const completedSet = new Set(state.stats?.completedQs || []);
       const mistakesSet = new Set(state.stats?.mistakes || []);
       const subjectIdsBySubject = ensureQuestionIndex().bySubject;
+      const deckHasExplanations = (deckData) =>
+        Object.prototype.hasOwnProperty.call(deckData || {}, "e") ||
+        deckData?.HasExplanations === true;
+      const folderExplanationAvailabilityCache = new WeakMap();
+      function getFolderExplanationStatus(node) {
+        if (!node || typeof node !== "object") {
+          return { hasDecks: false, allHaveExplanations: true };
+        }
+        if (folderExplanationAvailabilityCache.has(node)) {
+          return folderExplanationAvailabilityCache.get(node);
+        }
+
+        const status = { hasDecks: false, allHaveExplanations: true };
+        if (node._data && node._data.IsFolder !== true) {
+          status.hasDecks = true;
+          status.allHaveExplanations = deckHasExplanations(node._data);
+        }
+
+        Object.values(node._children || {}).forEach((child) => {
+          const childStatus = getFolderExplanationStatus(child);
+          if (!childStatus.hasDecks) return;
+          status.hasDecks = true;
+          status.allHaveExplanations =
+            status.allHaveExplanations && childStatus.allHaveExplanations;
+        });
+
+        folderExplanationAvailabilityCache.set(node, status);
+        return status;
+      }
+      function folderHasOnlyExplainedDecks(node) {
+        const status = getFolderExplanationStatus(node);
+        return status.hasDecks && status.allHaveExplanations;
+      }
       const downloadedSubjects = new Set(
         (state.db || []).map((question) => question?.Subject).filter(Boolean),
       );
@@ -1415,9 +1531,23 @@
       categoryTreeNodeMetadataCache = nodeMetadataCache;
 
       const freshnessBannerHtml = getDeckDataFreshnessBannerHtml();
+      const treeReadabilityNoticeHtml = isTree
+        ? `<div id="tree-view-readability-notice" class="tree-view-readability-notice" role="note" hidden>
+            <p class="tree-view-readability-message">Tree view may be difficult to read on your current screen. For a better experience, use a larger screen or rotate your device to landscape mode.</p>
+            <div class="tree-view-readability-actions">
+              <span id="tree-view-landscape-status" role="status" aria-live="polite"></span>
+              ${
+                supportsMobileLandscapeAction()
+                  ? '<button id="tree-view-landscape-action" type="button" onclick="switchTreeViewToLandscape()">Switch to Landscape</button>'
+                  : ""
+              }
+              <button type="button" onclick="dismissTreeViewReadabilityNotice()">Dismiss</button>
+            </div>
+          </div>`
+        : "";
 
       let html = isTree
-        ? ""
+        ? treeReadabilityNoticeHtml
         : `
       <div data-deck-breadcrumb class="flex flex-nowrap items-center gap-2 mb-6 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto pb-2 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
         <button onclick="goToPath(-1)" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2 flex-shrink-0">
@@ -1437,8 +1567,8 @@
       const layoutClass = isTree
         ? "deck-tree-view overflow-visible rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm"
         : isGrid
-          ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-6"
-          : "flex flex-col space-y-4";
+          ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"
+          : "flex flex-col gap-5";
 
       html += `<div data-deck-list-layout class="${layoutClass}">`;
       const sortBy = state.prefs.deckSortBy || "letters";
@@ -1794,6 +1924,12 @@
                 ? renderDeckBadge("Popular", "fa-fire")
                 : "";
               const deckTypeBadge = getFolderDeckTypeBadgeLabel(item);
+              const explanationsAvailableBadge =
+                (isGroup
+                  ? folderHasOnlyExplainedDecks(item)
+                  : deckHasExplanations(item._data))
+                  ? renderDeckBadge("Explanations Available", "fa-lightbulb")
+                  : "";
               const action = isGroup
                 ? `toggleTreeNode('${encodeHandlerValue(folderSubject)}')`
                 : `handleDeckClick('${encodeHandlerValue(item._data?.Subject || folderSubject)}')`;
@@ -1832,7 +1968,7 @@
                 : "";
 
               return `<div data-tree-key="${escapeHTML(childPath.join("::"))}" onclick="${action}" class="deck-tree-row deck-tree-grid ${rowClass} ${interactionClass} ${syncLockClass} items-center gap-2 px-3 py-2.5 cursor-pointer transition-all duration-150" ${databaseUnavailable && !isGroup ? 'aria-disabled="true"' : ""}>
-                <div class="min-w-0 flex items-center text-base sm:text-lg text-gray-700 dark:text-gray-200" style="padding-left: ${indent}px">${icon}${typeIcon}<span class="deck-tree-name ${nameCaseClass}">${safeKey}</span>${deckTypeBadge ? renderDeckBadge(deckTypeBadge) : ""}${popularBadge}${recentlyViewedIcon}${favoriteIcon}</div>
+                <div class="min-w-0 flex items-center text-base sm:text-lg text-gray-700 dark:text-gray-200" style="padding-left: ${indent}px">${icon}${typeIcon}<span class="deck-tree-name ${nameCaseClass}">${safeKey}</span>${deckTypeBadge ? renderDeckBadge(deckTypeBadge) : ""}${explanationsAvailableBadge}${popularBadge}${recentlyViewedIcon}${favoriteIcon}</div>
                 <span class="deck-tree-actions">${mistakesActionIcon}</span>
                 ${renderTreeStat(stats.total, allCountColor)}
                 ${renderTreeStat(stats.correctCount, "text-green-400 dark:text-green-300")}
@@ -1886,6 +2022,7 @@
           "multiple choices": "multiple-choices",
           mixed: "mixed",
           popular: "popular",
+          "explanations available": "explanations",
         };
         const tone = toneNames[normalizedLabel.toLowerCase()] || "other";
         const defaultIcons = {
@@ -1893,6 +2030,7 @@
           "multiple choices": "fa-list-check",
           mixed: "fa-shuffle",
           popular: "fa-fire",
+          "explanations available": "fa-lightbulb",
         };
         const iconClass =
           icon || defaultIcons[normalizedLabel.toLowerCase()] || "";
@@ -1927,6 +2065,10 @@
         const safeName = escapeHTML(displayName);
         const loaderId = getDeckLoaderId(subj);
         const deckTypeBadge = getDeckTypeBadgeLabel(cat);
+        const explanationsAvailableBadge =
+          deckHasExplanations(cat)
+            ? renderDeckBadge("Explanations Available", "fa-lightbulb")
+            : "";
         const popularBadge = isPopularDeckPath(subj)
           ? renderDeckBadge("Popular", "fa-fire")
           : "";
@@ -1934,6 +2076,8 @@
           state.prefs.deckNameMode === "clip"
             ? "truncate"
             : "whitespace-normal";
+        const deckTitleModeClass =
+          state.prefs.deckNameMode === "clip" ? "deck-card-title-clip" : "";
         const totalQuestionsInDb = cat.QuestionCount;
 
         const isRoot = !state.currentPath || state.currentPath.length === 0;
@@ -2021,7 +2165,7 @@
         }
 
         return `
-        <div data-deck-key="${escapeHTML(subj)}" onclick="handleDeckClick('${encodedSubj}')" class="${isDeckInteractionBusy ? "deck-interaction-blocked" : "cursor-pointer"} ${syncLockClass} ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-transform duration-400 relative w-full h-full flex flex-col" aria-busy="${isDeckInteractionBusy || isDeckLoading}">
+        <div data-deck-key="${escapeHTML(subj)}" onclick="handleDeckClick('${encodedSubj}')" class="deck-card ${isDeckInteractionBusy ? "deck-interaction-blocked" : "cursor-pointer"} ${syncLockClass} ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-transform duration-400 relative w-full flex flex-col" aria-busy="${isDeckInteractionBusy || isDeckLoading}">
           <div id="${loaderId}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex-col items-center justify-center transition-opacity">
             <i class="fa-solid fa-spinner fa-spin text-3xl ${loaderColor} mb-2"></i>
             <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Loading...</span>
@@ -2031,12 +2175,12 @@
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2 mb-1 min-w-0">
                 <div class="min-w-0 flex flex-col">
-                  <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors min-w-0 gap-1">
+                  <h3 class="deck-card-title font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors min-w-0 gap-1" title="${safeName}">
                     ${recentViewedBadge}
                     ${unfinishedBadge}
-                    <span class="${deckNameMode} break-words">${safeName}</span> ${lockIcon}
+                    <span class="deck-card-title-text ${deckTitleModeClass} ${deckNameMode} break-words">${safeName}</span> ${lockIcon}
                   </h3>
-                  ${deckTypeBadge ? `<div class="mt-1">${renderDeckBadge(deckTypeBadge)}</div>` : ""}
+                  <div class="deck-card-badges mt-1 flex flex-wrap items-start gap-1">${deckTypeBadge ? renderDeckBadge(deckTypeBadge) : ""}${explanationsAvailableBadge}</div>
                 </div>
               </div>
               ${statsHTML}
@@ -2081,8 +2225,6 @@
           const isExplicitFolder = hasData && item._data.IsFolder === true;
           if (hasChildren || isExplicitFolder) {
             const totalCards = getFolderStats(item, folderStatsCache);
-            const folderClass = isGrid ? "h-full min-h-[140px]" : "h-auto";
-
             const isReview = currentAppMode === "review";
             const isRecentlyViewedFolder =
               getRecentPathDepth(
@@ -2101,6 +2243,10 @@
               ? renderDeckBadge("Popular", "fa-fire")
               : "";
             const deckTypeBadge = getFolderDeckTypeBadgeLabel(item);
+            const explanationsAvailableBadge =
+              folderHasOnlyExplainedDecks(item)
+                ? renderDeckBadge("Explanations Available", "fa-lightbulb")
+                : "";
             const isLocked =
               isDeckLocked(folderSubject) || Boolean(item?._data?.Locked);
             const lockIcon = isLocked
@@ -2146,18 +2292,18 @@
           `;
 
             html += `
-          <div data-folder-key="${escapeHTML(key)}" onclick="enterFolder(decodeHandlerValue('${encodeHandlerValue(key)}'), ${isLocked})" class="${deckInteractionLocked ? "deck-interaction-blocked" : "cursor-pointer"} group bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-transform duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${folderClass} transform hover:-translate-y-1 relative">
+          <div data-folder-key="${escapeHTML(key)}" onclick="enterFolder(decodeHandlerValue('${encodeHandlerValue(key)}'), ${isLocked})" class="${deckInteractionLocked ? "deck-interaction-blocked" : "cursor-pointer"} group bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-transform duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col transform hover:-translate-y-1 relative">
             <div class="h-12 ${folderColorClass} transition-colors relative">
               <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
             </div>
-            <div class="p-4 flex-1 flex flex-col justify-between">
+            <div class="p-4 flex flex-col">
               <div class="flex justify-between items-start w-full gap-2">
                 <div class="min-w-0 flex flex-col">
-                  <h3 class="font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg flex items-center min-w-0 gap-1">
+                  <h3 class="deck-folder-title font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg flex items-center min-w-0 gap-1" title="${escapeHTML(key)}">
                     ${isRecentlyViewedFolder ? '<i class="fa-regular fa-clock text-base text-amber-500 mr-0.5 flex-shrink-0" title="Recently Viewed"></i>' : ""}
-                    <span class="${state.prefs.deckNameMode === "clip" ? "truncate" : "whitespace-normal break-words"}">${escapeHTML(key)}</span> ${lockIcon}
+                    <span class="deck-card-title-text ${state.prefs.deckNameMode === "clip" ? "deck-card-title-clip truncate" : "whitespace-normal break-words"}">${escapeHTML(key)}</span> ${lockIcon}
                   </h3>
-                  ${deckTypeBadge ? `<div class="mt-1">${renderDeckBadge(deckTypeBadge)}</div>` : ""}
+                  <div class="deck-card-badges mt-1 flex flex-wrap items-start gap-1">${deckTypeBadge ? renderDeckBadge(deckTypeBadge) : ""}${explanationsAvailableBadge}</div>
                 </div>
                 <div class="flex items-center gap-0">
                   ${pinBtnHtml}
@@ -2274,6 +2420,18 @@
         reconcileChildren(container, template.content);
         container.className = "transition-all duration-500";
       }
+
+      if (isTree && !treeViewResizeListenerInstalled) {
+        if (typeof rootScope.addEventListener === "function") {
+          rootScope.addEventListener(
+            "resize",
+            updateTreeViewReadabilityNotice,
+            { signal: uiEventController.signal },
+          );
+          treeViewResizeListenerInstalled = true;
+        }
+      }
+      updateTreeViewReadabilityNotice();
 
       categoryProgressLastRenderSignature = renderSignature;
 
@@ -2741,24 +2899,42 @@
     }
   }
 
-  async function reviewDeck(subject, pass = null) {
+  async function reviewDeck(subject, pass = null, preferCachedQuestions = false) {
     const loader = document.getElementById(getDeckLoaderId(subject));
 
     if (isDeckHidden(subject)) {
       showToast("This deck is hidden and not available.", "warning");
-      return;
+      return false;
     }
 
     if (isDeckLocked(subject) && !pass) {
       pendingDeckSubject = subject;
       pendingDeckAction = "resume-review";
       openDeckPasswordModal(subject, "resume-review");
-      return;
+      return false;
     }
 
-    // Always fetch fresh deck data for review access; do not reuse cached question rows.
     let validQuestions = [];
-    validQuestions = await fetchDeckQuestions(subject, pass, loader);
+    if (preferCachedQuestions) {
+      const cachedQuestions = (state.db || []).filter(
+        (question) => String(question?.Subject || "").trim() === subject,
+      );
+      const summaryEntry = (state.categorySummary || []).find(
+        (category) => category?.Subject === subject,
+      );
+      const expectedQuestionCount = Number(summaryEntry?.QuestionCount || 0);
+      if (
+        cachedQuestions.length > 0 &&
+        (!expectedQuestionCount ||
+          cachedQuestions.length >= expectedQuestionCount)
+      ) {
+        validQuestions = cachedQuestions;
+      }
+    }
+
+    if (validQuestions.length === 0) {
+      validQuestions = await fetchDeckQuestions(subject, pass, loader);
+    }
 
     if (validQuestions.length === 0) {
       if (isDeckLocked(subject)) {
@@ -2766,7 +2942,7 @@
         pendingDeckAction = "resume-review";
         openDeckPasswordModal(subject, "resume-review");
         if (loader) loader.classList.add("hidden");
-        return;
+        return false;
       }
       showToast(
         `Could not refresh "${subject}". Please try again in a moment.`,
@@ -2774,7 +2950,7 @@
         5000,
       );
       if (loader) loader.classList.add("hidden");
-      return;
+      return false;
     }
 
     if (loader) loader.classList.add("hidden");
@@ -2785,6 +2961,7 @@
     };
     saveState();
     renderDeckReview(subject, validQuestions);
+    return true;
   }
 
   function toggleFavoriteDeck(subjectId) {
@@ -3374,11 +3551,8 @@
     }
 
     const activity = state.prefs.lastActivity;
-    if (
-      activity?.mode === "review" &&
-      activity.subject &&
-      !pendingResumeSession
-    ) {
+    const saved = getStoredItem("saved_session");
+    if (!saved && activity?.mode === "review" && activity.subject) {
       currentAppMode = "review";
       syncPreferenceControls();
       if (
@@ -3394,7 +3568,6 @@
       return;
     }
 
-    const saved = getStoredItem("saved_session");
     if (!saved) return;
 
     const savedSession = pendingResumeSession || JSON.parse(saved);
@@ -3596,6 +3769,114 @@
 
   function proceedToReview() {
     reviewDeck(activeHubSubject);
+  }
+
+  let pendingPracticeReviewSwitch = null;
+
+  function restorePracticeAfterReviewFailure(showWarning = true) {
+    if (!pendingPracticeReviewSwitch) return false;
+    const suspension = pendingPracticeReviewSwitch;
+    pendingPracticeReviewSwitch = null;
+    const resumed = SessionCore.resumeSuspendedSession(suspension);
+    if (resumed) {
+      const question =
+        suspension.session.questions[suspension.session.currentIndex];
+      state.prefs.lastActivity = {
+        mode: "quiz",
+        subject: question?.Subject || null,
+        updatedAt: new Date().toISOString(),
+      };
+      saveState();
+      if (showWarning) {
+        showToast(
+          "Review could not be opened. Your quiz has been resumed.",
+          "warning",
+        );
+      }
+    }
+    return resumed;
+  }
+
+  async function switchPracticeToReview() {
+    const session = state.session;
+    if (!session?.active || !Array.isArray(session.questions)) return false;
+
+    const subject =
+      session.questions[session.currentIndex]?.Subject || "";
+    if (!subject) {
+      showToast("Unable to determine the current quiz deck.", "error");
+      return false;
+    }
+
+    const suspension = SessionCore.suspendSessionForModeSwitch();
+    if (!suspension) {
+      showToast(
+        "Your quiz progress could not be saved, so Review was not opened.",
+        "error",
+      );
+      return false;
+    }
+
+    pendingPracticeReviewSwitch = suspension;
+    const confirmed = await requestConfirmation(
+      "Session saved. You can resume the quiz later. Continue to study this deck?",
+      "Switch to Study Mode",
+    );
+    if (!confirmed) {
+      restorePracticeAfterReviewFailure(false);
+      return false;
+    }
+
+    let opened;
+    try {
+      opened = await reviewDeck(subject, null, true);
+    } catch (error) {
+      appLogger.error("Unable to switch from quiz to review.", error);
+      restorePracticeAfterReviewFailure();
+      return false;
+    }
+    if (opened) {
+      pendingPracticeReviewSwitch = null;
+      currentAppMode = "review";
+      syncPreferenceControls();
+      return true;
+    }
+
+    const passwordModal = document.getElementById("deck-password-modal");
+    if (passwordModal?.getAttribute("aria-hidden") !== "false") {
+      restorePracticeAfterReviewFailure();
+    }
+    return false;
+  }
+
+  async function continuePracticeReviewSwitch(subject, password) {
+    let opened;
+    try {
+      opened = await reviewDeck(subject, password);
+    } catch (error) {
+      appLogger.error("Unable to switch from quiz to review.", error);
+      restorePracticeAfterReviewFailure();
+      return false;
+    }
+    if (opened) {
+      pendingPracticeReviewSwitch = null;
+      currentAppMode = "review";
+      syncPreferenceControls();
+      return true;
+    }
+
+    const passwordModal = document.getElementById("deck-password-modal");
+    if (passwordModal?.getAttribute("aria-hidden") !== "false") {
+      restorePracticeAfterReviewFailure();
+    }
+    return false;
+  }
+
+  function cancelDeckPasswordRequest() {
+    if (pendingPracticeReviewSwitch) {
+      restorePracticeAfterReviewFailure(false);
+    }
+    closeDeckPasswordModal();
   }
 
   function proceedToQuiz() {
@@ -3976,7 +4257,11 @@
             if (pendingDeckAction === "resume") {
               await resumeSession(pass);
             } else if (pendingDeckAction === "resume-review") {
-              await reviewDeck(pendingDeckSubject, pass);
+              if (pendingPracticeReviewSwitch) {
+                await continuePracticeReviewSwitch(pendingDeckSubject, pass);
+              } else {
+                await reviewDeck(pendingDeckSubject, pass);
+              }
             } else if (currentAppMode === "review") {
               reviewDeck(pendingDeckSubject, pass);
             } else {
@@ -4099,7 +4384,7 @@
 
     state.prefs.qToggles[qId] = !currentState;
     saveState();
-    reRenderDeckReview();
+    DeckReviewCore.updateQuestionChoices(qId);
   }
 
   function toggleQuestionFavorite(qId) {
@@ -4186,11 +4471,27 @@
     return { isIdent: isPureIdent, validChoicesCount };
   }
 
-  async function changeQuestionTypeMode(mode) {
-    if (state.prefs.qTypeOverride === mode) return;
+  function getQuestionTypeDisplayName(mode) {
+    const normalizedMode = String(mode || "auto").toLowerCase();
+    const displayNames = {
+      auto: "Auto (Mixed)",
+      ident: "Identification",
+      mcq: "Multiple Choices",
+    };
+    return displayNames[normalizedMode] || "Auto (Mixed)";
+  }
 
+  async function changeQuestionTypeMode(mode) {
+    const normalizedMode = String(mode || "auto").toLowerCase();
+    if (state.prefs.qTypeOverride === normalizedMode) return;
+
+    const displayName = getQuestionTypeDisplayName(normalizedMode);
     const userConfirmed = await requestConfirmation(
-      `Are you sure you want to switch to ${mode.toUpperCase()} mode?`,
+      {
+        before: "Are you sure you want to switch to ",
+        emphasis: displayName,
+        after: " mode?",
+      },
       "Change Question Type",
     );
 
@@ -4198,19 +4499,21 @@
       return;
     }
 
-    if (mode === "ident") {
+    if (normalizedMode === "ident") {
       showToast(
-        "Strict Identification mode enabled. Choices are hidden for MCQs.",
+        "Identification mode enabled. Choices are hidden for MCQs.",
         "warning",
       );
-    } else if (mode === "mcq") {
+    } else if (normalizedMode === "mcq") {
       showToast(
-        "Strict MCQ mode enabled. Choices may be undefined when no alternatives exist.",
+        "Multiple Choices mode enabled. Choices may be undefined when no alternatives exist.",
         "warning",
       );
+    } else {
+      showToast("Auto (Mixed) mode enabled.", "info");
     }
 
-    state.prefs.qTypeOverride = mode;
+    state.prefs.qTypeOverride = normalizedMode;
     saveState();
     if (state.session.active) renderQuestion();
   }
@@ -4712,6 +5015,8 @@
     reloadAppStateInMemory,
     renderCategoryProgress,
     renderCategoryProgressNow,
+    dismissTreeViewReadabilityNotice,
+    switchTreeViewToLandscape,
     toggleTreeNode,
     renderCharts,
     resetCategory,
@@ -4728,6 +5033,8 @@
     sanitizeDeletedDeckReferences,
     saveSessionProgress,
     saveState,
+    switchPracticeToReview,
+    cancelDeckPasswordRequest,
     scheduleDeferredInitialization,
     scheduleNextPolling,
     scheduleSinglePollLoop,

@@ -15,7 +15,31 @@ const releaseMarkers = [
     (source) =>
       [...source.matchAll(/app-entry\.js\?v=(mrh-[A-Za-z0-9._-]+)/g)].length ===
       1 &&
-      source.includes(`app-entry.js?v=${expectedVersion}`),
+      source.includes(`app-entry.js?v=${expectedVersion}`) &&
+      [
+        ...source.matchAll(
+          /href="(?:manifest\.json|icon\.svg|tailwind\.generated\.css|styles\.css)\?v=(mrh-[A-Za-z0-9._-]+)"/g,
+        ),
+      ].length === 7 &&
+      [
+        ...source.matchAll(
+          /href="(?:manifest\.json|icon\.svg|tailwind\.generated\.css|styles\.css)\?v=(mrh-[A-Za-z0-9._-]+)"/g,
+        ),
+      ].every(
+        (match) => match[1] === expectedVersion,
+      ),
+  ],
+  [
+    "version.json",
+    (source) =>
+      JSON.parse(source).version === expectedVersion,
+  ],
+  [
+    "manifest.json",
+    (source) =>
+      [...source.matchAll(/"src"\s*:\s*"icon\.svg\?v=(mrh-[A-Za-z0-9._-]+)"/g)]
+        .length === 1 &&
+      source.includes(`icon.svg?v=${expectedVersion}`),
   ],
 ];
 

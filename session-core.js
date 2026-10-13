@@ -12,7 +12,9 @@
   let sessionSaveTimer = 0;
   let _statsRenderTimeout = 0;
   let sessionSaveRequested = false;
+  let answerScrollFrame = 0;
   const autoNextDeadlines = new WeakMap();
+  const practiceCompletionSummaries = new WeakMap();
   const AUTO_NEXT_DELAY_MS = 2000;
 
   function getElement(id) {
@@ -367,7 +369,9 @@
       questions: preparedPool,
       currentIndex: 0,
       userAnswers: {},
+      answerResults: {},
       identificationRatings: {},
+      identificationRatingPending: {},
       mode: "quiz",
       revealedCloze: false,
       autoNextTimeout: null,
@@ -399,6 +403,8 @@
     const q = session.questions[session.currentIndex];
     if (!q) return;
 
+    cancelAnswerScroll();
+    scrollSessionView(0);
     stopTimerSafely();
     if (typeof globalScope.applyNavigationPosition === "function") {
       globalScope.applyNavigationPosition();
@@ -717,7 +723,12 @@
     }
     session.userAnswers[session.currentIndex] = selectedKey;
 
-    trackStats(q, selectedKey === correctKey);
+    const isCorrect = selectedKey === correctKey;
+    if (!session.answerResults || typeof session.answerResults !== "object") {
+      session.answerResults = {};
+    }
+    session.answerResults[session.currentIndex] = isCorrect;
+    trackStats(q, isCorrect);
 
     for (const btn of getChoiceButtons()) {
       const choice = normalizeAnswer(btn.dataset.choice);
@@ -740,9 +751,74 @@
     }
 
     saveSessionProgress();
+    scheduleAnswerScroll();
     startTimerSafely();
     scheduleAutoNext(session);
     return true;
+  }
+
+  function cancelAnswerScroll() {
+    if (!answerScrollFrame) return;
+    if (typeof globalScope.cancelAnimationFrame === "function") {
+      globalScope.cancelAnimationFrame(answerScrollFrame);
+    } else {
+      lifecycle.clearTimeout(answerScrollFrame);
+    }
+    answerScrollFrame = 0;
+  }
+
+  function scheduleAnswerScroll() {
+    cancelAnswerScroll();
+    const scrollAfterRender = () => {
+      answerScrollFrame = 0;
+      if (getSession()?.active) scrollSessionViewToBottom();
+    };
+
+    if (typeof globalScope.requestAnimationFrame === "function") {
+      answerScrollFrame = globalScope.requestAnimationFrame(scrollAfterRender);
+    } else {
+      answerScrollFrame = lifecycle.setTimeout(scrollAfterRender, 0);
+    }
+  }
+
+  function scrollSessionView(top) {
+    if (typeof document === "undefined") return;
+    const target =
+      document.querySelector("main") ||
+      document.getElementById("app") ||
+      document.scrollingElement ||
+      document.documentElement ||
+      document.body;
+
+    if (!target) return;
+    const desiredTop = Number.isFinite(top) ? Math.max(0, top) : 0;
+
+    if (typeof target.scrollTo === "function") {
+      target.scrollTo({ top: desiredTop, left: 0, behavior: "auto" });
+    } else {
+      target.scrollTop = desiredTop;
+    }
+  }
+
+  function scrollSessionViewToBottom() {
+    if (typeof document === "undefined") return;
+    const target =
+      document.querySelector("main") ||
+      document.getElementById("app") ||
+      document.scrollingElement ||
+      document.documentElement ||
+      document.body;
+
+    if (!target) return;
+
+    const maxScrollTop = Math.max(0, target.scrollHeight - target.clientHeight);
+    const finalTop = Number.isFinite(maxScrollTop) ? maxScrollTop : 0;
+
+    if (typeof target.scrollTo === "function") {
+      target.scrollTo({ top: finalTop, left: 0, behavior: "auto" });
+    } else {
+      target.scrollTop = finalTop;
+    }
   }
 
   function showExplanation(q) {
@@ -750,8 +826,9 @@
     if (!expBox) return;
     const explanation = normalizeText(q?.Explanation);
     const textEl = getElement("q-explanation-text");
+    const isVisible = getPrefs().quizShowExplanations !== false;
 
-    if (explanation) {
+    if (isVisible && explanation) {
       if (textEl && typeof globalScope.formatQuestionText === "function") {
         textEl.innerHTML = globalScope.formatQuestionText(explanation);
       } else if (textEl) {
@@ -790,26 +867,93 @@
 
   let practiceCompletionClosing = false;
 
+  function buildPracticeSessionSummary(session) {
+    const questions = Array.isArray(session?.questions) ? session.questions : [];
+    const answers = session?.userAnswers || {};
+    const answerResults = session?.answerResults || {};
+    const identificationRatings = session?.identificationRatings || {};
+    const identificationRatingPending =
+      session?.identificationRatingPending || {};
+    let answeredCount = 0;
+    let correctCount = 0;
+
+    questions.forEach((question, index) => {
+      const answer = answers[index];
+      if (!answer) return;
+      const selectedAnswer = normalizeAnswer(answer);
+      const expectedAnswer = normalizeAnswer(question?.Answer);
+
+      if (answer === "REVEALED") {
+        if (!Object.prototype.hasOwnProperty.call(identificationRatings, index)) {
+          if (identificationRatingPending[index] === true) return;
+          answeredCount += 1;
+          return;
+        }
+
+        answeredCount += 1;
+        const rating =
+          typeof answerResults[index] === "boolean"
+            ? answerResults[index]
+            : identificationRatings[index];
+        if (rating === true) correctCount += 1;
+        return;
+      }
+
+      answeredCount += 1;
+      const isCorrect =
+        typeof answerResults[index] === "boolean"
+          ? answerResults[index]
+          : Boolean(selectedAnswer && selectedAnswer === expectedAnswer);
+      if (isCorrect) {
+        correctCount += 1;
+      }
+    });
+
+    const wrongCount = Math.max(0, answeredCount - correctCount);
+    const accuracyPercent = answeredCount > 0 ? (correctCount / answeredCount) * 100 : 0;
+
+    return {
+      answeredCount,
+      correctCount,
+      wrongCount,
+      accuracyPercent,
+      totalQuestions: questions.length,
+    };
+  }
+
+  function getPracticeSessionSummary(session) {
+    if (session && typeof session === "object") {
+      const cachedSummary = practiceCompletionSummaries.get(session);
+      if (cachedSummary) return cachedSummary;
+    }
+
+    const summary = buildPracticeSessionSummary(session);
+    if (session && typeof session === "object") {
+      practiceCompletionSummaries.set(session, summary);
+    }
+    return summary;
+  }
+
   function openPracticeCompletionModal(session) {
     const modal = getElement("practice-completion-modal");
     if (!modal) {
       throw new Error("Practice completion modal is missing from the page.");
     }
 
-    const questions = Array.isArray(session?.questions) ? session.questions : [];
-    const answers = session?.userAnswers || {};
-    const identificationRatings = session?.identificationRatings || {};
-    const answeredCount = questions.reduce((count, _question, index) => {
-      const answer = answers[index];
-      const answered =
-        Boolean(answer) &&
-        (answer !== "REVEALED" ||
-          Object.prototype.hasOwnProperty.call(identificationRatings, index));
-      return count + Number(answered);
-    }, 0);
+    const summary = getPracticeSessionSummary(session);
     const message = getElement("practice-completion-message");
     if (message) {
-      message.textContent = `You have answered ${answeredCount} of ${questions.length} questions in this session.`;
+      const accuracyValue = summary.answeredCount
+        ? `${summary.accuracyPercent.toFixed(1)}%`
+        : "0.0%";
+      message.innerHTML = `
+        <div class="space-y-3 text-left">
+          <div class="flex items-center justify-between gap-3"><span>Total questions answered</span><strong>${summary.answeredCount} / ${summary.totalQuestions}</strong></div>
+          <div class="flex items-center justify-between gap-3"><span>Correct</span><strong>${summary.correctCount}</strong></div>
+          <div class="flex items-center justify-between gap-3"><span>Wrong</span><strong>${summary.wrongCount}</strong></div>
+          <div class="flex items-center justify-between gap-3"><span>Accuracy</span><strong>${accuracyValue}</strong></div>
+        </div>
+      `;
     }
 
     const inner = modal.querySelector(":scope > div");
@@ -1087,6 +1231,37 @@
       globalScope.navigate("dashboard");
   }
 
+  function suspendSessionForModeSwitch() {
+    const session = getSession();
+    if (!session?.active) return null;
+
+    const pausedAutoNext = pauseAutoNext();
+    stopTimerSafely();
+
+    if (!saveSessionProgress(true)) {
+      resumeAutoNext(pausedAutoNext);
+      return null;
+    }
+
+    session.active = false;
+    return { session, pausedAutoNext };
+  }
+
+  function resumeSuspendedSession(suspension) {
+    if (
+      !suspension ||
+      getSession() !== suspension.session ||
+      suspension.session.active
+    ) {
+      return false;
+    }
+
+    suspension.session.active = true;
+    renderQuestion();
+    resumeAutoNext(suspension.pausedAutoNext);
+    return true;
+  }
+
   function writeSessionProgressNow() {
     const session = getSession();
     const state = getState();
@@ -1154,6 +1329,7 @@
   }
 
   function cleanup() {
+    cancelAnswerScroll();
     if (sessionSaveRequested) {
       saveSessionProgress(true);
     }
@@ -1211,6 +1387,15 @@
         );
 
         if (validSavedSession) {
+          const savedQuestion =
+            session.questions[session.currentIndex];
+          const savedSubject = normalizeText(savedQuestion?.Subject);
+          if (contextEl) {
+            contextEl.textContent = savedSubject
+              ? `Quiz mode: ${savedSubject}`
+              : "Quiz mode";
+          }
+
           const isLastQuestion =
             session.currentIndex === session.questions.length - 1;
           const isAnswered = Boolean(session.userAnswers[session.currentIndex]);
@@ -1274,6 +1459,22 @@
     session.userAnswers[session.currentIndex] = "REVEALED";
     session.revealedCloze = true;
 
+    if (!session.answerResults || typeof session.answerResults !== "object") {
+      session.answerResults = {};
+    }
+    if (
+      !session.identificationRatingPending ||
+      typeof session.identificationRatingPending !== "object"
+    ) {
+      session.identificationRatingPending = {};
+    }
+    if (isPureIdent) {
+      session.identificationRatingPending[session.currentIndex] = true;
+    } else {
+      delete session.identificationRatingPending[session.currentIndex];
+      session.answerResults[session.currentIndex] = false;
+    }
+
     if (!isPureIdent) {
       // Revealing is not a user-correct response. Count it as a miss so statistics
       // and SRS do not incorrectly award credit for an answer the user did not give.
@@ -1284,6 +1485,7 @@
     getElement("active-recall-mask")?.classList.add("hidden");
     renderQuestion();
     saveSessionProgress();
+    scheduleAnswerScroll();
     if (!isPureIdent) startTimerSafely();
 
     if (!isPureIdent) {
@@ -1325,6 +1527,13 @@
       ? session.identificationRatings[currentIndex]
       : undefined;
     session.identificationRatings[currentIndex] = nextRating;
+    if (!session.answerResults || typeof session.answerResults !== "object") {
+      session.answerResults = {};
+    }
+    session.answerResults[currentIndex] = nextRating;
+    if (session.identificationRatingPending) {
+      delete session.identificationRatingPending[currentIndex];
+    }
     trackIdentificationRating(
       q,
       session,
@@ -1392,6 +1601,8 @@
     computeSrsInterval,
     trackStats,
     endSession,
+    suspendSessionForModeSwitch,
+    resumeSuspendedSession,
     saveSessionProgress,
     checkSavedSession,
     clearSessionProgress,

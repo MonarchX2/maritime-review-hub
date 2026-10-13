@@ -56,6 +56,7 @@
       deckSortBy: "letters",
       deckSortDirection: "asc",
       deckNameMode: "wrap",
+      textAlignment: "left",
       favoriteDecks: [],
       pinnedDecks: [],
       favoriteQuestions: [],
@@ -593,6 +594,11 @@
     )
       ? normalized.layoutMode
       : "grid";
+    normalized.textAlignment = ["left", "center", "right", "justify"].includes(
+      normalized.textAlignment,
+    )
+      ? normalized.textAlignment
+      : "left";
 
     normalized.archivedDecks = Array.isArray(normalized.archivedDecks)
       ? normalized.archivedDecks.filter((entry) => typeof entry === "string")
@@ -688,6 +694,17 @@
 
   function syncPreferenceControls() {
     if (typeof document === "undefined") return;
+
+    const textAlignment = ["left", "center", "right", "justify"].includes(
+      state.prefs.textAlignment,
+    )
+      ? state.prefs.textAlignment
+      : "left";
+    const textAlignmentSelect = document.getElementById(
+      "text-alignment-select",
+    );
+    if (textAlignmentSelect) textAlignmentSelect.value = textAlignment;
+    globalScope.applyTextAlignment?.(textAlignment);
 
     const controls = {
       "toggle-active-recall": state.prefs.activeRecall === true,

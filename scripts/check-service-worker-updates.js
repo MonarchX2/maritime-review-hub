@@ -6,6 +6,7 @@ const events = new Map();
 const calls = {
   deletedCaches: [],
   navigatedClients: [],
+  messages: [],
   requests: [],
 };
 const cachedEntries = new Map();
@@ -22,12 +23,24 @@ let finishStaticRefresh = null;
 
 const clients = [
   {
+    id: "client-root",
+    appVersion: "mrh-release-old-open-tab",
     url: `${appOrigin}/app/`,
     navigate: async (url) => calls.navigatedClients.push(url),
+    postMessage(message) {
+      calls.messages.push({ clientId: this.id, message });
+      replyToVersionQuery(this, message);
+    },
   },
   {
+    id: "client-deck",
+    appVersion,
     url: `${appOrigin}/app/deck/one`,
     navigate: async (url) => calls.navigatedClients.push(url),
+    postMessage(message) {
+      calls.messages.push({ clientId: this.id, message });
+      replyToVersionQuery(this, message);
+    },
   },
   {
     url: `${appOrigin}/application/`,
@@ -38,6 +51,20 @@ const clients = [
     navigate: async (url) => calls.navigatedClients.push(url),
   },
 ];
+
+function replyToVersionQuery(client, message) {
+  if (message.type !== "MRH_QUERY_CLIENT_VERSION") return;
+  queueMicrotask(() => {
+    events.get("message")({
+      data: {
+        type: "MRH_CLIENT_VERSION_RESPONSE",
+        requestId: message.requestId,
+        version: client.appVersion,
+      },
+      source: client,
+    });
+  });
+}
 
 const self = {
   location: {
@@ -59,6 +86,8 @@ const self = {
   async skipWaiting() {
     skippedWaiting = true;
   },
+  setTimeout,
+  clearTimeout,
 };
 
 const cacheStorage = {
@@ -143,7 +172,11 @@ async function main() {
     "cache version must come from the worker release, not the page's old query",
   );
 
-  cachedEntries.set("mrh-cache-old-release", new Map());
+  cachedEntries.set(
+    "mrh-cache-mrh-release-old-open-tab",
+    new Map(),
+  );
+  cachedEntries.set("mrh-cache-unused-release", new Map());
   await captureWaitUntil(events.get("install"), {});
   assert.ok(skippedWaiting, "successfully precached workers must activate promptly");
 
@@ -158,12 +191,38 @@ async function main() {
   );
 
   await captureWaitUntil(events.get("activate"), {});
-  assert.ok(claimedClients, "the active worker must take control of open clients");
-  assert.deepEqual(calls.deletedCaches, ["mrh-cache-old-release"]);
-  assert.deepEqual(calls.navigatedClients.sort(), [
-    `${appOrigin}/app/`,
-    `${appOrigin}/app/deck/one`,
-  ]);
+  assert.equal(
+    claimedClients,
+    false,
+    "the new worker must not change existing clients' asset controller mid-session",
+  );
+  assert.deepEqual(
+    calls.deletedCaches,
+    [],
+    "old release caches must remain until open tabs report their versions",
+  );
+  assert.deepEqual(
+    calls.navigatedClients,
+    [],
+    "activating an update must not forcibly navigate open tabs",
+  );
+  assert.deepEqual(
+    calls.messages
+      .filter(({ message }) => message.type === "MRH_UPDATE_AVAILABLE")
+      .map(({ clientId }) => clientId),
+    ["client-root", "client-deck"],
+    "the worker must notify only application tabs in scope",
+  );
+
+  await captureWaitUntil(events.get("message"), {
+    data: { type: "MRH_CLIENT_VERSION", version: appVersion },
+    source: clients[1],
+  });
+  assert.deepEqual(
+    calls.deletedCaches,
+    ["mrh-cache-unused-release"],
+    "cache cleanup must retain a release still used by an open tab",
+  );
 
   let navigationResponse;
   events.get("fetch")({
@@ -237,6 +296,61 @@ async function main() {
   );
   await staticRefresh;
   assert.equal(staticRefreshComplete, true);
+
+  const incompleteVersion = `${appVersion}-incomplete`;
+  const incompleteSource = workerSource.replace(
+    `const APP_VERSION = "${appVersion}";`,
+    `const APP_VERSION = "${incompleteVersion}";`,
+  );
+  const incompleteEvents = new Map();
+  let incompleteWorkerSkippedWaiting = false;
+  const incompleteSelf = {
+    ...self,
+    location: {
+      href: `${appOrigin}${appBasePath}sw.js?v=${incompleteVersion}`,
+      origin: appOrigin,
+    },
+    addEventListener(name, handler) {
+      incompleteEvents.set(name, handler);
+    },
+    async skipWaiting() {
+      incompleteWorkerSkippedWaiting = true;
+    },
+  };
+  const incompleteContext = {
+    ...context,
+    self: incompleteSelf,
+    async fetch(request, options) {
+      const url = typeof request === "string" ? request : request.url;
+      if (new URL(url).pathname.endsWith("/styles.css")) {
+        throw new Error("Simulated incomplete deployment");
+      }
+      return context.fetch(request, options);
+    },
+  };
+  vm.runInNewContext(incompleteSource, incompleteContext, {
+    filename: "sw-incomplete.js",
+  });
+  let incompleteInstall;
+  incompleteEvents.get("install")({
+    waitUntil(promise) {
+      incompleteInstall = promise;
+    },
+  });
+  await assert.rejects(
+    incompleteInstall,
+    /Simulated incomplete deployment/,
+    "an incomplete shell must fail installation",
+  );
+  assert.equal(
+    incompleteWorkerSkippedWaiting,
+    false,
+    "an incomplete release must not replace the active worker",
+  );
+  assert.ok(
+    cachedEntries.has(`mrh-cache-${appVersion}`),
+    "the previous working app cache must remain available after failed install",
+  );
 
   console.log("Service-worker update lifecycle checks passed.");
 }

@@ -50,7 +50,7 @@
     if (!toggle || !globalScope.state) return false;
     globalScope.state.prefs.hideABCD = toggle.checked;
     globalScope.saveState?.();
-    globalScope.reRenderDeckReview?.();
+    globalScope.DeckReviewCore?.updateQuestionChoices();
     return true;
   }
 
@@ -70,7 +70,31 @@
     if (!toggle || !globalScope.state) return false;
     globalScope.state.prefs.showWrongChoices = toggle.checked;
     globalScope.saveState?.();
-    globalScope.reRenderDeckReview?.();
+    globalScope.DeckReviewCore?.updateQuestionChoices();
+    return true;
+  }
+
+  function toggleQuizShowExplanations(source) {
+    const toggle = source || getToggle("toggle-quiz-show-explanations");
+    if (!globalScope.state) return false;
+    globalScope.state.prefs.quizShowExplanations = toggle
+      ? Boolean(toggle.checked)
+      : false;
+    globalScope.saveState?.();
+    if (globalScope.state.session?.active) renderQuestion();
+    return true;
+  }
+
+  function toggleStudyShowExplanations(source) {
+    const toggle = source || getToggle("toggle-study-show-explanations");
+    if (!globalScope.state) return false;
+    globalScope.state.prefs.studyShowExplanations = toggle
+      ? Boolean(toggle.checked)
+      : false;
+    globalScope.saveState?.();
+    if (getElementCached("view-deck-review")?.classList.contains("active")) {
+      globalScope.reRenderDeckReview?.();
+    }
     return true;
   }
 
@@ -105,6 +129,8 @@
     toggleHideABCD,
     toggleQuizHideABCD,
     toggleShowWrongChoices,
+    toggleQuizShowExplanations,
+    toggleStudyShowExplanations,
     toggleClozeMode,
     toggleSrsMode,
   };

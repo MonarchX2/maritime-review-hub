@@ -134,6 +134,14 @@
     const recallToggle = document.getElementById("toggle-active-recall");
     if (recallToggle) recallToggle.checked = state.prefs.activeRecall === true;
 
+    const quizExplanationsToggle = document.getElementById(
+      "toggle-quiz-show-explanations",
+    );
+    if (quizExplanationsToggle) {
+      quizExplanationsToggle.checked =
+        state.prefs.quizShowExplanations !== false;
+    }
+
     const choicesToggle = document.getElementById("toggle-shuffle-choices");
     if (choicesToggle)
       choicesToggle.checked = state.prefs.shuffleChoices !== false;
@@ -178,6 +186,14 @@
   function openReviewSettingsModal() {
     const modal = document.getElementById("review-settings-modal");
     if (!modal) return false;
+
+    const explanationsToggle = document.getElementById(
+      "toggle-study-show-explanations",
+    );
+    if (explanationsToggle) {
+      explanationsToggle.checked =
+        globalScope.state?.prefs?.studyShowExplanations !== false;
+    }
 
     globalScope.syncNavigationButtonLabels?.();
     updateStudyFilterToggle();

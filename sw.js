@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-release-2026.10.12.3";
+const APP_VERSION = "mrh-release-2026.10.13";
 
 function getRuntimeCacheVersion() {
   return APP_VERSION;
@@ -10,6 +10,10 @@ function getRuntimeCacheVersion() {
 
 const CACHE_VERSION = getRuntimeCacheVersion();
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
+const CLIENT_VERSION_QUERY_TIMEOUT_MS = 1500;
+let clientVersionRequestSequence = 0;
+let pendingClientVersionRequests = new Map();
+let cacheCleanupPromise = null;
 
 const APP_BASE_URL = new URL("./", self.location.href);
 const APP_BASE_PATH = APP_BASE_URL.pathname || "/";
@@ -322,51 +326,100 @@ async function precacheAppShell() {
   );
 }
 
-async function cleanupOldCaches() {
-  const keys = await caches.keys();
-
-  await Promise.all(
-    keys
-      .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
-      .map((key) => caches.delete(key)),
+function isAppClient(client) {
+  if (!client?.url) return false;
+  const url = new URL(client.url);
+  const appBasePath = getAppBasePath();
+  const normalizedBasePath =
+    appBasePath === "/" ? "/" : appBasePath.replace(/\/+$/, "");
+  return (
+    isSameOrigin(url) &&
+    (normalizedBasePath === "/" ||
+      url.pathname === normalizedBasePath ||
+      url.pathname.startsWith(`${normalizedBasePath}/`))
   );
 }
 
-async function reloadAppClients() {
-  // Previous app versions may not have a listener that reloads on updates.
+async function getAppClients() {
   const clients = await self.clients.matchAll({
     type: "window",
     includeUncontrolled: true,
   });
-  const appBasePath = getAppBasePath();
-  const normalizedBasePath =
-    appBasePath === "/" ? "/" : appBasePath.replace(/\/+$/, "");
+  return clients.filter(isAppClient);
+}
 
-  await Promise.all(
-    clients.map(async (client) => {
-      const url = new URL(client.url);
-      if (
-        !isSameOrigin(url) ||
-        !(
-          normalizedBasePath === "/" ||
-          url.pathname === normalizedBasePath ||
-          url.pathname.startsWith(`${normalizedBasePath}/`)
+function requestClientVersion(client) {
+  return new Promise((resolve) => {
+    const requestId = `${Date.now()}-${++clientVersionRequestSequence}`;
+    const timeout = self.setTimeout(() => {
+      pendingClientVersionRequests.delete(requestId);
+      resolve(null);
+    }, CLIENT_VERSION_QUERY_TIMEOUT_MS);
+
+    pendingClientVersionRequests.set(requestId, {
+      clientId: client.id,
+      timeout,
+      resolve,
+    });
+
+    try {
+      client.postMessage({
+        type: "MRH_QUERY_CLIENT_VERSION",
+        requestId,
+      });
+    } catch (error) {
+      self.clearTimeout(timeout);
+      pendingClientVersionRequests.delete(requestId);
+      swLogger.warn("[SW] Unable to query an app tab version:", error);
+      resolve(null);
+    }
+  });
+}
+
+async function cleanupOldCachesWhenSafe() {
+  if (cacheCleanupPromise) return cacheCleanupPromise;
+
+  cacheCleanupPromise = (async () => {
+    const clients = await getAppClients();
+    const versions = await Promise.all(clients.map(requestClientVersion));
+
+    // An unresponsive older tab may still need its release cache.
+    if (versions.some((version) => !/^mrh-[A-Za-z0-9._-]+$/.test(version || ""))) {
+      return;
+    }
+
+    const inUseCaches = new Set(
+      versions.map((version) => `${CACHE_PREFIX}-${version}`),
+    );
+    inUseCaches.add(CACHE_NAME);
+    const keys = await caches.keys();
+
+    await Promise.all(
+      keys
+        .filter(
+          (key) => key.startsWith(CACHE_PREFIX) && !inUseCaches.has(key),
         )
-      ) {
-        return;
-      }
+        .map((key) => caches.delete(key)),
+    );
+  })().finally(() => {
+    cacheCleanupPromise = null;
+  });
 
-      try {
-        await client.navigate(client.url);
-      } catch (error) {
-        swLogger.warn(
-          "[SW] Failed to refresh an open app tab:",
-          client.url,
-          error,
-        );
-      }
-    }),
-  );
+  return cacheCleanupPromise;
+}
+
+async function notifyAppClientsUpdateAvailable() {
+  const clients = await getAppClients();
+  clients.forEach((client) => {
+    try {
+      client.postMessage({
+        type: "MRH_UPDATE_AVAILABLE",
+        version: APP_VERSION,
+      });
+    } catch (error) {
+      swLogger.warn("[SW] Unable to notify an app tab about an update:", error);
+    }
+  });
 }
 
 async function networkFirstNavigation(event) {
@@ -581,12 +634,28 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
-      await cleanupOldCaches();
-
-      await self.clients.claim();
-      await reloadAppClients();
+      await notifyAppClientsUpdateAvailable();
     })(),
   );
+});
+
+self.addEventListener("message", (event) => {
+  const message = event.data;
+  if (!message || typeof message !== "object") return;
+
+  if (message.type === "MRH_CLIENT_VERSION_RESPONSE") {
+    const pending = pendingClientVersionRequests.get(message.requestId);
+    if (!pending || pending.clientId !== event.source?.id) return;
+
+    self.clearTimeout(pending.timeout);
+    pendingClientVersionRequests.delete(message.requestId);
+    pending.resolve(message.version);
+    return;
+  }
+
+  if (message.type === "MRH_CLIENT_VERSION") {
+    event.waitUntil(cleanupOldCachesWhenSafe());
+  }
 });
 
 self.addEventListener("fetch", (event) => {

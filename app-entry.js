@@ -1,9 +1,19 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-release-2026.10.10-1";
+  const APP_VERSION = "mrh-release-2026.10.13";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
   const bootstrapLogger = () => rootScope.DebugUtils || console;
+  let serviceWorkerRegistration = null;
+  let serviceWorkerRegistrationPromise = null;
+  let serviceWorkerRegistrationFailed = false;
+  let appUpdateCheck = null;
+  let pendingAppUpdateVersion = "";
+  let pendingUpdateTimer = null;
+  let updateApplyInFlight = false;
+  let nextUpdateApplyAttemptAt = 0;
+  const APP_UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+  const PENDING_UPDATE_RETRY_INTERVAL_MS = 15 * 1000;
 
   if (typeof window !== "undefined") {
     const scriptUrl =
@@ -29,6 +39,322 @@
     if (typeof globalThis !== "undefined") {
       globalThis.globalScope = rootScope;
     }
+  }
+
+  function getAppUpdateNotice() {
+    return typeof document === "undefined"
+      ? null
+      : document.getElementById("app-update-notice");
+  }
+
+  function setAppUpdateNotice(message, showRetry = false) {
+    const notice = getAppUpdateNotice();
+    if (!notice) return;
+
+    const messageElement = document.getElementById("app-update-message");
+    const retryButton = document.getElementById("app-update-retry");
+    if (messageElement) messageElement.textContent = message;
+    if (retryButton) retryButton.hidden = !showRetry;
+    notice.hidden = !message;
+  }
+
+  function getUpdateDeferralMessage() {
+    if (rootScope.navigator?.onLine === false) {
+      return "An update is ready. It will be applied when you are back online.";
+    }
+    if (document.visibilityState !== "visible") {
+      return "An update is ready. It will be applied when you return to this tab.";
+    }
+    if (
+      rootScope.state?.session?.active ||
+      document.querySelector("#view-practice.active, #view-deck-review.active")
+    ) {
+      return "An update is ready. It will be applied after you finish your current session.";
+    }
+
+    const dashboard = document.getElementById("view-dashboard");
+    if (!dashboard?.classList.contains("active")) {
+      return "An update is ready. It will be applied when you return to the dashboard.";
+    }
+    if (document.querySelector('[role="dialog"][aria-hidden="false"]')) {
+      return "An update is ready. It will be applied after you close the open dialog.";
+    }
+    return "";
+  }
+
+  function sendCurrentVersionToWorker(...workers) {
+    new Set(workers.filter(Boolean)).forEach((worker) => {
+      if (typeof worker.postMessage !== "function") return;
+      try {
+        worker.postMessage({
+          type: "MRH_CLIENT_VERSION",
+          version: APP_VERSION,
+        });
+      } catch (error) {
+        bootstrapLogger().warn(
+          "Unable to report the loaded app version to its service worker:",
+          error,
+        );
+      }
+    });
+  }
+
+  function sendClientVersionResponse(event) {
+    const requestId = event.data?.requestId;
+    if (typeof requestId !== "string" || !event.source?.postMessage) return;
+    try {
+      event.source.postMessage({
+        type: "MRH_CLIENT_VERSION_RESPONSE",
+        requestId,
+        version: APP_VERSION,
+      });
+    } catch (error) {
+      bootstrapLogger().warn("Unable to reply to the service worker:", error);
+    }
+  }
+
+  function schedulePendingUpdateCheck() {
+    if (pendingUpdateTimer || typeof window?.setInterval !== "function") return;
+    pendingUpdateTimer = window.setInterval(() => {
+      void applyPendingAppUpdate();
+    }, PENDING_UPDATE_RETRY_INTERVAL_MS);
+  }
+
+  function markAppUpdateAvailable(version) {
+    if (
+      typeof version !== "string" ||
+      !/^mrh-[A-Za-z0-9._-]+$/.test(version) ||
+      version === APP_VERSION
+    ) {
+      return;
+    }
+
+    pendingAppUpdateVersion = version;
+    schedulePendingUpdateCheck();
+    void applyPendingAppUpdate();
+  }
+
+  async function applyPendingAppUpdate() {
+    if (!pendingAppUpdateVersion || updateApplyInFlight) return;
+
+    const deferralMessage = getUpdateDeferralMessage();
+    if (deferralMessage) {
+      setAppUpdateNotice(deferralMessage);
+      return;
+    }
+    if (Date.now() < nextUpdateApplyAttemptAt) return;
+
+    updateApplyInFlight = true;
+    setAppUpdateNotice("A new version is ready. Saving your progress…");
+    try {
+      if (typeof rootScope.saveState !== "function") {
+        throw new Error("App state persistence is unavailable.");
+      }
+      const saved = await rootScope.saveState();
+      if (saved === false) {
+        throw new Error("App state could not be saved before updating.");
+      }
+      const deferralAfterSave = getUpdateDeferralMessage();
+      if (deferralAfterSave) {
+        setAppUpdateNotice(deferralAfterSave);
+        return;
+      }
+
+      sendCurrentVersionToWorker(
+        rootScope.navigator?.serviceWorker?.controller,
+        serviceWorkerRegistration?.active,
+      );
+      rootScope.location.reload();
+    } catch (error) {
+      bootstrapLogger().error("Unable to safely apply the app update:", error);
+      nextUpdateApplyAttemptAt = Date.now() + 60 * 1000;
+      setAppUpdateNotice(
+        "An update is ready, but your progress could not be saved. The current version is still available; retry when ready.",
+        true,
+      );
+    } finally {
+      updateApplyInFlight = false;
+    }
+  }
+
+  function handleServiceWorkerMessage(event) {
+    const message = event.data;
+    if (!message || typeof message !== "object") return;
+
+    if (message.type === "MRH_QUERY_CLIENT_VERSION") {
+      sendClientVersionResponse(event);
+      return;
+    }
+    if (message.type === "MRH_UPDATE_AVAILABLE") {
+      markAppUpdateAvailable(message.version);
+    }
+  }
+
+  function checkDeployedVersion() {
+    if (
+      !rootScope.fetch ||
+      rootScope.navigator?.onLine === false ||
+      typeof rootScope.__MRH_APP_BASE_PATH !== "string"
+    ) {
+      return Promise.resolve();
+    }
+
+    const versionUrl = new URL(
+      "version.json",
+      new URL(rootScope.__MRH_APP_BASE_PATH, window.location.origin),
+    );
+    versionUrl.searchParams.set("check", String(Date.now()));
+
+    return rootScope
+      .fetch(versionUrl.href, {
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Version check failed with HTTP ${response.status}.`);
+        }
+        return response.json();
+      })
+      .then(async (release) => {
+        if (
+          typeof release?.version !== "string" ||
+          !/^mrh-[A-Za-z0-9._-]+$/.test(release.version) ||
+          release.version === APP_VERSION ||
+          release.version === pendingAppUpdateVersion
+        ) {
+          return;
+        }
+
+        if (serviceWorkerRegistrationPromise) {
+          await serviceWorkerRegistrationPromise;
+        }
+
+        // With a service worker, wait for its install/precache to succeed and
+        // its activation message before offering the new release to the page.
+        if (serviceWorkerRegistration) return;
+        if (!serviceWorkerRegistrationFailed) return;
+
+        await verifyDeployedReleaseAssets(release.version);
+        markAppUpdateAvailable(release.version);
+      })
+      .catch((error) => {
+        bootstrapLogger().warn("Deployed app version check failed:", error);
+      });
+  }
+
+  async function verifyDeployedReleaseAssets(version) {
+    const baseUrl = new URL(
+      rootScope.__MRH_APP_BASE_PATH,
+      window.location.origin,
+    );
+    const assetNames = [
+      "index.html",
+      "manifest.json",
+      "icon.svg",
+      "tailwind.generated.css",
+      "styles.css",
+      "app-entry.js",
+      "app-config.js",
+      "storage-utils.js",
+      "text-utils.js",
+      "debug-utils.js",
+      "lifecycle-utils.js",
+      "rendering-core.js",
+      "app-core-state.js",
+      "preferences-core.js",
+      "dashboard-core.js",
+      "app-core.js",
+      "app-core-network.js",
+      "sync-core.js",
+      "deck-nav-core.js",
+      "ui-modal-core.js",
+      "session-core.js",
+      "analytics-core.js",
+      "deck-review-core.js",
+      "quiz-rendering-core.js",
+    ];
+    const checks = assetNames.map(async (name) => {
+      const assetUrl = new URL(name, baseUrl);
+      assetUrl.searchParams.set("v", version);
+      const response = await rootScope.fetch(assetUrl.href, {
+        method: name === "app-entry.js" ? "GET" : "HEAD",
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (!response.ok) {
+        throw new Error(
+          `Release asset check failed with HTTP ${response.status}: ${name}`,
+        );
+      }
+      if (name === "app-entry.js") {
+        const source = await response.text();
+        if (!source.includes(`const APP_VERSION = "${version}"`)) {
+          throw new Error("The entry script does not match the release version.");
+        }
+      }
+    });
+    await Promise.all(checks);
+  }
+
+  function checkForAppUpdate() {
+    if (
+      appUpdateCheck ||
+      rootScope.navigator?.onLine === false ||
+      document.visibilityState !== "visible"
+    ) {
+      return appUpdateCheck || Promise.resolve();
+    }
+
+    appUpdateCheck = Promise.all([
+      serviceWorkerRegistration
+        ? serviceWorkerRegistration.update().catch((error) => {
+            bootstrapLogger().warn(
+              "Service worker update check failed:",
+              error,
+            );
+          })
+        : Promise.resolve(),
+      checkDeployedVersion(),
+    ]).finally(() => {
+      appUpdateCheck = null;
+    });
+    return appUpdateCheck;
+  }
+
+  function startAppUpdateChecks() {
+    if (rootScope.__mrhAppUpdateChecksStarted) return;
+    rootScope.__mrhAppUpdateChecksStarted = true;
+
+    void checkForAppUpdate();
+    window.setInterval(checkForAppUpdate, APP_UPDATE_CHECK_INTERVAL_MS);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        void checkForAppUpdate();
+        void applyPendingAppUpdate();
+      }
+    });
+    window.addEventListener("online", () => {
+      void checkForAppUpdate();
+      void applyPendingAppUpdate();
+    });
+    window.addEventListener("focus", () => {
+      void applyPendingAppUpdate();
+    });
+    window.addEventListener("hashchange", () => {
+      void applyPendingAppUpdate();
+    });
+    window.addEventListener("popstate", () => {
+      void applyPendingAppUpdate();
+    });
+
+    document
+      .getElementById("app-update-retry")
+      ?.addEventListener("click", () => {
+        nextUpdateApplyAttemptAt = 0;
+        void applyPendingAppUpdate();
+      });
   }
 
   const loadedFeatures = new Set();
@@ -202,8 +528,17 @@
       !navigator.serviceWorker ||
       typeof navigator.serviceWorker.register !== "function"
     ) {
+      serviceWorkerRegistrationFailed = true;
       return;
     }
+
+    navigator.serviceWorker.addEventListener(
+      "message",
+      handleServiceWorkerMessage,
+    );
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      sendCurrentVersionToWorker(navigator.serviceWorker.controller);
+    });
 
     const swBaseUrl = new URL(
       rootScope.__MRH_APP_BASE_PATH || "/",
@@ -213,41 +548,24 @@
     const swUrl = new URL("sw.js", swBaseUrl);
     swUrl.searchParams.set("v", rootScope.__MRH_APP__?.version || APP_VERSION);
 
-    navigator.serviceWorker
+    serviceWorkerRegistrationPromise = navigator.serviceWorker
       .register(swUrl.href, {
         scope: swScopeUrl.pathname,
         updateViaCache: "none",
       })
       .then((registration) => {
-        let updateCheck = null;
-        const checkForUpdate = () => {
-          if (!navigator.onLine || updateCheck) return updateCheck;
-
-          updateCheck = registration
-            .update()
-            .catch((error) => {
-              bootstrapLogger().warn(
-                "Service worker update check failed:",
-                error,
-              );
-            })
-            .finally(() => {
-              updateCheck = null;
-            });
-          return updateCheck;
-        };
-
-        checkForUpdate();
-        window.setInterval(() => {
-          if (document.visibilityState === "visible") checkForUpdate();
-        }, 5 * 60 * 1000);
-        document.addEventListener("visibilitychange", () => {
-          if (document.visibilityState === "visible") checkForUpdate();
-        });
-        window.addEventListener("online", checkForUpdate);
+        serviceWorkerRegistration = registration;
+        sendCurrentVersionToWorker(
+          navigator.serviceWorker.controller,
+          registration.active,
+        );
+        void checkForAppUpdate();
+        return registration;
       })
       .catch((error) => {
+        serviceWorkerRegistrationFailed = true;
         bootstrapLogger().warn("Service worker registration failed:", error);
+        return null;
       });
   }
 
@@ -318,6 +636,12 @@
 
         bootstrap.status = "ready";
         rootScope.__mrhBootstrapComplete = true;
+        startAppUpdateChecks();
+        sendCurrentVersionToWorker(
+          navigator.serviceWorker?.controller,
+          serviceWorkerRegistration?.active,
+        );
+        void applyPendingAppUpdate();
         return true;
       } catch (error) {
         bootstrap.status = "failed";

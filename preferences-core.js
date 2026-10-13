@@ -496,6 +496,37 @@
     }
   }
 
+  function applyTextAlignment(alignment = state.prefs.textAlignment) {
+    const validAlignment = ["left", "center", "right", "justify"].includes(
+      alignment,
+    )
+      ? alignment
+      : "left";
+    const body = document.body;
+    if (!body) return;
+
+    body.classList.remove(
+      "text-align-left",
+      "text-align-center",
+      "text-align-right",
+      "text-align-justify",
+    );
+    body.classList.add(`text-align-${validAlignment}`);
+  }
+
+  function setTextAlignment(alignment) {
+    if (!["left", "center", "right", "justify"].includes(alignment)) {
+      return false;
+    }
+
+    state.prefs.textAlignment = alignment;
+    applyTextAlignment(alignment);
+    const select = document.getElementById("text-alignment-select");
+    if (select) select.value = alignment;
+    saveState();
+    return true;
+  }
+
   const PreferencesCore = {
     syncPreferenceControls,
     toggleLayout,
@@ -508,6 +539,8 @@
     applyTitleMode,
     toggleTitleMode,
     updateTitleModeButton,
+    applyTextAlignment,
+    setTextAlignment,
     getNavigationContextSubject,
     getQuizNavigationPosition,
     getDeckNavigationOverride,

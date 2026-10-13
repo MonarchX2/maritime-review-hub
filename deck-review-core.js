@@ -56,6 +56,105 @@
     }
   }
 
+  function buildReviewChoicesHTML(question, showAllChoices, hideABCD) {
+    const answer = question.Answer ? String(question.Answer).trim() : "";
+    const isMultipleChoice = !getQuestionTypeMode(question).isIdent;
+    let correctText = isMultipleChoice
+      ? question[`Choice${answer.toUpperCase()}`] || answer
+      : question.ChoiceA || answer;
+    if (!correctText || correctText.toLowerCase() === "undefined") {
+      correctText = "Answer missing from database";
+    }
+
+    if (isMultipleChoice && showAllChoices) {
+      let choicesHTML = `<div class="mt-4 flex flex-col gap-2">`;
+      ["A", "B", "C", "D", "E"].forEach((letter) => {
+        const choiceText = question[`Choice${letter}`];
+        if (!choiceText) return;
+        const prefix = hideABCD ? "" : `${letter}. `;
+        if (letter === answer.toUpperCase()) {
+          choicesHTML += `
+            <div class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 p-3 rounded-r-lg">
+              <p class="text-sm font-bold text-green-700 dark:text-green-400">${prefix}${escapeHTML(choiceText)}</p>
+            </div>`;
+        } else {
+          choicesHTML += `
+            <div class="bg-gray-50 dark:bg-gray-800/50 border-l-4 border-gray-300 dark:border-gray-600 p-3 rounded-r-lg opacity-70">
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400">${prefix}${escapeHTML(choiceText)}</p>
+            </div>`;
+        }
+      });
+      return `${choicesHTML}</div>`;
+    }
+
+    const prefix = hideABCD
+      ? ""
+      : isMultipleChoice
+        ? `${answer.toUpperCase()}. `
+        : "";
+    return `
+      <div class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 p-3 rounded-r-lg mt-4">
+        <p class="text-sm font-bold text-green-700 dark:text-green-400">
+          ${prefix}${escapeHTML(correctText)}
+        </p>
+      </div>`;
+  }
+
+  function updateQuestionChoices(
+    questionId = null,
+    questions = currentReviewQuestions,
+  ) {
+    const container =
+      reviewContainerElement ||
+      (reviewContainerElement = document.getElementById("deck-review-list"));
+    if (!container) return false;
+
+    const questionsById = new Map(
+      questions.map((question) => [
+        String(question.ID),
+        question,
+      ]),
+    );
+    const globalShowWrong = state.prefs.showWrongChoices !== false;
+    const hideABCD = state.prefs.hideABCD === true;
+    const cards = container.querySelectorAll(".review-question-card");
+    const scrollContainer =
+      reviewMainElement || document.querySelector("main");
+    const scrollTop = scrollContainer?.scrollTop;
+
+    cards.forEach((card) => {
+      const id = String(card.dataset.questionId || "");
+      if (questionId !== null && id !== String(questionId)) return;
+      const question = questionsById.get(id);
+      if (!question || getQuestionTypeMode(question).isIdent) return;
+
+      const showAllChoices =
+        state.prefs.qToggles?.[id] === undefined
+          ? globalShowWrong
+          : Boolean(state.prefs.qToggles[id]);
+      const choices = card.querySelector("[data-review-choices]");
+      if (choices) {
+        choices.innerHTML = buildReviewChoicesHTML(
+          question,
+          showAllChoices,
+          hideABCD,
+        );
+      }
+
+      const toggle = card.querySelector("[data-review-choice-toggle]");
+      if (toggle) {
+        toggle.innerHTML = showAllChoices
+          ? '<i class="fa-solid fa-eye-slash mr-1"></i> Hide Choices'
+          : '<i class="fa-solid fa-eye mr-1"></i> Show Choices';
+      }
+    });
+
+    if (scrollContainer && Number.isFinite(scrollTop)) {
+      scrollContainer.scrollTop = scrollTop;
+    }
+    return true;
+  }
+
   function renderDeckReviewImplementation(
     subject,
     questions,
@@ -80,6 +179,7 @@
     }
 
     const globalShowWrong = state.prefs.showWrongChoices !== false;
+    const showExplanations = state.prefs.studyShowExplanations !== false;
     const hideABCD = state.prefs.hideABCD === true;
     let layout = state.prefs.studyLayout || "scroll";
     let pageSize = state.prefs.studyPageSize || 50;
@@ -317,64 +417,16 @@
           ? `<img src="${escapeHTML(imageUrl)}" alt="${escapeHTML(cleanQuestionText)}" loading="lazy" decoding="async" class="block w-full max-w-2xl max-h-96 object-contain rounded-lg mt-3 mb-4">`
           : "";
 
-      let ansStr = q.Answer ? String(q.Answer).trim() : "";
-      const { isIdent: isPureIdent } = getQuestionTypeMode(q);
-      let isMultipleChoice = !isPureIdent;
-
-      let correctText = ansStr;
-      if (isMultipleChoice) {
-        correctText = q[`Choice${ansStr.toUpperCase()}`] || ansStr;
-      } else {
-        correctText = q.ChoiceA || ansStr;
-      }
-      if (!correctText || correctText.toLowerCase() === "undefined") {
-        correctText = "Answer missing from database";
-      }
+      const isMultipleChoice = !getQuestionTypeMode(q).isIdent;
 
       let showWrongForThisQ = state.prefs.qToggles?.[q.ID];
       if (showWrongForThisQ === undefined) showWrongForThisQ = globalShowWrong;
 
-      let choicesHTML = "";
-      if (isMultipleChoice && showWrongForThisQ) {
-        const letters = ["A", "B", "C", "D", "E"];
-        choicesHTML = `<div class="mt-4 flex flex-col gap-2">`;
-        letters.forEach((letter) => {
-          let choiceText = q[`Choice${letter}`];
-          let prefix = hideABCD ? "" : `${letter}. `;
-
-          if (choiceText) {
-            let isCorrect = letter === ansStr.toUpperCase();
-            if (isCorrect) {
-              choicesHTML += `
-                            <div class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 p-3 rounded-r-lg">
-                                <p class="text-sm font-bold text-green-700 dark:text-green-400">
-                                    ${prefix}${escapeHTML(choiceText)}
-                                </p>
-                            </div>`;
-            } else {
-              choicesHTML += `
-                            <div class="bg-gray-50 dark:bg-gray-800/50 border-l-4 border-gray-300 dark:border-gray-600 p-3 rounded-r-lg opacity-70">
-                                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                    ${prefix}${escapeHTML(choiceText)}
-                                </p>
-                            </div>`;
-            }
-          }
-        });
-        choicesHTML += `</div>`;
-      } else {
-        let prefix = hideABCD
-          ? ""
-          : isMultipleChoice
-            ? `${ansStr.toUpperCase()}. `
-            : "";
-        choicesHTML = `
-                <div class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 p-3 rounded-r-lg mt-4">
-                    <p class="text-sm font-bold text-green-700 dark:text-green-400">
-                        ${prefix}${escapeHTML(correctText)} <!-- Feature #22: Removed check icon -->
-                    </p>
-                </div>`;
-      }
+      const choicesHTML = buildReviewChoicesHTML(
+        q,
+        Boolean(showWrongForThisQ),
+        hideABCD,
+      );
 
       html += `
             <div data-question-id="${escapeHTML(String(q.ID))}" class="review-question-card bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 animate-card-in">
@@ -385,7 +437,7 @@
                         <!-- Feature 16: Individual Toggle Button -->
                         ${
                           isMultipleChoice
-                            ? `<button onclick="toggleSpecificChoices('${encodeHandlerValue(q.ID)}')" class="text-xs font-bold px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded transition-colors">
+                            ? `<button data-review-choice-toggle onclick="toggleSpecificChoices('${encodeHandlerValue(q.ID)}')" class="text-xs font-bold px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded transition-colors">
                           ${showWrongForThisQ ? '<i class="fa-solid fa-eye-slash mr-1"></i> Hide Choices' : '<i class="fa-solid fa-eye mr-1"></i> Show Choices'}
                         </button>`
                             : ""
@@ -398,16 +450,18 @@
                     </div>
                 </div>
 
-                <p class="font-medium text-gray-800 dark:text-gray-100 mb-2 text-lg">${formatQuestionText(cleanQuestionText)}</p>
+                <p class="user-text-content font-medium text-gray-800 dark:text-gray-100 mb-2 text-lg">${formatQuestionText(cleanQuestionText)}</p>
 
                 ${imageHTML}
 
-                ${choicesHTML}
+                <div data-review-choices>${choicesHTML}</div>
 
                 ${
-                  q.Explanation && q.Explanation.trim() !== ""
+                  showExplanations &&
+                  q.Explanation &&
+                  q.Explanation.trim() !== ""
                     ? `
-                    <div class="mt-4 text-sm text-gray-700 dark:text-gray-300 bg-blue-50 dark:bg-gray-900/50 p-3 rounded-lg border border-blue-100 dark:border-gray-700">
+                    <div class="user-text-content mt-4 text-sm text-gray-700 dark:text-gray-300 bg-blue-50 dark:bg-gray-900/50 p-3 rounded-lg border border-blue-100 dark:border-gray-700">
                         <strong class="text-blue-800 dark:text-blue-400"><i class="fa-solid fa-lightbulb mr-1"></i> Explanation:</strong>
                         <div class="mt-2 leading-relaxed">${formatQuestionText(q.Explanation)}</div>
                     </div>
@@ -619,6 +673,7 @@
   const DeckReviewCore = {
     renderDeckReview,
     reRenderDeckReview,
+    updateQuestionChoices,
     scheduleVirtualReviewRender,
     changeStudyLayout,
     changeStudyPageSize,

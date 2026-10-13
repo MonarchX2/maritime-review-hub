@@ -5,6 +5,7 @@ const rootDir = path.resolve(__dirname, "..");
 const requiredFiles = [
   "index.html",
   "manifest.json",
+  "version.json",
   "icon.svg",
   "tailwind.generated.css",
   "styles.css",
