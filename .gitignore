@@ -4,8 +4,5 @@ tests/
 !tests/
 !tests/app-core-state-concurrency.test.js
 !tests/session-core-pagehide.test.js
-scripts/
-!scripts/
-!scripts/frontend-architecture-check.js
-!scripts/browser-performance-check.js
+/scripts/
 node_modules/

@@ -1,5 +1,5 @@
 {
-  "version": "14.8.0",
+  "version": "14.9.0",
   "scripts": {
     "build:css": "tailwindcss -c tailwind.config.js -i tailwind.input.css -o tailwind.generated.css --minify",
     "check:architecture": "node scripts/frontend-architecture-check.js",
