@@ -568,7 +568,7 @@
       }
     };
     document.addEventListener("keydown", modalKeydownHandler);
-    getElement("qr-transfer-export-button")?.focus();
+    getElement("qr-transfer-file-export-button")?.focus();
   }
 
   function close() {

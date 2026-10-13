@@ -19,6 +19,31 @@ const qrContext = {
   atob,
 };
 const qrSource = fs.readFileSync("qr-transfer-core.js", "utf8");
+const html = fs.readFileSync("index.html", "utf8");
+const transferHome = html.match(
+  /id="qr-transfer-home"[\s\S]*?(?=<div id="qr-transfer-direct")/,
+)?.[0];
+const appHeader = html.match(/<header[\s\S]*?<\/header>/)?.[0];
+assert.ok(transferHome, "the progress transfer dialog must have a home panel");
+assert.ok(appHeader, "the app header must be present");
+assert.match(
+  html,
+  /aria-labelledby="settings-progress-transfer-title"[\s\S]*?onclick="openQrTransfer\(\)"/,
+  "progress transfer must be available from Settings",
+);
+assert.doesNotMatch(
+  appHeader,
+  /btn-qr-transfer|openQrTransfer/,
+  "progress transfer must not clutter the app header",
+);
+assert.match(transferHome, /QRTransfer\.exportFile\(\)/);
+assert.match(transferHome, /QRTransfer\.importFile\(this\)/);
+assert.match(transferHome, /id="qr-transfer-file-export-button"/);
+assert.doesNotMatch(
+  transferHome,
+  /startDirectSend|startDirectReceive|startExport|startScan/,
+  "direct and QR transfer options must remain unavailable in the dialog",
+);
 assert.match(qrSource, /src: "qr-vendor\/qrcode-generator\.js"/);
 assert.match(qrSource, /src: "qr-vendor\/jsQR\.js"/);
 assert.doesNotMatch(
