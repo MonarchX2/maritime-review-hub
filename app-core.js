@@ -67,6 +67,7 @@
   let __mrhPollLoopToken = 0;
   let treeViewNoticeDismissed = false;
   let treeViewResizeListenerInstalled = false;
+  let deckProgressBarsResizeListenerInstalled = false;
   const collapsedTreePaths = new Set();
   let treeCollapseInitialized = false;
 
@@ -1361,6 +1362,32 @@
     renderCategoryProgress();
   }
 
+  function updateDeckProgressBarsByRow() {
+    const layout = document.querySelector(
+      "#category-list [data-deck-list-layout]",
+    );
+    if (!layout) return;
+
+    const rows = new Map();
+    layout.querySelectorAll(":scope > .deck-card").forEach((card) => {
+      const rowTop = Math.round(card.getBoundingClientRect().top);
+      if (!rows.has(rowTop)) rows.set(rowTop, []);
+      rows.get(rowTop).push(card);
+    });
+
+    rows.forEach((cards) => {
+      const rowHasProgress = cards.some(
+        (card) =>
+          card.querySelector("[data-deck-progress-slot]")?.dataset
+            .hasProgress === "true",
+      );
+      cards.forEach((card) => {
+        const progressSlot = card.querySelector("[data-deck-progress-slot]");
+        if (progressSlot) progressSlot.hidden = !rowHasProgress;
+      });
+    });
+  }
+
   function renderCategoryProgressNow() {
     if (!document.body) {
       if (!categoryProgressRenderScheduled) {
@@ -2144,12 +2171,12 @@
         if (!isReview) {
           countBadgeHTML = `
           <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
-            <span class="text-sm font-black ${themeColorText} transition-colors">${completedCount} / ${totalQuestionsInDb}</span>
+            <span class="text-sm font-black ${themeColorText} transition-colors">${completedCount} / ${totalQuestionsInDb} cards</span>
           </div>`;
           progressBarHTML = `
-          <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden">
-            <div class="${themeColorBg} h-full rounded-full" style="width: ${progressPercent}%"></div>
-          </div>`;
+            <div data-deck-progress-slot data-has-progress="${completedCount > 0}" hidden class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden">
+              <div class="${themeColorBg} h-full rounded-full" style="width: ${progressPercent}%"></div>
+            </div>`;
 
           if (completedCount > 0 || mistakesCount > 0) {
             resetBtnHTML = `
@@ -2171,23 +2198,21 @@
             <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Loading...</span>
           </div>
 
-          <div class="flex items-start justify-between mb-4 gap-2">
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2 mb-1 min-w-0">
-                <div class="min-w-0 flex flex-col">
-                  <h3 class="deck-card-title font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors min-w-0 gap-1" title="${safeName}">
-                    ${recentViewedBadge}
-                    ${unfinishedBadge}
-                    <span class="deck-card-title-text ${deckTitleModeClass} ${deckNameMode} break-words">${safeName}</span> ${lockIcon}
-                  </h3>
-                  <div class="deck-card-badges mt-1 flex flex-wrap items-start gap-1">${deckTypeBadge ? renderDeckBadge(deckTypeBadge) : ""}${explanationsAvailableBadge}</div>
-                </div>
+          <div class="mb-4">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <h3 class="deck-card-title font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors min-w-0 gap-1" title="${safeName}">
+                  ${recentViewedBadge}
+                  ${unfinishedBadge}
+                  <span class="deck-card-title-text ${deckTitleModeClass} ${deckNameMode} break-words">${safeName}</span> ${lockIcon}
+                </h3>
+                ${statsHTML}
               </div>
-              ${statsHTML}
+              <div class="flex items-center gap-1.5">
+                ${countBadgeHTML}
+              </div>
             </div>
-            <div class="flex items-center gap-1.5">
-              ${countBadgeHTML}
-            </div>
+            <div class="deck-card-badges mt-1 flex flex-wrap items-start gap-1">${deckTypeBadge ? renderDeckBadge(deckTypeBadge) : ""}${explanationsAvailableBadge}</div>
           </div>
 
           ${progressBarHTML}
@@ -2296,14 +2321,13 @@
             <div class="h-12 ${folderColorClass} transition-colors relative">
               <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
             </div>
-            <div class="p-4 flex flex-col">
+            <div class="p-4 flex flex-col flex-1">
               <div class="flex justify-between items-start w-full gap-2">
-                <div class="min-w-0 flex flex-col">
+                <div class="min-w-0 flex flex-col flex-1">
                   <h3 class="deck-folder-title font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg flex items-center min-w-0 gap-1" title="${escapeHTML(key)}">
                     ${isRecentlyViewedFolder ? '<i class="fa-regular fa-clock text-base text-amber-500 mr-0.5 flex-shrink-0" title="Recently Viewed"></i>' : ""}
                     <span class="deck-card-title-text ${state.prefs.deckNameMode === "clip" ? "deck-card-title-clip truncate" : "whitespace-normal break-words"}">${escapeHTML(key)}</span> ${lockIcon}
                   </h3>
-                  <div class="deck-card-badges mt-1 flex flex-wrap items-start gap-1">${deckTypeBadge ? renderDeckBadge(deckTypeBadge) : ""}${explanationsAvailableBadge}</div>
                 </div>
                 <div class="flex items-center gap-0">
                   ${pinBtnHtml}
@@ -2311,7 +2335,8 @@
                   ${archiveBtnHtml}
                 </div>
               </div>
-              <div class="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400 mt-2">
+              <div class="deck-card-badges mt-1 w-full flex flex-wrap items-start gap-1">${deckTypeBadge ? renderDeckBadge(deckTypeBadge) : ""}${explanationsAvailableBadge}</div>
+              <div class="mt-auto pt-2 flex justify-between items-center text-sm text-gray-500 dark:text-gray-400">
                 <span>${totalCards} cards</span>
                 ${popularBadge}
               </div>
@@ -2419,6 +2444,18 @@
 
         reconcileChildren(container, template.content);
         container.className = "transition-all duration-500";
+      }
+      updateDeckProgressBarsByRow();
+      if (
+        !deckProgressBarsResizeListenerInstalled &&
+        typeof rootScope.addEventListener === "function"
+      ) {
+        rootScope.addEventListener(
+          "resize",
+          updateDeckProgressBarsByRow,
+          { signal: uiEventController.signal },
+        );
+        deckProgressBarsResizeListenerInstalled = true;
       }
 
       if (isTree && !treeViewResizeListenerInstalled) {
