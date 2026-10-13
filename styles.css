@@ -62,6 +62,13 @@ textarea,
   pointer-events: none;
 }
 
+.about-modal-panel {
+  max-height: 90vh;
+  max-height: min(90dvh, calc(100dvh - 2rem));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .site-version {
   align-self: center;
   margin: 0.75rem auto max(0.5rem, env(safe-area-inset-bottom));

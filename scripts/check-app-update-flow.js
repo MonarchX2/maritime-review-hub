@@ -18,6 +18,27 @@ const workflow = fs.readFileSync(
   path.join(rootDir, ".github", "workflows", "deploy.yml"),
   "utf8",
 );
+const aboutModal = html.match(
+  /id="about-modal"[\s\S]*?id="review-settings-modal"/,
+)?.[0];
+assert.ok(aboutModal, "the About dialog must be present");
+assert.match(aboutModal, /class="about-modal-panel/);
+assert.match(
+  fs.readFileSync(path.join(rootDir, "styles.css"), "utf8"),
+  /\.about-modal-panel\s*\{[\s\S]*?max-height:\s*90vh;[\s\S]*?max-height:\s*min\(90dvh,\s*calc\(100dvh - 2rem\)\);[\s\S]*?overflow-y:\s*auto;/,
+);
+assert.match(aboutModal, /id="about-changelog-older" class="hidden"/);
+assert.match(
+  aboutModal,
+  /id="about-changelog-toggle"[\s\S]*?aria-expanded="false"[\s\S]*?aria-controls="about-changelog-older"[\s\S]*?Show More/,
+);
+assert.match(html, /function toggleAboutChangelog\(\)/);
+const latestChangelogs = aboutModal.split('id="about-changelog-older"')[0];
+assert.equal(
+  [...latestChangelogs.matchAll(/Version \d+\.\d+/g)].length,
+  3,
+  "only the three newest changelogs should be visible by default",
+);
 
 const appVersion = appEntry.match(/^  const APP_VERSION = "([^"]+)";$/m)?.[1];
 const appDisplayVersion = appEntry.match(
