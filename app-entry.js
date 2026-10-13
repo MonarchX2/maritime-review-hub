@@ -1,7 +1,8 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-release-13.6";
+  const APP_VERSION = "mrh-release-13.7";
+  const APP_DISPLAY_VERSION = "13.7";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
   const bootstrapLogger = () => rootScope.DebugUtils || console;
   let serviceWorkerRegistration = null;
@@ -34,8 +35,8 @@
     rootScope.__MRH_APP__.version = APP_VERSION;
   }
 
-  const versionLabel = APP_VERSION;
-  ["dashboard-version", "about-version"].forEach((elementId) => {
+  const versionLabel = `Version ${APP_DISPLAY_VERSION}`;
+  ["site-version", "about-version"].forEach((elementId) => {
     const element =
       typeof document !== "undefined"
         ? document.getElementById(elementId)

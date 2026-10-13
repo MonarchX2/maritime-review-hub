@@ -48,6 +48,22 @@
   pointer-events: none;
 }
 
+.site-version {
+  position: fixed;
+  left: max(0.75rem, env(safe-area-inset-left));
+  bottom: max(0.5rem, env(safe-area-inset-bottom));
+  z-index: 40;
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  pointer-events: none;
+}
+
+.dark .site-version {
+  color: #9ca3af;
+}
+
 #active-recall-mask:not(.hidden),
 #danger-zone-panel:not(.hidden) {
   flex-direction: column;

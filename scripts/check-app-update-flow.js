@@ -20,8 +20,16 @@ const workflow = fs.readFileSync(
 );
 
 const appVersion = appEntry.match(/^  const APP_VERSION = "([^"]+)";$/m)?.[1];
+const appDisplayVersion = appEntry.match(
+  /^  const APP_DISPLAY_VERSION = "([^"]+)";$/m,
+)?.[1];
 const workerVersion = worker.match(/^const APP_VERSION = "([^"]+)";$/m)?.[1];
 assert.ok(appVersion, "app entry must declare its release version");
+assert.match(
+  appDisplayVersion || "",
+  /^\d+\.\d+(?:\.\d+)?$/,
+  "app entry must declare a human-readable display version",
+);
 assert.equal(workerVersion, appVersion);
 assert.equal(release.version, appVersion);
 assert.equal(
@@ -38,6 +46,15 @@ const versionedLocalAssets = [
 assert.equal(versionedLocalAssets.length, 7);
 assert.ok(versionedLocalAssets.every((match) => match[2] === appVersion));
 assert.match(html, new RegExp(`app-entry\\.js\\?v=${appVersion}`));
+assert.equal([...html.matchAll(/id="site-version"/g)].length, 1);
+assert.doesNotMatch(html, /id="dashboard-version"/);
+assert.ok(
+  html.indexOf('id="site-version"') > html.indexOf("</main>"),
+  "the site version must be outside the main dashboard content",
+);
+assert.match(html, new RegExp(`Version ${appDisplayVersion}`));
+assert.match(appEntry, /const versionLabel = `Version \$\{APP_DISPLAY_VERSION\}`/);
+assert.match(appEntry, /\["site-version", "about-version"\]/);
 assert.equal(
   [...html.matchAll(/id="app-update-notice"/g)].length,
   1,
@@ -134,6 +151,16 @@ try {
     process.execPath,
     [path.join(tempRoot, "scripts", "verify-release-version.js")],
     { cwd: tempRoot, env, stdio: "pipe" },
+  );
+
+  const stampedAppEntry = fs.readFileSync(
+    path.join(tempRoot, "app-entry.js"),
+    "utf8",
+  );
+  assert.match(
+    stampedAppEntry,
+    new RegExp(`const APP_DISPLAY_VERSION = "${appDisplayVersion}"`),
+    "release stamping must preserve the human-readable display version",
   );
 
   const stampedHtml = fs.readFileSync(

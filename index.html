@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-13.6" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-13.7" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-13.6"
+      href="icon.svg?v=mrh-release-13.7"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-13.6" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-13.7" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-13.6"
+      href="tailwind.generated.css?v=mrh-release-13.7"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-13.6"
+      href="styles.css?v=mrh-release-13.7"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-13.6"
+      href="tailwind.generated.css?v=mrh-release-13.7"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-13.6"
+      href="styles.css?v=mrh-release-13.7"
       media="print"
       onload="
         this.media = 'all';
@@ -564,10 +564,6 @@
         </div>
 
         <div id="category-list" class="transition-all duration-500"></div>
-        <p
-          id="dashboard-version"
-          class="mt-8 text-xs text-gray-400 dark:text-gray-500"
-        ></p>
       </section>
 
       <!-- ============================================================ -->
@@ -2026,6 +2022,8 @@
       <!-- ============================================================ -->
     </main>
 
+    <p id="site-version" class="site-version">Version 13.7</p>
+
     <div
       id="confirm-modal"
       class="fixed inset-0 z-[120] modal-layout items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
@@ -2130,7 +2128,7 @@
         panel.setAttribute("aria-hidden", String(isHidden));
       }
     </script>
-    <script src="app-entry.js?v=mrh-release-13.6" defer></script>
+    <script src="app-entry.js?v=mrh-release-13.7" defer></script>
 
     <div
       id="app-update-notice"
