@@ -39,7 +39,13 @@ assert.match(
 assert.match(styles, /\.deck-card-badges\s*\{\s*align-content:\s*flex-start;/);
 assert.match(
   styles,
-  /#category-list \[data-deck-list-layout\]\.grid > \[data-deck-key\],[\s\S]*?#category-list \[data-deck-list-layout\]\.grid > \[data-folder-key\]\s*\{\s*align-self:\s*start;/,
+  /#category-list \[data-deck-list-layout\]\.grid\s*\{\s*grid-auto-rows:\s*auto;/,
+  "Each grid row should size to its tallest card.",
+);
+assert.doesNotMatch(
+  styles,
+  /#category-list \[data-deck-list-layout\]\.grid\s*>[^}]*align-self:\s*start;/,
+  "Grid cards should stretch to fill their equal-height rows.",
 );
 assert.doesNotMatch(styles, /\.deck-card-title(?:,|\s*\{)[^}]*min-height:/);
 assert.doesNotMatch(styles, /\.deck-card-badges\s*\{[^}]*max-height:/);

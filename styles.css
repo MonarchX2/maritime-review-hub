@@ -976,11 +976,8 @@ main {
   font-weight: 700;
 }
 
-@supports (align-self: start) {
-  #category-list [data-deck-list-layout].grid > [data-deck-key],
-  #category-list [data-deck-list-layout].grid > [data-folder-key] {
-    align-self: start;
-  }
+#category-list [data-deck-list-layout].grid {
+  grid-auto-rows: auto;
 }
 
 button,
