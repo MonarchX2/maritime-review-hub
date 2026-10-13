@@ -42,7 +42,7 @@ const context = {
   LifecycleUtils: { registerCleanup() {} },
   document: {
     getElementById(id) {
-      return id === "deck-review-list" ? container : null;
+      return id === "deck-review-cards" ? container : null;
     },
     querySelector(selector) {
       return selector === "main" ? main : null;

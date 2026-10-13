@@ -106,7 +106,7 @@
   ) {
     const container =
       reviewContainerElement ||
-      (reviewContainerElement = document.getElementById("deck-review-list"));
+      (reviewContainerElement = document.getElementById("deck-review-cards"));
     if (!container) return false;
 
     const questionsById = new Map(
@@ -155,6 +155,59 @@
     return true;
   }
 
+  function updateStudyProgressIndicator() {
+    const text = document.getElementById("study-progress-text");
+    const bar = document.getElementById("study-progress");
+    const track = document.getElementById("study-progress-track");
+    if (!text || !bar || !track) return;
+
+    const progress = state?.prefs?.studyProgress?.[currentReviewSubject] || {};
+    const filteredQuestions =
+      derivedQuestionsCache?.questions === currentReviewQuestions
+        ? derivedQuestionsCache.filteredQuestions
+        : currentReviewQuestions;
+    const total = filteredQuestions.length;
+    let current = 0;
+    let label = `0 / ${total}`;
+    const layout = state.prefs.studyLayout || "scroll";
+    const pageSize = state.prefs.studyPageSize || 10;
+
+    if (total > 0 && layout === "single") {
+      current = Math.min(total, Math.max(1, (progress.index || 0) + 1));
+      label = `Question ${current} / ${total}`;
+    } else if (total > 0 && pageSize !== "All") {
+      const totalPages = Math.ceil(total / pageSize);
+      const page = Math.min(totalPages, Math.max(1, progress.page || 1));
+      const start = (page - 1) * pageSize + 1;
+      current = Math.min(total, page * pageSize);
+      label = `Question ${start} - ${current} / ${total}`;
+    } else if (total > 0) {
+      const container =
+        reviewContainerElement ||
+        document.getElementById("deck-review-list");
+      const viewport = reviewMainElement?.getBoundingClientRect();
+      const viewportTop = viewport?.top ?? 0;
+      const viewportBottom = viewport?.bottom ?? window.innerHeight;
+      const visibleCard = Array.from(
+        container?.querySelectorAll(".review-question-card") || [],
+      ).find((card) => {
+        const bounds = card.getBoundingClientRect();
+        return bounds.bottom > viewportTop && bounds.top < viewportBottom;
+      });
+      const visibleIndex = Number(visibleCard?.dataset.reviewIndex);
+      if (Number.isSafeInteger(visibleIndex)) {
+        progress.index = visibleIndex;
+        current = Math.min(total, Math.max(1, visibleIndex + 1));
+      }
+      label = `Question ${current} / ${total}`;
+    }
+
+    const percent = total > 0 ? (current / total) * 100 : 0;
+    text.textContent = label;
+    bar.style.width = `${percent}%`;
+    track.setAttribute("aria-valuenow", String(Math.round(percent)));
+  }
+
   function renderDeckReviewImplementation(
     subject,
     questions,
@@ -165,7 +218,7 @@
 
     const container =
       reviewContainerElement ||
-      (reviewContainerElement = document.getElementById("deck-review-list"));
+      (reviewContainerElement = document.getElementById("deck-review-cards"));
     const titleElement = document.getElementById("deck-review-title");
     if (titleElement) {
       titleElement.textContent = getShortSubjectLabel(subject, "General");
@@ -182,7 +235,7 @@
     const showExplanations = state.prefs.studyShowExplanations !== false;
     const hideABCD = state.prefs.hideABCD === true;
     let layout = state.prefs.studyLayout || "scroll";
-    let pageSize = state.prefs.studyPageSize || 50;
+    let pageSize = state.prefs.studyPageSize || 10;
     const reviewNavigationPosition = getStudyNavigationPosition(layout);
 
     if (!state.prefs.studyProgress[subject]) {
@@ -258,6 +311,7 @@
       </div>
     `;
       navigate("deck-review");
+      updateStudyProgressIndicator();
       return;
     }
 
@@ -266,6 +320,7 @@
         html +
         `<div class="text-center p-8 text-gray-500">No questions found for this deck.</div>`;
       navigate("deck-review");
+      updateStudyProgressIndicator();
       return;
     }
 
@@ -335,11 +390,11 @@
     if (layout === "single") {
       navigationHTML = `
         <div class="flex justify-between items-center {{navigation-placement}} p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 gap-2">
-            <button onclick="changeStudyIndex(-1)" ${currentIndex === 0 ? "disabled" : ""} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
+            <button onclick="changeStudyIndex(-1)" ${currentIndex === 0 ? "disabled" : ""} class="px-4 py-2 bg-purple-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600 transition-colors">
                 <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Previous</span>
             </button>
           <span class="text-sm font-bold text-gray-600 dark:text-gray-300 flex-1 text-center">Card ${currentIndex + 1} / ${questions.length}</span>
-          <button onclick="changeStudyIndex(1)" ${currentIndex === questions.length - 1 ? "disabled" : ""} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
+          <button onclick="changeStudyIndex(1)" ${currentIndex === questions.length - 1 ? "disabled" : ""} class="px-4 py-2 bg-purple-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600 transition-colors">
                 <span class="hidden sm:inline mr-1">Next</span> <i class="fa-solid fa-arrow-right"></i>
             </button>
         </div>
@@ -347,7 +402,7 @@
     } else if (pageSize !== "All" && totalPages > 1) {
       navigationHTML = `
             <div class="flex justify-between items-center {{navigation-placement}} p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 gap-2">
-                <button onclick="changeStudyPage(-1)" ${currentPage === 1 ? "disabled" : ""} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
+                <button onclick="changeStudyPage(-1)" ${currentPage === 1 ? "disabled" : ""} class="px-4 py-2 bg-purple-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600 transition-colors">
                     <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Previous</span>
                 </button>
                 <div class="flex-1 flex items-center justify-center gap-1 text-sm font-bold text-gray-600 dark:text-gray-300">
@@ -368,7 +423,7 @@
                     />
                     <span>of ${totalPages}</span>
                 </div>
-                <button onclick="changeStudyPage(1)" ${currentPage === totalPages ? "disabled" : ""} class="px-4 py-2 bg-brand-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-colors">
+                <button onclick="changeStudyPage(1)" ${currentPage === totalPages ? "disabled" : ""} class="px-4 py-2 bg-purple-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600 transition-colors">
                     <span class="hidden sm:inline mr-1">Next</span> <i class="fa-solid fa-arrow-right"></i>
                 </button>
             </div>
@@ -429,7 +484,7 @@
       );
 
       html += `
-            <div data-question-id="${escapeHTML(String(q.ID))}" class="review-question-card bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 animate-card-in">
+            <div data-question-id="${escapeHTML(String(q.ID))}" data-review-index="${originalIndex}" class="review-question-card bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 animate-card-in">
                 <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 dark:border-gray-700">
                     <span class="bg-brand-50 text-brand-600 text-xs px-2 py-1 rounded font-bold dark:bg-brand-900/30 dark:text-white">Question ${originalIndex + 1}</span>
 
@@ -512,6 +567,7 @@
       container.replaceChildren(fragment);
     }
     navigate("deck-review");
+    updateStudyProgressIndicator();
 
     if (!isVirtualScroll) {
       const requestedScrollPosition = pendingReviewScrollPosition;
@@ -523,11 +579,13 @@
       ) {
         requestAnimationFrame(() => {
           scrollReviewContent(requestedScrollPosition);
+          updateStudyProgressIndicator();
         });
       } else if (reviewMainElement && layout === "scroll" && progress.scrollY) {
         requestAnimationFrame(() => {
           if (reviewMainElement)
             reviewMainElement.scrollTop = progress.scrollY || 0;
+          updateStudyProgressIndicator();
         });
       }
       if (typeof applyTitleMode === "function") applyTitleMode();
@@ -590,7 +648,7 @@
   function changeStudyPageSize(size) {
     const pageSizeInput = document.getElementById("review-page-size-input");
     const normalizedSize =
-      size === "" ? 50 : size === "All" ? "All" : Number(size);
+      size === "" ? 10 : size === "All" ? "All" : Number(size);
     if (
       normalizedSize !== "All" &&
       (!Number.isSafeInteger(normalizedSize) || normalizedSize < 1)
@@ -674,6 +732,7 @@
     renderDeckReview,
     reRenderDeckReview,
     updateQuestionChoices,
+    updateStudyProgressIndicator,
     scheduleVirtualReviewRender,
     changeStudyLayout,
     changeStudyPageSize,
@@ -695,6 +754,7 @@
   // Export individual functions for backward compatibility
   globalScope.renderDeckReview = renderDeckReview;
   globalScope.reRenderDeckReview = reRenderDeckReview;
+  globalScope.updateStudyProgressIndicator = updateStudyProgressIndicator;
   globalScope.scheduleVirtualReviewRender = scheduleVirtualReviewRender;
   globalScope.changeStudyLayout = changeStudyLayout;
   globalScope.changeStudyPageSize = changeStudyPageSize;

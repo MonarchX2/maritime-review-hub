@@ -407,6 +407,10 @@
         }
       }
 
+      if (state.prefs.studyProgress) {
+        delete state.prefs.studyProgress[subject];
+      }
+
       saveState();
       globalScope.invalidateCategoryProgressRenderSignature?.();
       globalScope.renderCategoryProgress();

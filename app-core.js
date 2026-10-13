@@ -1479,7 +1479,36 @@
         (state.db || []).map((question) => question?.Subject).filter(Boolean),
       );
       const databaseUnavailable = !isInitialSyncComplete;
+      const getStudyDeckProgress = (subject, total) => {
+        const safeTotal = Math.max(0, Number(total) || 0);
+        const progress = state.prefs?.studyProgress?.[subject];
+        if (safeTotal === 0 || !progress) {
+          return { current: 0, total: safeTotal, percent: 0 };
+        }
 
+        let current = 0;
+        const layout = state.prefs.studyLayout || "scroll";
+        const pageSize = state.prefs.studyPageSize || 10;
+        if (layout === "single") {
+          current = Number(progress.index || 0) + 1;
+        } else if (pageSize === "All") {
+          current =
+            Number(progress.index) > 0
+              ? Number(progress.index) + 1
+              : Math.floor(Math.max(0, Number(progress.scrollY) || 0) / 420);
+        } else if (Number(progress.index) > 0) {
+          current = Number(progress.index) + 1;
+        } else {
+          current = Math.max(0, (Number(progress.page || 1) - 1) * pageSize);
+        }
+
+        current = Math.min(safeTotal, Math.max(0, current));
+        return {
+          current,
+          total: safeTotal,
+          percent: safeTotal > 0 ? (current / safeTotal) * 100 : 0,
+        };
+      };
       const visibleSummary = getVisibleCategorySummary();
       const visibleSummarySignature = getSummarySignature(visibleSummary);
       const visibleSubjectSignature = getSubjectListSignature(visibleSummary);
@@ -2185,10 +2214,21 @@
             </button>`;
           }
         } else {
+          const studyProgress = getStudyDeckProgress(subj, totalQuestionsInDb);
           countBadgeHTML = `
           <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
-            <span class="text-sm font-black ${themeColorText} transition-colors">${totalQuestionsInDb} cards</span>
+            <span class="text-sm font-black ${themeColorText} transition-colors">${studyProgress.current} / ${studyProgress.total} cards</span>
           </div>`;
+          progressBarHTML = `
+            <div data-deck-progress-slot data-has-progress="${studyProgress.current > 0}" hidden class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden" role="progressbar" aria-label="Review progress" aria-valuemin="0" aria-valuemax="${studyProgress.total}" aria-valuenow="${studyProgress.current}">
+              <div class="${themeColorBg} h-full rounded-full" style="width: ${studyProgress.percent}%"></div>
+            </div>`;
+          if (studyProgress.current > 0) {
+            resetBtnHTML = `
+            <button ${databaseUnavailable ? "disabled" : ""} data-reset-subject="${escapeHTML(subj)}" onclick="resetCategory('${encodedSubj}')" class="reset-deck-btn w-10 sm:w-12 shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
+              <i class="fa-solid fa-rotate-left"></i>
+            </button>`;
+          }
         }
 
         return `
@@ -4558,6 +4598,25 @@
   let lastScrollTop = 0;
   let isTicking = false;
   let latestReviewScrollY = 0;
+  let latestReviewSubject = null;
+
+  function flushReviewScrollProgress() {
+    const reviewSubject = latestReviewSubject;
+    if (!reviewSubject) return;
+
+    lifecycle.clearTimeout(window.scrollSaveTimeout);
+    latestReviewSubject = null;
+    if (!state.prefs.studyProgress) state.prefs.studyProgress = {};
+    if (!state.prefs.studyProgress[reviewSubject]) {
+      state.prefs.studyProgress[reviewSubject] = {
+        page: 1,
+        index: 0,
+        scrollY: 0,
+      };
+    }
+    state.prefs.studyProgress[reviewSubject].scrollY = latestReviewScrollY;
+    void saveState("prefs");
+  }
 
   // CRITICAL FIX: Cache invalidation management
   function isValidBroadcastMessage(data, type) {
@@ -4660,6 +4719,8 @@
   function cleanupAppResources(event) {
     if (appResourcesCleanedUp) return;
 
+    flushReviewScrollProgress();
+
     if (typeof SessionCore?.saveSessionProgress === "function") {
       SessionCore.saveSessionProgress(true);
     }
@@ -4670,6 +4731,9 @@
     }
 
     appResourcesCleanedUp = true;
+    if (typeof AppState?.stopStatePersistence === "function") {
+      void AppState.stopStatePersistence();
+    }
 
     lifecycle.cleanup();
 
@@ -4742,6 +4806,7 @@
         } else {
           appLogger.info("[VISIBILITY] Tab hidden, will pause polling");
           syncScheduler.handleVisibility(true);
+          flushReviewScrollProgress();
         }
       },
       { signal: uiEventController.signal },
@@ -4832,7 +4897,9 @@
                       .classList.contains("active") &&
                     reviewSubject
                   ) {
+                    globalThis.updateStudyProgressIndicator?.();
                     latestReviewScrollY = currentScroll;
+                    latestReviewSubject = reviewSubject;
                     clearTimeout(window.scrollSaveTimeout);
                     window.scrollSaveTimeout = lifecycle.setTimeout(() => {
                       if (!state.prefs.studyProgress)
@@ -4846,6 +4913,9 @@
                       }
                       state.prefs.studyProgress[reviewSubject].scrollY =
                         latestReviewScrollY;
+                      if (latestReviewSubject === reviewSubject) {
+                        latestReviewSubject = null;
+                      }
                       saveState("prefs");
                     }, 1000);
                   }

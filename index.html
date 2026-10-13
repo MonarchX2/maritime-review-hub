@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-2026.10.13.3" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-13.5" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-2026.10.13.3"
+      href="icon.svg?v=mrh-release-13.5"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-2026.10.13.3" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-13.5" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-2026.10.13.3"
+      href="tailwind.generated.css?v=mrh-release-13.5"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-2026.10.13.3"
+      href="styles.css?v=mrh-release-13.5"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-2026.10.13.3"
+      href="tailwind.generated.css?v=mrh-release-13.5"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-2026.10.13.3"
+      href="styles.css?v=mrh-release-13.5"
       media="print"
       onload="
         this.media = 'all';
@@ -656,12 +656,12 @@
             <div class="flex justify-between items-center mb-2">
               <span
                 class="text-sm font-semibold text-gray-500 dark:text-gray-400 transition-colors"
-                >Card Progress</span
+                >Quiz Progress</span
               >
               <span
                 class="text-sm font-bold text-brand-600 dark:text-brand-400"
                 id="session-progress-text"
-                >0 / 0</span
+                >Question 0 / 0</span
               >
             </div>
             <div
@@ -1040,7 +1040,37 @@
         </div>
 
         <div id="deck-review-list" class="space-y-4">
-          <!-- Populated dynamically via JS -->
+          <div class="flex justify-between items-center mb-2">
+            <span
+              class="text-sm font-semibold text-gray-500 dark:text-gray-400"
+              id="study-progress-label"
+              >Review Progress</span
+            >
+            <span
+              class="text-sm font-bold text-purple-600 dark:text-purple-400"
+              id="study-progress-text"
+              >0 / 0</span
+            >
+          </div>
+          <div
+            id="study-progress-track"
+            class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden shadow-inner"
+            role="progressbar"
+            aria-labelledby="study-progress-label"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+          >
+            <div
+              class="bg-purple-500 h-full rounded-full transition-all duration-500 ease-out"
+              id="study-progress"
+              style="width: 0%"
+            ></div>
+          </div>
+
+          <div id="deck-review-cards" class="space-y-4">
+            <!-- Populated dynamically via JS -->
+          </div>
         </div>
       </section>
 
@@ -1790,6 +1820,9 @@
                 <option value="scroll">Scroll List</option>
                 <option value="single">Single Flashcard</option>
               </select>
+              <p class="user-text-content text-xs text-gray-500 dark:text-gray-400">
+                Default to SCROLL LIST.
+              </p>
             </div>
 
             <!-- Per Page Dropdown -->
@@ -1808,7 +1841,10 @@
                 class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2.5 text-sm text-gray-700 dark:text-gray-200 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors"
               />
               <p class="user-text-content text-xs text-gray-500 dark:text-gray-400">
-                Total pages: <span id="review-page-count">-</span>
+                Default to 10.
+                <span class="ml-2 whitespace-nowrap">
+                  Total pages: <span id="review-page-count">-</span>
+                </span>
               </p>
             </div>
           </div>
@@ -2083,7 +2119,7 @@
         panel.setAttribute("aria-hidden", String(isHidden));
       }
     </script>
-    <script src="app-entry.js?v=mrh-release-2026.10.13.3" defer></script>
+    <script src="app-entry.js?v=mrh-release-13.5" defer></script>
 
     <div
       id="app-update-notice"

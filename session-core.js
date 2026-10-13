@@ -424,7 +424,7 @@
     const progressText = getElement("session-progress-text");
     const progressBar = getElement("session-progress");
     if (progressText)
-      progressText.textContent = `${currentCard} / ${totalCards}`;
+      progressText.textContent = `Question ${currentCard} / ${totalCards}`;
     if (progressBar) {
       progressBar.style.width = `${(currentCard / totalCards) * 100}%`;
     }
