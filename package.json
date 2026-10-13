@@ -24,6 +24,6 @@
     "@types/google-apps-script": "^2.0.12",
     "jsqr": "^1.4.0",
     "qrcode-generator": "^1.4.4",
-    "tailwindcss": "^3.4.17"
+    "tailwindcss": "^4.3.3"
   }
 }
