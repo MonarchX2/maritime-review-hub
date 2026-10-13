@@ -113,6 +113,7 @@ for (const asset of [
   "session-core.js",
   "deck-review-core.js",
   "quiz-rendering-core.js",
+  "qr-transfer-core.js",
 ]) {
   assert.ok(
     appEntry.includes(`"${asset}"`),

@@ -11,6 +11,7 @@
     "check:review-choice-toggle": "node scripts/check-review-choice-toggle.js",
     "check:text-alignment": "node scripts/check-text-alignment.js",
     "check:deck-layout-spacing": "node scripts/check-deck-layout-spacing.js",
+    "check:deck-navigation": "node scripts/check-deck-navigation.js",
     "check:tree-view-readability": "node scripts/check-tree-view-readability.js",
     "check:state-save": "node scripts/check-state-save-race.js",
     "check:qr-transfer": "node scripts/check-qr-transfer.js",

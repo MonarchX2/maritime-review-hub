@@ -1,8 +1,8 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-release-14.1";
-  const APP_DISPLAY_VERSION = "14.1";
+  const APP_VERSION = "mrh-release-14.2";
+  const APP_DISPLAY_VERSION = "14.2";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
   const bootstrapLogger = () => rootScope.DebugUtils || console;
   let serviceWorkerRegistration = null;
@@ -284,6 +284,7 @@
       "analytics-core.js",
       "deck-review-core.js",
       "quiz-rendering-core.js",
+      "qr-transfer-core.js",
     ];
     const checks = assetNames.map(async (name) => {
       const assetUrl = new URL(name, baseUrl);

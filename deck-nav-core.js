@@ -43,6 +43,7 @@
 
   // ===================== VIEW NAVIGATION =====================
   const viewTransitionDuration = 100;
+  let navigationQueue = Promise.resolve();
 
   async function confirmNavigationAwayFromSession() {
     const message =
@@ -58,7 +59,16 @@
       : false;
   }
 
-  async function navigate(viewId) {
+  function navigate(viewId) {
+    const navigation = navigationQueue.then(() => performNavigation(viewId));
+    navigationQueue = navigation.then(
+      () => undefined,
+      () => undefined,
+    );
+    return navigation;
+  }
+
+  async function performNavigation(viewId) {
     const viewElement = document.getElementById(`view-${viewId}`);
     if (!viewElement) return false;
 

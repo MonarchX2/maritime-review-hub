@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-14.1" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-14.2" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-14.1"
+      href="icon.svg?v=mrh-release-14.2"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-14.1" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-14.2" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-14.1"
+      href="tailwind.generated.css?v=mrh-release-14.2"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-14.1"
+      href="styles.css?v=mrh-release-14.2"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-14.1"
+      href="tailwind.generated.css?v=mrh-release-14.2"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-14.1"
+      href="styles.css?v=mrh-release-14.2"
       media="print"
       onload="
         this.media = 'all';
@@ -1748,6 +1748,14 @@
             </h4>
             <div class="mt-3">
               <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                Version 14.2
+              </h5>
+              <ul
+                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+              >
+                <li>Improved QR scanning efficiency, rapid navigation, and release asset verification.</li>
+              </ul>
+              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                 Version 14.1
               </h5>
               <ul
@@ -2145,7 +2153,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 14.1</p>
+    <p id="site-version" class="site-version">Version 14.2</p>
 
     <div
       id="qr-transfer-modal"
@@ -2398,7 +2406,7 @@
         if (trigger) trigger.setAttribute("aria-expanded", String(!isHidden));
       }
     </script>
-    <script src="app-entry.js?v=mrh-release-14.1" defer></script>
+    <script src="app-entry.js?v=mrh-release-14.2" defer></script>
 
     <div
       id="app-update-notice"

@@ -684,7 +684,7 @@
           scannerFrame = requestAnimationFrame(scan);
           return;
         }
-        const width = Math.min(video.videoWidth, 960);
+        const width = Math.min(video.videoWidth, MAX_SCAN_WIDTH);
         const height = Math.round((video.videoHeight / video.videoWidth) * width);
         if (canvas.width !== width || canvas.height !== height) {
           canvas.width = width;
