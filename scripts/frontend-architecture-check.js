@@ -23,6 +23,7 @@ const requiredFiles = [
   "deck-nav-core.js",
   "deck-review-core.js",
   "quiz-rendering-core.js",
+  "qr-transfer-core.js",
   "debug-utils.js",
   "lifecycle-utils.js",
   "rendering-core.js",
@@ -56,6 +57,7 @@ const featureScripts = [
   "ui-modal-core.js",
   "deck-review-core.js",
   "quiz-rendering-core.js",
+  "qr-transfer-core.js",
 ];
 
 function read(fileName) {

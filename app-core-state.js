@@ -513,7 +513,7 @@
         ? rawStats
         : {};
 
-    const subjectAccuracy = {};
+    const subjectAccuracy = Object.create(null);
     const rawSubjectAccuracy =
       source.subjectAccuracy &&
       typeof source.subjectAccuracy === "object" &&
@@ -558,7 +558,9 @@
         source.srsMap &&
         typeof source.srsMap === "object" &&
         !Array.isArray(source.srsMap)
-          ? source.srsMap
+          ? Object.fromEntries(
+              Object.entries(source.srsMap).filter(([key]) => key !== "__proto__"),
+            )
           : {},
     };
   }
@@ -1146,6 +1148,129 @@
     return stateSavePromise;
   }
 
+  async function importTransferredState(transfer, replaceSettings = false) {
+    if (
+      !transfer ||
+      typeof transfer !== "object" ||
+      !transfer.stats ||
+      typeof transfer.stats !== "object" ||
+      !transfer.progress ||
+      typeof transfer.progress !== "object"
+    ) {
+      throw new TypeError("The transfer does not contain valid progress data.");
+    }
+    if (state.session?.active) {
+      throw new Error("End the active quiz before importing progress.");
+    }
+
+    if (!(await saveState("all"))) {
+      throw new Error("Unable to save this device's current state before import.");
+    }
+
+    const importedStats = normalizeStats(transfer.stats);
+    const previousPrefs = state.prefs;
+    const progressKeys = new Set(["studyProgress", "qToggles", "lastActivity"]);
+    const localOnlyPreferenceKeys = new Set(["localDownloadDeletedDecks"]);
+    const allowedSettingKeys = Object.keys(state.prefs).filter(
+      (key) => !progressKeys.has(key) && !localOnlyPreferenceKeys.has(key),
+    );
+    const importedSettings = {};
+    if (
+      replaceSettings &&
+      transfer.settings &&
+      typeof transfer.settings === "object"
+    ) {
+      for (const key of allowedSettingKeys) {
+        if (Object.prototype.hasOwnProperty.call(transfer.settings, key)) {
+          importedSettings[key] = transfer.settings[key];
+        }
+      }
+    }
+    const importedProgress = {
+      studyProgress:
+        transfer.progress.studyProgress &&
+        typeof transfer.progress.studyProgress === "object" &&
+        !Array.isArray(transfer.progress.studyProgress)
+          ? transfer.progress.studyProgress
+          : {},
+      qToggles:
+        transfer.progress.qToggles &&
+        typeof transfer.progress.qToggles === "object" &&
+        !Array.isArray(transfer.progress.qToggles)
+          ? transfer.progress.qToggles
+          : {},
+      lastActivity:
+        transfer.progress.lastActivity &&
+        typeof transfer.progress.lastActivity === "object"
+          ? transfer.progress.lastActivity
+          : null,
+    };
+    const importedPrefs = normalizePrefs({
+      ...state.prefs,
+      ...(replaceSettings ? importedSettings : {}),
+      ...importedProgress,
+      localDownloadDeletedDecks: previousPrefs.localDownloadDeletedDecks,
+    });
+    const importedSession = transfer.savedSession
+      ? { ...transfer.savedSession, autoNextTimeout: null }
+      : null;
+    const keysToWrite = [
+      ["stats", importedStats],
+      ["prefs", importedPrefs],
+      ["saved_session", importedSession],
+    ];
+    const previousValues = new Map(
+      keysToWrite.map(([key]) => [key, getStoredItem(key)]),
+    );
+
+    for (const [key, value] of keysToWrite) {
+      const succeeded =
+        value === null ? removeStoredItem(key) : setStoredJSON(key, value);
+      if (succeeded) continue;
+
+      for (const [rollbackKey, previousValue] of previousValues) {
+        const restored =
+          previousValue === null
+            ? removeStoredItem(rollbackKey)
+            : setStoredItem(rollbackKey, previousValue);
+        if (!restored) {
+          DebugUtils.error(
+            `Unable to roll back ${rollbackKey} after a failed progress import.`,
+          );
+        }
+      }
+      throw new Error(`Unable to save imported ${key.replace("_", " ")}.`);
+    }
+
+    state.stats = importedStats;
+    state.prefs = importedPrefs;
+    persistedStateBaseline.prefs = cloneStoredValue(importedPrefs);
+    persistedStateBaseline.stats = cloneStoredValue(importedStats);
+
+    if (replaceSettings && typeof document !== "undefined") {
+      document.documentElement.classList.toggle(
+        "dark",
+        Boolean(importedPrefs.darkMode),
+      );
+    }
+    globalScope.syncPreferenceControls?.();
+    globalScope.updateThemeButton?.();
+
+    globalScope.SessionCore?.checkSavedSession?.();
+    if (
+      typeof globalScope.SessionCore?.checkSavedSession !== "function" &&
+      transfer.savedSession?.active
+    ) {
+      if (typeof document !== "undefined") {
+        document
+          .getElementById("resume-container")
+          ?.classList.remove("hidden");
+      }
+    }
+    globalScope.updateDashboard?.();
+    return true;
+  }
+
   function stopStatePersistence() {
     statePersistenceStopped = true;
     if (stateSaveQueued && !stateSaveFlushing) {
@@ -1254,6 +1379,7 @@
     saveState: async function saveStateAlias(dirty = "all") {
       return saveState(dirty);
     },
+    importTransferredState,
     stopStatePersistence,
     resumeStatePersistence,
   };

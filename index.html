@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-13.8" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-14.1" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-13.8"
+      href="icon.svg?v=mrh-release-14.1"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-13.8" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-14.1" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-13.8"
+      href="tailwind.generated.css?v=mrh-release-14.1"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-13.8"
+      href="styles.css?v=mrh-release-14.1"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-13.8"
+      href="tailwind.generated.css?v=mrh-release-14.1"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-13.8"
+      href="styles.css?v=mrh-release-14.1"
       media="print"
       onload="
         this.media = 'all';
@@ -321,6 +321,16 @@
         >
           <i class="fa-solid fa-sun dark:hidden"></i>
           <i class="fa-solid fa-moon hidden dark:inline"></i>
+        </button>
+        <button
+          id="btn-qr-transfer"
+          onclick="openQrTransfer()"
+          class="hover:text-brand-200 transition-all transform hover:scale-110 active:scale-90 text-lg"
+          aria-label="Transfer saved progress with QR code"
+          title="Transfer saved progress"
+          type="button"
+        >
+          <i class="fa-solid fa-qrcode" aria-hidden="true"></i>
         </button>
         <!-- Settings Button -->
         <button
@@ -619,7 +629,7 @@
         </div>
 
         <div id="session-active" class="hidden transition-all duration-500">
-          <div class="mb-6">
+          <div class="mb-4">
             <div class="flex justify-between items-center w-full mb-4 gap-3">
               <button
                 onclick="navigate('dashboard')"
@@ -1086,70 +1096,105 @@
       <!-- ============================================================ -->
       <!-- SETTINGS SECTION -->
       <section id="view-settings" class="view-section">
-        <h2 class="text-2xl font-bold mb-6">Main Settings</h2>
+        <div class="mx-auto w-full max-w-3xl">
+          <div class="mb-6">
+            <h2 class="text-2xl font-bold">Settings</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Manage your study experience and app preferences.
+            </p>
+          </div>
 
-        <div
-          class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 mb-6 animate-card-in"
-          style="animation-delay: 0.1s"
-        >
-          <h3 class="font-bold pb-2 mb-4">
-            <i class="fa-solid fa-database text-brand-500 mr-2"></i> Database
-            Sync
-          </h3>
-          <p
-            id="sync-status"
-            class="user-text-content text-sm mt-3 font-medium bg-gray-50 dark:bg-gray-700 p-3 rounded-lg hidden transition-all duration-300"
-          ></p>
-        </div>
+          <div class="space-y-3">
+            <section
+              class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+              aria-labelledby="settings-sync-title"
+            >
+              <h3
+                id="settings-sync-title"
+                class="font-bold text-gray-800 dark:text-gray-100"
+              >
+                <i class="fa-solid fa-database text-brand-500 mr-2"></i>
+                Database &amp; Sync
+              </h3>
+              <p
+                id="sync-status"
+                class="user-text-content text-sm mt-2 font-medium bg-gray-50 dark:bg-gray-700 p-2 rounded-lg hidden transition-all duration-300"
+              ></p>
+            </section>
 
-        <label class="flex items-center justify-between cursor-pointer mb-2">
-          <div class="flex flex-col">
-            <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-              >Shuffle Choices</span
+            <section
+              class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+              aria-labelledby="settings-study-title"
             >
-            <span class="text-[11px] text-gray-500 mt-1">Default to ON</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="toggle-shuffle-choices"
-              class="sr-only peer"
-              onchange="toggleShuffleChoices(this)"
-              checked
-            />
-            <div
-              class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
-            ></div>
-          </div>
-        </label>
-        <label class="flex items-center justify-between cursor-pointer mb-2">
-          <div class="flex flex-col">
-            <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-              >Shuffle Questions</span
-            >
-            <span class="text-[11px] text-gray-500 mt-1">Default to ON</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="toggle-shuffle-questions"
-              class="sr-only peer"
-              onchange="toggleShuffleQuestions()"
-              checked
-            />
-            <div
-              class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
-            ></div>
-          </div>
-        </label>
-        <p
-          id="shuffle-warning"
-          class="user-text-content hidden text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded border border-yellow-200 dark:border-yellow-800"
-          aria-hidden="true"
-        >
-          <i class="fa-solid fa-triangle-exclamation mr-1"></i> Warning:
-          Disabling shuffling may lead to memorization.
-        </p>
+              <div class="mb-2">
+                <h3
+                  id="settings-study-title"
+                  class="font-bold text-gray-800 dark:text-gray-100"
+                >
+                  <i class="fa-solid fa-graduation-cap text-brand-500 mr-2"></i>
+                  Study defaults
+                </h3>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Choose how questions and answers are presented by default.
+                </p>
+              </div>
+              <div class="divide-y divide-gray-100 dark:divide-gray-700">
+                <label
+                  class="flex items-center justify-between gap-4 cursor-pointer py-2"
+                >
+                  <div class="flex flex-col">
+                    <span
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >Shuffle Choices</span
+                    >
+                    <span class="text-[11px] text-gray-500 mt-1">Default to ON</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="toggle-shuffle-choices"
+                      class="sr-only peer"
+                      onchange="toggleShuffleChoices(this)"
+                      checked
+                    />
+                    <div
+                      class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
+                    ></div>
+                  </div>
+                </label>
+                <label
+                  class="flex items-center justify-between gap-4 cursor-pointer py-2"
+                >
+                  <div class="flex flex-col">
+                    <span
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >Shuffle Questions</span
+                    >
+                    <span class="text-[11px] text-gray-500 mt-1">Default to ON</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="toggle-shuffle-questions"
+                      class="sr-only peer"
+                      onchange="toggleShuffleQuestions()"
+                      checked
+                    />
+                    <div
+                      class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
+                    ></div>
+                  </div>
+                </label>
+                <p
+                  id="shuffle-warning"
+                  class="user-text-content hidden mx-1 text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded border border-yellow-200 dark:border-yellow-800"
+                  aria-hidden="true"
+                >
+                  <i class="fa-solid fa-triangle-exclamation mr-1"></i> Warning:
+                  Disabling shuffling may lead to memorization.
+                </p>
+              </div>
+            </section>
 
         <div class="hidden mb-5 rounded-xl bg-white dark:bg-gray-800 p-4 shadow-sm">
           <label
@@ -1178,33 +1223,41 @@
           </p>
         </div>
 
-        <div class="mt-3 pt-3">
-          <div class="mb-4">
-            <button
-              type="button"
-              onclick="
-                togglePanel('deck-navigation-panel', 'deck-navigation-chevron')
-              "
-              class="w-full cursor-pointer list-none font-bold text-gray-800 dark:text-gray-100 flex items-center justify-between gap-3 text-left"
-              aria-expanded="false"
-            >
-              <span>
-                <i class="fa-solid fa-compass-drafting text-brand-500 mr-2"></i>
-                Deck Navigation Buttons
-              </span>
-              <i
-                id="deck-navigation-chevron"
-                class="fa-solid fa-chevron-down text-xs text-gray-500 transition-transform"
-              ></i>
-            </button>
+        <div
+          class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+        >
+          <div class="mb-2">
+            <h3>
+              <button
+                type="button"
+                onclick="
+                  togglePanel('deck-navigation-panel', 'deck-navigation-chevron', this)
+                "
+                class="w-full cursor-pointer list-none font-bold text-gray-800 dark:text-gray-100 flex items-center justify-between gap-3 text-left"
+                aria-expanded="false"
+                aria-controls="deck-navigation-panel"
+              >
+                <span>
+                  <i class="fa-solid fa-compass-drafting text-brand-500 mr-2"></i>
+                  Deck Navigation Buttons
+                </span>
+                <i
+                  id="deck-navigation-chevron"
+                  class="fa-solid fa-chevron-down text-xs text-gray-500 transition-transform"
+                ></i>
+              </button>
+            </h3>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Choose where navigation controls appear in each study mode.
+            </p>
           </div>
 
           <div
             id="deck-navigation-panel"
-            class="hidden space-y-3"
+            class="hidden space-y-2"
             aria-hidden="true"
           >
-            <div class="space-y-3">
+            <div class="space-y-2">
               <div class="flex items-center justify-between gap-4">
                 <div>
                   <div>
@@ -1280,10 +1333,12 @@
                 togglePanel(
                   'advanced-settings-panel',
                   'advanced-settings-chevron',
+                  this,
                 )
               "
               class="w-full cursor-pointer list-none font-bold text-gray-800 dark:text-gray-100 flex items-center justify-between gap-3 text-left"
               aria-expanded="false"
+              aria-controls="advanced-settings-panel"
             >
               <span>
                 <i class="fa-solid fa-sliders text-brand-500 mr-2"></i>
@@ -1362,47 +1417,31 @@
           </div>
         </div>
 
-        <section
-          class="mt-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm"
-          aria-labelledby="settings-changelog-title"
-        >
-          <h3
-            id="settings-changelog-title"
-            class="font-bold text-gray-800 dark:text-gray-100"
-          >
-            <i class="fa-solid fa-clock-rotate-left text-brand-500 mr-2"></i>
-            Changelog
-          </h3>
-          <div class="mt-4">
-            <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-              Version 13.8
-            </h4>
-            <ul
-              class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+            <div
+              class="rounded-xl border border-red-200 bg-red-50/60 p-4 shadow-sm dark:border-red-900/70 dark:bg-red-950/20"
             >
-              <li>Restored the Danger Zone in Main Settings.</li>
-              <li>Kept advanced options and text alignment hidden.</li>
-            </ul>
-          </div>
-        </section>
-
-        <div class="mt-3 pt-3">
-          <div class="mb-4">
-            <button
-              type="button"
-              onclick="togglePanel('danger-zone-panel', 'danger-zone-chevron')"
-              class="w-full cursor-pointer list-none font-bold text-red-600 dark:text-red-400 flex items-center justify-between gap-3 text-left"
-              aria-expanded="false"
-            >
-              <span>
-                <i class="fa-solid fa-triangle-exclamation mr-2"></i>
-                Danger Zone
-              </span>
-              <i
-                id="danger-zone-chevron"
-                class="fa-solid fa-chevron-down text-xs text-red-400 transition-transform"
-              ></i>
-            </button>
+          <div class="mb-2">
+            <h3>
+              <button
+                type="button"
+                onclick="togglePanel('danger-zone-panel', 'danger-zone-chevron', this)"
+                class="w-full cursor-pointer list-none font-bold text-red-600 dark:text-red-400 flex items-center justify-between gap-3 text-left"
+                aria-expanded="false"
+                aria-controls="danger-zone-panel"
+              >
+                <span>
+                  <i class="fa-solid fa-triangle-exclamation mr-2"></i>
+                  Danger Zone
+                </span>
+                <i
+                  id="danger-zone-chevron"
+                  class="fa-solid fa-chevron-down text-xs text-red-400 transition-transform"
+                ></i>
+              </button>
+            </h3>
+            <p class="mt-1 text-xs text-red-700 dark:text-red-300">
+              These actions permanently remove saved progress or app data.
+            </p>
           </div>
 
           <div
@@ -1449,19 +1488,22 @@
               </div>
             </div>
           </div>
-        </div>
+            </div>
+          </div>
 
-        <p class="user-text-content mt-8 text-center text-xs text-gray-400 dark:text-gray-500">
-          A project of AB.
-          <br />
-          <button
-            type="button"
-            onclick="openAboutModal()"
-            class="mt-1 text-brand-500 hover:text-brand-600 hover:underline"
+          <footer
+            class="user-text-content mt-6 flex flex-col items-center text-center text-xs text-gray-400 dark:text-gray-500"
           >
-            About MRH
-          </button>
-        </p>
+            <span>A project of AB.</span>
+            <button
+              type="button"
+              onclick="openAboutModal()"
+              class="mt-1 text-brand-500 hover:text-brand-600 hover:underline"
+            >
+              About MRH
+            </button>
+          </footer>
+        </div>
       </section>
 
       <!-- ============================================================ -->
@@ -1693,11 +1735,61 @@
           <p class="user-text-content mt-2 text-xs text-gray-500 dark:text-gray-400">
             <span id="about-version"></span>
           </p>
+          <section
+            class="mt-5 border-t border-gray-100 pt-4 dark:border-gray-700"
+            aria-labelledby="about-changelog-title"
+          >
+            <h4
+              id="about-changelog-title"
+              class="font-bold text-gray-800 dark:text-gray-100"
+            >
+              <i class="fa-solid fa-clock-rotate-left text-brand-500 mr-2"></i>
+              Changelog
+            </h4>
+            <div class="mt-3">
+              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                Version 14.1
+              </h5>
+              <ul
+                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+              >
+                <li>Removed unnecessary empty space in the progress-transfer dialog and improved QR transfer reliability.</li>
+              </ul>
+              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                Version 14.0
+              </h5>
+              <ul
+                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+              >
+                <li>Added QR-code transfer for saved progress between devices.</li>
+                <li>Added an explicit choice to keep or replace saved settings during import.</li>
+              </ul>
+              <h5 class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200">
+                Version 13.9
+              </h5>
+              <ul
+                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+              >
+                <li>Prevented text selection across the app while preserving editable fields.</li>
+                <li>Centered the Settings footer and refreshed its hierarchy.</li>
+                <li>Moved release notes into About MRH.</li>
+              </ul>
+              <h5 class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200">
+                Version 13.8
+              </h5>
+              <ul
+                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+              >
+                <li>Restored the Danger Zone in Main Settings.</li>
+                <li>Kept advanced options and text alignment hidden.</li>
+              </ul>
+            </div>
+          </section>
           <a
             href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
             target="_blank"
             rel="noopener noreferrer"
-            class="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 font-bold text-white hover:bg-brand-700 transition-colors"
+            class="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 font-bold text-white hover:bg-brand-700 transition-colors"
           >
             <i class="fa-solid fa-arrow-up-right-from-square"></i>
             Learn More
@@ -2053,7 +2145,153 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 13.8</p>
+    <p id="site-version" class="site-version">Version 14.1</p>
+
+    <div
+      id="qr-transfer-modal"
+      class="fixed inset-0 z-[125] modal-layout items-center justify-center bg-black/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="qr-transfer-title"
+      aria-describedby="qr-transfer-status"
+      onclick="if (event.target === this) QRTransfer.close()"
+    >
+      <div
+        class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-5 sm:p-6 border border-gray-200 dark:border-gray-700"
+      >
+        <div class="flex justify-between items-center mb-4 border-b border-gray-100 dark:border-gray-700 pb-3">
+          <h2
+            id="qr-transfer-title"
+            class="text-xl font-bold text-gray-800 dark:text-gray-100"
+          >
+            <i class="fa-solid fa-qrcode text-brand-500 mr-2" aria-hidden="true"></i>
+            Transfer Progress
+          </h2>
+          <button
+            type="button"
+            onclick="QRTransfer.close()"
+            class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            aria-label="Close progress transfer"
+          >
+            <i class="fa-solid fa-xmark text-xl" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        <p
+          id="qr-transfer-status"
+          class="user-text-content hidden mb-4 text-sm text-gray-600 dark:text-gray-300"
+          role="status"
+          aria-live="polite"
+        ></p>
+
+        <div id="qr-transfer-home" class="space-y-3">
+          <p class="user-text-content text-sm text-gray-600 dark:text-gray-300">
+            Move saved answers and your optional saved quiz session to another device. Both devices need an internet connection to load the QR tools; the receiving device needs a camera. Only scan a code from a device you trust.
+          </p>
+          <button
+            id="qr-transfer-export-button"
+            type="button"
+            onclick="QRTransfer.startExport()"
+            class="w-full rounded-lg bg-brand-600 px-4 py-3 font-bold text-white hover:bg-brand-700"
+          >
+            <i class="fa-solid fa-share-nodes mr-2" aria-hidden="true"></i>
+            Show transfer QR code
+          </button>
+          <button
+            type="button"
+            onclick="QRTransfer.startScan()"
+            class="w-full rounded-lg bg-gray-100 px-4 py-3 font-bold text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+          >
+            <i class="fa-solid fa-camera mr-2" aria-hidden="true"></i>
+            Scan a transfer QR code
+          </button>
+        </div>
+
+        <div id="qr-transfer-export" class="hidden text-center">
+          <img
+            id="qr-transfer-image"
+            class="mx-auto mb-3 aspect-square w-full max-w-[340px] rounded-lg bg-white p-2"
+            alt="Progress transfer QR code"
+          />
+          <p id="qr-transfer-frame-count" class="mb-4 text-xs font-semibold text-gray-500 dark:text-gray-400"></p>
+          <p class="user-text-content mb-4 text-sm text-gray-600 dark:text-gray-300">
+            Keep this screen open while the other device scans every frame.
+          </p>
+          <button
+            type="button"
+            onclick="QRTransfer.showHome()"
+            class="w-full rounded-lg bg-gray-100 px-4 py-3 font-bold text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+          >
+            Back
+          </button>
+        </div>
+
+        <div id="qr-transfer-scan" class="hidden text-center">
+          <video
+            id="qr-transfer-video"
+            class="mx-auto mb-3 max-h-[55vh] w-full rounded-lg bg-black object-cover"
+            autoplay
+            playsinline
+            muted
+            aria-label="Camera preview for scanning transfer QR codes"
+          ></video>
+          <canvas id="qr-transfer-canvas" class="hidden"></canvas>
+          <p
+            id="qr-transfer-scan-progress"
+            class="mb-4 text-xs font-semibold text-gray-500 dark:text-gray-400"
+            aria-live="polite"
+          ></p>
+          <button
+            type="button"
+            onclick="QRTransfer.showHome()"
+            class="w-full rounded-lg bg-gray-100 px-4 py-3 font-bold text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+          >
+            Cancel scan
+          </button>
+        </div>
+
+        <div id="qr-transfer-import" class="hidden space-y-3">
+          <p class="user-text-content text-sm text-gray-600 dark:text-gray-300">
+            Importing replaces the saved learning progress on this device. Study position and question-level progress are included. Choose whether its settings should also be replaced.
+          </p>
+          <button
+            type="button"
+            onclick="QRTransfer.importProgress(true)"
+            class="w-full rounded-lg bg-brand-600 px-4 py-3 font-bold text-white hover:bg-brand-700"
+          >
+            Import progress and settings
+          </button>
+          <button
+            type="button"
+            onclick="QRTransfer.importProgress(false)"
+            class="w-full rounded-lg bg-gray-100 px-4 py-3 font-bold text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+          >
+            Import progress only
+          </button>
+          <button
+            type="button"
+            onclick="QRTransfer.close()"
+            class="w-full rounded-lg px-4 py-2 text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white"
+          >
+            Cancel
+          </button>
+        </div>
+
+        <div id="qr-transfer-done" class="hidden text-center">
+          <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-300">
+            <i class="fa-solid fa-check text-2xl" aria-hidden="true"></i>
+          </div>
+          <button
+            type="button"
+            onclick="QRTransfer.close()"
+            class="w-full rounded-lg bg-brand-600 px-4 py-3 font-bold text-white hover:bg-brand-700"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
 
     <div
       id="confirm-modal"
@@ -2149,7 +2387,7 @@
     </div>
 
     <script>
-      function togglePanel(panelId, chevronId) {
+      function togglePanel(panelId, chevronId, trigger) {
         const panel = document.getElementById(panelId);
         const icon = document.getElementById(chevronId);
         if (!panel) return;
@@ -2157,9 +2395,10 @@
         const isHidden = panel.classList.toggle("hidden");
         if (icon) icon.classList.toggle("rotate-180", !isHidden);
         panel.setAttribute("aria-hidden", String(isHidden));
+        if (trigger) trigger.setAttribute("aria-expanded", String(!isHidden));
       }
     </script>
-    <script src="app-entry.js?v=mrh-release-13.8" defer></script>
+    <script src="app-entry.js?v=mrh-release-14.1" defer></script>
 
     <div
       id="app-update-notice"

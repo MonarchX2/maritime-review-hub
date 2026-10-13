@@ -1,8 +1,8 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-release-13.8";
-  const APP_DISPLAY_VERSION = "13.8";
+  const APP_VERSION = "mrh-release-14.1";
+  const APP_DISPLAY_VERSION = "14.1";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
   const bootstrapLogger = () => rootScope.DebugUtils || console;
   let serviceWorkerRegistration = null;
@@ -392,6 +392,7 @@
     "analytics-core.js",
     "deck-review-core.js",
     "quiz-rendering-core.js",
+    "qr-transfer-core.js",
   ];
 
   function loadScript(src) {
@@ -465,6 +466,20 @@
   }
 
   rootScope.loadFeatureScript = loadFeatureScript;
+  rootScope.openQrTransfer = async function openQrTransfer() {
+    try {
+      await loadFeatureScript("qr-transfer-core.js");
+      rootScope.QRTransfer.open();
+    } catch (error) {
+      bootstrapLogger().error("Unable to open progress transfer:", error);
+      if (typeof rootScope.showToast === "function") {
+        rootScope.showToast(
+          "Unable to open progress transfer. Please reload the app and try again.",
+          "error",
+        );
+      }
+    }
+  };
 
   rootScope.__MRH_BOOTSTRAP__ = {
     status: "idle",

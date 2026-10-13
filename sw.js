@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-release-13.8";
+const APP_VERSION = "mrh-release-14.1";
 
 function getRuntimeCacheVersion() {
   return APP_VERSION;
@@ -80,6 +80,7 @@ const APP_SHELL = [
   "./deck-nav-core.js",
   "./deck-review-core.js",
   "./quiz-rendering-core.js",
+  "./qr-transfer-core.js",
   "./debug-utils.js",
   "./lifecycle-utils.js",
   "./rendering-core.js",

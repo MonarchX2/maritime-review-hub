@@ -33,6 +33,20 @@
   --time-slow: 0.6s;
 }
 
+*,
+*::before,
+*::after {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .modal-layout[aria-hidden="false"],
 #active-recall-mask:not(.hidden),
 #danger-zone-panel:not(.hidden) {
@@ -49,15 +63,11 @@
 }
 
 .site-version {
-  position: fixed;
-  left: max(0.75rem, env(safe-area-inset-left));
-  bottom: max(0.5rem, env(safe-area-inset-bottom));
-  z-index: 40;
-  margin: 0;
+  align-self: center;
+  margin: 0.75rem auto max(0.5rem, env(safe-area-inset-bottom));
   color: #6b7280;
   font-size: 0.75rem;
   line-height: 1rem;
-  pointer-events: none;
 }
 
 .dark .site-version {
@@ -674,7 +684,7 @@ body.text-align-justify .user-text-content {
 .dark .deck-tree-settings-trigger:hover,
 .dark .deck-tree-settings[open] .deck-tree-settings-trigger {
   color: #f3f4f6;
-  background: #3f3f46;
+  background: #374151;
 }
 
 .deck-tree-settings-menu {
@@ -708,7 +718,7 @@ body.text-align-justify .user-text-content {
 
 .dark .deck-tree-settings-menu {
   border-color: #4b5563;
-  background: #252525;
+  background: #1f2937;
 }
 
 .dark .deck-tree-settings-menu button {
@@ -716,7 +726,7 @@ body.text-align-justify .user-text-content {
 }
 
 .dark .deck-tree-settings-menu button:hover {
-  background: #3f3f46;
+  background: #374151;
 }
 
 @media (max-width: 639px) {
@@ -802,6 +812,11 @@ body {
   -webkit-tap-highlight-color: transparent;
   scroll-behavior: smooth;
   overflow-x: hidden;
+}
+
+:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
 }
 
 /* --------------------------------------------------------------------------
@@ -914,6 +929,7 @@ body.title-mode-clip {
    05. APPLICATION SHELL / MAIN LAYOUT
    -------------------------------------------------------------------------- */
 .app-content-shell {
+  min-height: 0;
   width: min(100%, 1200px) !important;
   max-width: 1200px !important;
   margin-inline: auto !important;

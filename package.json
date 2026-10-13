@@ -13,6 +13,7 @@
     "check:deck-layout-spacing": "node scripts/check-deck-layout-spacing.js",
     "check:tree-view-readability": "node scripts/check-tree-view-readability.js",
     "check:state-save": "node scripts/check-state-save-race.js",
+    "check:qr-transfer": "node scripts/check-qr-transfer.js",
     "check:deck-clear": "node scripts/check-deck-clear-race.js",
     "check:sync-timestamp": "node scripts/check-sync-timestamp-recovery.js",
     "check:app-update-flow": "node scripts/check-app-update-flow.js"
