@@ -1,8 +1,8 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-release-14.2";
-  const APP_DISPLAY_VERSION = "14.2";
+  const APP_VERSION = "mrh-release-14.3";
+  const APP_DISPLAY_VERSION = "14.3";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
   const bootstrapLogger = () => rootScope.DebugUtils || console;
   let serviceWorkerRegistration = null;

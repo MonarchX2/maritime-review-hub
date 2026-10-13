@@ -96,6 +96,19 @@ assert.throws(
     }),
   /valid progress data/,
 );
+assert.equal(qr.parseTransferFileText(JSON.stringify(transfer)).format, transfer.format);
+assert.throws(
+  () => qr.parseTransferFileText("{invalid json"),
+  /not valid transfer JSON/,
+);
+assert.throws(
+  () => qr.parseTransferFileText(JSON.stringify({ ...transfer, settings: [] })),
+  /valid progress data/,
+);
+assert.throws(
+  () => qr.parseTransferFileText(" ".repeat(qr.MAX_TRANSFER_FILE_BYTES + 1)),
+  /10 MB limit/,
+);
 
 qrContext.state = {
   stats: transfer.stats,
@@ -139,6 +152,102 @@ qrContext.AppState.getStoredJSON = () => savedActiveSession;
 const activeExport = JSON.parse(qr.createTransferData());
 assert.equal(activeExport.savedSession.autoNextTimeout, null);
 qrContext.state.session.active = false;
+
+const uiElements = new Map();
+function getUiElement(id) {
+  if (!uiElements.has(id)) {
+    const classes = new Set();
+    uiElements.set(id, {
+      classList: {
+        add: (...names) => names.forEach((name) => classes.add(name)),
+        remove: (...names) => names.forEach((name) => classes.delete(name)),
+        toggle: (name, enabled) => {
+          if (enabled) classes.add(name);
+          else classes.delete(name);
+        },
+        contains: (name) => classes.has(name),
+      },
+      setAttribute() {},
+      remove() {},
+      click() {},
+      textContent: "",
+    });
+  }
+  return uiElements.get(id);
+}
+let downloadLink = null;
+qrContext.document = {
+  getElementById: getUiElement,
+  createElement(name) {
+    const element = getUiElement(name);
+    if (name === "a") downloadLink = element;
+    return element;
+  },
+  body: { appendChild() {} },
+};
+qrContext.URL = {
+  createObjectURL(blob) {
+    assert.equal(blob.type, "application/json");
+    return "blob:transfer-test";
+  },
+  revokeObjectURL() {},
+};
+qrContext.Blob = Blob;
+qrContext.setTimeout = () => 1;
+qrContext.module.exports.exportFile();
+assert.match(
+  downloadLink.download,
+  /^maritime-review-hub-progress-\d{4}-\d{2}-\d{2}\.mrh-transfer\.json$/,
+);
+
+async function checkFileImport() {
+  let importedTransfer = null;
+  qrContext.AppState.importTransferredState = async (value, replaceSettings) => {
+    importedTransfer = { value, replaceSettings };
+    return true;
+  };
+  let resolveSlowFile;
+  const slowInput = {
+    files: [
+      {
+        size: 12,
+        text: () =>
+          new Promise((resolve) => {
+            resolveSlowFile = resolve;
+          }),
+      },
+    ],
+    value: "slow-file",
+  };
+  const slowImport = qrContext.module.exports.importFile(slowInput);
+  const input = {
+    files: [{ size: 12, text: async () => JSON.stringify(transfer) }],
+    value: "selected-file",
+  };
+  await qrContext.module.exports.importFile(input);
+  resolveSlowFile(JSON.stringify({ ...transfer, stats: [] }));
+  await slowImport;
+  assert.equal(input.value, "", "file input resets so the same file can be selected again");
+  assert.equal(
+    getUiElement("qr-transfer-import").classList.contains("hidden"),
+    false,
+    "a valid transfer file opens the import confirmation panel",
+  );
+  await qrContext.module.exports.importProgress(false);
+  assert.equal(importedTransfer.value.format, transfer.format);
+  assert.equal(importedTransfer.replaceSettings, false);
+
+  const invalidInput = {
+    files: [{ size: 12, text: async () => "{invalid" }],
+    value: "invalid-file",
+  };
+  await qrContext.module.exports.importFile(invalidInput);
+  assert.equal(invalidInput.value, "");
+  assert.match(
+    getUiElement("qr-transfer-status").textContent,
+    /not valid transfer JSON/,
+  );
+}
 
 const stateContext = {
   module: { exports: {} },
@@ -262,7 +371,8 @@ async function checkStateImport() {
   );
 }
 
-checkStateImport()
+checkFileImport()
+  .then(checkStateImport)
   .then(() => console.log("QR transfer checks passed."))
   .catch((error) => {
     console.error(error);

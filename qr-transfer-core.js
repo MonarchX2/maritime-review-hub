@@ -2,6 +2,7 @@
   "use strict";
 
   const MAX_TRANSFER_BYTES = 1000000;
+  const MAX_TRANSFER_FILE_BYTES = 10 * 1024 * 1024;
   const FRAME_CHUNK_SIZE = 700;
   const FRAME_INTERVAL_MS = 500;
   const MAX_SCAN_WIDTH = 720;
@@ -37,6 +38,7 @@
   let modalKeydownHandler = null;
   let pendingImport = null;
   let receivedFrames = null;
+  let fileImportGeneration = 0;
 
   function getElement(id) {
     return typeof document === "undefined" ? null : document.getElementById(id);
@@ -538,6 +540,100 @@
     return JSON.stringify(transfer);
   }
 
+  function parseTransferFileText(text) {
+    if (typeof text !== "string") {
+      throw new TypeError("The selected file could not be read.");
+    }
+    if (new TextEncoder().encode(text).byteLength > MAX_TRANSFER_FILE_BYTES) {
+      throw new RangeError("The transfer file is larger than the 10 MB limit.");
+    }
+    let transfer;
+    try {
+      transfer = JSON.parse(text);
+    } catch {
+      throw new TypeError("The selected file is not valid transfer JSON.");
+    }
+    return validateTransfer(transfer);
+  }
+
+  function exportFile() {
+    let downloadUrl = null;
+    try {
+      const text = createTransferData();
+      const bytes = new TextEncoder().encode(text);
+      if (bytes.byteLength > MAX_TRANSFER_FILE_BYTES) {
+        throw new RangeError("Saved progress is larger than the 10 MB file limit.");
+      }
+      if (
+        !globalScope.URL?.createObjectURL ||
+        typeof globalScope.Blob !== "function"
+      ) {
+        throw new Error("File downloads are not supported in this browser.");
+      }
+      downloadUrl = globalScope.URL.createObjectURL(
+        new globalScope.Blob([bytes], { type: "application/json" }),
+      );
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = `maritime-review-hub-progress-${new Date()
+        .toISOString()
+        .slice(0, 10)}.mrh-transfer.json`;
+      link.hidden = true;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      const urlToRevoke = downloadUrl;
+      globalScope.setTimeout(
+        () => globalScope.URL.revokeObjectURL(urlToRevoke),
+        60000,
+      );
+      downloadUrl = null;
+      setStatus(
+        "Transfer file downloaded. Send it directly to your other device; it contains private progress data, so only share it with a device you trust.",
+      );
+    } catch (error) {
+      if (downloadUrl) globalScope.URL.revokeObjectURL(downloadUrl);
+      setStatus(error.message || "Unable to create the transfer file.", true);
+    }
+  }
+
+  async function importFile(input) {
+    const file = input?.files?.[0];
+    if (!file) return;
+    const fileGeneration = ++fileImportGeneration;
+    const generation = modalGeneration;
+    try {
+      if (file.size > MAX_TRANSFER_FILE_BYTES) {
+        throw new RangeError("The transfer file is larger than the 10 MB limit.");
+      }
+      if (typeof file.text !== "function") {
+        throw new Error("Reading files is not supported in this browser.");
+      }
+      setStatus("Reading and validating the transfer file…");
+      const transfer = parseTransferFileText(await file.text());
+      if (
+        generation !== modalGeneration ||
+        fileGeneration !== fileImportGeneration
+      ) {
+        return;
+      }
+      pendingImport = transfer;
+      showPanel("qr-transfer-import");
+      setStatus(
+        "Transfer verified. Importing progress replaces this device’s saved progress; choose whether to replace its settings too.",
+      );
+    } catch (error) {
+      if (
+        generation === modalGeneration &&
+        fileGeneration === fileImportGeneration
+      ) {
+        setStatus(error.message || "Unable to read the transfer file.", true);
+      }
+    } finally {
+      if (fileGeneration === fileImportGeneration) input.value = "";
+    }
+  }
+
   function loadQrLibraries() {
     if (libraryPromise) return libraryPromise;
     libraryPromise = Promise.all(
@@ -795,6 +891,8 @@
     showHome,
     startExport,
     startScan,
+    exportFile,
+    importFile,
     importProgress,
     internals: {
       acceptFrame,
@@ -802,8 +900,10 @@
       crc32,
       validateTransfer,
       createTransferData,
+      parseTransferFileText,
       base64UrlToText,
       MAX_TRANSFER_BYTES,
+      MAX_TRANSFER_FILE_BYTES,
     },
   };
   globalScope.QRTransfer = QRTransfer;

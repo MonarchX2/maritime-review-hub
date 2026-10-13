@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-14.2" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-14.3" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-14.2"
+      href="icon.svg?v=mrh-release-14.3"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-14.2" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-14.3" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-14.2"
+      href="tailwind.generated.css?v=mrh-release-14.3"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-14.2"
+      href="styles.css?v=mrh-release-14.3"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-14.2"
+      href="tailwind.generated.css?v=mrh-release-14.3"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-14.2"
+      href="styles.css?v=mrh-release-14.3"
       media="print"
       onload="
         this.media = 'all';
@@ -1748,6 +1748,14 @@
             </h4>
             <div class="mt-3">
               <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                Version 14.3
+              </h5>
+              <ul
+                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+              >
+                <li>Added offline-capable transfer files for large progress exports; improved QR scanning reliability.</li>
+              </ul>
+              <h5 class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200">
                 Version 14.2
               </h5>
               <ul
@@ -2153,7 +2161,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 14.2</p>
+    <p id="site-version" class="site-version">Version 14.3</p>
 
     <div
       id="qr-transfer-modal"
@@ -2195,25 +2203,57 @@
 
         <div id="qr-transfer-home" class="space-y-3">
           <p class="user-text-content text-sm text-gray-600 dark:text-gray-300">
-            Move saved answers and your optional saved quiz session to another device. Both devices need an internet connection to load the QR tools; the receiving device needs a camera. Only scan a code from a device you trust.
+            Transfer your progress without sending it through a server. Save a file and move it between devices using AirDrop, Nearby Share, USB, or another method you trust. This works online or offline.
           </p>
           <button
-            id="qr-transfer-export-button"
             type="button"
-            onclick="QRTransfer.startExport()"
+            onclick="QRTransfer.exportFile()"
             class="w-full rounded-lg bg-brand-600 px-4 py-3 font-bold text-white hover:bg-brand-700"
           >
-            <i class="fa-solid fa-share-nodes mr-2" aria-hidden="true"></i>
-            Show transfer QR code
+            <i class="fa-solid fa-file-arrow-down mr-2" aria-hidden="true"></i>
+            Save transfer file (recommended)
           </button>
           <button
             type="button"
-            onclick="QRTransfer.startScan()"
+            onclick="document.getElementById('qr-transfer-file-input').click()"
             class="w-full rounded-lg bg-gray-100 px-4 py-3 font-bold text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
           >
-            <i class="fa-solid fa-camera mr-2" aria-hidden="true"></i>
-            Scan a transfer QR code
+            <i class="fa-solid fa-file-arrow-up mr-2" aria-hidden="true"></i>
+            Import transfer file
           </button>
+          <input
+            id="qr-transfer-file-input"
+            class="hidden"
+            type="file"
+            accept=".json,.mrh-transfer.json,application/json"
+            onchange="QRTransfer.importFile(this)"
+            aria-label="Choose a progress transfer file"
+          />
+          <p class="user-text-content text-xs text-gray-500 dark:text-gray-400">
+            Transfer files contain private progress data. Only share them with devices you trust, and delete them when finished.
+          </p>
+          <div class="border-t border-gray-200 pt-3 dark:border-gray-700">
+            <p class="user-text-content mb-3 text-sm text-gray-600 dark:text-gray-300">
+              For small transfers, you can also scan a QR code. Large progress is more reliable as a file.
+            </p>
+            <button
+              id="qr-transfer-export-button"
+              type="button"
+              onclick="QRTransfer.startExport()"
+              class="w-full rounded-lg bg-brand-600 px-4 py-3 font-bold text-white hover:bg-brand-700"
+            >
+              <i class="fa-solid fa-share-nodes mr-2" aria-hidden="true"></i>
+              Show transfer QR code
+            </button>
+            <button
+              type="button"
+              onclick="QRTransfer.startScan()"
+              class="w-full rounded-lg bg-gray-100 px-4 py-3 font-bold text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+            >
+              <i class="fa-solid fa-camera mr-2" aria-hidden="true"></i>
+              Scan a transfer QR code
+            </button>
+          </div>
         </div>
 
         <div id="qr-transfer-export" class="hidden text-center">
@@ -2406,7 +2446,7 @@
         if (trigger) trigger.setAttribute("aria-expanded", String(!isHidden));
       }
     </script>
-    <script src="app-entry.js?v=mrh-release-14.2" defer></script>
+    <script src="app-entry.js?v=mrh-release-14.3" defer></script>
 
     <div
       id="app-update-notice"
