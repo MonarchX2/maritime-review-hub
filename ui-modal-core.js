@@ -306,6 +306,9 @@
     const inputEl = document.getElementById("folder-password-input");
     if (inputEl) {
       inputEl.value = "";
+      inputEl.setAttribute("autocomplete", "new-password");
+      inputEl.setAttribute("autocapitalize", "off");
+      inputEl.setAttribute("spellcheck", "false");
       inputEl.setAttribute("aria-invalid", "false");
       inputEl.classList.remove("border-red-500", "focus:ring-red-500");
     }
@@ -348,6 +351,9 @@
     const inputEl = document.getElementById("deck-password-input");
     if (inputEl) {
       inputEl.value = "";
+      inputEl.setAttribute("autocomplete", "new-password");
+      inputEl.setAttribute("autocapitalize", "off");
+      inputEl.setAttribute("spellcheck", "false");
       inputEl.setAttribute("aria-invalid", "false");
       inputEl.classList.remove("border-red-500", "focus:ring-red-500");
     }

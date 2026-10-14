@@ -14,12 +14,9 @@ assert.match(
   appCore,
   /Tree view may be difficult to read on your current screen\. For a better experience, use a larger screen or rotate your device to landscape mode\./,
 );
-assert.match(appCore, /supportsMobileLandscapeAction\(\)/);
-assert.match(appCore, /orientation\.lock\("landscape"\)/);
-assert.match(
-  appCore,
-  /Your browser cannot change orientation here\. Please rotate your device manually\./,
-);
+assert.doesNotMatch(appCore, /supportsMobileLandscapeAction/);
+assert.doesNotMatch(appCore, /orientation\.lock\("landscape"\)/);
+assert.doesNotMatch(appCore, /tree-view-landscape-action|switchTreeViewToLandscape/);
 assert.match(appCore, /rootScope\.addEventListener\(\s*"resize"/);
 assert.match(appCore, /treeViewNoticeDismissed \|\| !isTreeViewConstrained\(\)/);
 assert.match(styles, /\.tree-view-readability-notice\[hidden\]\s*\{\s*display:\s*none;/);

@@ -44,7 +44,6 @@
   }
 
   // ===================== VIEW NAVIGATION =====================
-  const viewTransitionDuration = 100;
   let navigationQueue = Promise.resolve();
 
   async function confirmNavigationAwayFromSession() {
@@ -93,13 +92,16 @@
     const currentView = document.querySelector(".view-section.active");
     const leavingDeckReview =
       currentView?.id === "view-deck-review" && viewId !== "deck-review";
+    const returningToDashboard =
+      viewId === "dashboard" && currentView?.id !== "view-dashboard";
+    if (returningToDashboard) {
+      globalScope.updateDashboard();
+      globalScope.renderCategoryProgressNow?.({ allowInactive: true });
+    }
+
     if (currentView) {
       currentView.setAttribute("inert", "");
-      currentView.classList.add("is-leaving");
-      await new Promise((resolve) =>
-        lifecycle.setTimeout(resolve, viewTransitionDuration),
-      );
-      currentView.classList.remove("active", "is-leaving");
+      currentView.classList.remove("active");
     }
 
     viewElement.removeAttribute("inert");
@@ -122,7 +124,7 @@
     } else if (globalScope.getNavigationPathFromUrl?.()[0] === "settings") {
       globalScope.updateNavigationUrl?.(state.currentPath || []);
     }
-    globalScope.updateDashboard();
+    if (!returningToDashboard) globalScope.updateDashboard();
     if (viewId === "stats") globalScope.renderCharts();
     return true;
   }

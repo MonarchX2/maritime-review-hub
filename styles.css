@@ -1318,30 +1318,6 @@ button:active:not(:disabled) {
 .view-section.active {
   display: block;
   opacity: 1;
-  animation: viewFadeIn 100ms ease both;
-}
-
-.view-section.is-leaving {
-  pointer-events: none;
-  animation: viewFadeOut 100ms ease both;
-}
-
-@keyframes viewFadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes viewFadeOut {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
 }
 
 .auth-panel-hidden {

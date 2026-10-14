@@ -54,7 +54,7 @@ assert.match(
 );
 assert.ok(
   appCore.includes("group bg-white dark:bg-gray-800 rounded-xl") &&
-    appCore.includes("overflow-hidden flex flex-col transform hover:-translate-y-1 relative"),
+    appCore.includes("overflow-hidden flex flex-col relative"),
   "Folder cards should size from their content without a forced height.",
 );
 assert.match(styles, /\*\s*\{\s*scrollbar-width:\s*none;/);

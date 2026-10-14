@@ -1356,13 +1356,21 @@
   }
 
   function checkSavedSession() {
+    const resumeFeatureEnabled = false;
+    const resumeContainer = getElement("resume-container");
+    const contextEl = getElement("resume-context");
+
+    if (!resumeFeatureEnabled) {
+      resumeContainer?.classList.add("hidden");
+      if (contextEl) contextEl.textContent = "";
+      return;
+    }
+
     const prefs = getPrefs();
     const saved =
       typeof globalScope.getStoredItem === "function"
         ? globalScope.getStoredItem("saved_session")
         : null;
-    const resumeContainer = getElement("resume-container");
-    const contextEl = getElement("resume-context");
     const activity = prefs.lastActivity;
 
     if (contextEl && activity) {

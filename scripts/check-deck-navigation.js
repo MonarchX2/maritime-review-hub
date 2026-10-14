@@ -17,7 +17,7 @@ for (const inputId of ["deck-password-input", "folder-password-input"]) {
   assert.ok(inputMarkup, `${inputId} should exist in the page`);
   assert.match(
     inputMarkup,
-    /autocomplete="off"/,
+    /autocomplete="(?:off|new-password)"/,
     `${inputId} should not trigger browser password autofill`,
   );
   assert.match(
@@ -29,6 +29,17 @@ for (const inputId of ["deck-password-input", "folder-password-input"]) {
     inputMarkup,
     /autocapitalize="off"/,
     `${inputId} should preserve entered password casing on mobile`,
+  );
+}
+for (const passwordModalId of ["deck-password-modal", "folder-password-modal"]) {
+  const passwordModal = indexSource.match(
+    new RegExp(`id="${passwordModalId}"[\\s\\S]*?</div>\\s*</div>`, "s"),
+  )?.[0];
+  assert.ok(passwordModal, `${passwordModalId} should exist in the page`);
+  assert.match(
+    passwordModal,
+    /class="mt-4 flex gap-3"/,
+    `${passwordModalId} should have consistent spacing above its buttons`,
   );
 }
 
@@ -51,6 +62,30 @@ assert.match(
   appCoreSource,
   /class="deck-card \$\{isDeckInteractionBusy \? "deck-interaction-blocked" : "cursor-pointer"\} \$\{syncLockClass\} \$\{isLocked \? "password-protected-deck" : ""\}/,
   "password-protected deck cards should receive the blur class",
+);
+const deckCardMarkup = appCoreSource.match(
+  /<div data-deck-key="\$\{escapeHTML\(subj\)\}"[\s\S]*?aria-busy="\$\{isDeckInteractionBusy \|\| isDeckLoading\}">/,
+)?.[0];
+assert.ok(deckCardMarkup, "dashboard deck card markup should exist");
+assert.doesNotMatch(
+  deckCardMarkup,
+  /hover:-translate-y|active:scale|transition-transform/,
+  "deck cards should not move or animate during entry and exit navigation",
+);
+const folderCardMarkup = appCoreSource.match(
+  /<div data-folder-key="\$\{escapeHTML\(key\)\}"[\s\S]*?overflow-hidden flex flex-col relative">/,
+)?.[0];
+assert.ok(folderCardMarkup, "dashboard folder card markup should exist");
+assert.doesNotMatch(
+  folderCardMarkup,
+  /hover:-translate-y|transition-transform/,
+  "folders should not move during entry and exit navigation",
+);
+assert.match(indexSource, /<div id="category-list"><\/div>/);
+assert.match(
+  appCoreSource,
+  /container\.className = "";/,
+  "dashboard list rendering should not animate layout changes",
 );
 assert.match(
   appCoreSource,
@@ -89,8 +124,8 @@ assert.match(
 );
 assert.match(
   indexSource,
-  /id="deck-password-loading-status"[\s\S]*?role="status"[\s\S]*?fa-spinner fa-spin/,
-  "the deck password dialog should provide an accessible loading indicator",
+  /id="deck-password-loading-status"[\s\S]*?hidden[\s\S]*?role="status"[\s\S]*?fa-spinner fa-spin/,
+  "the deck password dialog should provide a hidden accessible loading indicator",
 );
 assert.match(
   appCoreSource,
@@ -105,6 +140,21 @@ assert.match(
   passwordSubmitHandler,
   /setDeckPasswordTransitionLoading\(\s*true,[\s\S]*?closeDeckPasswordModal\(\);[\s\S]*?setDeckPasswordTransitionLoading\(false\)/,
   "the password dialog should remain open and loading until the operation finishes",
+);
+assert.match(
+  passwordSubmitHandler,
+  /catch \(error\) \{[\s\S]*?setFormError\("deck-password-input", "Incorrect password\."\);[\s\S]*?input\?\.focus\(\);/,
+  "incorrect deck passwords should be reported inline in the dialog",
+);
+assert.match(
+  appCoreSource,
+  /errorText\.includes\("incorrect password"\) && pass\)\s*\{\s*throw new Error\("Incorrect password\."\);/,
+  "incorrect password responses returned as data should reach the inline dialog error",
+);
+assert.match(
+  appCoreSource,
+  /if \(\s*pass &&\s*\(\/incorrect password\/i\.test\(String\(err\?\.message \|\| ""\)\) \|\|\s*String\(err\?\.code \|\| ""\)\.toUpperCase\(\) === "PASSWORD_REQUIRED"\)\s*\) \{\s*throw err;\s*\}/,
+  "incorrect password fetch errors should bypass the background toast and reach the dialog",
 );
 assert.match(
   appCoreSource,
@@ -195,6 +245,7 @@ const modalHeading = createTransitionElement(modalShell);
 const transitionModal = createTransitionElement(modalShell);
 transitionModal.setAttribute("aria-busy", "previous");
 const transitionStatus = createTransitionElement();
+transitionStatus.hidden = true;
 transitionStatus.statusLabel = { textContent: "" };
 transitionModal.controls = [
   createTransitionElement(),
@@ -222,7 +273,7 @@ vm.runInContext(
   transitionContext,
 );
 transitionContext.setDeckPasswordTransitionLoading(true, "Switching modes...");
-assert.equal(transitionStatus.classList.contains("hidden"), false);
+assert.equal(transitionStatus.hidden, false);
 assert.equal(transitionStatus.statusLabel.textContent, "Switching modes...");
 assert.equal(pageContent.hasAttribute("inert"), true);
 assert.equal(pageContent.getAttribute("aria-busy"), "true");
@@ -235,12 +286,19 @@ assert.equal(
   "the submit button remains under the busy-button lifecycle",
 );
 transitionContext.setDeckPasswordTransitionLoading(false);
-assert.equal(transitionStatus.classList.contains("hidden"), true);
+assert.equal(transitionStatus.hidden, true);
 assert.equal(pageContent.hasAttribute("inert"), false);
 assert.equal(pageContent.getAttribute("aria-busy"), "false");
 assert.equal(modalHeading.hasAttribute("inert"), false);
 assert.equal(transitionModal.getAttribute("aria-busy"), "previous");
 assert.equal(transitionModal.controls[0].disabled, false);
+transitionContext.setDeckPasswordTransitionLoading(true, "");
+assert.equal(
+  transitionStatus.hidden,
+  true,
+  "the redundant modal loading message should stay hidden during a normal deck load",
+);
+transitionContext.setDeckPasswordTransitionLoading(false);
 assert.equal(
   transitionModal.controls[1].disabled,
   true,
@@ -322,12 +380,7 @@ for (const [id, active] of [
 const context = {
   module: { exports: {} },
   state: { session: { active: false }, currentPath: [] },
-  LifecycleUtils: {
-    setTimeout(callback) {
-      timers.push(callback);
-      return timers.length;
-    },
-  },
+  LifecycleUtils: {},
   document: {
     head: { appendChild() {} },
     createElement: () => ({ textContent: "" }),
@@ -338,6 +391,15 @@ const context = {
         : null,
   },
   updateDashboard() {},
+  renderCategoryProgressNow(options) {
+    assert.equal(options?.allowInactive, true);
+    assert.equal(
+      views.get("view-dashboard").isActive(),
+      false,
+      "dashboard progress should be rendered before the dashboard is revealed",
+    );
+    this.dashboardPreRendered = true;
+  },
 };
 context.globalScope = context;
 vm.createContext(context);
@@ -350,26 +412,21 @@ vm.runInContext(
 async function checkConcurrentNavigation() {
   const firstNavigation = context.module.exports.navigate("practice");
   const secondNavigation = context.module.exports.navigate("settings");
-
-  async function waitForTimerCount(count) {
-    for (let attempt = 0; attempt < 10 && timers.length < count; attempt += 1) {
-      await Promise.resolve();
-    }
-    assert.equal(timers.length, count);
-  }
-
-  await waitForTimerCount(1);
-  assert.equal(timers.length, 1, "the first view transition should start alone");
-  timers.shift()();
-  await waitForTimerCount(1);
-  timers.shift()();
   await Promise.all([firstNavigation, secondNavigation]);
+  assert.equal(timers.length, 0, "view navigation should not wait for animation timers");
 
   const activeViews = [...views.values()].filter((view) => view.isActive());
   assert.deepEqual(
     activeViews.map((view) => view.id),
     ["view-settings"],
     "rapid navigation must leave only the last requested view active",
+  );
+
+  await context.module.exports.navigate("dashboard");
+  assert.equal(
+    context.dashboardPreRendered,
+    true,
+    "returning to the dashboard should render its latest deck state before revealing it",
   );
 }
 

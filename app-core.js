@@ -98,49 +98,6 @@
     updateTreeViewReadabilityNotice();
   }
 
-  async function switchTreeViewToLandscape() {
-    const orientation = rootScope.screen?.orientation;
-    const action = document.getElementById("tree-view-landscape-action");
-    const status = document.getElementById("tree-view-landscape-status");
-
-    if (!orientation || typeof orientation.lock !== "function") {
-      if (status) {
-        status.textContent =
-          "Your browser cannot change orientation here. Please rotate your device manually.";
-      }
-      if (action) action.hidden = true;
-      return;
-    }
-
-    try {
-      await orientation.lock("landscape");
-      if (status) {
-        status.textContent =
-          "Landscape mode requested. If your screen does not rotate, rotate your device manually.";
-      }
-    } catch {
-      if (status) {
-        status.textContent =
-          "Your browser cannot change orientation here. Please rotate your device manually.";
-      }
-      if (action) action.hidden = true;
-    }
-  }
-
-  function supportsMobileLandscapeAction() {
-    const navigator = rootScope.navigator || {};
-    const isMobile =
-      navigator.userAgentData?.mobile === true ||
-      (Number(navigator.maxTouchPoints) > 0 &&
-        Number(rootScope.innerWidth) <= 900) ||
-      (typeof rootScope.matchMedia === "function" &&
-        rootScope.matchMedia("(pointer: coarse)").matches);
-    return (
-      isMobile &&
-      typeof rootScope.screen?.orientation?.lock === "function"
-    );
-  }
-
   function scheduleAppAnimationFrame(callback) {
     return renderingScheduler.schedule(callback);
   }
@@ -1659,7 +1616,7 @@
     });
   }
 
-  function renderCategoryProgressNow() {
+  function renderCategoryProgressNow({ allowInactive = false } = {}) {
     if (!document.body) {
       if (!categoryProgressRenderScheduled) {
         categoryProgressRenderScheduled = true;
@@ -1674,7 +1631,11 @@
     }
 
     const dashboardView = document.getElementById("view-dashboard");
-    if (dashboardView && !dashboardView.classList.contains("active")) {
+    if (
+      !allowInactive &&
+      dashboardView &&
+      !dashboardView.classList.contains("active")
+    ) {
       categoryProgressRenderQueued = false;
       return;
     }
@@ -1866,12 +1827,6 @@
         ? `<div id="tree-view-readability-notice" class="tree-view-readability-notice" role="note" hidden>
             <p class="tree-view-readability-message">Tree view may be difficult to read on your current screen. For a better experience, use a larger screen or rotate your device to landscape mode.</p>
             <div class="tree-view-readability-actions">
-              <span id="tree-view-landscape-status" role="status" aria-live="polite"></span>
-              ${
-                supportsMobileLandscapeAction()
-                  ? '<button id="tree-view-landscape-action" type="button" onclick="switchTreeViewToLandscape()">Switch to Landscape</button>'
-                  : ""
-              }
               <button type="button" onclick="dismissTreeViewReadabilityNotice()">Dismiss</button>
             </div>
           </div>`
@@ -1920,6 +1875,9 @@
             : key;
         return fullKey;
       };
+      const isLockedListingEntry = (entry, path) =>
+        Boolean(entry.node?._data?.Locked) ||
+        isDeckLocked([...path, entry.key].join("::"));
       const isPopularDeckPath = (path) => popularDeckPaths.has(path);
       const keys = Object.keys(currentNode)
         .map((key) => {
@@ -1929,9 +1887,21 @@
             nodeMetadataCache,
             folderStatsCache,
           );
-          return { key, metadata };
+          return { key, metadata, node };
         })
         .sort((leftEntry, rightEntry) => {
+          const leftLocked = isLockedListingEntry(
+            leftEntry,
+            state.currentPath || [],
+          );
+          const rightLocked = isLockedListingEntry(
+            rightEntry,
+            state.currentPath || [],
+          );
+          if (leftLocked !== rightLocked) {
+            return leftLocked ? 1 : -1;
+          }
+
           const leftKey = getPinnedSortKey(leftEntry.key);
           const rightKey = getPinnedSortKey(rightEntry.key);
 
@@ -2182,6 +2152,7 @@
           return Object.keys(children)
             .map((key) => ({
               key,
+              node: children[key],
               metadata: getNodeMetadata(
                 children[key],
                 nodeMetadataCache,
@@ -2189,6 +2160,11 @@
               ),
             }))
             .sort((leftEntry, rightEntry) => {
+              const leftLocked = isLockedListingEntry(leftEntry, path);
+              const rightLocked = isLockedListingEntry(rightEntry, path);
+              if (leftLocked !== rightLocked) {
+                return leftLocked ? 1 : -1;
+              }
               if (
                 leftEntry.metadata.isFolder !== rightEntry.metadata.isFolder
               ) {
@@ -2510,7 +2486,7 @@
         }
 
         return `
-        <div data-deck-key="${escapeHTML(subj)}" onclick="handleDeckClick('${encodedSubj}')" class="deck-card ${isDeckInteractionBusy ? "deck-interaction-blocked" : "cursor-pointer"} ${syncLockClass} ${isLocked ? "password-protected-deck" : ""} ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-transform duration-400 relative w-full flex flex-col" aria-busy="${isDeckInteractionBusy || isDeckLoading}">
+        <div data-deck-key="${escapeHTML(subj)}" onclick="handleDeckClick('${encodedSubj}')" class="deck-card ${isDeckInteractionBusy ? "deck-interaction-blocked" : "cursor-pointer"} ${syncLockClass} ${isLocked ? "password-protected-deck" : ""} ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg ${themeShadowHover} border relative w-full flex flex-col" aria-busy="${isDeckInteractionBusy || isDeckLoading}">
           <div id="${loaderId}" data-deck-loader class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex-col items-center justify-center transition-opacity">
             <i class="fa-solid fa-spinner fa-spin text-3xl ${loaderColor} mb-2"></i>
             <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Loading...</span>
@@ -2634,7 +2610,7 @@
           `;
 
             html += `
-          <div data-folder-key="${escapeHTML(key)}" onclick="enterFolder(decodeHandlerValue('${encodeHandlerValue(key)}'), ${isLocked})" class="${deckInteractionLocked ? "deck-interaction-blocked" : "cursor-pointer"} ${isLocked ? "password-protected-deck" : ""} group bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-transform duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col transform hover:-translate-y-1 relative">
+          <div data-folder-key="${escapeHTML(key)}" onclick="enterFolder(decodeHandlerValue('${encodeHandlerValue(key)}'), ${isLocked})" class="${deckInteractionLocked ? "deck-interaction-blocked" : "cursor-pointer"} ${isLocked ? "password-protected-deck" : ""} group bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col relative">
             <div class="h-12 ${folderColorClass} transition-colors relative">
               <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
             </div>
@@ -2760,7 +2736,7 @@
         };
 
         reconcileChildren(container, template.content);
-        container.className = "transition-all duration-500";
+        container.className = "";
       }
       updateDeckProgressBarsByRow();
       if (
@@ -3120,6 +3096,9 @@
         let newQuestions = response;
         if (newQuestions && newQuestions.error) {
           const errorText = String(newQuestions.error || "").toLowerCase();
+          if (errorText.includes("incorrect password") && pass) {
+            throw new Error("Incorrect password.");
+          }
           if (
             errorText.includes("incorrect password") ||
             errorText.includes("requires a password") ||
@@ -3345,6 +3324,13 @@
           rebuildQuestionIndex();
         }
         appLogger.warn("Network fetch failed.", err);
+        if (
+          pass &&
+          (/incorrect password/i.test(String(err?.message || "")) ||
+            String(err?.code || "").toUpperCase() === "PASSWORD_REQUIRED")
+        ) {
+          throw err;
+        }
         if (!suppressRender) {
           showToast(
             getDeckFetchFailureMessage(subject, err),
@@ -4019,6 +4005,11 @@
   let pendingResumeSession = null;
 
   async function resumeSession(password = null) {
+    const resumeFeatureEnabled = false;
+    if (!resumeFeatureEnabled) {
+      return false;
+    }
+
     if (
       typeof window !== "undefined" &&
       window.__MRH_BOOTSTRAP__?.status !== "ready" &&
@@ -4755,7 +4746,7 @@
     const status = document.getElementById("deck-password-loading-status");
     const statusLabel = status?.querySelector("span");
     if (statusLabel) statusLabel.textContent = statusText;
-    status?.classList.toggle("hidden", !isLoading);
+    if (status) status.hidden = !isLoading || !statusText;
 
     if (isLoading) {
       if (!deckPasswordTransitionSnapshots) {
@@ -5026,7 +5017,7 @@
               pendingPracticeReviewSwitch ||
                 pendingDeckAction === "resume-review"
                 ? "Switching modes..."
-                : "Loading the deck...",
+                : "",
             );
             try {
               if (pendingDeckAction === "resume") {
@@ -5052,6 +5043,14 @@
               if (input?.value === pass) closeDeckPasswordModal();
             } catch (error) {
               appLogger.error("Unable to continue after password verification.", error);
+              if (
+                /incorrect password/i.test(String(error?.message || "")) ||
+                String(error?.code || "").toUpperCase() === "PASSWORD_REQUIRED"
+              ) {
+                setFormError("deck-password-input", "Incorrect password.");
+                input?.focus();
+                return;
+              }
               showToast(
                 "The requested mode could not be opened. Please try again.",
                 "error",
@@ -5897,7 +5896,6 @@
     refreshPendingDeckPayloads,
     dismissTreeViewReadabilityNotice,
     dismissDeckNotFound,
-    switchTreeViewToLandscape,
     toggleTreeNode,
     renderCharts,
     resetCategory,
