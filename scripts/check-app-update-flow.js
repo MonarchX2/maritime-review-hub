@@ -93,8 +93,15 @@ assert.match(appEntry, /const versionLabel = `Version \$\{APP_DISPLAY_VERSION\}`
 assert.match(appEntry, /\["site-version", "about-version"\]/);
 assert.match(appEntry, /APP_UPDATE_CHECK_INTERVAL_MS = 5 \* 60 \* 1000/);
 assert.match(appEntry, /document\.addEventListener\("visibilitychange"/);
-assert.match(appEntry, /window\.addEventListener\("focus"/);
+assert.match(appEntry, /window\.addEventListener\("focus",\s*checkUpdateWhenForegrounded\)/);
+assert.match(appEntry, /window\.addEventListener\("pageshow",\s*checkUpdateWhenForegrounded\)/);
+assert.match(appEntry, /const checkUpdateWhenForegrounded = \(\) => \{[\s\S]*?checkForAppUpdate\(\)[\s\S]*?applyPendingAppUpdate\(\)/);
 assert.match(appEntry, /window\.addEventListener\("online"/);
+const siteHeader = html.match(/<header[\s\S]*?<\/header>/)?.[0];
+assert.ok(siteHeader, "the app header should be present");
+assert.match(siteHeader, /px-3 py-2 sm:px-4 sm:py-2/);
+assert.match(siteHeader, /gap-4 relative/);
+assert.match(html, /header\s*\{[\s\S]*?min-height:\s*48px;/);
 assert.match(appEntry, /serviceWorkerRegistration\.update\(\)/);
 assert.match(appEntry, /updateViaCache:\s*"none"/);
 assert.equal(

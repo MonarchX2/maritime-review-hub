@@ -1,8 +1,8 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-release-14.12.0";
-  const APP_DISPLAY_VERSION = "14.12.0";
+  const APP_VERSION = "mrh-release-14.13.0";
+  const APP_DISPLAY_VERSION = "14.13.0";
   const UPDATE_QUERY_PARAMETER = "__mrh_update";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
   const bootstrapLogger = () => rootScope.DebugUtils || console;
@@ -373,9 +373,12 @@
       void checkForAppUpdate();
       void applyPendingAppUpdate();
     });
-    window.addEventListener("focus", () => {
+    const checkUpdateWhenForegrounded = () => {
+      void checkForAppUpdate();
       void applyPendingAppUpdate();
-    });
+    };
+    window.addEventListener("focus", checkUpdateWhenForegrounded);
+    window.addEventListener("pageshow", checkUpdateWhenForegrounded);
     window.addEventListener("hashchange", () => {
       void applyPendingAppUpdate();
     });
