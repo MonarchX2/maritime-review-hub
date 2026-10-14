@@ -275,6 +275,16 @@ vm.runInContext(
 transitionContext.setDeckPasswordTransitionLoading(true, "Switching modes...");
 assert.equal(transitionStatus.hidden, false);
 assert.equal(transitionStatus.statusLabel.textContent, "Switching modes...");
+assert.match(
+  appCoreSource,
+  /setDeckPasswordTransitionLoading\(true, ""\);/,
+  "password modal mode switches should hide the Switching modes status text",
+);
+assert.doesNotMatch(
+  appCoreSource,
+  /"Switching modes\.\.\."/,
+  "the password modal should not display the Switching modes status text",
+);
 assert.equal(pageContent.hasAttribute("inert"), true);
 assert.equal(pageContent.getAttribute("aria-busy"), "true");
 assert.equal(modalHeading.hasAttribute("inert"), true);

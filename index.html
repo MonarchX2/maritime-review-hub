@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-14.14.1" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-10.15.26" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-14.14.1"
+      href="icon.svg?v=mrh-release-10.15.26"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-14.14.1" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-10.15.26" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-14.14.1"
+      href="tailwind.generated.css?v=mrh-release-10.15.26"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-14.14.1"
+      href="styles.css?v=mrh-release-10.15.26"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-14.14.1"
+      href="tailwind.generated.css?v=mrh-release-10.15.26"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-14.14.1"
+      href="styles.css?v=mrh-release-10.15.26"
       media="print"
       onload="
         this.media = 'all';
@@ -405,7 +405,7 @@
 
         <!-- Subject Progress Header Row -->
         <div
-          class="dashboard-header-row flex justify-between items-center mb-4 gap-2 flex-nowrap"
+          class="dashboard-header-row flex justify-between items-center mb-0 gap-2 flex-nowrap"
         >
           <div class="dashboard-subject-heading min-w-0 overflow-hidden flex-1">
             <h2
@@ -427,7 +427,7 @@
             <details id="deck-source-menu" class="relative">
               <summary
                 id="deck-source-trigger"
-                class="dashboard-control flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-colors text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 outline-none cursor-pointer list-none"
+                class="dashboard-control flex items-center gap-1.5 rounded-lg transition-colors text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 outline-none cursor-pointer list-none"
                 aria-label="Filter source"
               >
                 <span id="deck-source-label">All Decks</span>
@@ -487,7 +487,7 @@
             <details id="deck-sort-menu" class="relative">
               <summary
                 id="deck-sort-trigger"
-                class="dashboard-control flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-colors text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 outline-none cursor-pointer list-none"
+                class="dashboard-control flex items-center gap-1.5 rounded-lg transition-colors text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 outline-none cursor-pointer list-none"
                 aria-label="Sort decks"
               >
                 <i id="deck-sort-icon" class="fa-solid fa-arrow-up"></i>
@@ -549,7 +549,7 @@
 
             <!-- Study/Quiz Mode Toggle -->
             <label
-              class="dashboard-control flex items-center justify-center cursor-pointer bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-colors"
+              class="dashboard-control flex items-center justify-center cursor-pointer rounded-lg transition-colors"
             >
               <span
                 id="modeLabel"
@@ -582,7 +582,7 @@
               onclick="toggleLayout()"
               aria-label="Cycle subject layout"
               title="Cycle subject layout"
-              class="dashboard-control bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-colors"
+              class="dashboard-control rounded-lg transition-colors"
               type="button"
             >
               <i
@@ -1031,60 +1031,63 @@
       <!-- ============================================================ -->
       <!-- DECK REVIEW SECTION -->
       <section id="view-deck-review" class="view-section hidden">
-        <div class="flex items-center justify-between mb-6 gap-3 flex-nowrap">
-          <button
-            onclick="returnFromStudyMode()"
-            class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-10 h-10 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center text-lg flex-shrink-0"
-            aria-label="Return to Main Menu"
-            title="Return to Main Menu"
-            type="button"
-          >
-            <i class="fa-solid fa-arrow-left"></i>
-          </button>
-          <div class="min-w-0 overflow-hidden flex-1">
+        <div class="review-header-row mb-4 flex flex-col gap-0">
+          <div class="min-w-0 text-center leading-tight">
             <h2
-              class="truncate font-bold min-w-0 overflow-hidden text-lg md:text-2xl text-gray-800 dark:text-gray-100 block"
+              class="font-bold min-w-0 text-lg md:text-2xl text-gray-800 dark:text-gray-100 leading-tight"
               id="deck-review-title"
             >
               Review Deck
             </h2>
+            <p
+              class="text-base md:text-xl text-gray-500 dark:text-gray-400 leading-tight"
+              id="deck-review-parent"
+              hidden
+            ></p>
           </div>
-
-          <div class="flex items-center gap-2 flex-shrink-0">
+          <div class="-mt-1 flex items-center justify-between gap-3">
             <button
-              id="btn-switch-to-quiz"
-              type="button"
-              onclick="switchReviewToPractice()"
-              class="flex-shrink-0 inline-flex items-center justify-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-brand-600 dark:text-brand-400 h-10 px-3 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95"
-              aria-label="Switch to Quiz Mode"
-              title="Switch to Quiz Mode"
-            >
-              <i class="fa-solid fa-clipboard-question text-brand-600 dark:text-brand-400" aria-hidden="true"></i>
-              <span class="hidden sm:inline">Quiz</span>
-            </button>
-            <button
-              id="study-filter-toggle"
-              type="button"
-              onclick="toggleStudyFilterMode()"
-              class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-11 h-11 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center text-lg"
-              aria-label="Toggle favorites filter"
-              aria-pressed="false"
-              title="All items"
-            >
-              <i id="study-filter-icon" class="fa-solid fa-list"></i>
-            </button>
-
-            <button
-              onclick="openReviewSettingsModal()"
-              class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-11 h-11 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center text-lg"
-              title="Study Settings"
-              aria-label="Study settings"
+              onclick="returnFromStudyMode()"
+              class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-10 h-10 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center text-lg flex-shrink-0"
+              aria-label="Return to Main Menu"
+              title="Return to Main Menu"
               type="button"
             >
-              <i
-                class="fa-solid fa-gear group-hover:rotate-90 transition-transform"
-              ></i>
+              <i class="fa-solid fa-arrow-left"></i>
             </button>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <button
+                id="btn-switch-to-quiz"
+                type="button"
+                onclick="switchReviewToPractice()"
+                class="flex-shrink-0 inline-flex items-center justify-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-brand-600 dark:text-brand-400 h-10 px-3 rounded-xl font-bold shadow-sm transition-all duration-300 active:scale-95"
+                aria-label="Switch to Quiz Mode"
+                title="Switch to Quiz Mode"
+              >
+                <i class="fa-solid fa-clipboard-question text-brand-600 dark:text-brand-400" aria-hidden="true"></i>
+                <span class="hidden sm:inline">Quiz</span>
+              </button>
+              <button
+                id="study-filter-toggle"
+                type="button"
+                onclick="toggleStudyFilterMode()"
+                class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-11 h-11 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center text-lg"
+                aria-label="Toggle favorites filter"
+                aria-pressed="false"
+                title="All items"
+              >
+                <i id="study-filter-icon" class="fa-solid fa-list"></i>
+              </button>
+              <button
+                onclick="openReviewSettingsModal()"
+                class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 w-11 h-11 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center text-lg"
+                title="Study Settings"
+                aria-label="Study settings"
+                type="button"
+              >
+                <i class="fa-solid fa-gear group-hover:rotate-90 transition-transform"></i>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1809,6 +1812,16 @@
             </h4>
             <div id="about-changelog-entries" class="mt-3">
               <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                Version 10.15.26
+              </h5>
+              <ul
+                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+              >
+                <li>Refined review headers and compacted dashboard controls and navigation spacing.</li>
+                <li>Kept locked-deck mode switches within the already-authorized session and blurred protected deck names in reset confirmations.</li>
+                <li>Fixed dashboard progress indicators briefly appearing on unrelated decks after returning from a session.</li>
+              </ul>
+              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                 Version 14.15.0
               </h5>
               <ul
@@ -1826,6 +1839,7 @@
               >
                 <li>Prevented browser password autofill prompts in locked deck and folder dialogs.</li>
               </ul>
+              <div id="about-changelog-older" class="hidden">
               <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                 Version 14.13.0
               </h5>
@@ -1835,7 +1849,6 @@
                 <li>Reduced the header height on desktop and mobile.</li>
                 <li>Improved update checks when mobile browsers return to the app.</li>
               </ul>
-              <div id="about-changelog-older" class="hidden">
               <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                 Version 14.12.0
               </h5>
@@ -2373,7 +2386,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 14.15.0</p>
+    <p id="site-version" class="site-version">Version 10.15.26</p>
 
     <div
       id="qr-transfer-modal"

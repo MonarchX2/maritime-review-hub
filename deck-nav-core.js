@@ -111,6 +111,9 @@
       typeof globalScope.refreshPendingDeckPayloads === "function"
     ) {
       Promise.resolve(globalScope.refreshPendingDeckPayloads()).catch(
+    if (viewId === "dashboard") {
+      globalScope.updateDeckProgressBarsByRow?.();
+    }
         (error) => {
           logger.error(
             "Unable to apply pending backend payload updates after study.",
@@ -431,6 +434,7 @@
       const subjectIdSet = new Set(subjectQIDs);
 
       if (state.stats.completedQs) {
+          blurEmphasis: isDeckLocked(subject),
         state.stats.completedQs = state.stats.completedQs.filter(
           (id) => !subjectIdSet.has(id),
         );

@@ -273,6 +273,15 @@
     if (titleElement) {
       titleElement.textContent = getShortSubjectLabel(subject, "General");
     }
+    const parentElement = document.getElementById("deck-review-parent");
+    if (parentElement) {
+      const subjectParts = String(subject ?? "")
+        .split("::")
+        .map((part) => part.trim())
+        .filter(Boolean);
+      parentElement.textContent = subjectParts.at(-2) || "";
+      parentElement.hidden = subjectParts.length < 2;
+    }
     if (!reviewMainElement && typeof document !== "undefined") {
       reviewMainElement = document.querySelector("main");
     }

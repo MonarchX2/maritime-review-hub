@@ -1835,7 +1835,7 @@
       let html = isTree
         ? treeReadabilityNoticeHtml
         : `
-      <div data-deck-breadcrumb class="flex flex-nowrap items-center gap-2 mb-6 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto pb-2 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
+      <div data-deck-breadcrumb class="flex flex-nowrap items-center gap-2 mb-5 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto pb-2 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
         <button onclick="goToPath(-1)" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2 flex-shrink-0">
           <i class="fa-solid fa-folder-open text-brand-500"></i> HOME
         </button>
@@ -3356,15 +3356,26 @@
     }
   }
 
-  async function reviewDeck(subject, pass = null, preferCachedQuestions = false) {
+  async function reviewDeck(
+    subject,
+    pass = null,
+    preferCachedQuestions = false,
+    authorizedSessionQuestions = null,
+  ) {
     const loader = document.getElementById(getDeckLoaderId(subject));
+    const cachedSessionQuestions = Array.isArray(authorizedSessionQuestions)
+      ? authorizedSessionQuestions.filter(
+          (question) => String(question?.Subject || "").trim() === subject,
+        )
+      : [];
+    const hasAuthorizedSessionQuestions = cachedSessionQuestions.length > 0;
 
     if (isDeckHidden(subject)) {
       showToast("This deck is hidden and not available.", "warning");
       return false;
     }
 
-    if (isDeckLocked(subject) && !pass) {
+    if (isDeckLocked(subject) && !pass && !hasAuthorizedSessionQuestions) {
       pendingDeckSubject = subject;
       pendingDeckAction = "resume-review";
       openDeckPasswordModal(subject, "resume-review");
@@ -3392,12 +3403,16 @@
       }
     }
 
-    if (validQuestions.length === 0) {
+    if (validQuestions.length === 0 && hasAuthorizedSessionQuestions) {
+      validQuestions = cachedSessionQuestions;
+    }
+
+    if (validQuestions.length === 0 && !hasAuthorizedSessionQuestions) {
       validQuestions = await fetchDeckQuestions(subject, pass, loader);
     }
 
     if (validQuestions.length === 0) {
-      if (isDeckLocked(subject)) {
+      if (isDeckLocked(subject) && !hasAuthorizedSessionQuestions) {
         pendingDeckSubject = subject;
         pendingDeckAction = "resume-review";
         openDeckPasswordModal(subject, "resume-review");
@@ -4044,7 +4059,8 @@
 
     if (
       (isDeckHidden(currentSubject) || isDeckLocked(currentSubject)) &&
-      !password
+      !password &&
+      !hasAuthorizedReviewSession
     ) {
       pendingResumeSession = savedSession;
       pendingDeckSubject = currentSubject;
@@ -4053,7 +4069,11 @@
       return;
     }
 
-    if (currentSubject && (password || isDeckLocked(currentSubject))) {
+    if (
+      currentSubject &&
+      (password ||
+        (isDeckLocked(currentSubject) && !hasAuthorizedReviewSession))
+    ) {
       await fetchDeckQuestions(currentSubject, password);
     }
 
@@ -4103,6 +4123,16 @@
             // FIXED: Replaced 'delete' with setting to null
             // to prevent array/object indexing bugs
             state.session.userAnswers[index] = null;
+    const authorizedReviewQuestions = Array.isArray(
+      options.authorizedReviewQuestions,
+    )
+      ? options.authorizedReviewQuestions.filter(
+          (question) =>
+            String(question?.Subject || "").trim() ===
+            String(currentSubject || "").trim(),
+        )
+      : [];
+    const hasAuthorizedReviewSession = authorizedReviewQuestions.length > 0;
           }
         }
       } else {
@@ -4299,7 +4329,12 @@
 
     let opened;
     try {
-      opened = await reviewDeck(subject, null, true);
+      opened = await reviewDeck(
+        subject,
+        null,
+        true,
+        suspension.session.questions,
+      );
     } catch (error) {
       appLogger.error("Unable to switch from quiz to review.", error);
       restorePracticeAfterReviewFailure();
@@ -4495,7 +4530,14 @@
       if (!confirmed) return false;
 
       if (!(await persistReviewProgress())) return false;
-      await resumeSession();
+      const authorizedReviewQuestions =
+        DeckReviewCore?.getCurrentReviewSubject?.() === subject
+          ? DeckReviewCore.getCurrentReviewQuestions()
+          : [];
+      await resumeSession(null, {
+        allowResume: true,
+        authorizedReviewQuestions,
+      });
       return Boolean(state.session?.active);
     }
 
@@ -5012,13 +5054,7 @@
             ? "Switching..."
             : "Loading...",
           async () => {
-            setDeckPasswordTransitionLoading(
-              true,
-              pendingPracticeReviewSwitch ||
-                pendingDeckAction === "resume-review"
-                ? "Switching modes..."
-                : "",
-            );
+            setDeckPasswordTransitionLoading(true, "");
             try {
               if (pendingDeckAction === "resume") {
                 await resumeSession(pass);
@@ -6011,3 +6047,4 @@
   globalScope.AppCore = AppCore;
   globalScope.initializeApp = initializeApp;
 })(typeof window !== "undefined" ? window : globalThis);
+    updateDeckProgressBarsByRow,

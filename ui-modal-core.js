@@ -109,6 +109,8 @@
           typeof message.emphasis === "string"
         ) {
           const emphasis = document.createElement("strong");
+          emphasis.className =
+            message.blurEmphasis === true ? "locked-deck-name-blurred" : "";
           emphasis.textContent = message.emphasis;
           messageEl.replaceChildren(
             document.createTextNode(String(message.before || "")),

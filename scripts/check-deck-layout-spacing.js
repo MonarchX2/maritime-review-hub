@@ -16,6 +16,11 @@ assert.match(
   /"flex flex-col gap-5"/,
   "List deck cards should use the same spacing as the grid.",
 );
+assert.match(
+  appCore,
+  /<div data-deck-breadcrumb class="[^"]*\bmb-5\b/,
+  "The navigation bar should have the same 1.25rem bottom spacing as the deck layout.",
+);
 assert.doesNotMatch(
   appCore,
   /"flex flex-col space-y-4"/,
