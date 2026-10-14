@@ -685,17 +685,16 @@
         layout === "scroll" &&
         requestedScrollPosition
       ) {
-        const restoreScrollPosition = () =>
-          requestAnimationFrame(() => {
-            const scrollContainer = scrollReviewContent(
-              requestedScrollPosition,
-            );
-            if (scrollContainer) {
-              progress.scrollY = scrollContainer.scrollTop;
-            }
-            updateStudyProgressIndicator();
-            saveState("prefs");
-          });
+        const restoreScrollPosition = () => {
+          const scrollContainer = scrollReviewContent(
+            requestedScrollPosition,
+          );
+          if (scrollContainer) {
+            progress.scrollY = scrollContainer.scrollTop;
+          }
+          updateStudyProgressIndicator();
+          saveState("prefs");
+        };
         if (navigation && typeof navigation.then === "function") {
           navigation.then(restoreScrollPosition);
         } else {

@@ -27,6 +27,47 @@ assert.match(
   /if \(!pathValid && isInitialSyncComplete\) \{\s*showDeckNotFound\(state\.currentPath\);/,
   "missing deep links should show a not-found message after the first category summary loads",
 );
+const deckEntryLockFunction = appCoreSource.match(
+  /  function setDeckEntryInteractionsLocked\(isLocked\) \{[\s\S]*?\n  \}/,
+)?.[0];
+assert.ok(deckEntryLockFunction, "deck entry should have a global interaction lock");
+const entryLockElements = ["header", "main"].map(() => {
+  const attributes = new Map();
+  return {
+    hasAttribute: (name) => attributes.has(name),
+    getAttribute: (name) => attributes.get(name) ?? null,
+    setAttribute: (name, value) => attributes.set(name, value),
+    removeAttribute: (name) => attributes.delete(name),
+    attributes,
+  };
+});
+entryLockElements[0].setAttribute("aria-busy", "false");
+entryLockElements[1].setAttribute("inert", "");
+const entryLockContext = {
+  document: {
+    querySelectorAll: (selector) => {
+      assert.equal(selector, "body");
+      return entryLockElements;
+    },
+  },
+};
+vm.createContext(entryLockContext);
+vm.runInContext(
+  `let deckEntryInteractionSnapshots = null;
+  ${deckEntryLockFunction}
+  globalThis.setDeckEntryInteractionsLocked = setDeckEntryInteractionsLocked;`,
+  entryLockContext,
+);
+entryLockContext.setDeckEntryInteractionsLocked(true);
+entryLockContext.setDeckEntryInteractionsLocked(true);
+assert.equal(entryLockElements[0].hasAttribute("inert"), true);
+assert.equal(entryLockElements[1].hasAttribute("aria-busy"), true);
+entryLockContext.setDeckEntryInteractionsLocked(false);
+assert.equal(entryLockElements[0].hasAttribute("inert"), false);
+assert.equal(entryLockElements[0].getAttribute("aria-busy"), "false");
+assert.equal(entryLockElements[1].hasAttribute("inert"), true);
+assert.equal(entryLockElements[1].hasAttribute("aria-busy"), false);
+
 const pathValidation = appCoreSource.match(
   /if \(!Array\.isArray\(state\.currentPath\)\) state\.currentPath = \[\];[\s\S]*?if \(!pathValid && isInitialSyncComplete\) \{[\s\S]*?\n      \} else if \(pathValid\) \{[\s\S]*?\n      \}/,
 );

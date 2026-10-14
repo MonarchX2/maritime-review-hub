@@ -129,15 +129,14 @@ const setup = `  currentReviewSubject = "Deck";\n  currentReviewQuestions = ques
   const requestedScrollPosition = pendingReviewScrollPosition;
   pendingReviewScrollPosition = null;
   if (requestedScrollPosition) {
-    const restoreScrollPosition = () =>
-      requestAnimationFrame(() => {
-        const scrollContainer = scrollReviewContent(
-          requestedScrollPosition,
-        );
-        if (scrollContainer) progress.scrollY = scrollContainer.scrollTop;
-        updateStudyProgressIndicator();
-        saveState("prefs");
-      });
+    const restoreScrollPosition = () => {
+      const scrollContainer = scrollReviewContent(
+        requestedScrollPosition,
+      );
+      if (scrollContainer) progress.scrollY = scrollContainer.scrollTop;
+      updateStudyProgressIndicator();
+      saveState("prefs");
+    };
     if (navigation && typeof navigation.then === "function") {
       navigation.then(restoreScrollPosition);
     } else {
@@ -182,7 +181,14 @@ assert.equal(progress.page, 1);
 assert.equal(progress.index, 0);
 assert.equal(progress.questionId, "q1");
 assert.equal(progress.questionScrollOffsets.q2, -20);
-context.flushAnimationFrames();
+assert.equal(animationFrameCallbacks.length, 1, "Previous schedules only the review render");
+animationFrameCallbacks.shift()();
+assert.equal(
+  documentScroller.scrollTop,
+  800,
+  "Previous restores the bottom during the render instead of waiting for another scroll frame",
+);
+assert.equal(animationFrameCallbacks.length, 0);
 assert.equal(documentScroller.scrollTop, 800, "Previous returns the document to the bottom");
 assert.equal(progress.scrollY, 800, "Previous saves its final bottom position");
 

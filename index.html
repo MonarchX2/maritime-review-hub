@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-14.10.0" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-14.11.0" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-14.10.0"
+      href="icon.svg?v=mrh-release-14.11.0"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-14.10.0" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-14.11.0" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-14.10.0"
+      href="tailwind.generated.css?v=mrh-release-14.11.0"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-14.10.0"
+      href="styles.css?v=mrh-release-14.11.0"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-14.10.0"
+      href="tailwind.generated.css?v=mrh-release-14.11.0"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-14.10.0"
+      href="styles.css?v=mrh-release-14.11.0"
       media="print"
       onload="
         this.media = 'all';
@@ -1807,6 +1807,15 @@
             </h4>
             <div id="about-changelog-entries" class="mt-3">
               <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                Version 14.11.0
+              </h5>
+              <ul
+                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+              >
+                <li>Stopped review pagination from shaking while restoring the expected previous-page position.</li>
+                <li>Blocked app interactions while a deck is opening and restored controls safely when loading completes.</li>
+              </ul>
+              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                 Version 14.10.0
               </h5>
               <ul
@@ -1825,6 +1834,7 @@
                 <li>Hardened Pages deployments with safe, targeted asset minification and release verification.</li>
                 <li>Removed vulnerable CSS build dependencies while retaining Tailwind v3 browser support.</li>
               </ul>
+              <div id="about-changelog-older" class="hidden">
               <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                 Version 14.9.0
               </h5>
@@ -1834,7 +1844,6 @@
                 <li>Added automatic semantic versioning for feature, fix, and breaking changes.</li>
                 <li>Improved deployment updates with content-hashed assets and safe progress-preserving reloads.</li>
               </ul>
-              <div id="about-changelog-older" class="hidden">
               <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                 Version 14.8
               </h5>
@@ -2302,7 +2311,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 14.10.0</p>
+    <p id="site-version" class="site-version">Version 14.11.0</p>
 
     <div
       id="qr-transfer-modal"

@@ -4585,6 +4585,7 @@
   let deckInteractionLocked = false;
   let activeDeckInteractionKey = null;
   let activeDeckInteractionSubject = null;
+  let deckEntryInteractionSnapshots = null;
 
   function updateRecentDecks(subj) {
     if (!subj) return;
@@ -4703,6 +4704,39 @@
       });
   }
 
+  function setDeckEntryInteractionsLocked(isLocked) {
+      if (typeof document === "undefined") return;
+
+      if (isLocked) {
+        if (deckEntryInteractionSnapshots) return;
+        deckEntryInteractionSnapshots = Array.from(
+          document.querySelectorAll("body"),
+        ).map((element) => ({
+          element,
+          wasInert: element.hasAttribute("inert"),
+          previousAriaBusy: element.getAttribute("aria-busy"),
+        }));
+        deckEntryInteractionSnapshots.forEach(({ element }) => {
+          element.setAttribute("inert", "");
+          element.setAttribute("aria-busy", "true");
+        });
+        return;
+      }
+
+      if (!deckEntryInteractionSnapshots) return;
+      deckEntryInteractionSnapshots.forEach(
+        ({ element, wasInert, previousAriaBusy }) => {
+          if (!wasInert) element.removeAttribute("inert");
+          if (previousAriaBusy === null) {
+            element.removeAttribute("aria-busy");
+          } else {
+            element.setAttribute("aria-busy", previousAriaBusy);
+          }
+        },
+      );
+      deckEntryInteractionSnapshots = null;
+  }
+
   async function handleDeckClick(subj, action = "continue") {
     subj = decodeHandlerValue(subj);
     if (!subj) return;
@@ -4718,6 +4752,7 @@
     deckInteractionLocked = true;
     activeDeckInteractionKey = nextKey;
     activeDeckInteractionSubject = String(subj).trim();
+    setDeckEntryInteractionsLocked(true);
     setOtherDeckInteractionsLocked(activeDeckInteractionSubject, true);
     setTreeDeckLoading(subj, true);
 
@@ -4726,62 +4761,58 @@
         deckInteractionLocked = false;
         activeDeckInteractionKey = null;
         activeDeckInteractionSubject = null;
+        setDeckEntryInteractionsLocked(false);
         setOtherDeckInteractionsLocked(subj, false);
         setTreeDeckLoading(subj, false);
       }
     };
 
-    // If deck was locally deleted, clear it from deleted list so we fetch fresh
-    if ((state.prefs.localDownloadDeletedDecks || []).includes(subj)) {
-      clearLocalDownloadDeleted(subj);
-      saveState();
-    }
+    try {
+      // If deck was locally deleted, clear it from deleted list so we fetch fresh
+      if ((state.prefs.localDownloadDeletedDecks || []).includes(subj)) {
+        clearLocalDownloadDeleted(subj);
+        saveState();
+      }
 
-    const readiness = getDeckDataReadinessState();
-
-    if (!isInitialSyncComplete || readiness.isBlocked) {
-      updateSyncStatus(
-        '<i class="fa-solid fa-xmark mr-1"></i> Decks are temporarily unavailable while the initial database sync completes.',
-        "warning",
-      );
-      finishDeckInteraction();
-      return;
-    }
-
-    updateRecentDecks(subj);
-    saveState();
-
-    const deckInfo = state.categorySummary.find((c) => c.Subject === subj);
-    if (isDeckHidden(subj) || (deckInfo && deckInfo.Hidden)) {
-      showToast("This deck is hidden and not available.", "warning");
-      finishDeckInteraction();
-      return;
-    }
-    if (isDeckLocked(subj) || (deckInfo && deckInfo.Locked)) {
-      pendingDeckSubject = subj;
-      pendingDeckAction = action;
-      openDeckPasswordModal(subj, action);
-      finishDeckInteraction();
-      return;
-    }
-
-    const startPromise =
-      currentAppMode === "review"
-        ? reviewDeck(subj, null)
-        : fetchAndStartCategory(subj, action, null);
-
-    Promise.resolve(startPromise)
-      .catch((error) => {
-        appLogger.error("Unable to start the selected deck.", error);
-        showToast(
-          "We're having a temporary issue with our servers or services, so this deck couldn't start. Please check your internet connection and try again later.",
-          "error",
-          8000,
+      const readiness = getDeckDataReadinessState();
+      if (!isInitialSyncComplete || readiness.isBlocked) {
+        updateSyncStatus(
+          '<i class="fa-solid fa-xmark mr-1"></i> Decks are temporarily unavailable while the initial database sync completes.',
+          "warning",
         );
-      })
-      .finally(() => {
-        finishDeckInteraction();
-      });
+        return;
+      }
+
+      updateRecentDecks(subj);
+      saveState();
+
+      const deckInfo = state.categorySummary.find((c) => c.Subject === subj);
+      if (isDeckHidden(subj) || (deckInfo && deckInfo.Hidden)) {
+        showToast("This deck is hidden and not available.", "warning");
+        return;
+      }
+      if (isDeckLocked(subj) || (deckInfo && deckInfo.Locked)) {
+        pendingDeckSubject = subj;
+        pendingDeckAction = action;
+        openDeckPasswordModal(subj, action);
+        return;
+      }
+
+      const startPromise =
+        currentAppMode === "review"
+          ? reviewDeck(subj, null)
+          : fetchAndStartCategory(subj, action, null);
+      await Promise.resolve(startPromise);
+    } catch (error) {
+      appLogger.error("Unable to start the selected deck.", error);
+      showToast(
+        "We're having a temporary issue with our servers or services, so this deck couldn't start. Please check your internet connection and try again later.",
+        "error",
+        8000,
+      );
+    } finally {
+      finishDeckInteraction();
+    }
   }
 
   function toggleShuffleChoices(source) {
