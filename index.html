@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-14.13.0" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-14.14.1" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-14.13.0"
+      href="icon.svg?v=mrh-release-14.14.1"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-14.13.0" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-14.14.1" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-14.13.0"
+      href="tailwind.generated.css?v=mrh-release-14.14.1"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-14.13.0"
+      href="styles.css?v=mrh-release-14.14.1"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-14.13.0"
+      href="tailwind.generated.css?v=mrh-release-14.14.1"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-14.13.0"
+      href="styles.css?v=mrh-release-14.14.1"
       media="print"
       onload="
         this.media = 'all';
@@ -1807,6 +1807,14 @@
             </h4>
             <div id="about-changelog-entries" class="mt-3">
               <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                Version 14.14.1
+              </h5>
+              <ul
+                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+              >
+                <li>Prevented browser password autofill prompts in locked deck and folder dialogs.</li>
+              </ul>
+              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                 Version 14.13.0
               </h5>
               <ul
@@ -1826,6 +1834,7 @@
                 <li>Improved locked-deck privacy and password entry, including blurred names and reduced autofill prompts.</li>
                 <li>Preserved literal UUID-sheet passwords and made password verification consistent.</li>
               </ul>
+              <div id="about-changelog-older" class="hidden">
               <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                 Version 14.11.0
               </h5>
@@ -1835,7 +1844,6 @@
                 <li>Stopped review pagination from shaking while restoring the expected previous-page position.</li>
                 <li>Blocked app interactions while a deck is opening and restored controls safely when loading completes.</li>
               </ul>
-              <div id="about-changelog-older" class="hidden">
               <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                 Version 14.10.0
               </h5>
@@ -2213,7 +2221,7 @@
               type="password"
               id="deck-password-input"
               name="deck-unlock-secret"
-              autocomplete="new-password"
+              autocomplete="off"
               autocapitalize="off"
               spellcheck="false"
               data-1p-ignore="true"
@@ -2308,7 +2316,7 @@
               type="password"
               id="folder-password-input"
               name="folder-unlock-secret"
-              autocomplete="new-password"
+              autocomplete="off"
               autocapitalize="off"
               spellcheck="false"
               data-1p-ignore="true"
@@ -2352,7 +2360,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 14.13.0</p>
+    <p id="site-version" class="site-version">Version 14.14.1</p>
 
     <div
       id="qr-transfer-modal"

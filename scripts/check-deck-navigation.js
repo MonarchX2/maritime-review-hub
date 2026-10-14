@@ -17,8 +17,8 @@ for (const inputId of ["deck-password-input", "folder-password-input"]) {
   assert.ok(inputMarkup, `${inputId} should exist in the page`);
   assert.match(
     inputMarkup,
-    /autocomplete="new-password"/,
-    `${inputId} should avoid suggesting saved account passwords`,
+    /autocomplete="off"/,
+    `${inputId} should not trigger browser password autofill`,
   );
   assert.match(
     inputMarkup,

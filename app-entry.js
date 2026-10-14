@@ -1,8 +1,8 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-release-14.13.0";
-  const APP_DISPLAY_VERSION = "14.13.0";
+  const APP_VERSION = "mrh-release-14.14.1";
+  const APP_DISPLAY_VERSION = "14.14.1";
   const UPDATE_QUERY_PARAMETER = "__mrh_update";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
   const bootstrapLogger = () => rootScope.DebugUtils || console;
