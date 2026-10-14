@@ -6,6 +6,31 @@ const timers = [];
 const views = new Map();
 const deckNavSource = fs.readFileSync("deck-nav-core.js", "utf8");
 const appCoreSource = fs.readFileSync("app-core.js", "utf8");
+const modalCoreSource = fs.readFileSync("ui-modal-core.js", "utf8");
+const stylesSource = fs.readFileSync("styles.css", "utf8");
+const indexSource = fs.readFileSync("index.html", "utf8");
+
+for (const inputId of ["deck-password-input", "folder-password-input"]) {
+  const inputMarkup = indexSource.match(
+    new RegExp(`<input(?=[^>]*id="${inputId}")[^>]*>`, "s"),
+  )?.[0];
+  assert.ok(inputMarkup, `${inputId} should exist in the page`);
+  assert.match(
+    inputMarkup,
+    /autocomplete="new-password"/,
+    `${inputId} should avoid suggesting saved account passwords`,
+  );
+  assert.match(
+    inputMarkup,
+    /data-(?:1p-ignore|lpignore|bwignore)="true"/,
+    `${inputId} should signal common password managers to ignore this field`,
+  );
+  assert.match(
+    inputMarkup,
+    /autocapitalize="off"/,
+    `${inputId} should preserve entered password casing on mobile`,
+  );
+}
 
 assert.match(
   deckNavSource,
@@ -21,6 +46,65 @@ assert.match(
   appCoreSource,
   /temporary issue with our servers or services, so this deck couldn't start\. Please check your internet connection and try again later\./,
   "the outer deck-start failure notice should use the same guidance",
+);
+assert.match(
+  appCoreSource,
+  /class="deck-card \$\{isDeckInteractionBusy \? "deck-interaction-blocked" : "cursor-pointer"\} \$\{syncLockClass\} \$\{isLocked \? "password-protected-deck" : ""\}/,
+  "password-protected deck cards should receive the blur class",
+);
+assert.match(
+  appCoreSource,
+  /!isGroup &&\s*\(isDeckLocked\(deckSubject\) \|\| Boolean\(item\._data\?\.Locked\)\)/,
+  "locked leaf decks in tree mode should receive the protected treatment",
+);
+assert.match(
+  stylesSource,
+  /\.password-protected-deck > :not\(\[data-deck-loader\]\)\s*\{\s*filter:\s*blur\(4px\);/,
+  "locked deck content should be blurred while its loading veil remains sharp",
+);
+assert.doesNotMatch(
+  appCoreSource,
+  /deck-card-lock-overlay/,
+  "locked decks should not render an overlay lock icon",
+);
+assert.doesNotMatch(
+  stylesSource,
+  /deck-card-lock-overlay/,
+  "locked deck blur should not style an overlay lock icon",
+);
+assert.match(
+  modalCoreSource,
+  /className:\s*"locked-deck-name-blurred"[\s\S]*?textContent:\s*shortName/,
+  "the locked deck name should be isolated in a blurred text element",
+);
+assert.match(
+  stylesSource,
+  /\.locked-deck-name-blurred\s*\{\s*filter:\s*blur\(4px\);/,
+  "the deck name in its password dialog should be blurred",
+);
+assert.match(
+  modalCoreSource,
+  /replaceChildren\([\s\S]*?createTextNode\("The deck "\)[\s\S]*?createTextNode\(" requires a password\."\)/,
+  "only the deck name should be blurred while dialog instructions remain readable",
+);
+assert.match(
+  indexSource,
+  /id="deck-password-loading-status"[\s\S]*?role="status"[\s\S]*?fa-spinner fa-spin/,
+  "the deck password dialog should provide an accessible loading indicator",
+);
+assert.match(
+  appCoreSource,
+  /function setDeckPasswordTransitionLoading\(isLoading, statusText = "Loading\.\.\."\) \{[\s\S]*?sibling\.setAttribute\("inert", ""\)[\s\S]*?deckPasswordTransitionSnapshots\.forEach/,
+  "password transitions should block background interaction and restore previous state",
+);
+const passwordSubmitHandler = appCoreSource.match(
+  /if \(btnSubmitDeckPassword\) \{[\s\S]*?\n  \}/,
+)?.[0];
+assert.ok(passwordSubmitHandler, "the password submit handler should exist");
+assert.match(
+  passwordSubmitHandler,
+  /setDeckPasswordTransitionLoading\(\s*true,[\s\S]*?closeDeckPasswordModal\(\);[\s\S]*?setDeckPasswordTransitionLoading\(false\)/,
+  "the password dialog should remain open and loading until the operation finishes",
 );
 assert.match(
   appCoreSource,
@@ -67,6 +151,101 @@ assert.equal(entryLockElements[0].hasAttribute("inert"), false);
 assert.equal(entryLockElements[0].getAttribute("aria-busy"), "false");
 assert.equal(entryLockElements[1].hasAttribute("inert"), true);
 assert.equal(entryLockElements[1].hasAttribute("aria-busy"), false);
+
+const passwordTransitionFunction = appCoreSource.match(
+  /  function setDeckPasswordTransitionLoading\(isLoading,[\s\S]*?\n  \}/,
+)?.[0];
+assert.ok(
+  passwordTransitionFunction,
+  "password transitions should have a loading and interaction-lock helper",
+);
+function createTransitionElement(parent = null, { disabled = false } = {}) {
+  const attributes = new Map();
+  const classes = new Set();
+  const element = {
+    parentElement: parent,
+    children: [],
+    disabled,
+    classList: {
+      toggle(name, enabled) {
+        if (enabled) classes.add(name);
+        else classes.delete(name);
+      },
+      contains: (name) => classes.has(name),
+    },
+    hasAttribute: (name) => attributes.has(name),
+    getAttribute: (name) => attributes.get(name) ?? null,
+    setAttribute: (name, value) => attributes.set(name, String(value)),
+    removeAttribute: (name) => attributes.delete(name),
+    querySelector(selector) {
+      return selector === "span" ? element.statusLabel : null;
+    },
+    querySelectorAll(selector) {
+      return selector === "input, button" ? element.controls || [] : [];
+    },
+  };
+  if (parent) parent.children.push(element);
+  return element;
+}
+const transitionBody = createTransitionElement();
+const pageContent = createTransitionElement(transitionBody);
+pageContent.setAttribute("aria-busy", "false");
+const modalShell = createTransitionElement(transitionBody);
+const modalHeading = createTransitionElement(modalShell);
+const transitionModal = createTransitionElement(modalShell);
+transitionModal.setAttribute("aria-busy", "previous");
+const transitionStatus = createTransitionElement();
+transitionStatus.statusLabel = { textContent: "" };
+transitionModal.controls = [
+  createTransitionElement(),
+  createTransitionElement(null, { disabled: true }),
+  createTransitionElement(),
+];
+transitionModal.controls[2].id = "btn-submit-deck-password";
+const transitionContext = {
+  document: {
+    body: transitionBody,
+    getElementById(id) {
+      if (id === "deck-password-modal") return transitionModal;
+      if (id === "deck-password-loading-status") return transitionStatus;
+      return null;
+    },
+  },
+};
+vm.createContext(transitionContext);
+vm.runInContext(
+  `let deckPasswordTransitionSnapshots = null;
+  let deckPasswordControlSnapshots = null;
+  let deckPasswordPreviousAriaBusy = null;
+  ${passwordTransitionFunction}
+  globalThis.setDeckPasswordTransitionLoading = setDeckPasswordTransitionLoading;`,
+  transitionContext,
+);
+transitionContext.setDeckPasswordTransitionLoading(true, "Switching modes...");
+assert.equal(transitionStatus.classList.contains("hidden"), false);
+assert.equal(transitionStatus.statusLabel.textContent, "Switching modes...");
+assert.equal(pageContent.hasAttribute("inert"), true);
+assert.equal(pageContent.getAttribute("aria-busy"), "true");
+assert.equal(modalHeading.hasAttribute("inert"), true);
+assert.equal(transitionModal.controls[0].disabled, true);
+assert.equal(transitionModal.controls[1].disabled, true);
+assert.equal(
+  transitionModal.controls[2].disabled,
+  false,
+  "the submit button remains under the busy-button lifecycle",
+);
+transitionContext.setDeckPasswordTransitionLoading(false);
+assert.equal(transitionStatus.classList.contains("hidden"), true);
+assert.equal(pageContent.hasAttribute("inert"), false);
+assert.equal(pageContent.getAttribute("aria-busy"), "false");
+assert.equal(modalHeading.hasAttribute("inert"), false);
+assert.equal(transitionModal.getAttribute("aria-busy"), "previous");
+assert.equal(transitionModal.controls[0].disabled, false);
+assert.equal(
+  transitionModal.controls[1].disabled,
+  true,
+  "dialog controls that were already disabled remain disabled after loading",
+);
 
 const pathValidation = appCoreSource.match(
   /if \(!Array\.isArray\(state\.currentPath\)\) state\.currentPath = \[\];[\s\S]*?if \(!pathValid && isInitialSyncComplete\) \{[\s\S]*?\n      \} else if \(pathValid\) \{[\s\S]*?\n      \}/,

@@ -4,6 +4,33 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 
 const storageSource = fs.readFileSync("storage-utils.js", "utf8");
+const appCoreSource = fs.readFileSync("app-core.js", "utf8");
+const deckFetchFailureMessageSource = appCoreSource.match(
+  /  function getDeckFetchFailureMessage\(subject, error\) \{[\s\S]*?\n  \}/,
+)?.[0];
+assert.ok(deckFetchFailureMessageSource, "deck fetch failures should format user-facing messages");
+const deckFetchFailureContext = {};
+vm.createContext(deckFetchFailureContext);
+vm.runInContext(
+  `${deckFetchFailureMessageSource}
+  globalThis.getDeckFetchFailureMessage = getDeckFetchFailureMessage;`,
+  deckFetchFailureContext,
+);
+assert.equal(
+  deckFetchFailureContext.getDeckFetchFailureMessage("Private deck", {
+    message: "Incorrect Password.",
+  }),
+  "Incorrect Password",
+  "incorrect-password errors should be shown without deck/database details",
+);
+assert.equal(
+  deckFetchFailureContext.getDeckFetchFailureMessage("Private deck", {
+    message: "Service temporarily unavailable.",
+  }),
+  'Unable to load "Private deck" from the database. Service temporarily unavailable.',
+  "other deck errors should retain their diagnostic message",
+);
+
 const storageContext = {
   module: { exports: {} },
   console,

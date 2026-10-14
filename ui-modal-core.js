@@ -335,7 +335,14 @@
     const messageEl = document.getElementById("deck-password-message");
     if (messageEl) {
       const shortName = subject.split("::").pop();
-      messageEl.innerText = `The deck "${shortName}" requires a password.`;
+      messageEl.replaceChildren(
+        document.createTextNode("The deck "),
+        Object.assign(document.createElement("span"), {
+          className: "locked-deck-name-blurred",
+          textContent: shortName,
+        }),
+        document.createTextNode(" requires a password."),
+      );
     }
 
     const inputEl = document.getElementById("deck-password-input");

@@ -2264,6 +2264,9 @@
               const action = isGroup
                 ? `toggleTreeNode('${encodeHandlerValue(folderSubject)}')`
                 : `handleDeckClick('${encodeHandlerValue(item._data?.Subject || folderSubject)}')`;
+              const isPasswordProtected =
+                !isGroup &&
+                (isDeckLocked(deckSubject) || Boolean(item._data?.Locked));
               const icon = isGroup
                 ? `<span class="deck-tree-toggle" aria-hidden="true">${isCollapsed ? "+" : "−"}</span>`
                 : '<span class="deck-tree-toggle" aria-hidden="true"></span>';
@@ -2298,7 +2301,7 @@
                   </details>`
                 : "";
 
-              return `<div data-tree-key="${escapeHTML(childPath.join("::"))}" onclick="${action}" class="deck-tree-row deck-tree-grid ${rowClass} ${interactionClass} ${syncLockClass} items-center gap-2 px-3 py-2.5 cursor-pointer transition-all duration-150" ${databaseUnavailable && !isGroup ? 'aria-disabled="true"' : ""}>
+              return `<div data-tree-key="${escapeHTML(childPath.join("::"))}" onclick="${action}" class="deck-tree-row deck-tree-grid ${rowClass} ${interactionClass} ${syncLockClass} ${isPasswordProtected ? "password-protected-deck" : ""} items-center gap-2 px-3 py-2.5 cursor-pointer transition-all duration-150" ${databaseUnavailable && !isGroup ? 'aria-disabled="true"' : ""}>
                 <div class="min-w-0 flex items-center text-base sm:text-lg text-gray-700 dark:text-gray-200" style="padding-left: ${indent}px">${icon}${typeIcon}<span class="deck-tree-name ${nameCaseClass}">${safeKey}</span>${deckTypeBadge ? renderDeckBadge(deckTypeBadge) : ""}${explanationsAvailableBadge}${popularBadge}${recentlyViewedIcon}${favoriteIcon}</div>
                 <span class="deck-tree-actions">${mistakesActionIcon}</span>
                 ${renderTreeStat(stats.total, allCountColor)}
@@ -2507,12 +2510,11 @@
         }
 
         return `
-        <div data-deck-key="${escapeHTML(subj)}" onclick="handleDeckClick('${encodedSubj}')" class="deck-card ${isDeckInteractionBusy ? "deck-interaction-blocked" : "cursor-pointer"} ${syncLockClass} ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-transform duration-400 relative w-full flex flex-col" aria-busy="${isDeckInteractionBusy || isDeckLoading}">
-          <div id="${loaderId}" class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex-col items-center justify-center transition-opacity">
+        <div data-deck-key="${escapeHTML(subj)}" onclick="handleDeckClick('${encodedSubj}')" class="deck-card ${isDeckInteractionBusy ? "deck-interaction-blocked" : "cursor-pointer"} ${syncLockClass} ${isLocked ? "password-protected-deck" : ""} ${cardClasses} p-5 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 ${themeShadowHover} active:scale-[0.99] border transition-transform duration-400 relative w-full flex flex-col" aria-busy="${isDeckInteractionBusy || isDeckLoading}">
+          <div id="${loaderId}" data-deck-loader class="hidden absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 rounded-xl flex-col items-center justify-center transition-opacity">
             <i class="fa-solid fa-spinner fa-spin text-3xl ${loaderColor} mb-2"></i>
             <span class="text-sm font-bold text-gray-700 dark:text-gray-200">Loading...</span>
           </div>
-
           <div class="mb-4">
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0 flex-1">
@@ -2632,7 +2634,7 @@
           `;
 
             html += `
-          <div data-folder-key="${escapeHTML(key)}" onclick="enterFolder(decodeHandlerValue('${encodeHandlerValue(key)}'), ${isLocked})" class="${deckInteractionLocked ? "deck-interaction-blocked" : "cursor-pointer"} group bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-transform duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col transform hover:-translate-y-1 relative">
+          <div data-folder-key="${escapeHTML(key)}" onclick="enterFolder(decodeHandlerValue('${encodeHandlerValue(key)}'), ${isLocked})" class="${deckInteractionLocked ? "deck-interaction-blocked" : "cursor-pointer"} ${isLocked ? "password-protected-deck" : ""} group bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-transform duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col transform hover:-translate-y-1 relative">
             <div class="h-12 ${folderColorClass} transition-colors relative">
               <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
             </div>
@@ -3041,6 +3043,15 @@
     );
   }
 
+  function getDeckFetchFailureMessage(subject, error) {
+    const message =
+      error && error.message
+        ? error.message
+        : "Unable to load deck data from the backend.";
+    if (/incorrect password/i.test(message)) return "Incorrect Password";
+    return `Unable to load "${subject}" from the database. ${message}`;
+  }
+
   /**
    * @param {string} subject
    * @param {string|null} pass
@@ -3333,14 +3344,10 @@
           state.db = previousDatabaseForRollback;
           rebuildQuestionIndex();
         }
-        const message =
-          err && err.message
-            ? err.message
-            : "Unable to load deck data from the backend.";
         appLogger.warn("Network fetch failed.", err);
         if (!suppressRender) {
           showToast(
-            `Unable to load "${subject}" from the database. ${message}`,
+            getDeckFetchFailureMessage(subject, err),
             "error",
           );
         }
@@ -4737,6 +4744,84 @@
       deckEntryInteractionSnapshots = null;
   }
 
+  let deckPasswordTransitionSnapshots = null;
+  let deckPasswordControlSnapshots = null;
+  let deckPasswordPreviousAriaBusy = null;
+
+  function setDeckPasswordTransitionLoading(isLoading, statusText = "Loading...") {
+    const modal = document.getElementById("deck-password-modal");
+    if (!modal) return;
+
+    const status = document.getElementById("deck-password-loading-status");
+    const statusLabel = status?.querySelector("span");
+    if (statusLabel) statusLabel.textContent = statusText;
+    status?.classList.toggle("hidden", !isLoading);
+
+    if (isLoading) {
+      if (!deckPasswordTransitionSnapshots) {
+        deckPasswordPreviousAriaBusy = modal.getAttribute("aria-busy");
+        modal.setAttribute("aria-busy", "true");
+        deckPasswordTransitionSnapshots = [];
+        let branch = modal;
+        while (branch?.parentElement) {
+          const parent = branch.parentElement;
+          Array.from(parent.children).forEach((sibling) => {
+            if (sibling === branch) return;
+            deckPasswordTransitionSnapshots.push({
+              element: sibling,
+              wasInert: sibling.hasAttribute("inert"),
+              previousAriaBusy: sibling.getAttribute("aria-busy"),
+            });
+            sibling.setAttribute("inert", "");
+            sibling.setAttribute("aria-busy", "true");
+          });
+          if (parent === document.body) break;
+          branch = parent;
+        }
+
+        deckPasswordControlSnapshots = Array.from(
+          modal.querySelectorAll("input, button"),
+        )
+          .filter(
+            (control) =>
+              control.id !== "btn-submit-deck-password" &&
+              !control.disabled,
+          )
+          .map((control) => {
+            control.disabled = true;
+            return control;
+          });
+      }
+      return;
+    }
+
+    if (deckPasswordControlSnapshots) {
+      deckPasswordControlSnapshots.forEach((control) => {
+        control.disabled = false;
+      });
+      deckPasswordControlSnapshots = null;
+    }
+    if (deckPasswordTransitionSnapshots) {
+      deckPasswordTransitionSnapshots.forEach(
+        ({ element, wasInert, previousAriaBusy }) => {
+          if (!wasInert) element.removeAttribute("inert");
+          if (previousAriaBusy === null) {
+            element.removeAttribute("aria-busy");
+          } else {
+            element.setAttribute("aria-busy", previousAriaBusy);
+          }
+        },
+      );
+      deckPasswordTransitionSnapshots = null;
+    }
+    if (deckPasswordPreviousAriaBusy === null) {
+      modal.removeAttribute("aria-busy");
+    } else {
+      modal.setAttribute("aria-busy", deckPasswordPreviousAriaBusy);
+    }
+    deckPasswordPreviousAriaBusy = null;
+  }
+
   async function handleDeckClick(subj, action = "continue") {
     subj = decodeHandlerValue(subj);
     if (!subj) return;
@@ -4932,25 +5017,47 @@
 
         await runWithBusyButton(
           btnSubmitDeckPassword,
-          "Verifying...",
+          pendingPracticeReviewSwitch || pendingDeckAction === "resume-review"
+            ? "Switching..."
+            : "Loading...",
           async () => {
-            closeDeckPasswordModal();
-            if (pendingDeckAction === "resume") {
-              await resumeSession(pass);
-            } else if (pendingDeckAction === "resume-review") {
-              if (pendingPracticeReviewSwitch) {
-                await continuePracticeReviewSwitch(pendingDeckSubject, pass);
-              } else {
+            setDeckPasswordTransitionLoading(
+              true,
+              pendingPracticeReviewSwitch ||
+                pendingDeckAction === "resume-review"
+                ? "Switching modes..."
+                : "Loading the deck...",
+            );
+            try {
+              if (pendingDeckAction === "resume") {
+                await resumeSession(pass);
+              } else if (pendingDeckAction === "resume-review") {
+                if (pendingPracticeReviewSwitch) {
+                  await continuePracticeReviewSwitch(
+                    pendingDeckSubject,
+                    pass,
+                  );
+                } else {
+                  await reviewDeck(pendingDeckSubject, pass);
+                }
+              } else if (currentAppMode === "review") {
                 await reviewDeck(pendingDeckSubject, pass);
+              } else {
+                await fetchAndStartCategory(
+                  pendingDeckSubject,
+                  pendingDeckAction,
+                  pass,
+                );
               }
-            } else if (currentAppMode === "review") {
-              reviewDeck(pendingDeckSubject, pass);
-            } else {
-              fetchAndStartCategory(
-                pendingDeckSubject,
-                pendingDeckAction,
-                pass,
+              if (input?.value === pass) closeDeckPasswordModal();
+            } catch (error) {
+              appLogger.error("Unable to continue after password verification.", error);
+              showToast(
+                "The requested mode could not be opened. Please try again.",
+                "error",
               );
+            } finally {
+              setDeckPasswordTransitionLoading(false);
             }
           },
         );
