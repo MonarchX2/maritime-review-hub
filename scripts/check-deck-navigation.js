@@ -10,6 +10,64 @@ const modalCoreSource = fs.readFileSync("ui-modal-core.js", "utf8");
 const stylesSource = fs.readFileSync("styles.css", "utf8");
 const indexSource = fs.readFileSync("index.html", "utf8");
 
+assert.match(
+  deckNavSource,
+  /async function resetCategory\(subject\)[\s\S]*?emphasis: deckName,\s*blurEmphasis: isDeckLocked\(subject\),/,
+  "reset confirmation should request a blurred deck name only when the deck is locked",
+);
+assert.match(
+  modalCoreSource,
+  /emphasis\.className =\s*message\.blurEmphasis === true \? "locked-deck-name-blurred" : "";/,
+  "confirmation modal should apply the existing locked-deck blur to the emphasized name when requested",
+);
+
+const compactDashboardControls = [
+  indexSource.match(
+    /<summary\s+id="deck-source-trigger"[\s\S]*?<\/summary>/,
+  )?.[0],
+  indexSource.match(
+    /<summary\s+id="deck-sort-trigger"[\s\S]*?<\/summary>/,
+  )?.[0],
+  indexSource.match(
+    /<!-- Study\/Quiz Mode Toggle -->\s*<label[\s\S]*?<\/label>/,
+  )?.[0],
+  indexSource.match(/<button\s+id="layout-toggle"[\s\S]*?<\/button>/)?.[0],
+];
+assert.ok(
+  compactDashboardControls.every((control) =>
+    control?.includes("dashboard-control"),
+  ),
+  "filter, sort, mode, and layout controls should share the compact dashboard-control style",
+);
+const dashboardControlClasses = compactDashboardControls
+  .map((control) => control.match(/class="([^"]*dashboard-control[^"]*)"/)?.[1])
+  .join(" ");
+assert.doesNotMatch(
+  dashboardControlClasses,
+  /\bbg-gray-(?:100|800)\b|\bborder\b|\bshadow-sm\b|\bpy-1\.5\b/,
+  "dashboard controls should not render bulky idle backgrounds, borders, shadows, or vertical padding",
+);
+assert.match(
+  stylesSource,
+  /\.dashboard-controls\s*\{[^}]*gap:\s*0\.375rem;/,
+  "dashboard controls should have reduced spacing between them",
+);
+assert.match(
+  stylesSource,
+  /\.dashboard-controls \.dashboard-control\s*\{[^}]*min-height:\s*2rem;[^}]*padding:\s*0\.25rem 0\.375rem;[^}]*border:\s*0;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/,
+  "dashboard controls should use compact height and padding with a clean transparent idle state",
+);
+assert.match(
+  stylesSource,
+  /\.dashboard-controls > #deck-sort-menu::before,[\s\S]*?\.dashboard-controls > label\.dashboard-control::before,[\s\S]*?\.dashboard-controls > #layout-toggle::before/,
+  "dashboard controls should be visually separated with vertical dividers",
+);
+assert.match(
+  indexSource,
+  /class="dashboard-header-row[^"]*\bmb-0\b/,
+  "dashboard header should have no bottom margin above the navigation bar",
+);
+
 for (const inputId of ["deck-password-input", "folder-password-input"]) {
   const inputMarkup = indexSource.match(
     new RegExp(`<input(?=[^>]*id="${inputId}")[^>]*>`, "s"),
