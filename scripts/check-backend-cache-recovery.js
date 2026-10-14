@@ -7,6 +7,7 @@ const context = {
   JSON,
   Math,
   Date,
+  Logger: { log() {} },
 };
 vm.createContext(context);
 vm.runInContext(
@@ -28,8 +29,13 @@ assert.equal(
 );
 assert.deepEqual(
   JSON.parse(context.filterSummaryDataByAccess("[]")),
-  { v: 1, p: [], d: [] },
+  { v: 1, p: [], d: [], h: [] },
   "a valid empty summary must remain a successful empty result",
+);
+assert.equal(
+  context.filterSummaryDataByAccess(JSON.stringify([{ Subject: "STALE" }])),
+  null,
+  "legacy non-empty summaries without payload fingerprints must trigger recovery",
 );
 
 const response = {
@@ -38,12 +44,20 @@ const response = {
     return this;
   },
 };
+const properties = new Map([
+  ["MRH_SUBJECT_SCHEMA_VERSION", "10"],
+  ["LAST_CACHE_BUILD_SUCCESS", "2026-10-14T00:00:00.000Z"],
+]);
 context.ContentService = {
   MimeType: { JSON: "application/json" },
   createTextOutput(content) {
     return { ...response, content };
   },
 };
+context.getScriptProps = () => ({
+  getProperty: (key) => properties.get(key) || null,
+  setProperty: (key, value) => properties.set(key, value),
+});
 context.jsonResponse = (payload) => payload;
 context.generateCacheKey = () => "summary";
 context.cacheGetChunked = () => "{ invalid cached json";
@@ -53,9 +67,12 @@ context.loadDeckMetadataMap = () => ({
 });
 context.getOrCreateCacheFolder = () => ({});
 
-const validPersistentSummary = JSON.stringify([
-  { s: "COLREGS", c: 1, t: "MC" },
-]);
+const validPersistentSummary = JSON.stringify({
+  v: 1,
+  p: [""],
+  d: [[0, "COLREGS", 1, "MC", 0]],
+  h: ["a".repeat(64)],
+});
 context.findCacheFilesByName = () => ({
   hasNext: () => true,
   next: () => ({
@@ -65,13 +82,18 @@ context.findCacheFilesByName = () => ({
 const recoveredResponse = context.doGetInternal({ parameter: {} });
 assert.deepEqual(
   JSON.parse(recoveredResponse.content),
-  { v: 1, p: [""], d: [[0, "COLREGS", 1, "MC"]] },
+  {
+    v: 1,
+    p: [""],
+    d: [[0, "COLREGS", 1, "MC", 0]],
+    h: ["a".repeat(64)],
+  },
   "a corrupt cache entry must fall back to the valid persistent summary",
 );
 
-const properties = new Map();
 let rebuildScheduled = false;
 context.getScriptProps = () => ({
+  getProperty: (key) => properties.get(key) || null,
   setProperty: (key, value) => properties.set(key, value),
 });
 context.ensureResumeBuildTrigger = () => {

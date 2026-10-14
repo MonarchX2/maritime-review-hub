@@ -14,17 +14,29 @@
         const pathSegments = window.location.pathname
           .split("/")
           .filter(Boolean);
-        const candidates = [];
+        const baseLengths = [];
 
+        // GitHub Pages project sites use the first path segment as their app base.
+        if (
+          window.location.hostname.endsWith(".github.io") &&
+          pathSegments.length > 1
+        ) {
+          baseLengths.push(1);
+        }
         for (
           let baseLength = pathSegments.length;
           baseLength >= 0;
           baseLength--
         ) {
+          if (baseLengths.includes(baseLength)) continue;
+          baseLengths.push(baseLength);
+        }
+
+        const candidates = baseLengths.map((baseLength) => {
           const baseSegments = pathSegments.slice(0, baseLength);
           const basePath = `/${baseSegments.join("/")}${baseSegments.length ? "/" : ""}`;
-          candidates.push({ baseLength, basePath });
-        }
+          return { baseLength, basePath };
+        });
 
         for (const candidate of candidates) {
           try {

@@ -7,26 +7,47 @@ assert.match(
   /const SYNC_STATUS_STORAGE_KEY = "mrh_last_applied_sync_status_timestamp";/,
   "sync must not trust timestamps saved before a summary was applied",
 );
+assert.match(
+  fs.readFileSync("app-core.js", "utf8"),
+  /window\.addEventListener\(\s*"online"[\s\S]*?syncScheduler\.handleVisibility\(false\)/,
+  "the elected foreground tab should resume background sync when connectivity returns",
+);
 
 const timeoutCallbacks = new Map();
+const timeoutDelays = new Map();
 const intervalCallbacks = new Map();
 let nextTimerId = 0;
 let summaryFetchCount = 0;
+const timestamps = {
+  v1: "2026-10-14T00:00:01.000Z",
+  v2: "2026-10-14T00:00:02.000Z",
+  v3: "2026-10-14T00:00:03.000Z",
+  v4: "2026-10-14T00:00:04.000Z",
+  v5: "2026-10-14T00:00:05.000Z",
+  v6: "2026-10-14T00:00:06.000Z",
+};
 let storedTimestamp = "";
-let currentSyncTimestamp = "backend-v1";
+let currentSyncTimestamp = timestamps.v1;
+let changeTimestampDuringSummary = false;
+let statusUnavailable = false;
+let payloadSchemaVersion = 2;
+let malformedSummary = false;
 let activeSession = false;
 let immediateMode = true;
 let pendingSummaryData = null;
 let failSummaryPersistence = false;
+let pendingPayloadRefreshCount = 0;
 const appliedSummaries = [];
 const lifecycle = {
-  setTimeout(callback) {
+  setTimeout(callback, delay = 0) {
     const id = ++nextTimerId;
     timeoutCallbacks.set(id, callback);
+    timeoutDelays.set(id, delay);
     return id;
   },
   clearTimeout(id) {
     timeoutCallbacks.delete(id);
+    timeoutDelays.delete(id);
   },
   setInterval(callback) {
     const id = ++nextTimerId;
@@ -74,16 +95,35 @@ const controller = context.SyncCore.createController({
     syncRetryIntervalMs: 3000,
     syncRetryMaxDelayMs: 60000,
     syncRequestTimeoutMs: 60000,
+    backendPayloadSchemaVersion: 2,
   },
   network: {
-    async getSyncStatus() {
-      return { status: "ok", syncTimestamp: currentSyncTimestamp };
+    async getSyncStatus(options) {
+      assert.equal(options?.maxRetries, 0);
+      if (statusUnavailable) throw new Error("temporary network failure");
+      return {
+        status: "ok",
+        syncTimestamp: currentSyncTimestamp,
+        payloadSchemaVersion,
+      };
     },
-    async getDeckSummary() {
+    async getDeckSummary(options) {
+      assert.equal(options?.maxRetries, 0);
       summaryFetchCount += 1;
+      if (changeTimestampDuringSummary) {
+        changeTimestampDuringSummary = false;
+        currentSyncTimestamp = timestamps.v5;
+      }
       if (summaryFetchCount === 1) throw new Error("temporary network failure");
+      if (malformedSummary) {
+        return [{ Subject: "COLREGS", QuestionCount: 1, PayloadVersion: "bad" }];
+      }
       return [
-        { Subject: summaryFetchCount >= 3 ? "STABILITY" : "COLREGS" },
+        {
+          Subject: "COLREGS",
+          QuestionCount: 1,
+          PayloadVersion: String(summaryFetchCount).padStart(64, "0"),
+        },
       ];
     },
   },
@@ -117,6 +157,9 @@ const controller = context.SyncCore.createController({
   renderCategoryProgress() {},
   showColdStartNotification() {},
   getSummarySignature: (summary) => JSON.stringify(summary),
+  async refreshPendingPayloads() {
+    pendingPayloadRefreshCount += 1;
+  },
 });
 
 const sessionContext = {
@@ -138,6 +181,7 @@ const sessionContext = {
   removeStoredItem: () => true,
   updateSyncStatus() {},
 };
+const activeQuizSession = sessionContext.state.session;
 Object.defineProperty(sessionContext, "pendingSummaryData", {
   get: () => pendingSummaryData,
   set: (summary) => {
@@ -163,7 +207,7 @@ async function main() {
     2,
     "the unchanged backend timestamp must still retry after the prior fetch failed",
   );
-  assert.equal(storedTimestamp, "backend-v1");
+  assert.equal(storedTimestamp, timestamps.v1);
   assert.equal(appliedSummaries.length, 1);
 
   await controller.optimizedBackgroundSync();
@@ -172,16 +216,41 @@ async function main() {
     2,
     "a successfully applied timestamp must skip redundant summary downloads",
   );
+  assert.equal(pendingPayloadRefreshCount, 1);
+  controller.cancel();
+  await controller.optimizedBackgroundSync();
+  assert.equal(
+    timeoutCallbacks.size,
+    1,
+    "an unchanged healthy timestamp must resume normal polling after a check",
+  );
+  assert.equal([...timeoutDelays.values()][0], 60000);
+  assert.equal(pendingPayloadRefreshCount, 2);
 
-  currentSyncTimestamp = "backend-v2";
+  currentSyncTimestamp = timestamps.v2;
   activeSession = true;
   immediateMode = false;
   await controller.optimizedBackgroundSync();
   assert.equal(summaryFetchCount, 3);
   assert.equal(
+    sessionContext.state.session,
+    activeQuizSession,
+    "a backend summary update must not replace the in-progress quiz session",
+  );
+  assert.equal(
+    sessionContext.state.session.userAnswers[0],
+    "A",
+    "background sync must preserve recorded answers",
+  );
+  assert.equal(
     storedTimestamp,
-    "backend-v1",
+    timestamps.v1,
     "a deferred session update must not be marked as applied",
+  );
+  assert.equal(
+    pendingSummaryData[0].PayloadVersion,
+    String(3).padStart(64, "0"),
+    "a changed deck payload fingerprint must be deferred during the active session",
   );
 
   await controller.optimizedBackgroundSync();
@@ -201,7 +270,7 @@ async function main() {
   assert.notEqual(controller.getStatus().pendingSummaryData, null);
   assert.equal(
     storedTimestamp,
-    "backend-v1",
+    timestamps.v1,
     "a failed session-end persistence must leave the timestamp uncheckpointed",
   );
   assert.equal(
@@ -213,7 +282,7 @@ async function main() {
   failSummaryPersistence = false;
   await controller.optimizedBackgroundSync();
   assert.equal(summaryFetchCount, 4);
-  assert.equal(storedTimestamp, "backend-v2");
+  assert.equal(storedTimestamp, timestamps.v2);
   assert.equal(pendingSummaryData, null);
   assert.equal(controller.getStatus().pendingSummaryData, null);
   assert.equal(
@@ -229,13 +298,13 @@ async function main() {
     "a successfully applied timestamp must skip redundant summary downloads",
   );
 
-  currentSyncTimestamp = "backend-v3";
+  currentSyncTimestamp = timestamps.v3;
   failSummaryPersistence = true;
   await controller.optimizedBackgroundSync();
   assert.equal(summaryFetchCount, 5);
   assert.equal(
     storedTimestamp,
-    "backend-v2",
+    timestamps.v2,
     "a failed summary persistence must not checkpoint the backend timestamp",
   );
 
@@ -243,9 +312,93 @@ async function main() {
   assert.equal(summaryFetchCount, 6);
   assert.equal(
     storedTimestamp,
-    "backend-v3",
+    timestamps.v3,
     "a later successful persistence must checkpoint the timestamp",
   );
+
+  currentSyncTimestamp = timestamps.v4;
+  changeTimestampDuringSummary = true;
+  const appliedBeforeRace = appliedSummaries.length;
+  await controller.optimizedBackgroundSync();
+  assert.equal(
+    appliedSummaries.length,
+    appliedBeforeRace,
+    "a summary fetched across a backend version change must be discarded",
+  );
+  assert.equal(storedTimestamp, timestamps.v3);
+  assert.equal(timeoutCallbacks.size, 1);
+
+  await controller.optimizedBackgroundSync();
+  assert.equal(storedTimestamp, timestamps.v5);
+  assert.equal(
+    appliedSummaries.length,
+    appliedBeforeRace + 1,
+    "the stable retry should apply the latest summary exactly once",
+  );
+
+  const fetchesBeforeStaleStatus = summaryFetchCount;
+  currentSyncTimestamp = timestamps.v4;
+  await controller.optimizedBackgroundSync();
+  assert.equal(
+    summaryFetchCount,
+    fetchesBeforeStaleStatus,
+    "an older out-of-order status response must not trigger a stale summary write",
+  );
+  assert.equal(storedTimestamp, timestamps.v5);
+
+  statusUnavailable = true;
+  await controller.optimizedBackgroundSync();
+  assert.equal(
+    timeoutCallbacks.size,
+    1,
+    "failed status checks with cached data should schedule bounded retry, not the normal poll interval",
+  );
+  statusUnavailable = false;
+  await controller.optimizedBackgroundSync();
+  assert.equal(
+    timeoutCallbacks.size,
+    1,
+    "a successful connection check should replace a stale retry with normal polling",
+  );
+  assert.equal([...timeoutDelays.values()][0], 60000);
+  assert.equal(
+    storedTimestamp,
+    timestamps.v5,
+    "recovery with an unchanged timestamp must preserve the applied checkpoint",
+  );
+
+  const summariesBeforeInvalid = appliedSummaries.length;
+  currentSyncTimestamp = timestamps.v6;
+  malformedSummary = true;
+  await controller.optimizedBackgroundSync();
+  assert.equal(
+    appliedSummaries.length,
+    summariesBeforeInvalid,
+    "malformed payload metadata must not replace the working summary",
+  );
+  assert.equal(
+    storedTimestamp,
+    timestamps.v5,
+    "malformed payload metadata must not checkpoint the new backend version",
+  );
+  malformedSummary = false;
+  await controller.optimizedBackgroundSync();
+  assert.equal(storedTimestamp, timestamps.v6);
+
+  payloadSchemaVersion = 1;
+  const summariesBeforeIncompatibleSchema = appliedSummaries.length;
+  await controller.optimizedBackgroundSync();
+  assert.equal(
+    appliedSummaries.length,
+    summariesBeforeIncompatibleSchema,
+    "an incompatible backend payload schema must not be applied",
+  );
+  assert.equal(
+    [...timeoutDelays.values()][0],
+    3000,
+    "an incompatible backend schema should retry with bounded backoff",
+  );
+  payloadSchemaVersion = 2;
 
   controller.cleanup();
   assert.equal(timeoutCallbacks.size, 0);

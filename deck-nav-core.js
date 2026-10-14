@@ -5,6 +5,8 @@
 
 (function (globalScope) {
   const lifecycle = globalScope.LifecycleUtils || globalScope;
+  const logger =
+    globalScope.DebugUtils?.createDebugLogger?.("mrh-navigation") || console;
   const {
     state,
     saveState,
@@ -89,6 +91,8 @@
     }
 
     const currentView = document.querySelector(".view-section.active");
+    const leavingDeckReview =
+      currentView?.id === "view-deck-review" && viewId !== "deck-review";
     if (currentView) {
       currentView.setAttribute("inert", "");
       currentView.classList.add("is-leaving");
@@ -100,6 +104,19 @@
 
     viewElement.removeAttribute("inert");
     viewElement.classList.add("active");
+    if (
+      leavingDeckReview &&
+      typeof globalScope.refreshPendingDeckPayloads === "function"
+    ) {
+      Promise.resolve(globalScope.refreshPendingDeckPayloads()).catch(
+        (error) => {
+          logger.error(
+            "Unable to apply pending backend payload updates after study.",
+            error,
+          );
+        },
+      );
+    }
     if (viewId === "settings") {
       globalScope.updateNavigationUrl?.(["settings"]);
     } else if (globalScope.getNavigationPathFromUrl?.()[0] === "settings") {
@@ -345,12 +362,14 @@
       }
     }
 
-    startCustomSession(pool).catch((error) => {
+    return startCustomSession(pool).catch((error) => {
       DebugUtils.error("Unable to start deck session:", error);
       globalScope.showToast?.(
-        "Unable to start this session. Check your connection and try again.",
+        "We're having a temporary issue with our servers or services, so this session couldn't start. Please check your internet connection and try again later.",
         "error",
+        8000,
       );
+      return false;
     });
   }
 

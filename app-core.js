@@ -43,6 +43,8 @@
   let isInitialSyncComplete = false; // Track if the first sync from startup has completed
   let lastSyncAt = 0;
   const deckFetchInFlight = new Map();
+  const pendingDeckPayloadRefreshes = new Set();
+  let deckPayloadRefreshPromise = null;
 
   // Performance caches for stable render signatures. WeakMap keeps entries tied to
   // the current array/object identity, so replacing state arrays automatically
@@ -342,6 +344,21 @@
     if (!element) return;
     element.textContent = message || "";
     element.classList.toggle("hidden", !message);
+  }
+
+  function showDeckNotFound(path) {
+    const notice = document.getElementById("deck-not-found-notice");
+    const pathLabel = document.getElementById("deck-not-found-path");
+    if (!notice || !pathLabel) return;
+
+    pathLabel.textContent = Array.isArray(path) ? path.join(" / ") : "";
+    notice.classList.remove("hidden");
+  }
+
+  function dismissDeckNotFound() {
+    document
+      .getElementById("deck-not-found-notice")
+      ?.classList.add("hidden");
   }
 
   function setFormError(inputId, message) {
@@ -816,6 +833,7 @@
       renderCategoryProgress,
       showColdStartNotification,
       getSummarySignature,
+      refreshPendingPayloads: refreshPendingDeckPayloads,
     });
     return syncController;
   }
@@ -832,8 +850,16 @@
         QuestionType,
         Locked,
         HasExplanations,
+        PayloadVersion,
       } = deck;
-      return { Subject, QuestionCount, QuestionType, Locked, HasExplanations };
+      return {
+        Subject,
+        QuestionCount,
+        QuestionType,
+        Locked,
+        HasExplanations,
+        PayloadVersion,
+      };
     });
   }
 
@@ -845,16 +871,48 @@
       Array.isArray(summaryData.p) &&
       Array.isArray(summaryData.d)
     ) {
-      summaryData = summaryData.d.map((row) => {
-        if (!Array.isArray(row) || row.length < 4) return null;
-        const prefix = String(summaryData.p[Number(row[0])] || "");
-        const suffix = String(row[1] || "");
+      if (
+        !Array.isArray(summaryData.h) ||
+        summaryData.h.length !== summaryData.d.length ||
+        summaryData.p.some((prefix) => typeof prefix !== "string") ||
+        summaryData.h.some(
+          (fingerprint) => !/^[a-f0-9]{64}$/i.test(String(fingerprint || "")),
+        )
+      ) {
+        throw new Error("Backend compact summary fingerprints are malformed.");
+      }
+      summaryData = summaryData.d.map((row, index) => {
+        if (
+          !Array.isArray(row) ||
+          row.length < 5 ||
+          row.length > 6 ||
+          typeof row[0] !== "number" ||
+          !Number.isInteger(row[0]) ||
+          row[0] < 0 ||
+          row[0] >= summaryData.p.length ||
+          typeof row[1] !== "string" ||
+          !row[1].trim() ||
+          typeof row[2] !== "number" ||
+          !Number.isInteger(row[2]) ||
+          row[2] < 0 ||
+          typeof row[3] !== "string" ||
+          !row[3].trim() ||
+          (row[4] !== 0 && row[4] !== 1) ||
+          (row.length === 6 && row[5] !== 1)
+        ) {
+          throw new Error("Backend compact summary row is malformed.");
+        }
+        const prefix = summaryData.p[row[0]];
+        const suffix = row[1];
         return {
           s: prefix ? `${prefix}::${suffix}` : suffix,
           c: row[2],
           t: row[3],
           ...(row[4] ? { l: "t" } : {}),
           ...(row.length > 5 ? { e: "t" } : {}),
+          h: Array.isArray(summaryData.h)
+            ? String(summaryData.h[index] || "")
+            : "",
         };
       });
     }
@@ -880,6 +938,7 @@
         QuestionType: questionType || "ID",
         Locked: normalizeAccessFlag(locked),
         HasExplanations: hasExplanations,
+        PayloadVersion: String(deck.h ?? deck.PayloadVersion ?? ""),
       };
     });
   }
@@ -1019,6 +1078,7 @@
           deck?.QuestionType,
           deck?.Locked,
           deck?.HasExplanations,
+          deck?.PayloadVersion,
           deck?.Hidden,
           deck?.IsFolder,
           deck?.Downloaded,
@@ -1135,6 +1195,67 @@
     return Boolean(access.Locked) || Boolean(access.Password);
   }
 
+  function getChangedDownloadedDecks(
+    previousSummary,
+    nextSummary,
+    downloadedSubjects,
+  ) {
+    const previousDecks = Array.isArray(previousSummary) ? previousSummary : [];
+    const nextDecks = Array.isArray(nextSummary) ? nextSummary : [];
+    const previousVersions = new Map();
+    previousDecks.forEach((deck) => {
+      const subject = String(deck?.Subject || "").trim();
+      if (subject) {
+        previousVersions.set(subject, String(deck?.PayloadVersion || ""));
+      }
+    });
+    const nextSubjects = new Set(
+      nextDecks
+        .map((deck) => String(deck?.Subject || "").trim())
+        .filter(Boolean),
+    );
+    const downloaded = new Set(downloadedSubjects || []);
+    const changedSubjects = new Set();
+    nextDecks.forEach((deck) => {
+      const subject = String(deck?.Subject || "").trim();
+      const nextVersion = String(deck?.PayloadVersion || "");
+      if (
+        subject &&
+        nextVersion &&
+        previousVersions.get(subject) !== nextVersion &&
+        downloaded.has(subject)
+      ) {
+        changedSubjects.add(subject);
+      }
+    });
+    previousDecks.forEach((deck) => {
+      const subject = String(deck?.Subject || "").trim();
+      if (
+        subject &&
+        !nextSubjects.has(subject) &&
+        downloaded.has(subject)
+      ) {
+        changedSubjects.add(subject);
+      }
+    });
+    return changedSubjects;
+  }
+
+  function broadcastBackendPayloadChange() {
+    if (!isLeaderTab || !cacheInvalidationChannel) return;
+    try {
+      cacheInvalidationChannel.postMessage({
+        protocol: BROADCAST_PROTOCOL,
+        type: "backend_payload_changed",
+      });
+    } catch (error) {
+      appLogger.warn(
+        "[CACHE] Unable to notify other tabs about updated backend payloads.",
+        error,
+      );
+    }
+  }
+
   function applySummaryData(summaryData, knownChanged = null) {
     // CRITICAL FIX: Don't double-filter - backend already filters hidden decks
     // Only use the data as-is from the backend response
@@ -1149,6 +1270,22 @@
     if (!Array.isArray(summaryData)) {
       return false;
     }
+
+    const downloadedSubjects = new Set(
+      (state.db || [])
+        .map((question) => String(question?.Subject || "").trim())
+        .filter(Boolean),
+    );
+    getChangedDownloadedDecks(
+      state.categorySummary || [],
+      summaryData,
+      downloadedSubjects,
+    ).forEach((subject) => {
+      pendingDeckPayloadRefreshes.add(subject);
+    });
+    state.prefs.pendingDeckPayloadRefreshes = [
+      ...pendingDeckPayloadRefreshes,
+    ];
 
     state.categorySummary = summaryData;
     syncConnected = true;
@@ -1191,9 +1328,130 @@
         );
       },
     );
-    populateFilters();
-    renderCategoryProgress();
+    if (changed) broadcastBackendPayloadChange();
+    if (!hasActiveContentSession()) {
+      populateFilters();
+      renderCategoryProgress();
+      Promise.resolve().then(() => refreshPendingDeckPayloads());
+    }
     return changed;
+  }
+
+  function hasActiveContentSession() {
+    return Boolean(state.session?.active || isReviewViewActive());
+  }
+
+  function isReviewViewActive() {
+    return Boolean(
+      typeof document !== "undefined" &&
+        document
+          .getElementById("view-deck-review")
+          ?.classList.contains("active"),
+    );
+  }
+
+  async function refreshPendingDeckPayloads() {
+    if (state.session?.active) return false;
+    if (deckPayloadRefreshPromise) return deckPayloadRefreshPromise;
+
+    deckPayloadRefreshPromise = (async () => {
+      for (const subject of [...pendingDeckPayloadRefreshes]) {
+        if (state.session?.active) break;
+        if (
+          isReviewViewActive() &&
+          getCurrentReviewSubject() === subject
+        ) {
+          continue;
+        }
+        const summaryEntry = (state.categorySummary || []).find(
+          (deck) => String(deck?.Subject || "").trim() === subject,
+        );
+        if (!summaryEntry) {
+          const previousDatabase = state.db;
+          state.db = (state.db || []).filter(
+            (question) =>
+              String(question?.Subject || "").trim() !== subject,
+          );
+          rebuildQuestionIndex();
+          invalidateCategoryProgressRenderSignature();
+          try {
+            await safeIdbSet("mrh_db", state.db);
+            pendingDeckPayloadRefreshes.delete(subject);
+          } catch (error) {
+            state.db = previousDatabase;
+            rebuildQuestionIndex();
+            appLogger.error(
+              `Unable to persist removal of deleted deck "${subject}".`,
+              error,
+            );
+          }
+          continue;
+        }
+        if (summaryEntry.Locked) {
+          continue;
+        }
+        const expectedQuestionCount = Math.max(
+          0,
+          Number(summaryEntry.QuestionCount) || 0,
+        );
+        if (expectedQuestionCount === 0) {
+          const previousDatabase = state.db;
+          state.db = (state.db || []).filter(
+            (question) =>
+              String(question?.Subject || "").trim() !== subject,
+          );
+          rebuildQuestionIndex();
+          invalidateCategoryProgressRenderSignature();
+          try {
+            await safeIdbSet("mrh_db", state.db);
+            pendingDeckPayloadRefreshes.delete(subject);
+          } catch (error) {
+            state.db = previousDatabase;
+            rebuildQuestionIndex();
+            appLogger.error(
+              `Unable to persist the empty updated payload for "${subject}".`,
+              error,
+            );
+          }
+          continue;
+        }
+        const refreshed = await fetchDeckQuestions(
+          subject,
+          null,
+          null,
+          null,
+          expectedQuestionCount,
+          true,
+        );
+        if (refreshed.length === expectedQuestionCount) {
+          pendingDeckPayloadRefreshes.delete(subject);
+        }
+      }
+      const pendingSubjects = [...pendingDeckPayloadRefreshes];
+      if (
+        JSON.stringify(state.prefs.pendingDeckPayloadRefreshes || []) !==
+        JSON.stringify(pendingSubjects)
+      ) {
+        state.prefs.pendingDeckPayloadRefreshes = pendingSubjects;
+        try {
+          if ((await saveState("prefs")) === false) {
+            appLogger.error(
+              "Unable to persist pending backend payload refreshes.",
+            );
+          }
+        } catch (error) {
+          appLogger.error(
+            "Unable to persist pending backend payload refreshes.",
+            error,
+          );
+        }
+      }
+      return pendingDeckPayloadRefreshes.size === 0;
+    })().finally(() => {
+      deckPayloadRefreshPromise = null;
+    });
+
+    return deckPayloadRefreshPromise;
   }
 
   function scheduleSyncRetry(showOverlay = true) {
@@ -1253,8 +1511,13 @@
   async function syncDatabaseImplementation(
     isRetry = false,
     isBackgroundCheck = false,
+    expectedSyncTimestamp = "",
   ) {
-    return getSyncController().syncDatabase(isRetry, isBackgroundCheck);
+    return getSyncController().syncDatabase(
+      isRetry,
+      isBackgroundCheck,
+      expectedSyncTimestamp,
+    );
   }
 
   /**
@@ -1263,7 +1526,11 @@
    * @param {boolean} [isBackgroundCheck]
    * @returns {Promise<boolean>}
    */
-  async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
+  async function syncDatabase(
+    isRetry = false,
+    isBackgroundCheck = false,
+    expectedSyncTimestamp = "",
+  ) {
     const bootstrapStatus =
       typeof window !== "undefined" ? window.__MRH_BOOTSTRAP__?.status : null;
 
@@ -1278,7 +1545,11 @@
       return false;
     }
 
-    return getSyncController().syncDatabase(isRetry, isBackgroundCheck);
+    return getSyncController().syncDatabase(
+      isRetry,
+      isBackgroundCheck,
+      expectedSyncTimestamp,
+    );
   }
 
   function enterFolder(folderName, isLockedFolder) {
@@ -1489,14 +1760,15 @@
         let current = 0;
         const layout = state.prefs.studyLayout || "scroll";
         const pageSize = state.prefs.studyPageSize || 10;
+        const hasQuestionPosition =
+          Boolean(progress.questionId) || Number(progress.index) > 0;
         if (layout === "single") {
           current = Number(progress.index || 0) + 1;
         } else if (pageSize === "All") {
-          current =
-            Number(progress.index) > 0
-              ? Number(progress.index) + 1
-              : Math.floor(Math.max(0, Number(progress.scrollY) || 0) / 420);
-        } else if (Number(progress.index) > 0) {
+          current = hasQuestionPosition
+            ? Number(progress.index || 0) + 1
+            : Math.floor(Math.max(0, Number(progress.scrollY) || 0) / 420);
+        } else if (hasQuestionPosition) {
           current = Number(progress.index) + 1;
         } else {
           current = Math.max(0, (Number(progress.page || 1) - 1) * pageSize);
@@ -1575,10 +1847,13 @@
         }
       }
 
-      if (!pathValid) {
+      if (!pathValid && isInitialSyncComplete) {
+        showDeckNotFound(state.currentPath);
         state.currentPath = [];
         globalScope.persistNavigationPath(state.currentPath);
         currentNode = tree;
+      } else if (pathValid) {
+        dismissDeckNotFound();
       }
 
       const folderStatsCache = categoryTreeFolderStatsCache || new WeakMap();
@@ -2519,7 +2794,11 @@
   }
 
   async function fetchAndStartCategory(subject, mode, pass = null) {
-    return DeckNavCore.fetchAndStartCategory(subject, mode, pass);
+    const started = await DeckNavCore.fetchAndStartCategory(subject, mode, pass);
+    if (started && state.session?.active) {
+      await markQuizActivity(subject);
+    }
+    return started;
   }
 
   function startCustomSession(pool) {
@@ -2745,6 +3024,8 @@
     pass = null,
     loaderElement = null,
     customFilter = null,
+    expectedQuestionCount = null,
+    suppressRender = false,
   ) {
     const subjectKey = String(subject || "").trim();
     if (!subjectKey) return [];
@@ -2755,6 +3036,8 @@
       pass,
       customFilter,
       loaderElement,
+      expectedQuestionCount,
+      suppressRender,
     );
   }
 
@@ -2763,6 +3046,8 @@
    * @param {string|null} pass
    * @param {((question: Record<string, unknown>) => boolean)|null} customFilter
    * @param {HTMLElement|null} [loaderElement]
+   * @param {number|null} [expectedQuestionCount]
+   * @param {boolean} [suppressRender]
    * @returns {Promise<Array<Record<string, unknown>>>}
    */
   async function fetchDeckQuestionsFromNetwork(
@@ -2770,17 +3055,24 @@
     pass,
     customFilter,
     loaderElement = null,
+    expectedQuestionCount = null,
+    suppressRender = false,
   ) {
     if (!canFetchDeck(subject)) return [];
 
     const subjectKey = getDeckFetchKey(subject, pass, customFilter);
-    if (deckFetchInFlight.has(subjectKey)) {
+    const hasPendingPayloadUpdate = pendingDeckPayloadRefreshes.has(
+      String(subject || "").trim(),
+    );
+    if (hasPendingPayloadUpdate) invalidateDeckFetch(subject);
+    if (deckFetchInFlight.has(subjectKey) && !hasPendingPayloadUpdate) {
       return deckFetchInFlight.get(subjectKey);
     }
 
     const clearGeneration = appDataClearGeneration;
     const deckGeneration = getDeckFetchGeneration(subject);
     const request = (async () => {
+      let previousDatabaseForRollback = null;
       if (loaderElement) {
         loaderElement.classList.remove("hidden");
         loaderElement.classList.add("flex");
@@ -2837,11 +3129,54 @@
           );
         }
 
+        const normalizedSubject = String(subject || "").trim();
+        if (pendingDeckPayloadRefreshes.has(normalizedSubject)) {
+          const summaryEntry = (state.categorySummary || []).find(
+            (deck) =>
+              String(deck?.Subject || "").trim() === normalizedSubject,
+          );
+          const expectedPayloadVersion = String(
+            summaryEntry?.PayloadVersion || "",
+          );
+          if (!/^[a-f0-9]{64}$/i.test(expectedPayloadVersion)) {
+            throw new Error(
+              `Backend payload version for "${subject}" is unavailable.`,
+            );
+          }
+          if (typeof AppNetwork.getPayloadFingerprint !== "function") {
+            throw new Error("Backend payload fingerprint verification is unavailable.");
+          }
+          const receivedPayloadVersion =
+            await AppNetwork.getPayloadFingerprint(newQuestions);
+          if (receivedPayloadVersion !== expectedPayloadVersion) {
+            throw new Error(
+              `Backend returned a stale or incompatible payload for "${subject}".`,
+            );
+          }
+        }
+
         let validQuestions = newQuestions
           .map((q) => normalizeQuestionRecord(q, subject))
           .filter((q) => q.Question && q.Question.trim() !== "");
         if (typeof customFilter === "function")
           validQuestions = validQuestions.filter(customFilter);
+
+        if (
+          expectedQuestionCount === null &&
+          pendingDeckPayloadRefreshes.has(String(subject || "").trim())
+        ) {
+          const summaryEntry = (state.categorySummary || []).find(
+            (deck) =>
+              String(deck?.Subject || "").trim() ===
+              String(subject || "").trim(),
+          );
+          if (summaryEntry) {
+            expectedQuestionCount = Math.max(
+              0,
+              Number(summaryEntry.QuestionCount) || 0,
+            );
+          }
+        }
 
         const existingSubjectQuestions = getQuestionsForSubject(subject);
         const existingById = new Map();
@@ -2932,33 +3267,83 @@
           return q;
         });
 
+        if (
+          expectedQuestionCount !== null &&
+          validQuestions.length !== expectedQuestionCount
+        ) {
+          throw new Error(
+            `Backend payload for "${subject}" is incomplete: expected at least ${expectedQuestionCount} questions, received ${validQuestions.length}.`,
+          );
+        }
+
+        if (
+          suppressRender &&
+          (state.session?.active ||
+            (isReviewViewActive() &&
+              getCurrentReviewSubject() === subject))
+        ) {
+          return [];
+        }
+
         if (validQuestions.length === 0) {
           return [];
         }
 
+        if (suppressRender) previousDatabaseForRollback = state.db;
         const otherQuestions = state.db.filter(
           (q) => String(q?.Subject || "").trim() !== subject,
         );
         state.db = [...otherQuestions, ...validQuestions];
-        clearLocalDownloadDeleted(subject);
         rebuildQuestionIndex();
         invalidateCategoryProgressRenderSignature();
         await safeIdbSet("mrh_db", state.db);
-        if (typeof renderCategoryProgress === "function") {
+        clearLocalDownloadDeleted(subject);
+        if (pendingDeckPayloadRefreshes.delete(normalizedSubject)) {
+          state.prefs.pendingDeckPayloadRefreshes = [
+            ...pendingDeckPayloadRefreshes,
+          ];
+          try {
+            if ((await saveState("prefs")) === false) {
+              pendingDeckPayloadRefreshes.add(normalizedSubject);
+              state.prefs.pendingDeckPayloadRefreshes = [
+                ...pendingDeckPayloadRefreshes,
+              ];
+              appLogger.error(
+                `Unable to persist completion of the updated payload for "${subject}".`,
+              );
+            }
+          } catch (error) {
+            pendingDeckPayloadRefreshes.add(normalizedSubject);
+            state.prefs.pendingDeckPayloadRefreshes = [
+              ...pendingDeckPayloadRefreshes,
+            ];
+            appLogger.error(
+              `Unable to persist completion of the updated payload for "${subject}".`,
+              error,
+            );
+          }
+        }
+        if (!suppressRender && typeof renderCategoryProgress === "function") {
           renderCategoryProgress();
         }
 
         return validQuestions;
       } catch (err) {
+        if (previousDatabaseForRollback) {
+          state.db = previousDatabaseForRollback;
+          rebuildQuestionIndex();
+        }
         const message =
           err && err.message
             ? err.message
             : "Unable to load deck data from the backend.";
         appLogger.warn("Network fetch failed.", err);
-        showToast(
-          `Unable to load "${subject}" from the database. ${message}`,
-          "error",
-        );
+        if (!suppressRender) {
+          showToast(
+            `Unable to load "${subject}" from the database. ${message}`,
+            "error",
+          );
+        }
         return [];
       } finally {
         if (loaderElement) {
@@ -2972,7 +3357,9 @@
     try {
       return await request;
     } finally {
-      deckFetchInFlight.delete(subjectKey);
+      if (deckFetchInFlight.get(subjectKey) === request) {
+        deckFetchInFlight.delete(subjectKey);
+      }
     }
   }
 
@@ -2992,7 +3379,10 @@
     }
 
     let validQuestions = [];
-    if (preferCachedQuestions) {
+    if (
+      preferCachedQuestions &&
+      !pendingDeckPayloadRefreshes.has(String(subject || "").trim())
+    ) {
       const cachedQuestions = (state.db || []).filter(
         (question) => String(question?.Subject || "").trim() === subject,
       );
@@ -3408,6 +3798,8 @@
         await safeIdbDel("mrh_db");
         state.db = [];
         rebuildQuestionIndex();
+        pendingDeckPayloadRefreshes.clear();
+        state.prefs.pendingDeckPayloadRefreshes = [];
         if (!clearSessionProgress()) {
           throw new Error("Unable to remove the saved session.");
         }
@@ -3494,6 +3886,7 @@
       }
 
       await safeIdbDel("mrh_db");
+      pendingDeckPayloadRefreshes.clear();
 
       if (state.session) state.session.active = false;
       rootScope.SessionCore?.cleanup?.();
@@ -3727,6 +4120,8 @@
     document.getElementById("session-active").classList.remove("hidden");
 
     renderQuestion();
+    await markQuizActivity(currentSubject);
+    return true;
   }
 
   function clearSessionProgress() {
@@ -3947,6 +4342,183 @@
       restorePracticeAfterReviewFailure();
     }
     return false;
+  }
+
+  async function markQuizActivity(subject) {
+    currentAppMode = "quiz";
+    state.prefs.lastActivity = {
+      ...(state.prefs.lastActivity || {}),
+      mode: "quiz",
+      subject: subject || null,
+      updatedAt: new Date().toISOString(),
+    };
+    syncPreferenceControls();
+    return saveState("prefs");
+  }
+
+  async function startReviewDeckQuiz(subject) {
+    const cachedQuestions =
+      DeckReviewCore?.getCurrentReviewSubject?.() === subject
+        ? DeckReviewCore.getCurrentReviewQuestions()
+        : [];
+    const questions = Array.isArray(cachedQuestions)
+      ? cachedQuestions.filter(
+          (question) => String(question?.Subject || "").trim() === subject,
+        )
+      : [];
+    const customFilter =
+      state.prefs.qTypeOverride === "mcq"
+        ? (question) =>
+            typeof question.ChoiceA === "string" &&
+            question.ChoiceA.trim() !== "" &&
+            typeof question.ChoiceB === "string" &&
+            question.ChoiceB.trim() !== ""
+        : null;
+    const eligibleQuestions = customFilter
+      ? questions.filter(customFilter)
+      : questions;
+    const completed = new Set(state.stats.completedQs || []);
+    let pool = eligibleQuestions.filter(
+      (question) => !completed.has(question.ID),
+    );
+
+    if (pool.length === 0) {
+      showToast(
+        `No unanswered questions are available in "${subject}". Reset progress to start over.`,
+        "info",
+      );
+      return false;
+    }
+
+    if (state.prefs.srsEnabled === true) {
+      const now = Date.now();
+      const duePool = pool.filter((question) => {
+        const srs = state.stats.srsMap?.[question.ID];
+        return !srs || Number(srs.due || 0) <= now;
+      });
+      if (duePool.length > 0) pool = duePool;
+    }
+
+    let started;
+    try {
+      started = await startCustomSession(pool);
+    } catch (error) {
+      appLogger.error("Unable to start a quiz from Review Mode.", error);
+      showToast(
+        "We're having a temporary issue with our servers or services, so this quiz couldn't start. Please check your internet connection and try again later.",
+        "error",
+        8000,
+      );
+      return false;
+    }
+    if (!started) return false;
+    await markQuizActivity(subject);
+    return true;
+  }
+
+  async function switchReviewToPractice() {
+    const subject = getCurrentReviewSubject();
+    if (!subject) {
+      showToast("Unable to determine the current study deck.", "error");
+      return false;
+    }
+    if (state.session?.active) {
+      showToast(
+        "A quiz session is already active. Finish or pause it before starting another quiz.",
+        "warning",
+      );
+      return false;
+    }
+
+    const savedSessionData = getStoredItem("saved_session");
+    let savedSession = null;
+    if (savedSessionData) {
+      try {
+        savedSession = JSON.parse(savedSessionData);
+      } catch (error) {
+        appLogger.error("Unable to read the saved quiz session.", error);
+        showToast(
+          "Your saved quiz progress could not be read. Return to the Main Menu to recover it before starting another quiz.",
+          "error",
+          8000,
+        );
+        return false;
+      }
+    }
+
+    const savedSubject = String(
+      savedSession?.questions?.[savedSession.currentIndex]?.Subject || "",
+    ).trim();
+    const hasSavedQuiz =
+      savedSession?.active === true &&
+      Array.isArray(savedSession.questions) &&
+      savedSession.questions.length > 0 &&
+      Number.isInteger(savedSession.currentIndex) &&
+      savedSession.currentIndex >= 0 &&
+      savedSession.currentIndex < savedSession.questions.length;
+
+    if (savedSessionData && !hasSavedQuiz) {
+      showToast(
+        "Your saved quiz progress could not be verified. Return to the Main Menu to recover it before starting another quiz.",
+        "error",
+        8000,
+      );
+      return false;
+    }
+
+    const persistReviewProgress = async () => {
+      const progress = state.prefs.studyProgress?.[subject];
+      const main = document.querySelector("main");
+      if (progress && Number.isFinite(main?.scrollTop)) {
+        progress.scrollY = main.scrollTop;
+        progress.updatedAt = Date.now();
+      }
+      try {
+        if ((await saveState("prefs")) !== false) return true;
+        appLogger.error("Unable to save study progress before switching modes.");
+      } catch (error) {
+        appLogger.error(
+          "Unable to save study progress before switching modes.",
+          error,
+        );
+      }
+      showToast(
+        "Your study progress could not be saved. Please try again before switching modes.",
+        "error",
+      );
+      return false;
+    };
+
+    if (hasSavedQuiz && savedSubject === subject) {
+      const confirmed = await requestConfirmation(
+        "Study progress is saved. You can return to it later. Continue to quiz this deck?",
+        "Switch to Quiz Mode",
+      );
+      if (!confirmed) return false;
+
+      if (!(await persistReviewProgress())) return false;
+      await resumeSession();
+      return Boolean(state.session?.active);
+    }
+
+    if (hasSavedQuiz) {
+      const confirmed = await requestConfirmation(
+        `Study progress is saved. You can return to it later. Start a new quiz for "${subject}"? This will replace your saved quiz progress for "${savedSubject || "another deck"}".`,
+        "Switch to Quiz Mode",
+      );
+      if (!confirmed) return false;
+    } else {
+      const confirmed = await requestConfirmation(
+        "Study progress is saved. You can return to it later. Start a quiz for this deck?",
+        "Switch to Quiz Mode",
+      );
+      if (!confirmed) return false;
+    }
+
+    if (!(await persistReviewProgress())) return false;
+    const started = await startReviewDeckQuiz(subject);
+    if (!started) return false;
+    return true;
   }
 
   function cancelDeckPasswordRequest() {
@@ -4202,8 +4774,9 @@
       .catch((error) => {
         appLogger.error("Unable to start the selected deck.", error);
         showToast(
-          "Unable to start this deck. Please try again in a moment.",
+          "We're having a temporary issue with our servers or services, so this deck couldn't start. Please check your internet connection and try again later.",
           "error",
+          8000,
         );
       })
       .finally(() => {
@@ -4615,6 +5188,7 @@
       };
     }
     state.prefs.studyProgress[reviewSubject].scrollY = latestReviewScrollY;
+    state.prefs.studyProgress[reviewSubject].updatedAt = Date.now();
     void saveState("prefs");
   }
 
@@ -4629,6 +5203,38 @@
     );
   }
 
+  async function refreshFromBackendPayloadBroadcast() {
+    if (isLeaderTab || !AppNetwork?.getSyncStatus) return;
+    try {
+      const status = await AppNetwork.getSyncStatus({
+        timeoutMs: 20000,
+        maxRetries: 0,
+      });
+      if (
+        status?.status !== "ok" ||
+        status.isColdStart === true ||
+        Number(status.payloadSchemaVersion) !==
+          Number(appConfig.backendPayloadSchemaVersion ?? 2)
+      ) {
+        appLogger.warn(
+          "[CACHE] Ignoring an update notification with unavailable or incompatible backend data.",
+          status,
+        );
+        return;
+      }
+      await syncDatabase(
+        true,
+        true,
+        String(status.syncTimestamp || "").trim(),
+      );
+    } catch (error) {
+      appLogger.warn(
+        "[CACHE] Unable to synchronize the notified backend payload update.",
+        error,
+      );
+    }
+  }
+
   function setupCacheInvalidationListener() {
     if (typeof BroadcastChannel === "undefined") return;
 
@@ -4639,6 +5245,10 @@
           appLogger.info("[CACHE] Invalidation signal received");
           // Force refresh database when the cache version changes
           handleCacheInvalidation();
+        } else if (
+          isValidBroadcastMessage(event?.data, "backend_payload_changed")
+        ) {
+          refreshFromBackendPayloadBroadcast();
         }
       };
     } catch (e) {
@@ -4811,6 +5421,19 @@
       },
       { signal: uiEventController.signal },
     );
+
+    window.addEventListener(
+      "online",
+      () => {
+        if (!document.hidden && isLeaderTab) {
+          appLogger.info(
+            "[SYNC] Connectivity restored; resuming background sync",
+          );
+          syncScheduler.handleVisibility(false);
+        }
+      },
+      { signal: uiEventController.signal },
+    );
   }
 
   // ============================================
@@ -4909,10 +5532,13 @@
                           page: 1,
                           index: 0,
                           scrollY: 0,
+                          updatedAt: Date.now(),
                         };
                       }
                       state.prefs.studyProgress[reviewSubject].scrollY =
                         latestReviewScrollY;
+                      state.prefs.studyProgress[reviewSubject].updatedAt =
+                        Date.now();
                       if (latestReviewSubject === reviewSubject) {
                         latestReviewSubject = null;
                       }
@@ -4962,6 +5588,14 @@
         }
 
         await loadState();
+        if (Array.isArray(state.prefs?.pendingDeckPayloadRefreshes)) {
+          state.prefs.pendingDeckPayloadRefreshes.forEach((subject) => {
+            const normalizedSubject = String(subject || "").trim();
+            if (normalizedSubject) {
+              pendingDeckPayloadRefreshes.add(normalizedSubject);
+            }
+          });
+        }
 
         const toggleElement = document.getElementById("globalModeToggle");
         if (toggleElement) {
@@ -5122,7 +5756,9 @@
     reloadAppStateInMemory,
     renderCategoryProgress,
     renderCategoryProgressNow,
+    refreshPendingDeckPayloads,
     dismissTreeViewReadabilityNotice,
+    dismissDeckNotFound,
     switchTreeViewToLandscape,
     toggleTreeNode,
     renderCharts,
@@ -5141,6 +5777,7 @@
     saveSessionProgress,
     saveState,
     switchPracticeToReview,
+    switchReviewToPractice,
     cancelDeckPasswordRequest,
     scheduleDeferredInitialization,
     scheduleNextPolling,

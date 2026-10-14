@@ -159,11 +159,15 @@
     const retryMaxDelayMs = config.syncRetryMaxDelayMs ?? 60 * 1000;
     const syncIntervalMs = config.syncIntervalMs ?? 60 * 1000;
     const requestTimeoutMs = config.syncRequestTimeoutMs ?? 60000;
+    const payloadSchemaVersion = Number(
+      config.backendPayloadSchemaVersion ?? 2,
+    );
     let abortController = null;
     let retryTimer = null;
     let countdownTimer = null;
     let pollTimer = null;
     let attempt = 0;
+    let retryAttempt = 0;
     let initialSuccessShown = false;
     let pendingSummaryData = null;
     let pendingSyncTimestamp = "";
@@ -209,15 +213,13 @@
     }
 
     function scheduleRetry(showOverlay = true) {
-      if (disposed) return;
+      if (disposed || !options.isLeader()) return;
       cancelPoll();
       if (retryTimer !== null) return;
-      lifecycle.clearTimeout(retryTimer);
-      lifecycle.clearInterval(countdownTimer);
-      const retryCount = Math.max(0, Number(attempt || 1) - 1);
+      retryAttempt += 1;
       const delay = Math.min(
         retryMaxDelayMs,
-        Math.max(retryIntervalMs, backoffDelay(retryCount)),
+        Math.max(retryIntervalMs, backoffDelay(retryAttempt - 1)),
       );
       const retryAt = Date.now() + delay;
       const wasConnected = connected;
@@ -239,19 +241,47 @@
         retryTimer = null;
         lifecycle.clearInterval(countdownTimer);
         countdownTimer = null;
+        if (!options.isLeader()) return;
         syncDatabase(true, !effectiveShowOverlay);
       }, delay);
     }
 
+    function clearScheduledRetry(resetAttempt = true) {
+      lifecycle.clearTimeout(retryTimer);
+      retryTimer = null;
+      lifecycle.clearInterval(countdownTimer);
+      countdownTimer = null;
+      if (resetAttempt) retryAttempt = 0;
+    }
+
     function normalizeSummary(summary) {
-      return options.normalizeSummaryData(summary);
+      const normalized = options.normalizeSummaryData(summary);
+      if (!Array.isArray(normalized)) return normalized;
+      for (const [index, deck] of normalized.entries()) {
+        if (
+          !deck ||
+          typeof deck !== "object" ||
+          !String(deck.Subject || "").trim() ||
+          !Number.isFinite(Number(deck.QuestionCount)) ||
+          Number(deck.QuestionCount) < 0 ||
+          !/^[a-f0-9]{64}$/i.test(String(deck.PayloadVersion || ""))
+        ) {
+          throw new Error(
+            `Backend summary entry ${index} is malformed or incompatible with payload schema ${payloadSchemaVersion}.`,
+          );
+        }
+      }
+      return normalized;
     }
 
     async function checkSyncStatusLightweight() {
       try {
         if (typeof options.network?.getSyncStatus !== "function")
           throw new Error("AppNetwork sync status API is unavailable.");
-        return await options.network.getSyncStatus({ timeoutMs: 20000 });
+        return await options.network.getSyncStatus({
+          timeoutMs: 20000,
+          maxRetries: 0,
+        });
       } catch (error) {
         options.logger.warn("[SYNC] Lightweight status check failed:", error);
         return null;
@@ -276,7 +306,7 @@
                 "warning",
                 false,
               );
-              schedulePoll();
+              scheduleRetry(false);
               return;
             }
             await syncDatabase(true, true);
@@ -288,22 +318,64 @@
             scheduleRetry(!isCached());
             return;
           }
+          if (
+            Number(status.payloadSchemaVersion) !== payloadSchemaVersion
+          ) {
+            options.logger.warn(
+              "[SYNC] Backend payload schema is incompatible with this app.",
+              {
+                expected: payloadSchemaVersion,
+                received: status.payloadSchemaVersion ?? null,
+              },
+            );
+            setConnected(false);
+            options.updateSyncStatus(
+              '<i class="fa-solid fa-triangle-exclamation mr-1"></i> Backend data format update required. Continuing with the last compatible cached data.',
+              "warning",
+              false,
+            );
+            scheduleRetry(false);
+            return;
+          }
+          clearScheduledRetry();
           const timestamp = String(status.syncTimestamp || "").trim();
           const storedTimestamp = options.readStoredSyncStatusTimestamp();
+          const timestampMs = Date.parse(timestamp);
+          const storedTimestampMs = Date.parse(storedTimestamp);
+          if (
+            storedTimestamp &&
+            timestamp &&
+            Number.isFinite(timestampMs) &&
+            Number.isFinite(storedTimestampMs) &&
+            timestampMs < storedTimestampMs
+          ) {
+            options.logger.warn(
+              "[SYNC] Ignoring an older backend sync timestamp.",
+              { timestamp, storedTimestamp },
+            );
+            setConnected(true);
+            setIsColdStart(false);
+            await options.refreshPendingPayloads?.();
+            schedulePoll();
+            return;
+          }
           if (storedTimestamp && storedTimestamp === timestamp) {
             setConnected(true);
             setIsColdStart(false);
+            await options.refreshPendingPayloads?.();
+            schedulePoll();
             return;
           }
           if (timestamp && pendingSyncTimestamp === timestamp) {
             if (options.hasActiveSession()) {
               setConnected(true);
               setIsColdStart(false);
+              schedulePoll();
               return;
             }
             pendingSyncTimestamp = "";
           }
-          const synchronized = await syncDatabase(true, true);
+          const synchronized = await syncDatabase(true, true, timestamp);
           if (timestamp && synchronized) {
             if (pendingSummaryData) pendingSyncTimestamp = timestamp;
             else options.persistSyncStatusTimestamp(timestamp);
@@ -320,7 +392,7 @@
               "warning",
               false,
             );
-            schedulePoll();
+            scheduleRetry(false);
             return;
           }
           await syncDatabase(true, true);
@@ -347,7 +419,11 @@
     }
 
     /** @returns {Promise<SyncCoreResult>} */
-    async function syncDatabase(isRetry = false, isBackgroundCheck = false) {
+    async function syncDatabase(
+      isRetry = false,
+      isBackgroundCheck = false,
+      expectedSyncTimestamp = "",
+    ) {
       if (disposed) return false;
       if (inFlightPromise) return inFlightPromise;
       inFlightPromise = (async () => {
@@ -380,6 +456,7 @@
             await options.network.getDeckSummary({
               timeoutMs: requestTimeoutMs,
               signal: requestController.signal,
+              maxRetries: 0,
             }),
           );
           if (disposed) return false;
@@ -395,9 +472,35 @@
             return false;
           }
           if (Array.isArray(summaryData)) {
+            if (
+              expectedSyncTimestamp &&
+              typeof options.network?.getSyncStatus === "function"
+            ) {
+              const latestStatus = await options.network.getSyncStatus({
+                timeoutMs: 20000,
+                signal: requestController.signal,
+                maxRetries: 0,
+              });
+              const latestTimestamp = String(
+                latestStatus?.syncTimestamp || "",
+              ).trim();
+              if (
+                latestStatus?.status !== "ok" ||
+                latestTimestamp !== expectedSyncTimestamp
+              ) {
+                lifecycle.clearTimeout(timeoutId);
+                options.logger.warn(
+                  "[SYNC] Discarding a summary fetched across a backend update.",
+                  { expectedSyncTimestamp, latestTimestamp },
+                );
+                scheduleRetry(!isBackgroundCheck && !options.hasActiveSession());
+                return false;
+              }
+            }
             lifecycle.clearTimeout(timeoutId);
             const wasConnected = connected;
             attempt = 0;
+            retryAttempt = 0;
             setConnected(true);
             setIsColdStart(false);
             options.sanitizeDeletedDeckReferences();
@@ -476,6 +579,7 @@
           options.renderCategoryProgress();
           return false;
         } finally {
+          lifecycle.clearTimeout(timeoutId);
           if (requestController === abortController) abortController = null;
           inFlightPromise = null;
         }

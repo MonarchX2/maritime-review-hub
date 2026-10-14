@@ -12,8 +12,8 @@
   let lastVirtualRenderKey = null;
   let reviewMainElement = null;
   let reviewContainerElement = null;
-  let pendingReviewScrollPosition = null;
   let cachedReviewContainerTop = 0;
+  let pendingReviewScrollPosition = null;
   const REVIEW_ESTIMATED_CARD_HEIGHT = 420;
   const REVIEW_VIRTUAL_OVERSCAN = 4;
 
@@ -152,6 +152,7 @@
     if (scrollContainer && Number.isFinite(scrollTop)) {
       scrollContainer.scrollTop = scrollTop;
     }
+    updateStudyProgressIndicator();
     return true;
   }
 
@@ -162,44 +163,93 @@
     if (!text || !bar || !track) return;
 
     const progress = state?.prefs?.studyProgress?.[currentReviewSubject] || {};
-    const filteredQuestions =
+    const reviewQuestions =
       derivedQuestionsCache?.questions === currentReviewQuestions
-        ? derivedQuestionsCache.filteredQuestions
+        ? derivedQuestionsCache.sortedQuestions
         : currentReviewQuestions;
-    const total = filteredQuestions.length;
-    let current = 0;
-    let label = `0 / ${total}`;
+    const total = reviewQuestions.length;
     const layout = state.prefs.studyLayout || "scroll";
     const pageSize = state.prefs.studyPageSize || 10;
+    const questionIndexById = new Map(
+      reviewQuestions.map((question, index) => [
+        String(question.ID),
+        index,
+      ]),
+    );
+    let viewQuestionCount = 0;
+    if (total > 0) {
+      if (layout === "single") {
+        viewQuestionCount = 1;
+      } else if (pageSize === "All") {
+        viewQuestionCount = total;
+      } else {
+        const totalPages = Math.ceil(total / pageSize);
+        const page = Math.min(totalPages, Math.max(1, progress.page || 1));
+        viewQuestionCount = Math.min(pageSize, total - (page - 1) * pageSize);
+      }
+    }
+    let current =
+      total > 0
+        ? Math.min(total, Math.max(1, (progress.index || 0) + 1))
+        : 0;
+    let label = `0 / ${total}`;
 
-    if (total > 0 && layout === "single") {
-      current = Math.min(total, Math.max(1, (progress.index || 0) + 1));
-      label = `Question ${current} / ${total}`;
-    } else if (total > 0 && pageSize !== "All") {
-      const totalPages = Math.ceil(total / pageSize);
-      const page = Math.min(totalPages, Math.max(1, progress.page || 1));
-      const start = (page - 1) * pageSize + 1;
-      current = Math.min(total, page * pageSize);
-      label = `Question ${start} - ${current} / ${total}`;
-    } else if (total > 0) {
-      const container =
-        reviewContainerElement ||
-        document.getElementById("deck-review-list");
+    if (total > 0) {
+      const container = reviewContainerElement;
       const viewport = reviewMainElement?.getBoundingClientRect();
       const viewportTop = viewport?.top ?? 0;
       const viewportBottom = viewport?.bottom ?? window.innerHeight;
-      const visibleCard = Array.from(
+      const visibleCards = Array.from(
         container?.querySelectorAll(".review-question-card") || [],
-      ).find((card) => {
+      ).filter((card) => {
         const bounds = card.getBoundingClientRect();
         return bounds.bottom > viewportTop && bounds.top < viewportBottom;
       });
-      const visibleIndex = Number(visibleCard?.dataset.reviewIndex);
+      const visibleCard =
+        visibleCards.find(
+          (card) => card.getBoundingClientRect().top <= viewportTop + 1,
+        ) || visibleCards[0];
+      const questionId = String(visibleCard?.dataset.questionId || "");
+      const visibleIndex = questionIndexById.get(questionId);
+
       if (Number.isSafeInteger(visibleIndex)) {
         progress.index = visibleIndex;
-        current = Math.min(total, Math.max(1, visibleIndex + 1));
+        progress.questionId = questionId;
+        markStudyProgressChanged(progress);
+        current = visibleIndex + 1;
+
+        if (
+          !progress.questionScrollOffsets ||
+          typeof progress.questionScrollOffsets !== "object" ||
+          Array.isArray(progress.questionScrollOffsets)
+        ) {
+          progress.questionScrollOffsets = {};
+        }
+        progress.questionScrollOffsets = {
+          ...progress.questionScrollOffsets,
+          [questionId]: Math.round(
+            visibleCard.getBoundingClientRect().top - viewportTop,
+          ),
+        };
+      } else if (layout === "single") {
+        current = Math.min(total, Math.max(1, (progress.index || 0) + 1));
       }
-      label = `Question ${current} / ${total}`;
+
+      if (layout === "single") {
+        label = `Question ${current} / ${total}`;
+      } else if (pageSize !== "All") {
+        const totalPages = Math.ceil(total / pageSize);
+        const page = Math.min(totalPages, Math.max(1, progress.page || 1));
+        const start = (page - 1) * pageSize + 1;
+        const end = Math.min(total, page * pageSize);
+        const questionLabel =
+          viewQuestionCount === 1 ? "Question" : "Questions";
+        label = `${questionLabel} ${start} - ${end} / ${total}`;
+      } else {
+        const questionLabel =
+          viewQuestionCount === 1 ? "Question" : "Questions";
+        label = `${questionLabel} ${current} / ${total}`;
+      }
     }
 
     const percent = total > 0 ? (current / total) * 100 : 0;
@@ -239,7 +289,12 @@
     const reviewNavigationPosition = getStudyNavigationPosition(layout);
 
     if (!state.prefs.studyProgress[subject]) {
-      state.prefs.studyProgress[subject] = { page: 1, index: 0, scrollY: 0 };
+      state.prefs.studyProgress[subject] = {
+        page: 1,
+        index: 0,
+        scrollY: 0,
+        updatedAt: Date.now(),
+      };
     }
     let progress = state.prefs.studyProgress[subject];
     let currentPage = progress.page || 1;
@@ -295,12 +350,28 @@
         filteredQuestions,
         sortedQuestions,
         questionIndexById: new Map(
-          filteredQuestions.map((question, index) => [question.ID, index]),
+          sortedQuestions.map((question, index) => [
+            String(question.ID),
+            index,
+          ]),
         ),
       };
     }
 
     const questionIndexById = derivedQuestionsCache.questionIndexById;
+    const savedQuestionIndex = questionIndexById.get(
+      String(progress.questionId || ""),
+    );
+    if (Number.isSafeInteger(savedQuestionIndex)) {
+      currentIndex = savedQuestionIndex;
+      progress.index = savedQuestionIndex;
+      if (layout !== "single" && pageSize !== "All") {
+        currentPage = Math.floor(savedQuestionIndex / pageSize) + 1;
+        progress.page = currentPage;
+      }
+    } else if (progress.questionId) {
+      delete progress.questionId;
+    }
 
     if (filteredQuestions.length === 0) {
       container.innerHTML = `
@@ -337,12 +408,15 @@
         currentIndex = filteredQuestions.length - 1;
       progress.index = currentIndex;
 
-      displayQuestions = [filteredQuestions[currentIndex]];
+      displayQuestions = [sortedQuestions[currentIndex]];
     } else {
       if (pageSize === "All") {
         const main = reviewMainElement;
         const containerTop = cachedReviewContainerTop;
-        const viewportTop = Math.max(0, (main?.scrollTop || 0) - containerTop);
+        const viewportTop =
+          !isVirtualScroll && Number.isSafeInteger(savedQuestionIndex)
+            ? savedQuestionIndex * REVIEW_ESTIMATED_CARD_HEIGHT
+            : Math.max(0, (main?.scrollTop || 0) - containerTop);
         const viewportHeight = main?.clientHeight || window.innerHeight || 800;
         virtualStartIndex = Math.max(
           0,
@@ -355,7 +429,7 @@
             (viewportTop + viewportHeight) / REVIEW_ESTIMATED_CARD_HEIGHT,
           ) + REVIEW_VIRTUAL_OVERSCAN,
         );
-        displayQuestions = filteredQuestions.slice(
+        displayQuestions = sortedQuestions.slice(
           virtualStartIndex,
           virtualEndIndex,
         );
@@ -366,7 +440,7 @@
         progress.page = currentPage;
 
         let start = (currentPage - 1) * pageSize;
-        displayQuestions = filteredQuestions.slice(start, start + pageSize);
+        displayQuestions = sortedQuestions.slice(start, start + pageSize);
       }
     }
 
@@ -393,8 +467,8 @@
             <button onclick="changeStudyIndex(-1)" ${currentIndex === 0 ? "disabled" : ""} class="px-4 py-2 bg-purple-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600 transition-colors">
                 <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Previous</span>
             </button>
-          <span class="text-sm font-bold text-gray-600 dark:text-gray-300 flex-1 text-center">Card ${currentIndex + 1} / ${questions.length}</span>
-          <button onclick="changeStudyIndex(1)" ${currentIndex === questions.length - 1 ? "disabled" : ""} class="px-4 py-2 bg-purple-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600 transition-colors">
+          <span data-review-card-count class="text-sm font-bold text-gray-600 dark:text-gray-300 flex-1 text-center">Card ${currentIndex + 1} / ${sortedQuestions.length}</span>
+          <button onclick="changeStudyIndex(1)" ${currentIndex === sortedQuestions.length - 1 ? "disabled" : ""} class="px-4 py-2 bg-purple-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600 transition-colors">
                 <span class="hidden sm:inline mr-1">Next</span> <i class="fa-solid fa-arrow-right"></i>
             </button>
         </div>
@@ -402,7 +476,7 @@
     } else if (pageSize !== "All" && totalPages > 1) {
       navigationHTML = `
             <div class="flex justify-between items-center {{navigation-placement}} p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 gap-2">
-                <button onclick="changeStudyPage(-1)" ${currentPage === 1 ? "disabled" : ""} class="px-4 py-2 bg-purple-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600 transition-colors">
+                <button onclick="changeStudyPage(-1)" class="px-4 py-2 bg-purple-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600 transition-colors">
                     <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Previous</span>
                 </button>
                 <div class="flex-1 flex items-center justify-center gap-1 text-sm font-bold text-gray-600 dark:text-gray-300">
@@ -459,7 +533,8 @@
     }
 
     displayQuestions.forEach((q, displayIndex) => {
-      const originalIndex = questionIndexById.get(q.ID) ?? displayIndex;
+      const originalIndex =
+        questionIndexById.get(String(q.ID)) ?? displayIndex;
       const isQuestionFavorite = favoriteQuestions.has(q.ID);
 
       let rawQuestionText = q.Question ? String(q.Question) : "";
@@ -484,7 +559,7 @@
       );
 
       html += `
-            <div data-question-id="${escapeHTML(String(q.ID))}" data-review-index="${originalIndex}" class="review-question-card bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6 animate-card-in">
+            <div data-question-id="${escapeHTML(String(q.ID))}" data-review-index="${originalIndex}" class="review-question-card bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6">
                 <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 dark:border-gray-700">
                     <span class="bg-brand-50 text-brand-600 text-xs px-2 py-1 rounded font-bold dark:bg-brand-900/30 dark:text-white">Question ${originalIndex + 1}</span>
 
@@ -559,6 +634,39 @@
       });
 
       container.replaceChildren(fragment);
+    } else if (layout === "single") {
+      const host = document.createElement("div");
+      host.innerHTML = html;
+      const currentCard = container.querySelector(".review-question-card");
+      const nextCard = host.querySelector(".review-question-card");
+
+      if (currentCard && nextCard) {
+        currentCard.dataset.questionId = nextCard.dataset.questionId;
+        currentCard.dataset.reviewIndex = nextCard.dataset.reviewIndex;
+        currentCard.replaceChildren(...Array.from(nextCard.childNodes));
+
+        container
+          .querySelectorAll("[data-review-card-count]")
+          .forEach((count) => {
+            count.textContent = `Card ${currentIndex + 1} / ${sortedQuestions.length}`;
+          });
+        container
+          .querySelectorAll('button[onclick="changeStudyIndex(-1)"]')
+          .forEach((button) => {
+            button.disabled = currentIndex === 0;
+          });
+        container
+          .querySelectorAll('button[onclick="changeStudyIndex(1)"]')
+          .forEach((button) => {
+            button.disabled = currentIndex === sortedQuestions.length - 1;
+          });
+      } else {
+        const fragment = document.createDocumentFragment();
+        Array.from(host.childNodes).forEach((node) =>
+          fragment.appendChild(node),
+        );
+        container.replaceChildren(fragment);
+      }
     } else {
       const fragment = document.createDocumentFragment();
       const host = document.createElement("div");
@@ -566,7 +674,7 @@
       Array.from(host.childNodes).forEach((node) => fragment.appendChild(node));
       container.replaceChildren(fragment);
     }
-    navigate("deck-review");
+    const navigation = navigate("deck-review");
     updateStudyProgressIndicator();
 
     if (!isVirtualScroll) {
@@ -577,38 +685,62 @@
         layout === "scroll" &&
         requestedScrollPosition
       ) {
-        requestAnimationFrame(() => {
-          scrollReviewContent(requestedScrollPosition);
-          updateStudyProgressIndicator();
-        });
-      } else if (reviewMainElement && layout === "scroll" && progress.scrollY) {
-        requestAnimationFrame(() => {
-          if (reviewMainElement)
-            reviewMainElement.scrollTop = progress.scrollY || 0;
-          updateStudyProgressIndicator();
-        });
+        const restoreScrollPosition = () =>
+          requestAnimationFrame(() => {
+            const scrollContainer = scrollReviewContent(
+              requestedScrollPosition,
+            );
+            if (scrollContainer) {
+              progress.scrollY = scrollContainer.scrollTop;
+            }
+            updateStudyProgressIndicator();
+            saveState("prefs");
+          });
+        if (navigation && typeof navigation.then === "function") {
+          navigation.then(restoreScrollPosition);
+        } else {
+          restoreScrollPosition();
+        }
+      } else if (
+        reviewMainElement &&
+        layout === "scroll" &&
+        (progress.questionId || progress.scrollY)
+      ) {
+        const restoreScrollPosition = () =>
+          requestAnimationFrame(() => {
+            const questionCard = progress.questionId
+              ? Array.from(
+                  container.querySelectorAll(".review-question-card"),
+                ).find(
+                  (card) =>
+                    String(card.dataset.questionId) ===
+                    String(progress.questionId),
+                )
+              : null;
+            const questionOffset =
+              progress.questionScrollOffsets?.[progress.questionId];
+            if (
+              reviewMainElement &&
+              questionCard &&
+              Number.isFinite(questionOffset)
+            ) {
+              const mainTop = reviewMainElement.getBoundingClientRect().top;
+              const cardTop = questionCard.getBoundingClientRect().top;
+              reviewMainElement.scrollTop +=
+                cardTop - mainTop - questionOffset;
+            } else if (reviewMainElement) {
+              reviewMainElement.scrollTop = progress.scrollY || 0;
+            }
+            updateStudyProgressIndicator();
+          });
+        if (navigation && typeof navigation.then === "function") {
+          navigation.then(restoreScrollPosition);
+        } else {
+          restoreScrollPosition();
+        }
       }
       if (typeof applyTitleMode === "function") applyTitleMode();
     }
-  }
-
-  function scrollReviewContent(position) {
-    const main = reviewMainElement;
-    const mainIsScrollable =
-      main && main.scrollHeight > main.clientHeight + 1;
-    const scrollContainer = mainIsScrollable
-      ? main
-      : document.scrollingElement || document.documentElement || document.body;
-    if (!scrollContainer) return;
-
-    const top =
-      position === "bottom"
-        ? Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight)
-        : 0;
-    const previousScrollBehavior = scrollContainer.style.scrollBehavior;
-    scrollContainer.style.scrollBehavior = "auto";
-    scrollContainer.scrollTop = top;
-    scrollContainer.style.scrollBehavior = previousScrollBehavior;
   }
 
   if (typeof globalThis !== "undefined") {
@@ -625,6 +757,41 @@
     );
   }
 
+  function scrollReviewContent(position) {
+    const main = reviewMainElement;
+    const mainIsScrollable =
+      main && main.scrollHeight > main.clientHeight + 1;
+    const scrollContainer = mainIsScrollable
+      ? main
+      : document.scrollingElement || document.documentElement || document.body;
+    if (!scrollContainer) return null;
+
+    const top =
+      position === "bottom"
+        ? Math.max(
+            0,
+            scrollContainer.scrollHeight - scrollContainer.clientHeight,
+          )
+        : 0;
+    const previousScrollBehavior = scrollContainer.style.scrollBehavior;
+    scrollContainer.style.scrollBehavior = "auto";
+    scrollContainer.scrollTop = top;
+    scrollContainer.style.scrollBehavior = previousScrollBehavior;
+    return scrollContainer;
+  }
+
+  function getOrderedReviewQuestions() {
+    return derivedQuestionsCache?.questions === currentReviewQuestions
+      ? derivedQuestionsCache.sortedQuestions
+      : currentReviewQuestions;
+  }
+
+  function markStudyProgressChanged(progress) {
+    if (progress && typeof progress === "object") {
+      progress.updatedAt = Date.now();
+    }
+  }
+
   const state = globalScope.state;
   const saveState = globalScope.saveState;
 
@@ -639,6 +806,7 @@
         page: 1,
         index: 0,
         scrollY: 0,
+        updatedAt: Date.now(),
       };
     }
     saveState();
@@ -666,6 +834,9 @@
     state.prefs.studyPageSize = normalizedSize;
     if (state.prefs.studyProgress[currentReviewSubject]) {
       state.prefs.studyProgress[currentReviewSubject].page = 1;
+      markStudyProgressChanged(
+        state.prefs.studyProgress[currentReviewSubject],
+      );
     }
     saveState();
     reRenderDeckReview();
@@ -676,26 +847,74 @@
     const progress = state.prefs.studyProgress[currentReviewSubject];
     if (!progress) return;
     const currentPage = progress.page || 1;
+    if (delta < 0 && currentPage <= 1) {
+      void returnFromStudyMode();
+      return;
+    }
     const nextPage = Math.max(1, currentPage + delta);
     if (nextPage === currentPage) return;
     progress.page = nextPage;
-    progress.scrollY = 0;
-    pendingReviewScrollPosition = delta > 0 ? "top" : "bottom";
+    const pageSize = state.prefs.studyPageSize || 10;
+    if (pageSize !== "All") {
+      const targetQuestion =
+        getOrderedReviewQuestions()[(nextPage - 1) * pageSize];
+      if (targetQuestion) {
+        progress.index = (nextPage - 1) * pageSize;
+        progress.questionId = String(targetQuestion.ID);
+      }
+    }
     if (typeof window !== "undefined") clearTimeout(window.scrollSaveTimeout);
-    saveState();
+    progress.scrollY = 0;
+    markStudyProgressChanged(progress);
+    pendingReviewScrollPosition = delta > 0 ? "top" : "bottom";
+    saveState("prefs");
     reRenderDeckReview();
+  }
+
+  async function returnFromStudyMode() {
+    const confirmed = await globalScope.requestConfirmation?.(
+      "Do you want to return to the Main Menu? Your study progress will be saved.",
+      "Return to Main Menu",
+    );
+    if (!confirmed) return false;
+
+    updateStudyProgressIndicator();
+    const progress = state.prefs.studyProgress[currentReviewSubject];
+    if (progress && reviewMainElement) {
+      progress.scrollY = reviewMainElement.scrollTop;
+      markStudyProgressChanged(progress);
+    }
+    const saved = await saveState("prefs");
+    if (saved === false) {
+      globalScope.showToast?.(
+        "Your study progress could not be saved. Please try again.",
+        "error",
+      );
+      return false;
+    }
+
+    if (typeof globalScope.navigate === "function") {
+      return globalScope.navigate("dashboard");
+    }
+    return false;
   }
 
   function changeStudyIndex(delta) {
     const progress = state.prefs.studyProgress[currentReviewSubject];
     if (!progress) return;
-    const maxIndex = Math.max(0, currentReviewQuestions.length - 1);
+    const orderedQuestions = getOrderedReviewQuestions();
+    const maxIndex = Math.max(0, orderedQuestions.length - 1);
     progress.index = Math.max(
       0,
       Math.min(maxIndex, (progress.index || 0) + delta),
     );
-    saveState();
-    reRenderDeckReview();
+    const targetQuestion = orderedQuestions[progress.index];
+    if (targetQuestion) {
+      progress.questionId = String(targetQuestion.ID);
+    }
+    markStudyProgressChanged(progress);
+    renderDeckReview(currentReviewSubject, currentReviewQuestions);
+    saveState("prefs");
   }
 
   function jumpToStudyPage(pageNumber) {
@@ -703,10 +922,20 @@
     const page = parseInt(pageNumber, 10);
     if (!progress || Number.isNaN(page)) return;
     progress.page = Math.max(1, page);
-    progress.scrollY = 0;
-    pendingReviewScrollPosition = "top";
+    const pageSize = state.prefs.studyPageSize || 10;
+    if (pageSize !== "All") {
+      const targetIndex = (progress.page - 1) * pageSize;
+      const targetQuestion = getOrderedReviewQuestions()[targetIndex];
+      if (targetQuestion) {
+        progress.index = targetIndex;
+        progress.questionId = String(targetQuestion.ID);
+      }
+    }
     if (typeof window !== "undefined") clearTimeout(window.scrollSaveTimeout);
-    saveState();
+    progress.scrollY = 0;
+    markStudyProgressChanged(progress);
+    pendingReviewScrollPosition = "top";
+    saveState("prefs");
     reRenderDeckReview();
   }
 
@@ -739,6 +968,7 @@
     changeStudyPage,
     changeStudyIndex,
     jumpToStudyPage,
+    returnFromStudyMode,
     cleanup,
     renderDeckReviewImplementation,
     // Expose state accessors
@@ -761,6 +991,7 @@
   globalScope.changeStudyPage = changeStudyPage;
   globalScope.changeStudyIndex = changeStudyIndex;
   globalScope.jumpToStudyPage = jumpToStudyPage;
+  globalScope.returnFromStudyMode = returnFromStudyMode;
 
   // For Node.js testing - export as CommonJS if in test environment
   if (typeof module !== "undefined" && module.exports) {

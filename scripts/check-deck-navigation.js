@@ -4,6 +4,76 @@ const vm = require("node:vm");
 
 const timers = [];
 const views = new Map();
+const deckNavSource = fs.readFileSync("deck-nav-core.js", "utf8");
+const appCoreSource = fs.readFileSync("app-core.js", "utf8");
+
+assert.match(
+  deckNavSource,
+  /temporary issue with our servers or services, so this session couldn't start\. Please check your internet connection and try again later\./,
+  "deck-start failures should explain the temporary service issue and recovery",
+);
+assert.match(
+  deckNavSource,
+  /"error",\s*8000/,
+  "the deck-start failure notice should remain visible long enough to read",
+);
+assert.match(
+  appCoreSource,
+  /temporary issue with our servers or services, so this deck couldn't start\. Please check your internet connection and try again later\./,
+  "the outer deck-start failure notice should use the same guidance",
+);
+assert.match(
+  appCoreSource,
+  /if \(!pathValid && isInitialSyncComplete\) \{\s*showDeckNotFound\(state\.currentPath\);/,
+  "missing deep links should show a not-found message after the first category summary loads",
+);
+const pathValidation = appCoreSource.match(
+  /if \(!Array\.isArray\(state\.currentPath\)\) state\.currentPath = \[\];[\s\S]*?if \(!pathValid && isInitialSyncComplete\) \{[\s\S]*?\n      \} else if \(pathValid\) \{[\s\S]*?\n      \}/,
+);
+assert.ok(pathValidation, "category path validation should be available");
+const validateCategoryPath = vm.runInNewContext(
+  `function validateCategoryPath(state, tree, isInitialSyncComplete, globalScope, showDeckNotFound, dismissDeckNotFound) {
+    ${pathValidation[0]}
+    return state.currentPath;
+  }
+  validateCategoryPath;`,
+);
+const deepPath = ["BSMT Competencies", "Function 2"];
+const persistedPaths = [];
+const notFoundPaths = [];
+assert.deepEqual(
+  Array.from(
+    validateCategoryPath(
+      { currentPath: [...deepPath] },
+      {},
+      false,
+      { persistNavigationPath: (path) => persistedPaths.push(path) },
+      (path) => notFoundPaths.push(Array.from(path)),
+      () => {},
+    ),
+  ),
+  deepPath,
+  "a valid deep link should survive while the first category summary is loading",
+);
+assert.deepEqual(
+  Array.from(
+    validateCategoryPath(
+      { currentPath: [...deepPath] },
+      {},
+      true,
+      { persistNavigationPath: (path) => persistedPaths.push(path) },
+      (path) => notFoundPaths.push(Array.from(path)),
+      () => {},
+    ),
+  ),
+  [],
+  "an invalid deep link should still be cleared after the initial summary loads",
+);
+assert.deepEqual(
+  notFoundPaths,
+  [deepPath],
+  "the not-found message should identify the invalid deck path",
+);
 
 function createView(id, active = false) {
   const classes = new Set(["view-section"]);
@@ -52,7 +122,7 @@ const context = {
 context.globalScope = context;
 vm.createContext(context);
 vm.runInContext(
-  fs.readFileSync("deck-nav-core.js", "utf8"),
+  deckNavSource,
   context,
   { filename: "deck-nav-core.js" },
 );

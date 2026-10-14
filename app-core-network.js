@@ -25,6 +25,30 @@
     ? globalScope.DebugUtils.createDebugLogger("mrh-network")
     : { warn: () => {}, error: () => {} };
   let cachedDatabaseUrl = "";
+  let latestBackendCacheVersion = "";
+
+  function rememberBackendCacheVersion(response) {
+    const version = String(
+      response?.cacheVersion ?? response?.version ?? "",
+    ).trim();
+    if (version) latestBackendCacheVersion = version;
+    return response;
+  }
+
+  async function getPayloadFingerprint(payload) {
+    const cryptoApi = globalScope.crypto || globalThis.crypto;
+    const Encoder =
+      globalScope.TextEncoder ||
+      (typeof TextEncoder !== "undefined" ? TextEncoder : null);
+    if (!cryptoApi?.subtle || !Encoder) {
+      throw new Error("Secure payload fingerprint verification is unavailable.");
+    }
+    const bytes = new Encoder().encode(JSON.stringify(payload));
+    const digest = await cryptoApi.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+  }
 
   function calculateRetryDelay(
     attempt,
@@ -38,10 +62,18 @@
 
   function isRetryableError(error) {
     if (!error) return false;
-    if (error.isBackendError) return false;
     const status = Number(error?.status);
-    if (Number.isFinite(status) && status >= 500) return true;
-    if (status === 429) return true;
+    if (error.isBackendError) {
+      return (
+        status === 408 ||
+        status === 429 ||
+        status >= 500 ||
+        ["NOT_READY", "SERVER_ERROR", "TEMPORARY_UNAVAILABLE"].includes(
+          String(error.code || "").toUpperCase(),
+        )
+      );
+    }
+    if (status === 408 || status === 429 || status >= 500) return true;
     if (error.name === "TimeoutError") return true;
     if (
       error.message &&
@@ -475,7 +507,7 @@
           : `Backend HTTP ${response.status}.`,
       ),
     );
-    error.status = response.ok ? statusCode || 500 : response.status;
+    error.status = statusCode || (response.ok ? 0 : response.status);
     error.code = result?.code || "HTTP_ERROR";
     error.payload = result;
     error.isBackendError = true;
@@ -629,6 +661,9 @@
         if (appVersion) {
           url.searchParams.set("v", appVersion);
         }
+        if (latestBackendCacheVersion) {
+          url.searchParams.set("cv", latestBackendCacheVersion);
+        }
 
         const response = await fetchWithTimeout(
           url.toString(),
@@ -705,6 +740,9 @@
       if (appVersion) {
         url.searchParams.set("v", appVersion);
       }
+      if (latestBackendCacheVersion) {
+        url.searchParams.set("cv", latestBackendCacheVersion);
+      }
 
       try {
         const response = await fetchWithTimeout(
@@ -751,16 +789,25 @@
   }
 
   const backendApi = {
-    getCacheVersion: () => callBackend({ type: "get_cache_version" }),
-    getSyncStatus: (options = {}) =>
-      callBackend({ type: "get_sync_status" }, options),
+    async getCacheVersion(options = {}) {
+      return rememberBackendCacheVersion(
+        await callBackend({ type: "get_cache_version" }, options),
+      );
+    },
+    async getSyncStatus(options = {}) {
+      return rememberBackendCacheVersion(
+        await callBackend({ type: "get_sync_status" }, options),
+      );
+    },
   };
 
   const AppNetwork = {
     callBackend,
     getDeckSummary,
     getDeck,
+    getPayloadFingerprint,
     calculateRetryDelay,
+    isRetryableError,
     retryWithBackoff,
     createConnectionPool,
     reconnect: () => defaultConnectionPool.reconnect(),

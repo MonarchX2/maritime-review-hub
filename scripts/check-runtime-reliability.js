@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const { webcrypto } = require("node:crypto");
 const fs = require("node:fs");
 const vm = require("node:vm");
 
@@ -52,6 +53,9 @@ const networkContext = {
   Math,
   Promise,
   AbortController,
+  crypto: webcrypto,
+  TextEncoder,
+  Uint8Array,
   setTimeout,
   clearTimeout,
   fetch: async () => new Response("{}", { status: 200 }),
@@ -79,7 +83,136 @@ vm.runInContext(
 );
 
 async function checkBackendErrorHandling() {
+  const network = networkContext.module.exports;
+  const payload = [[1, "Question", null, "A", "ID"]];
+  const payloadFingerprint = await network.getPayloadFingerprint(payload);
+  assert.equal(
+    payloadFingerprint,
+    require("node:crypto")
+      .createHash("sha256")
+      .update(JSON.stringify(payload), "utf8")
+      .digest("hex"),
+    "payload fingerprints must use the backend's SHA-256 over compact JSON",
+  );
+  assert.equal(
+    network.isRetryableError(
+      Object.assign(new Error("Service unavailable"), {
+        isBackendError: true,
+        status: 503,
+      }),
+    ),
+    true,
+    "backend 5xx responses should be retried",
+  );
+  assert.equal(
+    network.isRetryableError(
+      Object.assign(new Error("Rate limited"), {
+        isBackendError: true,
+        status: 429,
+      }),
+    ),
+    true,
+    "backend rate-limit responses should be retried",
+  );
+  assert.equal(
+    network.isRetryableError(
+      Object.assign(new Error("Access denied"), {
+        isBackendError: true,
+        status: 403,
+      }),
+    ),
+    false,
+    "permanent backend authorization errors must not be retried",
+  );
+  assert.equal(
+    network.isRetryableError(
+      Object.assign(new Error("Server error"), {
+        isBackendError: true,
+        status: 0,
+        code: "SERVER_ERROR",
+      }),
+    ),
+    true,
+    "the Apps Script backend's HTTP-200 SERVER_ERROR envelope must retry",
+  );
+  assert.equal(
+    network.isRetryableError(
+      Object.assign(new Error("Deck not ready"), {
+        isBackendError: true,
+        status: 0,
+        code: "NOT_READY",
+      }),
+    ),
+    true,
+    "transient deck-build errors must retry",
+  );
+  assert.equal(
+    network.isRetryableError(
+      Object.assign(new Error("Deck not found"), {
+        isBackendError: true,
+        status: 0,
+        code: "NOT_FOUND",
+      }),
+    ),
+    false,
+    "permanent backend application errors must not retry",
+  );
+  let retryAttempts = 0;
+  const retryResult = await network.retryWithBackoff(
+    async () => {
+      retryAttempts += 1;
+      if (retryAttempts < 3) {
+        throw Object.assign(new Error("Service unavailable"), {
+          isBackendError: true,
+          status: 503,
+        });
+      }
+      return "recovered";
+    },
+    { maxRetries: 2, baseRetryDelayMs: 0, maxRetryDelayMs: 0 },
+  );
+  assert.equal(retryResult, "recovered");
+  assert.equal(retryAttempts, 3, "transient server failures should retry boundedly");
+
+  retryAttempts = 0;
+  await assert.rejects(
+    network.retryWithBackoff(
+      async () => {
+        retryAttempts += 1;
+        throw Object.assign(new Error("Service unavailable"), {
+          isBackendError: true,
+          status: 503,
+        });
+      },
+      { maxRetries: 2, baseRetryDelayMs: 0, maxRetryDelayMs: 0 },
+    ),
+    /Service unavailable/,
+  );
+  assert.equal(retryAttempts, 3, "retry attempts must respect the configured limit");
+
   let fetchCount = 0;
+  networkContext.fetch = async () => {
+    fetchCount += 1;
+    if (fetchCount < 3) {
+      return new Response(
+        JSON.stringify({
+          status: "error",
+          code: "SERVER_ERROR",
+          message: "Service temporarily unavailable.",
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+  };
+  const recoveredRequest = await network.callBackend(
+    { type: "get_sync_status" },
+    { maxRetries: 2, baseRetryDelayMs: 0, maxRetryDelayMs: 0 },
+  );
+  assert.equal(recoveredRequest.status, "ok");
+  assert.equal(fetchCount, 3, "transient HTTP-200 backend envelopes should retry");
+
+  fetchCount = 0;
   networkContext.fetch = async () => {
     fetchCount += 1;
     return new Response(
@@ -124,6 +257,50 @@ async function checkBackendErrorHandling() {
     fetchCount,
     1,
     "POST application errors must not be retried as transient failures",
+  );
+
+  const requestedUrls = [];
+  networkContext.fetch = async (input) => {
+    requestedUrls.push(String(input));
+    return new Response(
+      JSON.stringify(
+        requestedUrls.length === 1
+          ? { status: "ok", cacheVersion: "backend-cache-7" }
+          : [],
+      ),
+      { status: 200 },
+    );
+  };
+  await network.getSyncStatus({ maxRetries: 0 });
+  await network.getDeckSummary({ maxRetries: 0 });
+  await network.getDeck("COLREGS", "", { maxRetries: 0 });
+  assert.equal(
+    new URL(requestedUrls[1]).searchParams.get("cv"),
+    "backend-cache-7",
+    "summary GET requests must bypass intermediary caches when backend payload version changes",
+  );
+  assert.equal(
+    new URL(requestedUrls[2]).searchParams.get("cv"),
+    "backend-cache-7",
+    "deck JSON GET requests must use the latest backend cache version",
+  );
+
+  requestedUrls.length = 0;
+  networkContext.fetch = async (input) => {
+    requestedUrls.push(String(input));
+    return new Response(
+      JSON.stringify(
+        requestedUrls.length === 1 ? { version: "backend-cache-8" } : [],
+      ),
+      { status: 200 },
+    );
+  };
+  await network.getCacheVersion({ maxRetries: 0 });
+  await network.getDeckSummary({ maxRetries: 0 });
+  assert.equal(
+    new URL(requestedUrls[1]).searchParams.get("cv"),
+    "backend-cache-8",
+    "the standalone cache-version endpoint must prime cache-busted GET requests",
   );
 }
 

@@ -237,6 +237,8 @@
     const completedQuestions = state.stats?.completedQs;
     const mistakes = state.stats?.mistakes;
     const favoriteDecks = state.prefs.favoriteDecks;
+    const favoriteQuestions = state.prefs.favoriteQuestions;
+    const studyProgress = state.prefs.studyProgress || {};
     const archivedDecks = state.prefs.archivedDecks;
     const expandedArchivedPaths = state.prefs.expandedArchivedPaths;
     const accessMetadata = state.accessMetadata || {};
@@ -292,6 +294,22 @@
       cache.accessMetadataSignature = getAccessMetadataSignature();
     }
 
+    const studyProgressSignature = Object.keys(studyProgress)
+      .sort()
+      .map((subject) => {
+        const progress = studyProgress[subject] || {};
+        return [
+          subject,
+          progress.questionId,
+          progress.index,
+          progress.page,
+          progress.scrollY,
+        ]
+          .map((value) => String(value ?? ""))
+          .join("\u001f");
+      })
+      .join("\u001e");
+
     return [
       cache.summarySignature,
       cache.databaseSignature,
@@ -305,9 +323,16 @@
       cache.completedSignature,
       cache.mistakesSignature,
       cache.favoriteDecksSignature,
+      getCollectionSignature(
+        Array.isArray(favoriteQuestions) ? [...favoriteQuestions].sort() : [],
+      ),
       cache.archivedDecksSignature,
       cache.expandedArchivedPathsSignature,
       cache.accessMetadataSignature,
+      state.prefs.studyLayout,
+      state.prefs.studyPageSize,
+      state.prefs.studyFilterMode,
+      studyProgressSignature,
       isInitialSyncComplete,
     ].join("\u001e");
   }

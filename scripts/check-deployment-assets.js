@@ -91,6 +91,11 @@ try {
   }
 
   const html = fs.readFileSync(path.join(outputDir, "index.html"), "utf8");
+  assert.match(
+    fs.readFileSync(path.join(outputDir, "404.html"), "utf8"),
+    /baseLengths\.push\(1\)[\s\S]*?for \([\s\S]*?baseLengths\.includes\(baseLength\)/,
+    "GitHub Pages deep links should resolve the project app base before probing nested paths",
+  );
   for (const match of html.matchAll(/\b(?:src|href)="([^"]+)"/g)) {
     const reference = match[1].split(/[?#]/, 1)[0];
     if (!reference || /^(?:[a-z]+:|\/\/|#)/i.test(reference)) continue;

@@ -1227,6 +1227,10 @@
       }
     }
 
+    if (typeof globalScope.refreshPendingDeckPayloads === "function") {
+      globalScope.refreshPendingDeckPayloads();
+    }
+
     if (!silent && typeof globalScope.navigate === "function")
       globalScope.navigate("dashboard");
   }

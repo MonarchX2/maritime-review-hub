@@ -60,9 +60,63 @@ const context = {
     warn() {},
   },
 };
+const appStateSource = fs.readFileSync("app-core-state.js", "utf8");
+const mergeHelpersStart = appStateSource.indexOf("  function cloneStoredValue");
+const mergeHelpersEnd = appStateSource.indexOf("  function coerceBoolean");
+assert.ok(mergeHelpersStart >= 0 && mergeHelpersEnd > mergeHelpersStart);
+const mergeHelpers = vm.runInNewContext(
+  `${appStateSource.slice(mergeHelpersStart, mergeHelpersEnd)}
+  ({ mergeStoredStateValue });`,
+);
+const baseStudyProgress = { page: 1, index: 0, updatedAt: 100 };
+const newerStudyProgress = { page: 1, index: 2, updatedAt: 300 };
+const olderStudyProgress = { page: 1, index: 1, updatedAt: 200 };
+assert.equal(
+  JSON.stringify(
+    mergeHelpers.mergeStoredStateValue(
+      "prefs",
+      baseStudyProgress,
+      newerStudyProgress,
+      olderStudyProgress,
+      "prefs.studyProgress.Deck",
+    ),
+  ),
+  JSON.stringify(newerStudyProgress),
+  "a later study-progress edit must win over a stale tab save",
+);
+assert.equal(
+  JSON.stringify(
+    mergeHelpers.mergeStoredStateValue(
+      "prefs",
+      baseStudyProgress,
+      olderStudyProgress,
+      newerStudyProgress,
+      "prefs.studyProgress.Deck",
+    ),
+  ),
+  JSON.stringify(newerStudyProgress),
+  "study-progress conflict resolution must not depend on response arrival order",
+);
+const baseSrs = { qId: "q1", reps: 1, lastAnsweredAt: 100 };
+const newerSrs = { qId: "q1", reps: 3, lastAnsweredAt: 300 };
+const olderSrs = { qId: "q1", reps: 2, lastAnsweredAt: 200 };
+assert.equal(
+  JSON.stringify(
+    mergeHelpers.mergeStoredStateValue(
+      "stats",
+      baseSrs,
+      olderSrs,
+      newerSrs,
+      "stats.srsMap.q1",
+    ),
+  ),
+  JSON.stringify(newerSrs),
+  "a stale SRS record must not overwrite the most recently answered record",
+);
+
 vm.createContext(context);
 vm.runInContext(
-  fs.readFileSync("app-core-state.js", "utf8"),
+  appStateSource,
   context,
   { filename: "app-core-state.js" },
 );

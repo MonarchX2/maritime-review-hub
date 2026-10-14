@@ -432,6 +432,47 @@
     if (storedValuesEqual(local, base)) return cloneStoredValue(remote);
     if (storedValuesEqual(remote, base)) return cloneStoredValue(local);
 
+    const isRecord =
+      local !== null &&
+      typeof local === "object" &&
+      !Array.isArray(local) &&
+      remote !== null &&
+      typeof remote === "object" &&
+      !Array.isArray(remote);
+    const timestampOf = (value, field) => {
+      const timestamp = Number(value?.[field]);
+      return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : 0;
+    };
+    const selectNewerRecord = (field) => {
+      const localTimestamp = timestampOf(local, field);
+      const remoteTimestamp = timestampOf(remote, field);
+      if (localTimestamp !== remoteTimestamp) {
+        return cloneStoredValue(
+          localTimestamp > remoteTimestamp ? local : remote,
+        );
+      }
+      return cloneStoredValue(
+        JSON.stringify(local) >= JSON.stringify(remote) ? local : remote,
+      );
+    };
+
+    // Conflicting whole-record updates use their event time; a stable tie-break
+    // makes tabs converge even when both edits share the same millisecond.
+    if (
+      isRecord &&
+      key === "stats" &&
+      path.startsWith("stats.srsMap.")
+    ) {
+      return selectNewerRecord("lastAnsweredAt");
+    }
+    if (
+      isRecord &&
+      key === "prefs" &&
+      path.startsWith("prefs.studyProgress.")
+    ) {
+      return selectNewerRecord("updatedAt");
+    }
+
     if (Array.isArray(base) && Array.isArray(local) && Array.isArray(remote)) {
       if (
         key === "stats" &&

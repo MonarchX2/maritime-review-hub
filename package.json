@@ -1,5 +1,5 @@
 {
-  "version": "14.9.1",
+  "version": "14.10.0",
   "scripts": {
     "build:css": "node scripts/build-css.js",
     "check:architecture": "node scripts/frontend-architecture-check.js",
@@ -12,6 +12,9 @@
     "check:explanation-visibility": "node scripts/check-explanation-visibility.js",
     "check:explanation-summary": "node scripts/check-explanation-summary.js",
     "check:review-choice-toggle": "node scripts/check-review-choice-toggle.js",
+    "check:review-question-progress": "node scripts/check-review-question-progress.js",
+    "check:practice-review-switch": "node scripts/check-practice-review-switch.js",
+    "check:study-progress-refresh": "node scripts/check-study-progress-refresh.js",
     "check:text-alignment": "node scripts/check-text-alignment.js",
     "check:deck-layout-spacing": "node scripts/check-deck-layout-spacing.js",
     "check:deck-navigation": "node scripts/check-deck-navigation.js",
