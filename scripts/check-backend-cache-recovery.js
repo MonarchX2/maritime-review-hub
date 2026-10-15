@@ -107,6 +107,12 @@ const reviewerFolder = {
   getParents: () => createIterator([rootFolder]),
   getSharingAccess: () => access.ANYONE,
 };
+const legacyReviewerFolder = {
+  getId: () => "legacy-reviewer-folder-id",
+  getName: () => "REVIEWERS v10.13.26",
+  getParents: () => createIterator([rootFolder]),
+  getSharingAccess: () => access.ANYONE,
+};
 const publicFile = {
   getId: () => "public-file-id",
   getName: () => "Guidelines.pdf",
@@ -124,9 +130,15 @@ const privateFile = {
   getSharingAccess: () => access.PRIVATE,
 };
 let rootFolderListReads = 0;
+let privateFileBlobReads = 0;
 rootFolder.getFolders = () => {
   rootFolderListReads += 1;
-  return createIterator([publicFolder, privateFolder, reviewerFolder]);
+  return createIterator([
+    publicFolder,
+    privateFolder,
+    reviewerFolder,
+    legacyReviewerFolder,
+  ]);
 };
 rootFolder.getFiles = () => createIterator([publicFile, privateFile]);
 publicFolder.getFolders = () => createIterator([]);
@@ -135,17 +147,20 @@ privateFolder.getFolders = () => createIterator([]);
 privateFolder.getFiles = () => createIterator([]);
 reviewerFolder.getFolders = () => createIterator([]);
 reviewerFolder.getFiles = () => createIterator([]);
+legacyReviewerFolder.getFolders = () => createIterator([]);
+legacyReviewerFolder.getFiles = () => createIterator([]);
 context.DriveApp = {
   Access: access,
   getFolderById(folderId) {
     if (folderId === rootId) return rootFolder;
     if (folderId === "reviewer-folder-id") return reviewerFolder;
+    if (folderId === "legacy-reviewer-folder-id") return legacyReviewerFolder;
     return privateFolder;
   },
   getFileById(fileId) {
-    return fileId === "reviewer-file-id"
-      ? reviewerDriveFile
-      : privateDriveFile;
+    if (fileId === "reviewer-file-id") return reviewerDriveFile;
+    if (fileId === "legacy-reviewer-file-id") return legacyReviewerDriveFile;
+    return privateDriveFile;
   },
 };
 context.CacheService = {
@@ -222,17 +237,32 @@ assert.equal(
   "FORBIDDEN",
   "reviewer-named folders remain inaccessible through the website",
 );
+assert.equal(
+  JSON.parse(
+    context.handleListPublicResourcesRequest({
+      folderId: "legacy-reviewer-folder-id",
+    }).text,
+  ).code,
+  "FORBIDDEN",
+  "reviewer folder names without a dot after v remain inaccessible",
+);
 const privateDriveFile = {
   getParents: () => createIterator([privateFolder]),
   getMimeType: () => "application/pdf",
   getSize: () => 2,
   getBlob: () => ({
-    getBytes: () => [72, 105],
+    getBytes: () => {
+      privateFileBlobReads += 1;
+      return [72, 105];
+    },
   }),
   getName: () => "Restricted.pdf",
 };
 const reviewerDriveFile = {
   getParents: () => createIterator([reviewerFolder]),
+};
+const legacyReviewerDriveFile = {
+  getParents: () => createIterator([legacyReviewerFolder]),
 };
 const privatePreview = JSON.parse(
   context.handleGetResourcePreviewRequest({ fileId: "private-file-id" }).text,
@@ -247,6 +277,19 @@ assert.equal(
   "SGk=",
   "private file preview data is returned as base64 for an in-site viewer",
 );
+const cachedPrivatePreview = JSON.parse(
+  context.handleGetResourcePreviewRequest({ fileId: "private-file-id" }).text,
+);
+assert.equal(
+  cachedPrivatePreview.data,
+  "SGk=",
+  "a cached private preview must preserve its file data",
+);
+assert.equal(
+  privateFileBlobReads,
+  1,
+  "a recent private preview should be served from cache without exporting the file again",
+);
 assert.equal(
   JSON.parse(
     context.handleGetResourcePreviewRequest({
@@ -255,6 +298,15 @@ assert.equal(
   ).code,
   "FORBIDDEN",
   "private files inside reviewer folders cannot be served through the website",
+);
+assert.equal(
+  JSON.parse(
+    context.handleGetResourcePreviewRequest({
+      fileId: "legacy-reviewer-file-id",
+    }).text,
+  ).code,
+  "FORBIDDEN",
+  "private files inside reviewer folders without a dot after v remain blocked",
 );
 
 assert.equal(

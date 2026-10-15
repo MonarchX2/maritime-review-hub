@@ -54,6 +54,11 @@ assert.match(
 );
 assert.match(
   appCore,
+  /type: "get_resource_preview",\s*fileId\s*\},\s*\{\s*timeoutMs: 60000,\s*maxRetries: 0/,
+  "private Google Workspace exports should have time to complete without duplicate requests",
+);
+assert.match(
+  appCore,
   /getSessionStoredJSON[\s\S]*?setSessionStoredJSON/,
   "recent folder listings should persist briefly in the current browser session",
 );

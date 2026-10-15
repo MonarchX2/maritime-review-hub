@@ -1,5 +1,11 @@
 # Changelog
 
+## 10.16.2 - 2026-10-15
+
+### Fixed
+- Cache small private-file previews so repeat opens avoid exporting Google Workspace documents again.
+- Allow the first private Google Workspace preview more time to finish exporting.
+
 ## 10.16.1 - 2026-10-15
 
 ### Changed

@@ -6362,7 +6362,7 @@
     try {
       const response = await globalScope.AppNetwork.callBackend(
         { type: "get_resource_preview", fileId },
-        { timeoutMs: 25000, maxRetries: 0 },
+        { timeoutMs: 60000, maxRetries: 0 },
       );
       if (previewGeneration !== resourcePortalPreviewGeneration) return false;
       if (
