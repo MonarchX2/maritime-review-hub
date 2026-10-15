@@ -132,7 +132,7 @@
     return hash.slice(2).split("/").filter(Boolean);
   }
 
-  function getNavigationPathFromUrl() {
+  function getNavigationUrlSegments() {
     if (typeof window === "undefined" || !window.location) return [];
 
     const isLocalFile = window.location.protocol === "file:";
@@ -176,6 +176,29 @@
     }
   }
 
+  function getNavigationPathFromUrl() {
+    const segments = getNavigationUrlSegments();
+    if (segments === null) return null;
+
+    const finalSegment = String(segments.at(-1) || "").toLowerCase();
+    if (finalSegment === "study" || finalSegment === "quiz") {
+      segments.pop();
+      if (segments.length > 0) segments.pop();
+    }
+    return segments;
+  }
+
+  function getSessionNavigationFromUrl() {
+    const segments = getNavigationUrlSegments();
+    if (!Array.isArray(segments)) return null;
+    const finalSegment = String(segments.at(-1) || "").toLowerCase();
+    if (finalSegment !== "study" && finalSegment !== "quiz") return null;
+    return {
+      mode: finalSegment,
+      subject: segments.slice(0, -1).join("::"),
+    };
+  }
+
   function updateNavigationUrl(path, options = {}) {
     if (typeof window === "undefined" || !window.history) return;
 
@@ -206,6 +229,36 @@
     }
   }
 
+  function updateSessionNavigationUrl(subject, mode, options = {}) {
+    const requestedMode = String(mode || "").toLowerCase();
+    const normalizedMode =
+      requestedMode === "study" || requestedMode === "review"
+        ? "study"
+        : "quiz";
+    const currentPath = Array.isArray(state.currentPath)
+      ? state.currentPath.filter(
+          (entry) => typeof entry === "string" && entry.trim(),
+        )
+      : [];
+    const subjectSegments = String(subject || "")
+      .split("::")
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+
+    let sessionPath;
+    if (subjectSegments.length > 0) {
+      const currentPathMatchesSubject = currentPath.every(
+        (segment, index) => subjectSegments[index] === segment,
+      );
+      sessionPath = currentPathMatchesSubject
+        ? subjectSegments
+        : [...currentPath, subjectSegments.at(-1)];
+    } else {
+      sessionPath = [...currentPath, "session"];
+    }
+    updateNavigationUrl([...sessionPath, normalizedMode], options);
+  }
+
   let navigationChangeInFlight = false;
 
   async function handleNavigationUrlChange() {
@@ -213,6 +266,21 @@
 
     const urlPath = getNavigationPathFromUrl();
     if (urlPath === null) return;
+    const sessionRoute = getSessionNavigationFromUrl();
+    if (sessionRoute) {
+      const activeView =
+        typeof document !== "undefined"
+          ? document.querySelector(".view-section.active")?.id
+          : "";
+      const isActiveSessionView =
+        sessionRoute.mode === "quiz"
+          ? activeView === "view-practice" && state.session?.active
+          : activeView === "view-deck-review";
+      if (isActiveSessionView) {
+        state.currentPath = urlPath;
+      }
+      return;
+    }
     const isSettingsRoute =
       urlPath.length === 1 && urlPath[0].toLowerCase() === "settings";
     const targetView = isSettingsRoute ? "settings" : "dashboard";
@@ -242,7 +310,19 @@
     try {
       const navigated = await globalScope.navigate(targetView);
       if (navigated !== true) {
-        updateNavigationUrl(previousRoute, { replace: true });
+        if (previousView === "practice" && state.session?.active) {
+          const subject =
+            state.session.questions?.[state.session.currentIndex]?.Subject;
+          updateSessionNavigationUrl(subject, "quiz", { replace: true });
+        } else if (previousView === "deck-review") {
+          updateSessionNavigationUrl(
+            state.prefs?.lastActivity?.subject,
+            "study",
+            { replace: true },
+          );
+        } else {
+          updateNavigationUrl(previousRoute, { replace: true });
+        }
         return;
       }
 
@@ -974,6 +1054,7 @@
       document.documentElement.classList.add("dark");
     }
 
+    const sessionRoute = getSessionNavigationFromUrl();
     const urlPath = getNavigationPathFromUrl();
     const hasInvalidUrl = urlPath === null;
     const isSettingsRoute =
@@ -982,12 +1063,14 @@
       urlPath[0].toLowerCase() === "settings";
     state.currentPath = isSettingsRoute
       ? []
-      : !hasInvalidUrl && urlPath.length > 0
+      : sessionRoute
         ? urlPath
-        : savedPath;
+        : !hasInvalidUrl && urlPath.length > 0
+          ? urlPath
+          : savedPath;
     if (isSettingsRoute) {
       await globalScope.navigate?.("settings");
-    } else if (!hasInvalidUrl) {
+    } else if (!hasInvalidUrl && !sessionRoute) {
       updateNavigationUrl(state.currentPath, { replace: true });
     }
 
@@ -1367,7 +1450,9 @@
           }
         };
   globalScope.getNavigationPathFromUrl = getNavigationPathFromUrl;
+  globalScope.getSessionNavigationFromUrl = getSessionNavigationFromUrl;
   globalScope.updateNavigationUrl = updateNavigationUrl;
+  globalScope.updateSessionNavigationUrl = updateSessionNavigationUrl;
   globalScope.getStoredItem = getStoredItem;
   globalScope.getAnyNamespaceStoredItem = getAnyNamespaceStoredItem;
   globalScope.setStoredItem = setStoredItem;

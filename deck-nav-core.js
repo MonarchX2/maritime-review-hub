@@ -92,6 +92,11 @@
     const currentView = document.querySelector(".view-section.active");
     const leavingDeckReview =
       currentView?.id === "view-deck-review" && viewId !== "deck-review";
+    const leavingSessionView =
+      (currentView?.id === "view-practice" ||
+        currentView?.id === "view-deck-review") &&
+      viewId !== "practice" &&
+      viewId !== "deck-review";
     const returningToDashboard =
       viewId === "dashboard" && currentView?.id !== "view-dashboard";
     if (returningToDashboard) {
@@ -106,14 +111,14 @@
 
     viewElement.removeAttribute("inert");
     viewElement.classList.add("active");
+    if (viewId === "dashboard") {
+      globalScope.updateDeckProgressBarsByRow?.();
+    }
     if (
       leavingDeckReview &&
       typeof globalScope.refreshPendingDeckPayloads === "function"
     ) {
       Promise.resolve(globalScope.refreshPendingDeckPayloads()).catch(
-    if (viewId === "dashboard") {
-      globalScope.updateDeckProgressBarsByRow?.();
-    }
         (error) => {
           logger.error(
             "Unable to apply pending backend payload updates after study.",
@@ -124,6 +129,10 @@
     }
     if (viewId === "settings") {
       globalScope.updateNavigationUrl?.(["settings"]);
+    } else if (leavingSessionView) {
+      globalScope.updateNavigationUrl?.(state.currentPath || [], {
+        replace: true,
+      });
     } else if (globalScope.getNavigationPathFromUrl?.()[0] === "settings") {
       globalScope.updateNavigationUrl?.(state.currentPath || []);
     }
@@ -404,6 +413,10 @@
       mode: "quiz",
       revealedCloze: false,
     };
+    globalScope.updateSessionNavigationUrl?.(
+      pool[0]?.Subject,
+      "quiz",
+    );
 
     if (typeof globalScope.renderQuestion === "function")
       globalScope.renderQuestion();
@@ -421,6 +434,7 @@
           before:
             "Are you sure you want to reset your accuracy and progress statistics for ",
           emphasis: deckName,
+          blurEmphasis: isDeckLocked(subject),
           after: "? This cannot be undone.",
         },
         "Reset Progress",
@@ -434,7 +448,6 @@
       const subjectIdSet = new Set(subjectQIDs);
 
       if (state.stats.completedQs) {
-          blurEmphasis: isDeckLocked(subject),
         state.stats.completedQs = state.stats.completedQs.filter(
           (id) => !subjectIdSet.has(id),
         );

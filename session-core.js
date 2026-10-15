@@ -376,6 +376,10 @@
       revealedCloze: false,
       autoNextTimeout: null,
     };
+    globalScope.updateSessionNavigationUrl?.(
+      preparedPool[0]?.Subject,
+      "quiz",
+    );
 
     getElement("session-setup")?.classList.add("hidden");
     getElement("session-active")?.classList.remove("hidden");

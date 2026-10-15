@@ -20,18 +20,24 @@ const reviewDeckFunction = appSource.match(
 const modeToggleFunction = appSource.match(
   /function toggleAppMode\(\) \{[\s\S]*?\n  \}/,
 );
+const restoreProgressFunction = appSource.match(
+  /function hasSessionRestoreProgress\(sessionRoute\) \{[\s\S]*?\n  \}/,
+);
+const resumeSessionFunction = appSource.match(
+  /async function resumeSession\(password = null, options = \{\}\) \{[\s\S]*?\n  \}/,
+);
 assert.ok(activityFunction, "quiz activity synchronization helper should exist");
 assert.ok(cachedStartFunction, "quiz switch should start from the loaded deck");
+assert.ok(practiceToReviewFunction, "quiz-to-study switch should exist");
+assert.ok(reviewDeckFunction, "deck review loader should exist");
+assert.ok(restoreProgressFunction, "session refresh progress check should exist");
+assert.ok(resumeSessionFunction, "saved quiz resume handler should exist");
 assert.doesNotMatch(
   cachedStartFunction[0],
   /fetchAndStartCategory|fetchDeckQuestions|DeckNavCore/,
   "Review-to-Quiz must not fetch the deck again",
 );
 assert.ok(modeToggleFunction, "dashboard mode toggle handler should exist");
-assert.ok(practiceToReviewFunction, "quiz-to-study switch should exist");
-assert.ok(reviewDeckFunction, "deck review loader should exist");
-assert.ok(restoreProgressFunction, "session refresh progress check should exist");
-assert.ok(resumeSessionFunction, "saved quiz resume handler should exist");
 
 const modeToggle = { checked: true };
 const modeLabel = { innerText: "Study", textContent: "Study" };
@@ -84,12 +90,6 @@ vm.runInContext(
 );
 
 (async () => {
-  assert.equal(await context.startReviewDeckQuiz("Deck A"), true);
-  assert.equal(context.startedPool.length, 1);
-  assert.equal(context.startedPool[0].ID, "q1");
-
-  await context.markQuizActivity("Deck A");
-  assert.equal(context.state.prefs.lastActivity.mode, "quiz");
   const lockedDeckQuestion = {
     ID: "locked-q1",
     Subject: "Parent::Locked Deck",
@@ -200,6 +200,12 @@ vm.runInContext(
   assert.equal(deckFetchCount, 0, "mode switching should not refetch a locked deck");
   assert.equal(renderedReview.questions[0].ID, "locked-q1");
 
+  assert.equal(await context.startReviewDeckQuiz("Deck A"), true);
+  assert.equal(context.startedPool.length, 1);
+  assert.equal(context.startedPool[0].ID, "q1");
+
+  await context.markQuizActivity("Deck A");
+  assert.equal(context.state.prefs.lastActivity.mode, "quiz");
   assert.equal(context.getCurrentMode(), "quiz");
   assert.equal(modeToggle.checked, false);
   assert.equal(modeLabel.textContent, "Quiz");
@@ -222,12 +228,6 @@ vm.runInContext(
   assert.match(switchButton, /duration-300/);
   assert.match(switchButton, /text-brand-600 dark:text-brand-400/);
   assert.match(switchButton, /fa-clipboard-question text-brand-600/);
-
-  const switchHandler = appSource.match(
-    /async function switchReviewToPractice\(\) \{[\s\S]*?\r?\n  \}/,
-  )?.[0];
-  assert.ok(switchHandler, "Review-to-Quiz handler should exist");
-  assert.match(switchHandler, /"Switch to Quiz Mode"/);
   const reviewHeader = html.match(
     /<div class="review-header-row[\s\S]*?<\/div>\s*<\/div>\s*<div id="deck-review-list"/,
   )?.[0];
@@ -249,14 +249,14 @@ vm.runInContext(
     /parentElement\.textContent = subjectParts\.at\(-2\) \|\| "";\s*parentElement\.hidden = subjectParts\.length < 2;/,
     "Review header should display the immediate parent deck when available",
   );
+
+  const switchHandler = appSource.match(
+    /async function switchReviewToPractice\(\) \{[\s\S]*?\r?\n  \}/,
+  )?.[0];
+  assert.ok(switchHandler, "Review-to-Quiz handler should exist");
+  assert.match(switchHandler, /"Switch to Quiz Mode"/);
   assert.match(switchHandler, /Study progress is saved/);
   assert.doesNotMatch(switchHandler, /Resume your saved quiz|from where you left off/i);
-
-  const failedSaveContext = {
-    appLogger: { error() {} },
-    state: {
-      session: { active: false },
-      prefs: { studyProgress: { "Deck A": { scrollY: 0 } } },
   assert.match(
     switchHandler,
     /authorizedReviewQuestions[\s\S]*?resumeSession\(null,\s*\{[\s\S]*?authorizedReviewQuestions/,
@@ -322,6 +322,12 @@ vm.runInContext(
   );
   assert.equal(lockedDeckPasswordPromptCount, 0);
   assert.equal(lockedDeckFetchCount, 0);
+
+  const failedSaveContext = {
+    appLogger: { error() {} },
+    state: {
+      session: { active: false },
+      prefs: { studyProgress: { "Deck A": { scrollY: 0 } } },
     },
     getCurrentReviewSubject: () => "Deck A",
     getStoredItem: () => null,
@@ -349,6 +355,120 @@ globalThis.switchReviewToPractice = switchReviewToPractice;`,
   );
   assert.equal(failedSaveContext.quizStarted, undefined);
   assert.equal(failedSaveContext.toast.type, "error");
+
+  assert.match(
+    appSource,
+    /async function resumeSession\(password = null, options = \{\}\)[\s\S]*?options\.allowResume !== true/,
+    "explicit session URLs and mode switches should be able to restore the saved quiz",
+  );
+  assert.match(
+    switchHandler,
+    /resumeSession\(null,\s*\{\s*allowResume:\s*true,\s*authorizedReviewQuestions,?\s*\}\)/,
+    "Study-to-Quiz should restore the saved quiz with its authorized deck questions",
+  );
+  assert.match(
+    appSource,
+    /getSessionNavigationFromUrl\?\.\(\)[\s\S]*?await resumeSession\(null,\s*\{\s*allowResume:\s*true\s*\}\)/,
+    "refreshing a quiz URL should restore the active quiz session",
+  );
+  assert.match(
+    appSource,
+    /sessionRoute\.mode === "study"[\s\S]*?await reviewDeck\([\s\S]*?sessionRoute\.subject/,
+    "refreshing a study URL should reopen that deck in Study Mode",
+  );
+  assert.match(
+    appSource,
+    /const shouldRestore = hasProgress\s*\?[\s\S]*?await requestConfirmation\([\s\S]*?"Restore Session"/,
+    "refreshing during a session should ask before restoring it",
+  );
+  assert.match(
+    appSource,
+    /const hasProgress = hasSessionRestoreProgress\(sessionRoute\)[\s\S]*?const shouldRestore = hasProgress\s*\?/,
+    "refresh confirmation should only be considered when that deck has progress",
+  );
+  assert.match(
+    appSource,
+    /const sessionDeckName =[\s\S]*?\.split\("::"\)[\s\S]*?\.at\(-1\)[\s\S]*?emphasis: sessionDeckName/,
+    "the refresh confirmation should show only the final deck name segment",
+  );
+
+  const restoreProgressContext = {
+    state: {
+      prefs: {
+        studyProgress: {
+          "Parent 1::Deck A": {
+            page: 1,
+            index: 0,
+            scrollY: 0,
+          },
+        },
+      },
+    },
+    getStoredItem: () => null,
+    appLogger: { error() {} },
+  };
+  vm.createContext(restoreProgressContext);
+  vm.runInContext(
+    `${restoreProgressFunction[0]}
+globalThis.hasSessionRestoreProgress = hasSessionRestoreProgress;`,
+    restoreProgressContext,
+  );
+  assert.equal(
+    restoreProgressContext.hasSessionRestoreProgress({
+      mode: "study",
+      subject: "Parent 1::Deck A",
+    }),
+    false,
+    "an initialized Study progress record without movement should not prompt",
+  );
+  restoreProgressContext.state.prefs.studyProgress[
+    "Parent 1::Deck A"
+  ].scrollY = 24;
+  assert.equal(
+    restoreProgressContext.hasSessionRestoreProgress({
+      mode: "study",
+      subject: "Parent 1::Deck A",
+    }),
+    true,
+    "Study scroll progress should prompt to restore",
+  );
+
+  let savedQuiz = {
+    active: true,
+    currentIndex: 0,
+    questions: [{ Subject: "Parent 1::Deck A" }],
+    userAnswers: {},
+    identificationRatings: {},
+  };
+  restoreProgressContext.getStoredItem = () => savedQuiz;
+  assert.equal(
+    restoreProgressContext.hasSessionRestoreProgress({
+      mode: "quiz",
+      subject: "Parent 1::Deck A",
+    }),
+    false,
+    "a new quiz with no answers or advancement should not prompt",
+  );
+  savedQuiz = {
+    ...savedQuiz,
+    userAnswers: { 0: "B" },
+  };
+  assert.equal(
+    restoreProgressContext.hasSessionRestoreProgress({
+      mode: "quiz",
+      subject: "Parent 1::Deck A",
+    }),
+    true,
+    "saved quiz answers should prompt to restore",
+  );
+  assert.equal(
+    restoreProgressContext.hasSessionRestoreProgress({
+      mode: "quiz",
+      subject: "Parent 2::Deck B",
+    }),
+    false,
+    "progress for a different deck should not trigger this deck's prompt",
+  );
 
   console.log("Practice/review switch checks passed.");
 })().catch((error) => {

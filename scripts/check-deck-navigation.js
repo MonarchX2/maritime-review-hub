@@ -6,6 +6,7 @@ const timers = [];
 const views = new Map();
 const deckNavSource = fs.readFileSync("deck-nav-core.js", "utf8");
 const appCoreSource = fs.readFileSync("app-core.js", "utf8");
+const appCoreStateSource = fs.readFileSync("app-core-state.js", "utf8");
 const modalCoreSource = fs.readFileSync("ui-modal-core.js", "utf8");
 const stylesSource = fs.readFileSync("styles.css", "utf8");
 const indexSource = fs.readFileSync("index.html", "utf8");
@@ -68,6 +69,76 @@ assert.match(
   "dashboard header should have no bottom margin above the navigation bar",
 );
 
+function checkSessionNavigationUrls() {
+  const location = {
+    protocol: "file:",
+    pathname: "/index.html",
+    search: "",
+    hash: "#/Parent+1/Parent+2",
+  };
+  const window = {
+    location,
+    history: {},
+    MRH_CONFIG: {},
+    addEventListener() {},
+  };
+  const stateContext = {
+    module: { exports: {} },
+    window,
+    console,
+    encodeURIComponent,
+    decodeURIComponent,
+  };
+  vm.createContext(stateContext);
+  vm.runInContext(appCoreStateSource, stateContext, {
+    filename: "app-core-state.js",
+  });
+
+  window.AppState.state.currentPath = ["Parent 1", "Parent 2"];
+  window.updateSessionNavigationUrl(
+    "Parent 1::Parent 2::Deck A",
+    "study",
+  );
+  assert.equal(
+    location.hash,
+    "#/Parent+1/Parent+2/Deck+A/study",
+    "study mode should append the deck and study suffix to the folder route",
+  );
+  assert.equal(
+    window.getNavigationPathFromUrl().join("::"),
+    "Parent 1::Parent 2",
+    "a study session URL should resolve to the deck's immediate parent",
+  );
+  const studyRoute = window.getSessionNavigationFromUrl();
+  assert.equal(studyRoute.mode, "study");
+  assert.equal(
+    studyRoute.subject,
+    "Parent 1::Parent 2::Deck A",
+    "the study route should retain the complete deck subject for refresh recovery",
+  );
+
+  window.updateSessionNavigationUrl("Parent 1::Parent 2::Deck A", "quiz");
+  assert.equal(
+    location.hash,
+    "#/Parent+1/Parent+2/Deck+A/quiz",
+    "quiz mode should append the deck and quiz suffix to the folder route",
+  );
+  assert.equal(
+    window.getNavigationPathFromUrl().join("::"),
+    "Parent 1::Parent 2",
+    "a quiz session URL should resolve to the deck's immediate parent",
+  );
+  const quizRoute = window.getSessionNavigationFromUrl();
+  assert.equal(quizRoute.mode, "quiz");
+  assert.equal(
+    quizRoute.subject,
+    "Parent 1::Parent 2::Deck A",
+    "the quiz route should retain the complete deck subject for refresh recovery",
+  );
+}
+
+checkSessionNavigationUrls();
+
 for (const inputId of ["deck-password-input", "folder-password-input"]) {
   const inputMarkup = indexSource.match(
     new RegExp(`<input(?=[^>]*id="${inputId}")[^>]*>`, "s"),
@@ -115,6 +186,20 @@ assert.match(
   appCoreSource,
   /temporary issue with our servers or services, so this deck couldn't start\. Please check your internet connection and try again later\./,
   "the outer deck-start failure notice should use the same guidance",
+);
+const studyDeckStart = appCoreSource.match(
+  /async function reviewDeck\([\s\S]*?\) \{[\s\S]*?\n  \}/,
+)?.[0];
+assert.ok(studyDeckStart, "Study Mode deck-opening handler should exist");
+assert.match(
+  studyDeckStart,
+  /await globalScope\.navigate\("deck-review"\)[\s\S]*?renderDeckReview\(subject, validQuestions\)[\s\S]*?updateSessionNavigationUrl\?\.\(subject, "study"\)/,
+  "Study Mode should finish navigating before updating the session URL",
+);
+assert.match(
+  appCoreStateSource,
+  /if \(window\.location\.protocol === "file:"\) \{[\s\S]*?window\.location\.hash = nextHash/,
+  "local-file route updates should not reload the page",
 );
 assert.match(
   appCoreSource,
@@ -189,6 +274,16 @@ assert.match(
   appCoreSource,
   /function setDeckPasswordTransitionLoading\(isLoading, statusText = "Loading\.\.\."\) \{[\s\S]*?sibling\.setAttribute\("inert", ""\)[\s\S]*?deckPasswordTransitionSnapshots\.forEach/,
   "password transitions should block background interaction and restore previous state",
+);
+assert.match(
+  appCoreSource,
+  /setDeckPasswordTransitionLoading\(true, ""\);/,
+  "password modal mode switches should hide the Switching modes status text",
+);
+assert.doesNotMatch(
+  appCoreSource,
+  /"Switching modes\.\.\."/,
+  "the password modal should not display the Switching modes status text",
 );
 const passwordSubmitHandler = appCoreSource.match(
   /if \(btnSubmitDeckPassword\) \{[\s\S]*?\n  \}/,
@@ -333,16 +428,6 @@ vm.runInContext(
 transitionContext.setDeckPasswordTransitionLoading(true, "Switching modes...");
 assert.equal(transitionStatus.hidden, false);
 assert.equal(transitionStatus.statusLabel.textContent, "Switching modes...");
-assert.match(
-  appCoreSource,
-  /setDeckPasswordTransitionLoading\(true, ""\);/,
-  "password modal mode switches should hide the Switching modes status text",
-);
-assert.doesNotMatch(
-  appCoreSource,
-  /"Switching modes\.\.\."/,
-  "the password modal should not display the Switching modes status text",
-);
 assert.equal(pageContent.hasAttribute("inert"), true);
 assert.equal(pageContent.getAttribute("aria-busy"), "true");
 assert.equal(modalHeading.hasAttribute("inert"), true);
@@ -440,11 +525,14 @@ function createView(id, active = false) {
 for (const [id, active] of [
   ["dashboard", true],
   ["practice", false],
+  ["deck-review", false],
   ["settings", false],
 ]) {
   views.set(`view-${id}`, createView(id, active));
 }
 
+const navigationUrlUpdates = [];
+const dashboardProgressAlignmentCalls = [];
 const context = {
   module: { exports: {} },
   state: { session: { active: false }, currentPath: [] },
@@ -459,6 +547,18 @@ const context = {
         : null,
   },
   updateDashboard() {},
+  updateDeckProgressBarsByRow() {
+    dashboardProgressAlignmentCalls.push(
+      views.get("view-dashboard").isActive(),
+    );
+  },
+  updateNavigationUrl(path, options) {
+    navigationUrlUpdates.push({ path: [...path], options });
+  },
+  getNavigationPathFromUrl: () => [],
+  requestConfirmation: async () => true,
+  saveSessionProgress() {},
+  saveState: async () => true,
   renderCategoryProgressNow(options) {
     assert.equal(options?.allowInactive, true);
     assert.equal(
@@ -495,6 +595,39 @@ async function checkConcurrentNavigation() {
     context.dashboardPreRendered,
     true,
     "returning to the dashboard should render its latest deck state before revealing it",
+  );
+  assert.equal(
+    dashboardProgressAlignmentCalls.at(-1),
+    true,
+    "dashboard progress slots should be realigned after the dashboard is revealed",
+  );
+
+  context.state.currentPath = ["Parent 1", "Parent 2"];
+  context.state.session.active = true;
+  await context.module.exports.navigate("practice");
+  await context.module.exports.navigate("dashboard");
+  assert.equal(
+    navigationUrlUpdates.at(-1).path.join("::"),
+    "Parent 1::Parent 2",
+    "returning from a quiz should restore its immediate parent folder URL",
+  );
+  assert.equal(
+    navigationUrlUpdates.at(-1).options.replace,
+    true,
+    "quiz return should replace the session URL in browser history",
+  );
+
+  await context.module.exports.navigate("deck-review");
+  await context.module.exports.navigate("dashboard");
+  assert.equal(
+    navigationUrlUpdates.at(-1).path.join("::"),
+    "Parent 1::Parent 2",
+    "returning from study mode should restore its immediate parent folder URL",
+  );
+  assert.equal(
+    navigationUrlUpdates.at(-1).options.replace,
+    true,
+    "study return should replace the session URL in browser history",
   );
 }
 

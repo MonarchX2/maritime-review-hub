@@ -3428,6 +3428,11 @@
       return false;
     }
 
+    if (typeof globalScope.navigate === "function") {
+      const navigated = await globalScope.navigate("deck-review");
+      if (!navigated) return false;
+    }
+
     if (loader) loader.classList.add("hidden");
     state.prefs.lastActivity = {
       mode: "review",
@@ -3436,6 +3441,7 @@
     };
     saveState();
     renderDeckReview(subject, validQuestions);
+    globalScope.updateSessionNavigationUrl?.(subject, "study");
     return true;
   }
 
@@ -4019,9 +4025,65 @@
 
   let pendingResumeSession = null;
 
-  async function resumeSession(password = null) {
+  function hasSessionRestoreProgress(sessionRoute) {
+    const subject = String(sessionRoute?.subject || "").trim();
+    if (!subject) return false;
+
+    if (sessionRoute.mode === "study") {
+      const progress = state.prefs?.studyProgress?.[subject];
+      return (
+        Number(progress?.index) > 0 ||
+        Number(progress?.page) > 1 ||
+        Number(progress?.scrollY) > 0
+      );
+    }
+
+    if (sessionRoute.mode !== "quiz") return false;
+
+    const storedSession = getStoredItem("saved_session");
+    if (!storedSession) return false;
+
+    let savedSession;
+    try {
+      savedSession =
+        typeof storedSession === "string"
+          ? JSON.parse(storedSession)
+          : storedSession;
+    } catch (error) {
+      appLogger.error("Unable to check saved quiz progress for refresh.", error);
+      return false;
+    }
+
+    const belongsToDeck =
+      savedSession?.questions?.some(
+        (question) => String(question?.Subject || "").trim() === subject,
+      ) === true;
+    if (
+      savedSession?.active !== true ||
+      !belongsToDeck ||
+      !Array.isArray(savedSession.questions)
+    ) {
+      return false;
+    }
+
+    const hasRecordedAnswers = (answers) =>
+      answers &&
+      typeof answers === "object" &&
+      Object.values(answers).some(
+        (answer) =>
+          answer !== null && answer !== undefined && answer !== "",
+      );
+
+    return (
+      Number(savedSession.currentIndex) > 0 ||
+      hasRecordedAnswers(savedSession.userAnswers) ||
+      hasRecordedAnswers(savedSession.identificationRatings)
+    );
+  }
+
+  async function resumeSession(password = null, options = {}) {
     const resumeFeatureEnabled = false;
-    if (!resumeFeatureEnabled) {
+    if (!resumeFeatureEnabled && options.allowResume !== true) {
       return false;
     }
 
@@ -4056,6 +4118,16 @@
     const savedSession = pendingResumeSession || JSON.parse(saved);
     const currentQuestion = savedSession.questions?.[savedSession.currentIndex];
     const currentSubject = currentQuestion?.Subject;
+    const authorizedReviewQuestions = Array.isArray(
+      options.authorizedReviewQuestions,
+    )
+      ? options.authorizedReviewQuestions.filter(
+          (question) =>
+            String(question?.Subject || "").trim() ===
+            String(currentSubject || "").trim(),
+        )
+      : [];
+    const hasAuthorizedReviewSession = authorizedReviewQuestions.length > 0;
 
     if (
       (isDeckHidden(currentSubject) || isDeckLocked(currentSubject)) &&
@@ -4123,16 +4195,6 @@
             // FIXED: Replaced 'delete' with setting to null
             // to prevent array/object indexing bugs
             state.session.userAnswers[index] = null;
-    const authorizedReviewQuestions = Array.isArray(
-      options.authorizedReviewQuestions,
-    )
-      ? options.authorizedReviewQuestions.filter(
-          (question) =>
-            String(question?.Subject || "").trim() ===
-            String(currentSubject || "").trim(),
-        )
-      : [];
-    const hasAuthorizedReviewSession = authorizedReviewQuestions.length > 0;
           }
         }
       } else {
@@ -4143,12 +4205,13 @@
       return savedQ;
     });
 
-    navigate("practice");
+    await navigate("practice");
     document.getElementById("session-setup").classList.add("hidden");
     document.getElementById("session-active").classList.remove("hidden");
 
     renderQuestion();
     await markQuizActivity(currentSubject);
+    globalScope.updateSessionNavigationUrl?.(currentSubject, "quiz");
     return true;
   }
 
@@ -5057,7 +5120,7 @@
             setDeckPasswordTransitionLoading(true, "");
             try {
               if (pendingDeckAction === "resume") {
-                await resumeSession(pass);
+                await resumeSession(pass, { allowResume: true });
               } else if (pendingDeckAction === "resume-review") {
                 if (pendingPracticeReviewSwitch) {
                   await continuePracticeReviewSwitch(
@@ -5787,6 +5850,71 @@
           document.documentElement.setAttribute("data-app-ready", "true");
         }
 
+        const sessionRoute = globalScope.getSessionNavigationFromUrl?.();
+        if (sessionRoute) {
+          const hasProgress = hasSessionRestoreProgress(sessionRoute);
+          const sessionDeckName =
+            String(sessionRoute.subject || "")
+              .split("::")
+              .filter(Boolean)
+              .at(-1) || "this deck";
+          const shouldRestore = hasProgress
+            ? await requestConfirmation(
+                {
+                  before: `A ${sessionRoute.mode === "study" ? "Study" : "Quiz"} session for `,
+                  emphasis: sessionDeckName,
+                  after:
+                    " was interrupted by the page refresh. Do you want to restore it?",
+                },
+                "Restore Session",
+              )
+            : false;
+          let restored = false;
+          let restoreFailedWithError = false;
+          if (shouldRestore) {
+            try {
+              if (sessionRoute.mode === "study" && sessionRoute.subject) {
+                currentAppMode = "review";
+                syncPreferenceControls();
+                restored = await reviewDeck(
+                  sessionRoute.subject,
+                  null,
+                  true,
+                );
+              } else if (sessionRoute.mode === "quiz") {
+                restored = await resumeSession(null, { allowResume: true });
+              }
+            } catch (error) {
+              restoreFailedWithError = true;
+              appLogger.error("Unable to restore the session from its URL.", error);
+              showToast(
+                "This session could not be restored. Return to the deck and start a new session.",
+                "warning",
+                8000,
+              );
+            }
+          }
+
+          const passwordPending =
+            shouldRestore &&
+            ((sessionRoute.mode === "quiz" &&
+              pendingDeckAction === "resume") ||
+            (sessionRoute.mode === "study" &&
+              pendingDeckAction === "resume-review"));
+          if (!restored && !passwordPending) {
+            globalScope.updateNavigationUrl?.(state.currentPath || [], {
+              replace: true,
+            });
+            if (sessionRoute.mode === "quiz" && !restoreFailedWithError) {
+              showToast(
+                "This quiz session could not be restored. Return to the deck and start a new session.",
+                "warning",
+                8000,
+              );
+            }
+          }
+        }
+
         invalidateCategoryProgressRenderSignature();
         renderCategoryProgress();
         setupCacheInvalidationListener();
@@ -5929,6 +6057,7 @@
     reloadAppStateInMemory,
     renderCategoryProgress,
     renderCategoryProgressNow,
+    updateDeckProgressBarsByRow,
     refreshPendingDeckPayloads,
     dismissTreeViewReadabilityNotice,
     dismissDeckNotFound,
@@ -6047,4 +6176,3 @@
   globalScope.AppCore = AppCore;
   globalScope.initializeApp = initializeApp;
 })(typeof window !== "undefined" ? window : globalThis);
-    updateDeckProgressBarsByRow,

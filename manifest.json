@@ -11,7 +11,7 @@
   "theme_color": "#1e3a8a",
   "icons": [
     {
-      "src": "icon.svg?v=mrh-release-10.15.26",
+      "src": "icon.svg?v=mrh-release-10.16.0",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
