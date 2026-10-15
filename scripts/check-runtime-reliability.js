@@ -102,6 +102,7 @@ const networkContext = {
   },
 };
 networkContext.MRH_CONFIG = { databaseUrl: "https://example.test/backend" };
+networkContext.__MRH_APP__ = { version: "mrh-release-10.15.26-5" };
 vm.createContext(networkContext);
 vm.runInContext(
   fs.readFileSync("app-core-network.js", "utf8"),
@@ -218,8 +219,10 @@ async function checkBackendErrorHandling() {
   assert.equal(retryAttempts, 3, "retry attempts must respect the configured limit");
 
   let fetchCount = 0;
-  networkContext.fetch = async () => {
+  let lastPostBody = "";
+  networkContext.fetch = async (_input, options) => {
     fetchCount += 1;
+    lastPostBody = options.body;
     if (fetchCount < 3) {
       return new Response(
         JSON.stringify({
@@ -238,6 +241,11 @@ async function checkBackendErrorHandling() {
   );
   assert.equal(recoveredRequest.status, "ok");
   assert.equal(fetchCount, 3, "transient HTTP-200 backend envelopes should retry");
+  assert.equal(
+    JSON.parse(lastPostBody).appVersion,
+    networkContext.__MRH_APP__.version,
+    "every POST request must include the running app version",
+  );
 
   fetchCount = 0;
   networkContext.fetch = async () => {
@@ -305,6 +313,11 @@ async function checkBackendErrorHandling() {
     new URL(requestedUrls[1]).searchParams.get("cv"),
     "backend-cache-7",
     "summary GET requests must bypass intermediary caches when backend payload version changes",
+  );
+  assert.equal(
+    new URL(requestedUrls[1]).searchParams.get("v"),
+    networkContext.__MRH_APP__.version,
+    "summary GET requests must include the running app version",
   );
   assert.equal(
     new URL(requestedUrls[2]).searchParams.get("cv"),

@@ -20,6 +20,7 @@ const context = {
     },
   },
 };
+const currentClientVersion = "mrh-release-10.15.26-5";
 vm.createContext(context);
 vm.runInContext(
   fs.readFileSync("backend/main.js", "utf8"),
@@ -31,6 +32,26 @@ assert.equal(
   context.normalizeStoredPassword("test"),
   "test",
   "plaintext UUID-sheet passwords must remain plaintext in memory",
+);
+assert.equal(
+  context.isSupportedClientVersion(currentClientVersion),
+  true,
+  "the current source release must pass the backend version gate",
+);
+assert.equal(
+  context.isSupportedClientVersion("mrh-10.15.26-5-89f6603f02cb"),
+  true,
+  "the current deployed release must pass the backend version gate",
+);
+assert.equal(
+  context.isSupportedClientVersion("mrh-10.15.26-4-89f6603f02cb"),
+  false,
+  "the previous release must be rejected by the backend version gate",
+);
+assert.equal(
+  context.isSupportedClientVersion(""),
+  false,
+  "requests without a client version must be rejected",
 );
 assert.equal(
   context.passwordMatches("test", "test"),
@@ -164,7 +185,9 @@ context.findCacheFilesByName = () => ({
     getBlob: () => ({ getDataAsString: () => validPersistentSummary }),
   }),
 });
-const recoveredResponse = context.doGetInternal({ parameter: {} });
+const recoveredResponse = context.doGetInternal({
+  parameter: { v: currentClientVersion },
+});
 assert.deepEqual(
   JSON.parse(recoveredResponse.content),
   {
@@ -188,7 +211,9 @@ context.findCacheFilesByName = () => ({
   hasNext: () => true,
   next: () => ({ getBlob: () => ({ getDataAsString: () => "{ broken" }) }),
 });
-const coldStartResponse = context.doGetInternal({ parameter: {} });
+const coldStartResponse = context.doGetInternal({
+  parameter: { v: currentClientVersion },
+});
 assert.deepEqual(
   JSON.parse(JSON.stringify(coldStartResponse)),
   { isColdStart: true, subjects: [] },
@@ -206,7 +231,9 @@ context.loadDeckMetadataMap = () => Object.create(null);
 context.getEffectivePassword = () => "";
 context.isSubjectHiddenByHierarchy = () => false;
 assert.equal(
-  context.doGetInternal({ parameter: { subject: "MISSING" } }).status,
+  context.doGetInternal({
+    parameter: { subject: "MISSING", v: currentClientVersion },
+  }).status,
   "error",
   "GET deck errors must use the network client's recognized error envelope",
 );
@@ -216,7 +243,9 @@ context.loadDeckMetadataMap = () => ({
 });
 context.getEffectivePassword = () => "protected";
 assert.equal(
-  context.doGetInternal({ parameter: { subject: "LOCKED" } }).code,
+  context.doGetInternal({
+    parameter: { subject: "LOCKED", v: currentClientVersion },
+  }).code,
   "PASSWORD_REQUIRED",
 );
 
@@ -226,8 +255,55 @@ context.loadDeckMetadataMap = () => ({
 context.getEffectivePassword = () => "";
 context.isSubjectHiddenByHierarchy = () => true;
 assert.equal(
-  context.doGetInternal({ parameter: { subject: "HIDDEN" } }).code,
+  context.doGetInternal({
+    parameter: { subject: "HIDDEN", v: currentClientVersion },
+  }).code,
   "FORBIDDEN",
+);
+
+assert.equal(
+  context.doGetInternal({ parameter: { subject: "COLREGS" } }).code,
+  "CLIENT_UPDATE_REQUIRED",
+  "GET requests without a client version must be rejected",
+);
+assert.equal(
+  context.doGetInternal({
+    parameter: { subject: "COLREGS", v: "mrh-10.15.26-4-4daaf03c73b6" },
+  }).code,
+  "CLIENT_UPDATE_REQUIRED",
+  "GET requests from an older app release must be rejected",
+);
+context.handleSyncStatus = () => ({ status: "ok" });
+assert.equal(
+  context.doPost({
+    postData: { contents: JSON.stringify({ type: "get_sync_status" }) },
+  }).code,
+  "CLIENT_UPDATE_REQUIRED",
+  "POST requests without a client version must be rejected",
+);
+assert.equal(
+  context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        type: "get_sync_status",
+        appVersion: "mrh-10.15.26-4-4daaf03c73b6",
+      }),
+    },
+  }).code,
+  "CLIENT_UPDATE_REQUIRED",
+  "POST requests from an older app release must be rejected",
+);
+assert.equal(
+  context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        type: "get_sync_status",
+        appVersion: currentClientVersion,
+      }),
+    },
+  }).status,
+  "ok",
+  "the current app release must retain backend access",
 );
 
 const rateLimitValues = new Map();

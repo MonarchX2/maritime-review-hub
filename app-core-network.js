@@ -360,24 +360,25 @@
   const REQUEST_SCHEMAS = Object.freeze({
     get_deck: {
       required: ["subject"],
-      allowed: ["type", "subject", "password", "page", "limit"],
+      allowed: ["type", "subject", "password", "page", "limit", "appVersion"],
     },
     verify_folder_access: {
       required: ["subject", "password"],
-      allowed: ["type", "subject", "password"],
+      allowed: ["type", "subject", "password", "appVersion"],
     },
     verify_access: {
       required: ["subject", "password"],
-      allowed: ["type", "subject", "password"],
+      allowed: ["type", "subject", "password", "appVersion"],
     },
-    get_cache_version: { required: [], allowed: ["type"] },
-    get_sync_status: { required: [], allowed: ["type"] },
+    get_cache_version: { required: [], allowed: ["type", "appVersion"] },
+    get_sync_status: { required: [], allowed: ["type", "appVersion"] },
   });
 
   const STRING_FIELD_LIMITS = Object.freeze({
     type: 64,
     subject: 500,
     password: 500,
+    appVersion: 128,
   });
   const MAX_BACKEND_PAYLOAD_BYTES = 500000;
 
@@ -591,7 +592,10 @@
   async function callBackend(payload, options = {}) {
     const url = getDatabaseUrl();
     if (!url) throw new Error("Database URL is not configured.");
-    validateBackendPayload(payload);
+    const appVersion = String(globalScope.__MRH_APP__?.version || "").trim();
+    if (!appVersion) throw new Error("Client app version is unavailable.");
+    const versionedPayload = { ...payload, appVersion };
+    validateBackendPayload(versionedPayload);
 
     return defaultConnectionPool.request(
       async () => {
@@ -604,7 +608,7 @@
               Accept: "application/json",
               ...(options.headers || {}),
             },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(versionedPayload),
             redirect: "follow",
             cache: "reload",
             keepalive: true,

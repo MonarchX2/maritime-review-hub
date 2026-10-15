@@ -1,5 +1,10 @@
 # Changelog
 
+## 10.15.26-5 - 2026-10-15
+
+### Changed
+- Require the current app version on every backend API request and reject clients older than 10.15.26-5.
+
 ## 10.15.26-4 - 2026-10-15
 
 ### Added
