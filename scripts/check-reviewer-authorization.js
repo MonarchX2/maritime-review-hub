@@ -37,6 +37,7 @@ let accountRows = [
 let tokenClaims = {};
 let tokenStatus = 200;
 let tokenFetchCount = 0;
+let tokenFetchFailures = 0;
 const appendedRows = { MODULE: [], REVIEWERS: [] };
 let failLogWrites = false;
 
@@ -144,9 +145,13 @@ const context = {
       tokenFetchCount += 1;
       assert.match(
         url,
-        /^https:\/\/oauth2\.googleapis\.com\/tokeninfo\?id_token=/,
+        /^https:\/\/(?:oauth2\.googleapis\.com\/tokeninfo|www\.googleapis\.com\/oauth2\/v3\/tokeninfo)\?id_token=/,
       );
       assert.equal(options.muteHttpExceptions, true);
+      if (tokenFetchFailures > 0) {
+        tokenFetchFailures -= 1;
+        throw new Error("simulated endpoint outage");
+      }
       return {
         getResponseCode: () => tokenStatus,
         getContentText: () => JSON.stringify(tokenClaims),
@@ -240,6 +245,15 @@ assert.equal(
   "success",
 );
 assert.equal(tokenFetchCount, 1, "verified Google tokens should be briefly cached");
+
+tokenClaims = validClaims();
+tokenFetchFailures = 1;
+assert.equal(
+  post(authRequest("verify_reviewer_access", "fallback-endpoint-token")).status,
+  "success",
+  "the alternate Google token-info endpoint should recover from a primary endpoint outage",
+);
+assert.equal(tokenFetchFailures, 0);
 
 tokenClaims = { ...validClaims(), aud: "attacker-client.apps.googleusercontent.com" };
 assert.equal(
@@ -439,7 +453,7 @@ tokenStatus = 503;
 assert.equal(
   post(authRequest("verify_reviewer_access", "provider-failure")).code,
   "AUTH_PROVIDER_UNAVAILABLE",
-  "Google verification outages must not authorize users",
+  "Google verification outages must not authorize users after both endpoints fail",
 );
 
 properties.set("MRH_ACCOUNTS_SPREADSHEET_ID", "");

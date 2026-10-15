@@ -78,9 +78,20 @@ To initialize sign-in and access logging:
 6. Enable the Apps Script Advanced Google service **Google Sheets API v4**
    (the project manifest declares this service; enable the Google Sheets API
    in the linked Cloud project if prompted), deploy a new web-app version, and
-   authorize the external-request and Sheets scopes.
+   authorize the external-request and Sheets scopes. If the external-request
+   scope is added or consent is revoked later, run
+   `initializeMRHAccountsSpreadsheet()` again from the Apps Script editor and
+   approve the requested permissions as the deployment owner.
 7. Test sign-in from a registered account/device and from an unregistered
    email/device. Only the registered pair should be allowed to open Reviewers.
+
+The auth-config response only confirms that the OAuth client and spreadsheet
+IDs are present; it does not test Google token verification. If sign-in reaches
+"Checking approved account" and then reports that verification is temporarily
+unavailable, confirm the deployment owner's external-request permission by
+running the initializer above, then retry. The backend uses Google's token-info
+service with a secondary Google endpoint if the primary is temporarily
+unavailable.
 
 Successful access is appended to the `MODULE` or `REVIEWERS` tab with a
 timestamp, email, device ID, name fields, and event type. Anonymous module
