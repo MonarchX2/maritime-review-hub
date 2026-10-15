@@ -1,5 +1,11 @@
 # Changelog
 
+## 10.16.4 - 2026-10-15
+
+### Changed
+- Add a dedicated reviewer-access screen that clearly keeps sign-in disabled until verified identity and folder grants are configured.
+- Allow supported resource previews to expand into a focused online viewer.
+
 ## 10.16.3 - 2026-10-15
 
 ### Changed

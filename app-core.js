@@ -6011,10 +6011,49 @@
 
   function openResourcePortalRoot() {
     resourcePortalCurrentFolderId = "";
+    const browser = document.querySelector(".resource-portal-browser");
+    const accessScreen = document.getElementById(
+      "resource-portal-access-screen",
+    );
+    const libraryNav = document.getElementById("resource-portal-library-nav");
+    const accessNav = document.getElementById("resource-portal-access-nav");
+    if (browser) browser.hidden = false;
+    if (accessScreen) accessScreen.hidden = true;
+    if (libraryNav) {
+      libraryNav.classList.add("is-active");
+      libraryNav.setAttribute("aria-current", "page");
+    }
+    if (accessNav) {
+      accessNav.classList.remove("is-active");
+      accessNav.removeAttribute("aria-current");
+    }
     const search = document.getElementById("resource-portal-search");
     if (search) search.value = "";
     closeResourcePreview();
     return loadResourcePortalFolder("");
+  }
+
+  function openResourcePortalAccess() {
+    const browser = document.querySelector(".resource-portal-browser");
+    const accessScreen = document.getElementById(
+      "resource-portal-access-screen",
+    );
+    const libraryNav = document.getElementById("resource-portal-library-nav");
+    const accessNav = document.getElementById("resource-portal-access-nav");
+    if (!browser || !accessScreen) return false;
+
+    closeResourcePreview();
+    browser.hidden = true;
+    accessScreen.hidden = false;
+    if (libraryNav) {
+      libraryNav.classList.remove("is-active");
+      libraryNav.removeAttribute("aria-current");
+    }
+    if (accessNav) {
+      accessNav.classList.add("is-active");
+      accessNav.setAttribute("aria-current", "page");
+    }
+    return true;
   }
 
   function filterResourcePortalItems(query) {
@@ -6205,6 +6244,19 @@
     );
     if (!preview || !title || !frame) return false;
 
+    preview.classList.remove("is-expanded");
+    const expandButton = document.getElementById(
+      "resource-portal-preview-expand",
+    );
+    if (expandButton) {
+      expandButton.setAttribute("aria-pressed", "false");
+      expandButton.setAttribute("aria-label", "Expand online viewer");
+      expandButton.title = "Expand viewer";
+      expandButton.querySelector("i")?.classList.replace(
+        "fa-compress",
+        "fa-up-right-and-down-left-from-center",
+      );
+    }
     const previewGeneration = ++resourcePortalPreviewGeneration;
     if (resourcePortalPreviewObjectUrl) {
       URL.revokeObjectURL(resourcePortalPreviewObjectUrl);
@@ -6290,6 +6342,38 @@
     }
   }
 
+  function toggleResourceViewer() {
+    const preview = document.getElementById("resource-portal-preview");
+    const expandButton = document.getElementById(
+      "resource-portal-preview-expand",
+    );
+    if (!preview || preview.hidden || !expandButton) return false;
+
+    const isExpanded = preview.classList.toggle("is-expanded");
+    expandButton.setAttribute("aria-pressed", String(isExpanded));
+    expandButton.setAttribute(
+      "aria-label",
+      isExpanded ? "Exit expanded viewer" : "Expand online viewer",
+    );
+    expandButton.title = isExpanded ? "Exit expanded viewer" : "Expand viewer";
+    const icon = expandButton.querySelector("i");
+    if (icon) {
+      icon.classList.toggle("fa-compress", isExpanded);
+      icon.classList.toggle(
+        "fa-up-right-and-down-left-from-center",
+        !isExpanded,
+      );
+    }
+    if (isExpanded) {
+      preview.setAttribute("role", "dialog");
+      preview.setAttribute("aria-modal", "true");
+    } else {
+      preview.setAttribute("role", "region");
+      preview.removeAttribute("aria-modal");
+    }
+    return isExpanded;
+  }
+
   function closeResourcePreview() {
     resourcePortalPreviewGeneration += 1;
     const preview = document.getElementById("resource-portal-preview");
@@ -6306,7 +6390,25 @@
       status.textContent = "";
       status.hidden = true;
     }
-    if (preview) preview.hidden = true;
+    if (preview) {
+      preview.classList.remove("is-expanded");
+      preview.setAttribute("role", "region");
+      preview.removeAttribute("aria-modal");
+      preview.hidden = true;
+    }
+    const expandButton = document.getElementById(
+      "resource-portal-preview-expand",
+    );
+    if (expandButton) {
+      expandButton.setAttribute("aria-pressed", "false");
+      expandButton.setAttribute("aria-label", "Expand online viewer");
+      expandButton.title = "Expand viewer";
+      const icon = expandButton.querySelector("i");
+      if (icon) {
+        icon.classList.remove("fa-compress");
+        icon.classList.add("fa-up-right-and-down-left-from-center");
+      }
+    }
   }
 
   async function loadResourcePortalFolder(folderId) {
@@ -6460,8 +6562,10 @@
     loadState,
     loadResourcePortalFolder,
     openResourcePortalRoot,
+    openResourcePortalAccess,
     filterResourcePortalItems,
     closeResourcePreview,
+    toggleResourceViewer,
     markLocalDownloadDeleted,
     nextQuestion,
     normalizeAccessFlag,

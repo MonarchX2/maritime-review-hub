@@ -61,8 +61,38 @@ assert.match(
 );
 assert.match(
   index,
+  /id="resource-portal-preview-expand"[\s\S]*?onclick="toggleResourceViewer\(\)"/,
+  "online file previews should be expandable into a focused viewer",
+);
+assert.match(
+  appCore,
+  /function openResourcePortalAccess\(\)[\s\S]*?browser\.hidden = true;[\s\S]*?accessScreen\.hidden = false/,
+  "reviewer access navigation should open its dedicated access screen",
+);
+assert.match(
+  appCore,
+  /function toggleResourceViewer\(\)[\s\S]*?preview\.classList\.toggle\("is-expanded"\)/,
+  "the online viewer should support expanded and inline modes",
+);
+assert.match(
+  index,
   /class="resource-portal-shell"[\s\S]*?class="resource-portal-sidebar"[\s\S]*?class="resource-portal-browser"/,
   "the Resources view should use the file portal sidebar layout",
+);
+assert.match(
+  index,
+  /id="resource-portal-access-nav"[\s\S]*?Reviewer access[\s\S]*?id="resource-portal-access-screen"/,
+  "the portal should provide a separate reviewer access screen",
+);
+assert.match(
+  index,
+  /id="resource-portal-access-screen"[\s\S]*?Secure Google sign-in has not been configured[\s\S]*?id="resource-portal-auth-help"[\s\S]*?Access will be enabled only after account verification/,
+  "reviewer sign-in must clearly remain unavailable until identity and grants are configured",
+);
+assert.match(
+  index,
+  /class="resource-portal-google-signin"[\s\S]*?disabled/,
+  "the portal must not present an unconfigured sign-in button as functional",
 );
 assert.match(
   index,

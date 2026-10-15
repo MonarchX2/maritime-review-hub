@@ -8,6 +8,11 @@ folder grants are implemented, those resources are unavailable to everyone
 through the website. A folder name classifies resources; it does not authorize
 anyone to access them.
 
+The Reviewer access screen is informational until secure Google sign-in,
+server-side identity verification, and reviewer-folder grants are configured.
+Its sign-in control is intentionally disabled; the frontend does not claim to
+authenticate or authorize visitors.
+
 The rule is exact and case-sensitive: a dot immediately after `v` is not
 accepted. Rename any folder intended to be restricted so it uses the required
 `REVIEWERS vNN.NN.NN` spelling before relying on this protection.
@@ -23,8 +28,9 @@ application starts.
 Supported file previews are requested from the backend and kept only in
 page memory for display. Folder listings are not cached, and document bytes
 are not stored in the frontend session cache, IndexedDB, or service-worker
-cache. Unsupported file types show a message instead of a download link. The
-portal does not expose original Drive URLs or download controls.
+cache. The in-page viewer can be expanded for focused reading. Unsupported
+file types show a message instead of a download link. The portal does not
+expose original Drive URLs or download controls.
 
 These interface restrictions are not a technical barrier to copying. A visitor
 who can view a document can inspect network responses, use browser tools, or

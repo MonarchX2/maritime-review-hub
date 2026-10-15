@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src blob:; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data: blob:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-10.16.3-1" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-10.16.4-1" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-10.16.3-1"
+      href="icon.svg?v=mrh-release-10.16.4-1"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-10.16.3-1" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-10.16.4-1" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-10.16.3-1"
+      href="tailwind.generated.css?v=mrh-release-10.16.4-1"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-10.16.3-1"
+      href="styles.css?v=mrh-release-10.16.4-1"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-10.16.3-1"
+      href="tailwind.generated.css?v=mrh-release-10.16.4-1"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-10.16.3-1"
+      href="styles.css?v=mrh-release-10.16.4-1"
       media="print"
       onload="
         this.media = 'all';
@@ -617,12 +617,22 @@
             </div>
             <button
               type="button"
+              id="resource-portal-library-nav"
               class="resource-portal-nav-item is-active"
               onclick="openResourcePortalRoot()"
               aria-current="page"
             >
               <i class="fa-solid fa-folder-open" aria-hidden="true"></i>
               My Files
+            </button>
+            <button
+              type="button"
+              id="resource-portal-access-nav"
+              class="resource-portal-nav-item"
+              onclick="openResourcePortalAccess()"
+            >
+              <i class="fa-solid fa-lock" aria-hidden="true"></i>
+              Reviewer access
             </button>
             <div class="resource-portal-sidebar-note">
               <i class="fa-solid fa-globe" aria-hidden="true"></i>
@@ -699,6 +709,19 @@
                 ></h3>
                 <div class="flex shrink-0 items-center gap-2">
                   <button
+                    id="resource-portal-preview-expand"
+                    type="button"
+                    onclick="toggleResourceViewer()"
+                    aria-label="Expand online viewer"
+                    title="Expand viewer"
+                    aria-pressed="false"
+                  >
+                    <i
+                      class="fa-solid fa-up-right-and-down-left-from-center"
+                      aria-hidden="true"
+                    ></i>
+                  </button>
+                  <button
                     type="button"
                     onclick="closeResourcePreview()"
                     aria-label="Close file preview"
@@ -739,6 +762,54 @@
               reviewer access is not yet configured. Browser-based copying or
               capture cannot be prevented.
             </p>
+          </section>
+
+          <section
+            id="resource-portal-access-screen"
+            class="resource-portal-access-screen"
+            aria-labelledby="resource-portal-access-title"
+            hidden
+          >
+            <div class="resource-portal-signin">
+              <div class="resource-portal-signin-form">
+                <span class="resource-portal-signin-kicker">
+                  <i class="fa-solid fa-lock" aria-hidden="true"></i>
+                  Restricted library
+                </span>
+                <h2 id="resource-portal-access-title">Reviewer access</h2>
+                <p>
+                  Sign-in is required before reviewer-only resources can be
+                  opened.
+                </p>
+                <div class="resource-portal-auth-status" role="status">
+                  <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+                  <span>
+                    Secure Google sign-in has not been configured for this
+                    portal yet. Reviewer files remain blocked.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  class="resource-portal-google-signin"
+                  disabled
+                  aria-describedby="resource-portal-auth-help"
+                >
+                  <i class="fa-brands fa-google" aria-hidden="true"></i>
+                  Sign in with Google
+                </button>
+                <p id="resource-portal-auth-help" class="resource-portal-auth-help">
+                  Access will be enabled only after account verification and
+                  reviewer-folder grants are configured.
+                </p>
+              </div>
+              <div class="resource-portal-signin-art" aria-hidden="true">
+                <div class="resource-portal-shield">
+                  <i class="fa-solid fa-shield-halved"></i>
+                  <i class="fa-solid fa-lock"></i>
+                </div>
+                <p>Private materials stay protected</p>
+              </div>
+            </div>
           </section>
         </div>
       </section>
@@ -2580,7 +2651,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 10.16.3</p>
+    <p id="site-version" class="site-version">Version 10.16.4</p>
 
     <div
       id="qr-transfer-modal"
