@@ -38,6 +38,7 @@ let tokenClaims = {};
 let tokenStatus = 200;
 let tokenFetchCount = 0;
 let tokenFetchFailures = 0;
+let tokenFetchErrorMessage = "";
 const appendedRows = { MODULE: [], REVIEWERS: [] };
 let failLogWrites = false;
 
@@ -150,7 +151,7 @@ const context = {
       assert.equal(options.muteHttpExceptions, true);
       if (tokenFetchFailures > 0) {
         tokenFetchFailures -= 1;
-        throw new Error("simulated endpoint outage");
+        throw new Error(tokenFetchErrorMessage || "simulated endpoint outage");
       }
       return {
         getResponseCode: () => tokenStatus,
@@ -254,6 +255,15 @@ assert.equal(
   "the alternate Google token-info endpoint should recover from a primary endpoint outage",
 );
 assert.equal(tokenFetchFailures, 0);
+
+tokenFetchErrorMessage = "Authorization required for UrlFetchApp.fetch";
+tokenFetchFailures = 2;
+assert.equal(
+  post(authRequest("verify_reviewer_access", "missing-external-scope")).code,
+  "AUTH_PERMISSION_REQUIRED",
+  "missing external-request authorization should be reported distinctly",
+);
+tokenFetchErrorMessage = "";
 
 tokenClaims = { ...validClaims(), aud: "attacker-client.apps.googleusercontent.com" };
 assert.equal(
