@@ -78,9 +78,25 @@ preferences.setDeckSessionSetting(
   "single",
   "Deck A",
 );
+preferences.setDeckSessionSetting(
+  "study",
+  "studyShowAnswers",
+  false,
+  "Deck A",
+);
 assert.equal(
   preferences.getDeckSessionSetting("study", "studyLayout", "Deck A"),
   "single",
+);
+assert.equal(
+  preferences.getDeckSessionSetting("study", "studyShowAnswers", "Deck A"),
+  false,
+  "review answer visibility should be configurable per deck",
+);
+assert.notEqual(
+  preferences.getDeckSessionSetting("study", "studyShowAnswers", "Deck B"),
+  false,
+  "review answer visibility should default to enabled for other decks",
 );
 assert.equal(
   preferences.getDeckSessionSetting("study", "studyLayout", "Deck B"),

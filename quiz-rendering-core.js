@@ -118,6 +118,21 @@
     return true;
   }
 
+  function toggleStudyShowAnswers(source) {
+    const toggle = source || getToggle("toggle-study-show-answers");
+    if (!globalScope.state) return false;
+    if (!setScopedPreference(
+      "study",
+      "studyShowAnswers",
+      toggle ? Boolean(toggle.checked) : false,
+    )) return false;
+    globalScope.saveState?.();
+    if (getElementCached("view-deck-review")?.classList.contains("active")) {
+      globalScope.reRenderDeckReview?.();
+    }
+    return true;
+  }
+
   function toggleClozeMode(source) {
     const toggle = source || getToggle("toggle-cloze-mode");
     if (!globalScope.state) return false;
@@ -155,6 +170,7 @@
     toggleShowWrongChoices,
     toggleQuizShowExplanations,
     toggleStudyShowExplanations,
+    toggleStudyShowAnswers,
     toggleClozeMode,
     toggleSrsMode,
   };

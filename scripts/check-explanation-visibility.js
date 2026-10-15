@@ -27,6 +27,7 @@ const explanationBox = { classList: createClassList(["hidden"]) };
 const explanationText = { textContent: "", innerHTML: "" };
 const quizToggle = { checked: false };
 const studyToggle = { checked: false };
+const studyAnswersToggle = { checked: false };
 const practiceView = { classList: createClassList(["active"]) };
 const reviewView = { classList: createClassList() };
 const elements = new Map([
@@ -34,6 +35,7 @@ const elements = new Map([
   ["q-explanation-text", explanationText],
   ["toggle-quiz-show-explanations", quizToggle],
   ["toggle-study-show-explanations", studyToggle],
+  ["toggle-study-show-answers", studyAnswersToggle],
   ["view-practice", practiceView],
   ["view-deck-review", reviewView],
 ]);
@@ -176,6 +178,20 @@ assert.equal(reviewRenderCount, 1);
 assert.equal(renderCount, 1);
 assert.equal(saveCount, 2);
 
+studyAnswersToggle.checked = false;
+context.QuizRenderingCore.toggleStudyShowAnswers(studyAnswersToggle);
+assert.equal(
+  context.state.prefs.deckSessionSettings["Deck A"].study.studyShowAnswers,
+  false,
+);
+assert.notEqual(
+  context.getDeckSessionSetting("study", "studyShowAnswers", "Deck B"),
+  false,
+  "review answer visibility overrides must remain isolated by deck",
+);
+assert.equal(reviewRenderCount, 2);
+assert.equal(saveCount, 3);
+
 reviewSubject = "";
 const saveCountBeforeMissingDeck = saveCount;
 quizToggle.checked = true;
@@ -191,9 +207,17 @@ assert.equal(warningToastCount, 1);
 const html = fs.readFileSync("index.html", "utf8");
 assert.equal((html.match(/id="toggle-quiz-show-explanations"/g) || []).length, 1);
 assert.equal((html.match(/id="toggle-study-show-explanations"/g) || []).length, 1);
+assert.equal((html.match(/id="toggle-study-show-answers"/g) || []).length, 1);
 assert.equal(
-  (html.match(/Note: Explanations are shown only where applicable\. Not all questions have explanations\./g) || []).length,
-  2,
+  (html.match(/Explanations are shown only where applicable\. Not all questions have explanations\./g) || []).length,
+  0,
 );
+assert.equal((html.match(/>Default to ON\.<\/span/g) || []).length, 4);
+assert.ok(
+  html.includes(
+    "Default to ON. Show correct answers in the review cards.",
+  ),
+);
+assert.doesNotMatch(html, /Note: Explanations/);
 
 console.log("Explanation visibility checks passed.");

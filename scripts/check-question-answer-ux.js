@@ -42,6 +42,24 @@ assert.match(
 );
 assert.match(
   sessionSource,
+  /questionCountEl\.textContent = `Question \$\{currentCard\} \/ \$\{totalCards\}`/,
+  "quiz sessions should update the current question count and progress bar",
+);
+assert.match(
+  sessionSource,
+  /questionProgressTrack\.setAttribute\([\s\S]*?Math\.round\(progressPercent\)/,
+);
+assert.match(
+  sessionSource,
+  /questionProgressBar\.style\.width = `\$\{progressPercent\}%`/,
+);
+assert.match(
+  html,
+  /id="quiz-question-count" aria-live="polite"[\s\S]*?Question 1 \/ 1/,
+);
+assert.match(html, /id="quiz-question-progress-track"[\s\S]*?role="progressbar"/);
+assert.match(
+  sessionSource,
   /function scheduleAutoNext\(session[\s\S]*?if \(getSession\(\) === session && session\.active\) nextQuestion\(\);/,
   "timer expiry must advance only the active session",
 );

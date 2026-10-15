@@ -25,6 +25,7 @@
     study: new Set([
       "hideABCD",
       "showWrongChoices",
+      "studyShowAnswers",
       "studyShowExplanations",
       "studyLayout",
       "studyPageSize",

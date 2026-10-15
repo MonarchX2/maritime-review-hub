@@ -115,6 +115,14 @@ assert.doesNotMatch(firstCard.choices.innerHTML, /Distractor/);
 assert.match(firstCard.choices.innerHTML, /Correct &lt;answer&gt;/);
 assert.match(secondCard.choices.innerHTML, /Correct/);
 
+context.state.prefs.studyShowAnswers = false;
+reviewCore.updateQuestionChoices(null, context.DeckReviewQuestions);
+assert.equal(firstCard.choices.innerHTML, "");
+assert.equal(secondCard.choices.innerHTML, "");
+context.state.prefs.studyShowAnswers = true;
+reviewCore.updateQuestionChoices(null, context.DeckReviewQuestions);
+assert.match(firstCard.choices.innerHTML, /Correct &lt;answer&gt;/);
+
 context.state.prefs.hideABCD = true;
 reviewCore.updateQuestionChoices(null, context.DeckReviewQuestions);
 assert.doesNotMatch(firstCard.choices.innerHTML, /A\./);

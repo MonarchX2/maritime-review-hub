@@ -3,6 +3,7 @@ const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const vm = require("node:vm");
 
 const rootDir = path.resolve(__dirname, "..");
 const appEntry = fs.readFileSync(path.join(rootDir, "app-entry.js"), "utf8");
@@ -117,7 +118,57 @@ assert.match(appEntry, /cache:\s*"no-store"/);
 assert.match(appEntry, /serviceWorkerRegistration\) return;/);
 assert.match(appEntry, /await serviceWorkerRegistrationPromise/);
 assert.match(appEntry, /if \(!serviceWorkerRegistrationFailed\) return;/);
-assert.match(appEntry, /serviceWorkerRegistrationPromise = navigator\.serviceWorker/);
+assert.match(
+  appEntry,
+  /const LEGACY_PAGES_BASE_PATH = "\/maritime-review-hub\/"/,
+);
+assert.match(
+  appEntry,
+  /rootScope\.location\?\.hostname !== "monarchx2\.github\.io"[\s\S]*?rootScope\.__MRH_APP_BASE_PATH !== "\/mrh\/"/,
+  "legacy cleanup must be restricted to the renamed GitHub Pages site",
+);
+assert.match(
+  appEntry,
+  /navigator\.serviceWorker\s*\.getRegistrations\(\)[\s\S]*?scopeUrl\.origin === legacyAppUrl\.origin[\s\S]*?isLegacyPath\(scopeUrl\.pathname\)/,
+  "the new Pages app must find every service worker scoped under the old URL",
+);
+assert.match(
+  appEntry,
+  /pathname === LEGACY_PAGES_BASE_PATH\.slice\(0, -1\)[\s\S]*?pathname\.startsWith\(LEGACY_PAGES_BASE_PATH\)/,
+  "legacy path matching must include the bare old path and its descendants only",
+);
+assert.match(
+  appEntry,
+  /map\(\(registration\) => registration\.unregister\(\)\)/,
+  "the new Pages app must unregister every legacy service worker",
+);
+assert.doesNotMatch(
+  appEntry,
+  /location\.(?:assign|replace)\([^)]*LEGACY_PAGES_BASE_PATH/,
+  "legacy URLs must never redirect to the new website",
+);
+assert.match(
+  appEntry,
+  /requestUrl\.origin === legacyAppUrl\.origin &&\s*isLegacyPath\(requestUrl\.pathname\)[\s\S]*?cache\.delete\(request\)/,
+  "the new Pages app must remove only cached requests from the old path",
+);
+assert.match(
+  appEntry,
+  /serviceWorkerRegistrationPromise = retireLegacyPagesApp\(\)\s*\.then\(\(\) =>\s*navigator\.serviceWorker\.register/,
+  "the legacy app cleanup must finish before registering the new Pages worker",
+);
+const legacyCleanupStart = appEntry.indexOf(
+  "  async function retireLegacyPagesApp() {",
+);
+const legacyCleanupEnd = appEntry.indexOf(
+  "\n  function registerServiceWorker()",
+  legacyCleanupStart,
+);
+assert.ok(legacyCleanupStart >= 0 && legacyCleanupEnd > legacyCleanupStart);
+const legacyCleanupSource = appEntry.slice(
+  legacyCleanupStart,
+  legacyCleanupEnd,
+);
 assert.match(appEntry, /rootScope\.state\?\.session\?\.active/);
 assert.match(appEntry, /#view-practice\.active, #view-deck-review\.active/);
 assert.match(appEntry, /const saved = await rootScope\.saveState\(\)/);
@@ -294,4 +345,168 @@ try {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }
 
-console.log("Frontend update flow and release stamping checks passed.");
+async function verifyLegacyCleanupBehavior() {
+  const baseUrl = "https://monarchx2.github.io";
+  const eventOrder = [];
+  const registrations = [
+    {
+      scope: `${baseUrl}/maritime-review-hub/`,
+      async unregister() {
+        await Promise.resolve();
+        eventOrder.push("unregister-old");
+        return true;
+      },
+    },
+    {
+      scope: `${baseUrl}/maritime-review-hub/nested/`,
+      async unregister() {
+        await Promise.resolve();
+        eventOrder.push("unregister-nested-old");
+        return true;
+      },
+    },
+    {
+      scope: `${baseUrl}/maritime-review-hub`,
+      async unregister() {
+        eventOrder.push("unregister-no-trailing-slash");
+        return true;
+      },
+    },
+    {
+      scope: `${baseUrl}/maritime-review-hub/failing/`,
+      async unregister() {
+        await Promise.resolve();
+        eventOrder.push("unregister-failing");
+        throw new Error("simulated unregister failure");
+      },
+    },
+    {
+      scope: `${baseUrl}/maritime-review-hub-archive/`,
+      async unregister() {
+        eventOrder.push("unregister-sibling");
+        return true;
+      },
+    },
+    {
+      scope: `${baseUrl}/mrh/`,
+      async unregister() {
+        eventOrder.push("unregister-new");
+        return true;
+      },
+    },
+    {
+      scope: "https://other.github.io/maritime-review-hub/",
+      async unregister() {
+        eventOrder.push("unregister-other-origin");
+        return true;
+      },
+    },
+  ];
+  const cacheEntries = new Map([
+    [
+      "shared-cache",
+      new Set([
+        `${baseUrl}/maritime-review-hub/`,
+        `${baseUrl}/maritime-review-hub`,
+        `${baseUrl}/maritime-review-hub/nested/app.js`,
+        `${baseUrl}/maritime-review-hub-archive/index.html`,
+        `${baseUrl}/mrh/index.html`,
+        "https://other.github.io/maritime-review-hub/index.html",
+      ]),
+    ],
+  ]);
+  const serviceWorker = {
+    async getRegistrations() {
+      return registrations;
+    },
+  };
+  const caches = {
+    async keys() {
+      return [...cacheEntries.keys()];
+    },
+    async open(name) {
+      const entries = cacheEntries.get(name);
+      return {
+        async keys() {
+          return [...entries].map((url) => ({ url }));
+        },
+        async delete(request) {
+          eventOrder.push(`delete:${request.url}`);
+          return entries.delete(request.url);
+        },
+      };
+    },
+  };
+  const rootScope = {
+    location: {
+      hostname: "monarchx2.github.io",
+      origin: baseUrl,
+    },
+    __MRH_APP_BASE_PATH: "/mrh/",
+    caches,
+  };
+  const warnings = [];
+  const retireLegacyPagesApp = vm.runInNewContext(
+    `(${legacyCleanupSource})`,
+    {
+      URL,
+      Promise,
+      LEGACY_PAGES_BASE_PATH: "/maritime-review-hub/",
+      navigator: { serviceWorker },
+      rootScope,
+      bootstrapLogger: () => ({
+        warn(...args) {
+          warnings.push(args);
+        },
+      }),
+    },
+  );
+
+  await retireLegacyPagesApp();
+
+  assert.deepEqual(
+    eventOrder
+      .filter((event) => event.startsWith("unregister-"))
+      .sort(),
+    [
+      "unregister-failing",
+      "unregister-nested-old",
+      "unregister-no-trailing-slash",
+      "unregister-old",
+    ].sort(),
+    "cleanup should unregister every legacy-scope worker and leave sibling/new/other-origin workers intact",
+  );
+  assert.deepEqual(
+    [...cacheEntries.get("shared-cache")],
+    [
+      `${baseUrl}/maritime-review-hub-archive/index.html`,
+      `${baseUrl}/mrh/index.html`,
+      "https://other.github.io/maritime-review-hub/index.html",
+    ],
+    "cleanup should remove only the legacy path from shared cache storage",
+  );
+  assert.ok(
+    eventOrder
+      .filter((event) => event.startsWith("unregister-"))
+      .every(
+        (event) =>
+          eventOrder.indexOf(event) <
+          eventOrder.findIndex((entry) => entry.startsWith("delete:")),
+      ),
+    "legacy workers should be unregistered before old-path cached assets are deleted",
+  );
+  assert.equal(
+    warnings.length,
+    1,
+    "an individual legacy worker failure should be reported without preventing cache cleanup",
+  );
+}
+
+verifyLegacyCleanupBehavior()
+  .then(() =>
+    console.log("Frontend update flow and release stamping checks passed."),
+  )
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

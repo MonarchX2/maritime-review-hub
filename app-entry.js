@@ -1,9 +1,10 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-release-10.15.26-3";
-  const APP_DISPLAY_VERSION = "10.15.26-3";
+  const APP_VERSION = "mrh-release-10.15.26-4";
+  const APP_DISPLAY_VERSION = "10.15.26-4";
   const UPDATE_QUERY_PARAMETER = "__mrh_update";
+  const LEGACY_PAGES_BASE_PATH = "/maritime-review-hub/";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
   const bootstrapLogger = () => rootScope.DebugUtils || console;
   let serviceWorkerRegistration = null;
@@ -570,6 +571,97 @@
 
   rootScope.showBootstrapError = showBootstrapError;
 
+  async function retireLegacyPagesApp() {
+    if (
+      rootScope.location?.hostname !== "monarchx2.github.io" ||
+      rootScope.__MRH_APP_BASE_PATH !== "/mrh/"
+    ) {
+      return;
+    }
+
+    const legacyAppUrl = new URL(
+      LEGACY_PAGES_BASE_PATH,
+      rootScope.location.origin,
+    );
+    const isLegacyPath = (pathname) =>
+      pathname === LEGACY_PAGES_BASE_PATH.slice(0, -1) ||
+      pathname.startsWith(LEGACY_PAGES_BASE_PATH);
+
+    if (typeof navigator.serviceWorker?.getRegistrations === "function") {
+      try {
+        const registrations =
+          await navigator.serviceWorker.getRegistrations();
+        const unregisterResults = await Promise.allSettled(
+          registrations
+            .filter((registration) => {
+              const scopeUrl = new URL(registration.scope);
+              return (
+                scopeUrl.origin === legacyAppUrl.origin &&
+                isLegacyPath(scopeUrl.pathname)
+              );
+            })
+            .map((registration) => registration.unregister()),
+        );
+        unregisterResults.forEach((result) => {
+          if (result.status === "rejected") {
+            bootstrapLogger().warn(
+              "Unable to unregister the legacy Pages service worker:",
+              result.reason,
+            );
+          }
+        });
+      } catch (error) {
+        bootstrapLogger().warn(
+          "Unable to unregister the legacy Pages service worker:",
+          error,
+        );
+      }
+    }
+
+    if (typeof rootScope.caches?.keys === "function") {
+      try {
+        const cacheNames = await rootScope.caches.keys();
+        const cacheResults = await Promise.allSettled(
+          cacheNames.map(async (cacheName) => {
+            const cache = await rootScope.caches.open(cacheName);
+            const requests = await cache.keys();
+            const legacyRequests = requests.filter((request) => {
+              const requestUrl = new URL(request.url);
+              return (
+                requestUrl.origin === legacyAppUrl.origin &&
+                isLegacyPath(requestUrl.pathname)
+              );
+            });
+            const deleteResults = await Promise.allSettled(
+              legacyRequests.map((request) => cache.delete(request)),
+            );
+            deleteResults.forEach((result) => {
+              if (result.status === "rejected") {
+                bootstrapLogger().warn(
+                  "Unable to delete a cached asset from the legacy Pages path:",
+                  result.reason,
+                );
+              }
+            });
+          }),
+        );
+        cacheResults.forEach((result) => {
+          if (result.status === "rejected") {
+            bootstrapLogger().warn(
+              "Unable to clear cached assets from the legacy Pages path:",
+              result.reason,
+            );
+          }
+        });
+      } catch (error) {
+        bootstrapLogger().warn(
+          "Unable to clear cached assets from the legacy Pages path:",
+          error,
+        );
+      }
+    }
+  }
+
   function registerServiceWorker() {
     if (
       typeof navigator === "undefined" ||
@@ -595,11 +687,13 @@
     const swScopeUrl = new URL(swBaseUrl.pathname, swBaseUrl.origin);
     const swUrl = new URL("sw.js", swBaseUrl);
 
-    serviceWorkerRegistrationPromise = navigator.serviceWorker
-      .register(swUrl.href, {
-        scope: swScopeUrl.pathname,
-        updateViaCache: "none",
-      })
+    serviceWorkerRegistrationPromise = retireLegacyPagesApp()
+      .then(() =>
+        navigator.serviceWorker.register(swUrl.href, {
+          scope: swScopeUrl.pathname,
+          updateViaCache: "none",
+        }),
+      )
       .then((registration) => {
         serviceWorkerRegistration = registration;
         sendCurrentVersionToWorker(

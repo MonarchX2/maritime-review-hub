@@ -116,6 +116,7 @@
       ]),
     );
     const globalShowWrong = getStudySetting("showWrongChoices") !== false;
+    const showAnswers = getStudySetting("studyShowAnswers") !== false;
     const hideABCD = getStudySetting("hideABCD") === true;
     const cards = container.querySelectorAll(".review-question-card");
     const scrollContainer =
@@ -126,19 +127,21 @@
       const id = String(card.dataset.questionId || "");
       if (questionId !== null && id !== String(questionId)) return;
       const question = questionsById.get(id);
-      if (!question || getQuestionTypeMode(question).isIdent) return;
+      if (!question) return;
+      const choices = card.querySelector("[data-review-choices]");
+      if (getQuestionTypeMode(question).isIdent) {
+        if (choices && !showAnswers) choices.innerHTML = "";
+        return;
+      }
 
       const showAllChoices =
         state.prefs.qToggles?.[id] === undefined
           ? globalShowWrong
           : Boolean(state.prefs.qToggles[id]);
-      const choices = card.querySelector("[data-review-choices]");
       if (choices) {
-        choices.innerHTML = buildReviewChoicesHTML(
-          question,
-          showAllChoices,
-          hideABCD,
-        );
+        choices.innerHTML = showAnswers
+          ? buildReviewChoicesHTML(question, showAllChoices, hideABCD)
+          : "";
       }
 
       const toggle = card.querySelector("[data-review-choice-toggle]");
@@ -286,6 +289,7 @@
     }
 
     const globalShowWrong = getStudySetting("showWrongChoices") !== false;
+    const showAnswers = getStudySetting("studyShowAnswers") !== false;
     const showExplanations =
       getStudySetting("studyShowExplanations") !== false;
     const hideABCD = getStudySetting("hideABCD") === true;
@@ -560,11 +564,9 @@
       let showWrongForThisQ = state.prefs.qToggles?.[q.ID];
       if (showWrongForThisQ === undefined) showWrongForThisQ = globalShowWrong;
 
-      const choicesHTML = buildReviewChoicesHTML(
-        q,
-        Boolean(showWrongForThisQ),
-        hideABCD,
-      );
+      const choicesHTML = showAnswers
+        ? buildReviewChoicesHTML(q, Boolean(showWrongForThisQ), hideABCD)
+        : "";
 
       html += `
             <div data-question-id="${escapeHTML(String(q.ID))}" data-review-index="${originalIndex}" class="review-question-card bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6">

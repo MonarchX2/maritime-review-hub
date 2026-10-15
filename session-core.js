@@ -436,6 +436,22 @@
     const userAnswerKey = normalizeAnswer(userAnswer);
     const correctKey = normalizeAnswer(q.Answer);
     const currentCard = session.currentIndex + 1;
+    const questionCountEl = getElement("quiz-question-count");
+    const questionProgressTrack = getElement("quiz-question-progress-track");
+    const questionProgressBar = getElement("quiz-question-progress-bar");
+    const progressPercent = (currentCard / totalCards) * 100;
+    if (questionCountEl) {
+      questionCountEl.textContent = `Question ${currentCard} / ${totalCards}`;
+    }
+    if (questionProgressTrack) {
+      questionProgressTrack.setAttribute(
+        "aria-valuenow",
+        String(Math.round(progressPercent)),
+      );
+    }
+    if (questionProgressBar) {
+      questionProgressBar.style.width = `${progressPercent}%`;
+    }
 
     const fullSubject = normalizeText(q.Subject) || "General";
     const parts = fullSubject.split("::");

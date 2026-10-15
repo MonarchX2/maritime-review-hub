@@ -1,5 +1,16 @@
 # Changelog
 
+## 10.15.26-4 - 2026-10-15
+
+### Added
+- Restore quiz-only progress bars and question/card counts, showing deck progress bars only on decks with saved quiz progress.
+- Add a per-deck Show Answers setting to Review mode.
+- Remove Reset buttons from Review-mode deck cards.
+
+### Fixed
+- Fix a deck-card rendering error that could prevent users from opening decks.
+- Retire cached service workers and assets from the old Pages path when the new site is opened, without redirecting old links.
+
 ## 10.15.26-3 - 2026-10-15
 
 ### Added

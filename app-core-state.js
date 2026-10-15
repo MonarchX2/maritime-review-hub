@@ -901,6 +901,8 @@
       "toggle-srs-mode": getSessionValue("srsEnabled") === true,
       "toggle-main-srs-mode": getSessionValue("srsEnabled") === true,
       "toggle-wrong-choices": getSessionValue("showWrongChoices") !== false,
+      "toggle-study-show-answers":
+        getSessionValue("studyShowAnswers") !== false,
       globalModeToggle: state.prefs.lastActivity?.mode === "review",
     };
 

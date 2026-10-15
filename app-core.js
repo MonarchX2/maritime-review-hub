@@ -2390,8 +2390,18 @@
           completedSet,
           mistakesSet,
         );
+        const isReview = currentAppMode === "review";
+        const isQuiz = currentAppMode === "quiz";
         const completedCount = progressStats.completedCount;
         const mistakesCount = progressStats.mistakesCount;
+        const hasQuizProgress = completedCount > 0 || mistakesCount > 0;
+        const cardCountLabel = isQuiz
+          ? `${completedCount} / ${totalQuestionsInDb} cards`
+          : `${totalQuestionsInDb} cards`;
+        const quizProgressPercent =
+          totalQuestionsInDb > 0
+            ? Math.min(100, (completedCount / totalQuestionsInDb) * 100)
+            : 0;
         const isCompleted = progressStats.isCompleted;
         const cardClasses = isCompleted
           ? "bg-green-50 dark:bg-green-900/30 border-green-300"
@@ -2400,7 +2410,6 @@
           mistakesCount > 0
             ? '<i class="fa-solid fa-file-circle-xmark text-white mr-2 flex-shrink-0" title="Unfinished"></i>'
             : "";
-        const isReview = currentAppMode === "review";
         const isRecentlyViewed = getRecentPathDepth(subj) > 0;
         const recentViewedBadge = isRecentlyViewed
           ? '<i class="fa-regular fa-clock text-base text-amber-500 mr-0.5 flex-shrink-0" title="Recently Viewed"></i>'
@@ -2434,19 +2443,11 @@
 
         countBadgeHTML = `
           <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
-            <span class="text-sm font-black ${themeColorText} transition-colors">${totalQuestionsInDb} cards</span>
+            <span class="text-sm font-black ${themeColorText} transition-colors">${cardCountLabel}</span>
           </div>`;
 
         if (!isReview) {
           if (completedCount > 0 || mistakesCount > 0) {
-            resetBtnHTML = `
-            <button ${databaseUnavailable ? "disabled" : ""} data-reset-subject="${escapeHTML(subj)}" onclick="resetCategory('${encodedSubj}')" class="reset-deck-btn w-10 sm:w-12 shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
-              <i class="fa-solid fa-rotate-left"></i>
-            </button>`;
-          }
-        } else {
-          const studyProgress = getStudyDeckProgress(subj, totalQuestionsInDb);
-          if (studyProgress.current > 0) {
             resetBtnHTML = `
             <button ${databaseUnavailable ? "disabled" : ""} data-reset-subject="${escapeHTML(subj)}" onclick="resetCategory('${encodedSubj}')" class="reset-deck-btn w-10 sm:w-12 shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
               <i class="fa-solid fa-rotate-left"></i>
@@ -2476,6 +2477,13 @@
             </div>
             <div class="deck-card-badges mt-1 flex flex-wrap items-start gap-1">${deckTypeBadge ? renderDeckBadge(deckTypeBadge) : ""}${explanationsAvailableBadge}</div>
           </div>
+          ${
+            isQuiz && hasQuizProgress
+              ? `<div class="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700" role="progressbar" aria-label="Quiz progress for ${safeName}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(quizProgressPercent)}">
+                  <div class="h-full rounded-full bg-brand-500 transition-all duration-300" style="width: ${quizProgressPercent}%"></div>
+                </div>`
+              : ""
+          }
 
           <div class="flex gap-2 mt-auto w-full" onclick="event.stopPropagation()">
             <button ${databaseUnavailable ? "disabled" : ""} onclick="handleDeckClick('${encodedSubj}')" class="flex-1 ${primaryActionColor} text-white py-2 px-2 rounded-lg font-bold active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="${primaryActionText}">

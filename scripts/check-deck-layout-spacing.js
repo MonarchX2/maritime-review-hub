@@ -39,13 +39,23 @@ assert.ok(
 );
 assert.match(
   appCore,
-  /<span class="text-sm font-black \$\{themeColorText\} transition-colors">\$\{totalQuestionsInDb\} cards<\/span>/,
-  "Deck cards should show only the total card count.",
+  /const cardCountLabel = isQuiz[\s\S]*?\$\{completedCount\} \/ \$\{totalQuestionsInDb\} cards[\s\S]*?<span class="text-sm font-black \$\{themeColorText\} transition-colors">\$\{cardCountLabel\}<\/span>/,
+  "Quiz deck cards should show completed/total cards while review cards show the total.",
+);
+assert.match(
+  appCore,
+  /isQuiz && hasQuizProgress\s*\?\s*`<div class="mb-4 h-1\.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700" role="progressbar" aria-label="Quiz progress for \$\{safeName\}"[\s\S]*?width: \$\{quizProgressPercent\}%/,
+  "Deck cards should render a progress bar only for Quiz-mode decks with progress.",
 );
 assert.doesNotMatch(
   appCore,
-  /data-deck-progress-slot|progressBarHTML|completedCount\} \/ \$\{totalQuestionsInDb\}/,
-  "Deck cards should not render progress bars or completed/total counts.",
+  /const studyProgress = getStudyDeckProgress\(subj, totalQuestionsInDb\)/,
+  "Review-mode deck cards should not render a reset button based on study progress.",
+);
+assert.ok(
+  appCore.indexOf("const isQuiz = currentAppMode === \"quiz\";") <
+    appCore.indexOf("const cardCountLabel = isQuiz"),
+  "Quiz mode must be initialized before it is used to render card labels.",
 );
 assert.match(
   styles,
