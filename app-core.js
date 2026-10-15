@@ -6422,11 +6422,11 @@
       resourceDashboardSelectedYear === "all"
         ? "All Year Levels"
         : resourceDashboardSelectedSemester === "all"
-          ? `${resourceDashboardSelectedYear}, all semesters`
-          : `${resourceDashboardSelectedYear}.${resourceDashboardSelectedSemester}`;
+          ? `Year Level ${resourceDashboardSelectedYear} (all semesters)`
+          : `Year Level ${resourceDashboardSelectedYear}.${resourceDashboardSelectedSemester}`;
     status.textContent =
       hasTermFilter
-        ? `Showing ${visibleRows.length} of ${nonEmptyRows.length} rows for ${selectedTerm}${
+        ? `Showing ${visibleRows.length} of ${nonEmptyRows.length} rows for ${selectedTerm}.${
             tab.truncated ? " (first 2,000 loaded)" : ""
           }`
         : `${nonEmptyRows.length} ${

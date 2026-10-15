@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-7 - 2026-10-16
+
+### Changed
+- Label dashboard row counts with the selected “Year Level X.Y” term.
+
 ## 26.10.16-6 - 2026-10-16
 
 ### Changed

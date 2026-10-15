@@ -97,6 +97,11 @@ assert.match(
   "the dashboard status should say All Year Levels instead of all.1",
 );
 assert.match(
+  appCore,
+  /`Year Level \$\{resourceDashboardSelectedYear\}\.\$\{resourceDashboardSelectedSemester\}`[\s\S]*?`Showing \$\{visibleRows\.length\} of \$\{nonEmptyRows\.length\} rows for \$\{selectedTerm\}\./,
+  "the dashboard row count should identify the selected term as Year Level X.Y and end with a period",
+);
+assert.match(
   resourceStyles,
   /\.resource-dashboard-control:first-child select\s*\{\s*width:\s*3\.5rem;\s*\}[\s\S]*?\.resource-dashboard-control:nth-child\(2\) select\s*\{\s*width:\s*3\.5rem;/,
   "year and semester dropdowns should use compact widths",
