@@ -25,6 +25,19 @@ assert.match(
 );
 assert.match(
   index,
+  /<aside class="resource-portal-sidebar"[\s\S]*?id="resource-dashboard-reviewers-nav"[\s\S]*?class="resource-reviewer-auth"[\s\S]*?resource-reviewer-signin-button[\s\S]*?resource-reviewer-signout[\s\S]*?<\/aside>[\s\S]*?<div class="resource-portal-toolbar">/,
+  "the sign-in and profile controls should appear at the right side of the Syllabus/Modules/Reviewers header",
+);
+assert.doesNotMatch(
+  index.slice(
+    index.indexOf('<div class="resource-portal-toolbar">'),
+    index.indexOf('<div class="resource-portal-toolbar">') + 1200,
+  ),
+  /resource-reviewer-auth/,
+  "reviewer sign-in controls should no longer occupy the dashboard filter toolbar",
+);
+assert.match(
+  index,
   /resource-reviewer-enrollment-form[\s\S]*?name="lastName"[\s\S]*?name="firstName"[\s\S]*?name="middleInitial"/,
   "the sign-in panel should collect the names needed for new account enrollment",
 );

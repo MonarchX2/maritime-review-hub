@@ -113,8 +113,23 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-reviewer-auth\s*\{[^}]*order:\s*3;[^}]*justify-content:\s*flex-end;[^}]*margin-left:\s*auto;[\s\S]*?\.resource-dashboard-filters\s*\{[^}]*order:\s*1;[\s\S]*?\.resource-dashboard-refresh\s*\{[^}]*order:\s*2;/,
-  "reviewer sign-in and profile controls should appear at the far right of the dashboard toolbar",
+  /\.resource-reviewer-auth\s*\{[^}]*justify-content:\s*flex-end;[^}]*margin-left:\s*auto;/,
+  "reviewer sign-in and profile controls should align to the far right of the tab header",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-reviewer-signout\s*\{[^}]*border-radius:\s*9999px;[\s\S]*?\.resource-reviewer-signout i\s*\{[^}]*font-size:\s*1rem;/,
+  "the signed-in profile control should display a compact user icon",
+);
+assert.match(
+  appCore,
+  /script\.src = "https:\/\/accounts\.google\.com\/gsi\/client\?hl=en"[\s\S]*?renderButton\(signInButton,\s*\{[\s\S]*?locale:\s*"en"/,
+  "the Google sign-in interface should request English explicitly",
+);
+assert.match(
+  indexHtml,
+  /http-equiv="Content-Security-Policy"[\s\S]*?style-src[^"]*https:\/\/accounts\.google\.com/,
+  "the Content Security Policy should allow the Google sign-in stylesheet",
 );
 assert.match(
   resourceStyles,

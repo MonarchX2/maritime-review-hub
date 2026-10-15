@@ -1,5 +1,16 @@
 # Changelog
 
+## 26.10.16-11 - 2026-10-16
+
+### Changed
+- Place sign-in and profile controls at the right side of the dashboard tab header and default Google sign-in UI to English.
+- Allow the Google Identity Services stylesheet through the site Content Security Policy.
+
+## 26.10.16-10 - 2026-10-16
+
+### Changed
+- Move Google sign-in and the signed-in profile control to the right side of the Syllabus/Modules/Reviewers header, and request English for Google sign-in.
+
 ## 26.10.16-9 - 2026-10-16
 
 ### Fixed
