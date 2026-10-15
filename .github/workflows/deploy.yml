@@ -49,8 +49,8 @@ jobs:
       - name: Check frontend update flow and release stamping
         run: npm run check:app-update-flow
 
-      - name: Check resource dashboard backend contract
-        run: npm run check:resource-portal
+      - name: Check resource dashboard request contract
+        run: npm run check:resource-dashboard-contract
 
       - name: Check Conventional Commit SemVer versioning
         run: npm run check:semver-version

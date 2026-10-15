@@ -26,7 +26,8 @@
     "check:deck-clear": "node scripts/check-deck-clear-race.js",
     "check:sync-timestamp": "node scripts/check-sync-timestamp-recovery.js",
     "check:app-update-flow": "node scripts/check-app-update-flow.js",
-    "check:resource-portal": "node scripts/check-resource-portal.js"
+    "check:resource-portal": "node scripts/check-resource-portal.js",
+    "check:resource-dashboard-contract": "node scripts/check-resource-dashboard-contract.js"
   },
   "devDependencies": {
     "@types/google-apps-script": "^2.0.12",
