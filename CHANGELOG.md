@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.15-12 - 2026-10-15
+
+### Changed
+- Label dashboard resource buttons with the linked Drive file title instead of the raw URL.
+
 ## 26.10.15-11 - 2026-10-15
 
 ### Changed

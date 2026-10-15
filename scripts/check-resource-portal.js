@@ -59,8 +59,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /"resource-dashboard-link-button",\s*value \|\| "Open link"/,
-  "resource links should be styled buttons labeled with their spreadsheet text",
+  /"resource-dashboard-link-button",\s*fileTitle \|\| \(isResourceDashboardLink\(value\) \? "Open resource" : value\)/,
+  "resource links should use Drive file titles rather than raw URL labels",
 );
 assert.match(
   fs.readFileSync("styles.css", "utf8"),
@@ -74,8 +74,13 @@ assert.doesNotMatch(
 );
 assert.match(
   backend,
-  /getRichTextValues\(\)[\s\S]*?getFormulas\(\)[\s\S]*?links:\s*dataRows\.map/,
-  "the backend should retain rich-text and formula hyperlink targets",
+  /getRichTextValues\(\)[\s\S]*?getFormulas\(\)[\s\S]*?links:\s*dataRows\.map[\s\S]*?linkTitles:\s*dataRows\.map/,
+  "the backend should retain hyperlink targets and resolved titles",
+);
+assert.match(
+  backend,
+  /Drive\.Files\.get\(fileId,\s*\{[\s\S]*?fields:\s*"id,name"/,
+  "the backend should resolve Drive names for linked resources",
 );
 assert.match(
   appCore,
@@ -173,6 +178,22 @@ const context = {
       };
     },
   },
+  Drive: {
+    Files: {
+      get(id, options) {
+        assert.deepEqual(
+          JSON.parse(JSON.stringify(options)),
+          { fields: "id,name", supportsAllDrives: true },
+        );
+        const titles = {
+          "module-prelims": "Prelims Module Title",
+          "linked-module": "Linked Module Title",
+          "exam-guide": "Exam Guide Title",
+        };
+        return { id, name: titles[id] };
+      },
+    },
+  },
   ContentService: {
     MimeType: { JSON: "application/json" },
     createTextOutput(text) {
@@ -220,12 +241,17 @@ assert.deepEqual(
             "",
           ],
         ],
+        linkTitles: [
+          ["", "", "Prelims Module Title", "", ""],
+          ["", "", "Linked Module Title", "Exam Guide Title", ""],
+        ],
         truncated: false,
       },
       REVIEWERS: {
         columns: ["Reviewer", "Course"],
         rows: [["Reviewer One", "NAV6"]],
         links: [["", ""]],
+        linkTitles: [["", ""]],
         truncated: false,
       },
     },
@@ -240,7 +266,7 @@ const routedDashboard = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "get_resource_dashboard",
-          appVersion: "mrh-release-26.10.15-10",
+          appVersion: "mrh-release-26.10.15-12",
         }),
       },
     })
@@ -259,7 +285,7 @@ const disabledListing = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "list_public_resources",
-          appVersion: "mrh-release-26.10.15-10",
+          appVersion: "mrh-release-26.10.15-12",
         }),
       },
     })
@@ -276,7 +302,7 @@ const disabledPreview = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "get_resource_preview",
-          appVersion: "mrh-release-26.10.15-10",
+          appVersion: "mrh-release-26.10.15-12",
         }),
       },
     })

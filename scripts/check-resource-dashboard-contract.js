@@ -21,8 +21,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /"resource-dashboard-link-button",\s*value \|\| "Open link"/,
-  "resource links should retain their visible spreadsheet label in button styling",
+  /"resource-dashboard-link-button",\s*fileTitle \|\| \(isResourceDashboardLink\(value\) \? "Open resource" : value\)/,
+  "resource buttons should use the Drive title rather than expose its URL",
+);
+assert.match(
+  appCore,
+  /tab\.linkTitles\?\.\[rowIndex\]\?\.\[index\]/,
+  "dashboard rendering should use backend-resolved Drive titles",
 );
 assert.match(
   network,

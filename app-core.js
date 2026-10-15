@@ -6164,12 +6164,16 @@
         const value = String(values[index] || "");
         const linkUrl = String(tab.links?.[rowIndex]?.[index] || value);
         if (isResourceDashboardLink(linkUrl)) {
+          const fileTitle = String(
+            tab.linkTitles?.[rowIndex]?.[index] || "",
+          ).trim();
           const link = createResourceDashboardElement(
             "a",
             "resource-dashboard-link-button",
-            value || "Open link",
+            fileTitle || (isResourceDashboardLink(value) ? "Open resource" : value),
           );
           link.href = linkUrl;
+          if (fileTitle) link.title = fileTitle;
           cell.appendChild(link);
         } else {
           cell.textContent = value;
