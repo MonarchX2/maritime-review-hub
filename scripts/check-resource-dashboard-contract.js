@@ -10,6 +10,16 @@ assert.match(
   "the dashboard should send its request through the shared backend client",
 );
 assert.match(
+  appCore,
+  /resource-dashboard-filter-column[\s\S]*?resource-dashboard-filter-value/,
+  "the dashboard should provide a column and value filter",
+);
+assert.match(
+  appCore,
+  /sortButton\.addEventListener\("click"/,
+  "the dashboard should provide sortable column headings",
+);
+assert.match(
   network,
   /get_resource_dashboard:\s*\{\s*required:\s*\[\],\s*allowed:\s*\["type",\s*"appVersion"\]/,
   "the backend request validator should allow the dashboard action and app version",

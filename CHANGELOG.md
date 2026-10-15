@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.15-10 - 2026-10-15
+
+### Changed
+- Add column-based filtering and sortable headers to the resource dashboard.
+- Preserve spreadsheet links and render Google Drive and Docs resources as same-tab links.
+
 ## 26.10.15-9 - 2026-10-15
 
 ### Fixed

@@ -5986,9 +5986,18 @@
   let resourceDashboardData = null;
   let resourceDashboardActiveTab = "MODULES";
   let resourceDashboardLoadingPromise = null;
+  let resourceDashboardFilterColumn = "";
+  let resourceDashboardFilterValue = "";
+  let resourceDashboardSortColumn = -1;
+  let resourceDashboardSortDirection = "asc";
 
   function openResourceDashboardTab(tabName) {
     if (!["MODULES", "REVIEWERS"].includes(tabName)) return false;
+    if (resourceDashboardActiveTab !== tabName) {
+      resourceDashboardFilterColumn = "";
+      resourceDashboardSortColumn = -1;
+      resourceDashboardSortDirection = "asc";
+    }
     resourceDashboardActiveTab = tabName;
     const modulesNav = document.getElementById(
       "resource-dashboard-modules-nav",
@@ -6036,6 +6045,34 @@
       "resource-dashboard-table-body",
     );
     if (!tab || !title || !status || !tableHead || !tableBody) return false;
+    if (resourceDashboardSortColumn >= tab.columns.length) {
+      resourceDashboardSortColumn = -1;
+      resourceDashboardSortDirection = "asc";
+    }
+
+    const filterColumnControl = document.getElementById(
+      "resource-dashboard-filter-column",
+    );
+    const filterValueControl = document.getElementById(
+      "resource-dashboard-filter-value",
+    );
+    if (filterColumnControl) {
+      const selectedFilterColumn = resourceDashboardFilterColumn;
+      filterColumnControl.replaceChildren(
+        createResourceDashboardElement("option", "", "All columns"),
+      );
+      filterColumnControl.options[0].value = "";
+      tab.columns.forEach((column, index) => {
+        const option = createResourceDashboardElement("option", "", column);
+        option.value = String(index);
+        filterColumnControl.appendChild(option);
+      });
+      filterColumnControl.value = selectedFilterColumn;
+      resourceDashboardFilterColumn = filterColumnControl.value;
+    }
+    if (filterValueControl) {
+      filterValueControl.value = resourceDashboardFilterValue;
+    }
 
     const label =
       resourceDashboardActiveTab === "MODULES" ? "Modules" : "Reviewers";
@@ -6043,29 +6080,113 @@
     tableHead.replaceChildren();
     tableBody.replaceChildren();
     const headerRow = document.createElement("tr");
-    tab.columns.forEach((column) => {
-      headerRow.appendChild(
-        createResourceDashboardElement("th", "", column),
+    tab.columns.forEach((column, columnIndex) => {
+      const header = document.createElement("th");
+      header.setAttribute(
+        "aria-sort",
+        resourceDashboardSortColumn === columnIndex
+          ? resourceDashboardSortDirection === "asc"
+            ? "ascending"
+            : "descending"
+          : "none",
       );
+      const sortButton = createResourceDashboardElement(
+        "button",
+        "resource-dashboard-sort",
+        column,
+      );
+      sortButton.type = "button";
+      sortButton.setAttribute("aria-label", `Sort by ${column}`);
+      sortButton.setAttribute(
+        "aria-pressed",
+        String(resourceDashboardSortColumn === columnIndex),
+      );
+      if (resourceDashboardSortColumn === columnIndex) {
+        sortButton.appendChild(
+          createResourceDashboardElement(
+            "span",
+            "resource-dashboard-sort-direction",
+            resourceDashboardSortDirection === "asc" ? "A-Z" : "Z-A",
+          ),
+        );
+      }
+      sortButton.addEventListener("click", () => {
+        if (resourceDashboardSortColumn === columnIndex) {
+          resourceDashboardSortDirection =
+            resourceDashboardSortDirection === "asc" ? "desc" : "asc";
+        } else {
+          resourceDashboardSortColumn = columnIndex;
+          resourceDashboardSortDirection = "asc";
+        }
+        renderResourceDashboardTab();
+      });
+      header.appendChild(sortButton);
+      headerRow.appendChild(header);
     });
     tableHead.appendChild(headerRow);
 
-    tab.rows.forEach((values) => {
+    const filterText = resourceDashboardFilterValue.trim().toLocaleLowerCase();
+    const visibleRows = tab.rows
+      .map((values, rowIndex) => ({ values, rowIndex }))
+      .filter(({ values }) => {
+        if (!filterText) return true;
+        const selectedColumn = Number(resourceDashboardFilterColumn);
+        const filterValues =
+          resourceDashboardFilterColumn === ""
+            ? values
+            : [values[selectedColumn] || ""];
+        return filterValues.some((value) =>
+          String(value || "").toLocaleLowerCase().includes(filterText),
+        );
+      });
+    if (resourceDashboardSortColumn >= 0) {
+      visibleRows.sort((left, right) => {
+        const leftValue = String(
+          left.values[resourceDashboardSortColumn] || "",
+        );
+        const rightValue = String(
+          right.values[resourceDashboardSortColumn] || "",
+        );
+        const comparison = leftValue.localeCompare(rightValue, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        });
+        return resourceDashboardSortDirection === "asc"
+          ? comparison
+          : -comparison;
+      });
+    }
+
+    visibleRows.forEach(({ values, rowIndex }) => {
       const row = document.createElement("tr");
       tab.columns.forEach((_column, index) => {
         const cell = document.createElement("td");
         const value = String(values[index] || "");
-        cell.textContent = isResourceDashboardLink(value)
-          ? "Available"
-          : value;
+        const linkUrl = String(tab.links?.[rowIndex]?.[index] || value);
+        if (isResourceDashboardLink(linkUrl)) {
+          const link = createResourceDashboardElement(
+            "a",
+            "",
+            isResourceDashboardLink(value) ? "Open link" : value,
+          );
+          link.href = linkUrl;
+          cell.appendChild(link);
+        } else {
+          cell.textContent = value;
+        }
         row.appendChild(cell);
       });
       tableBody.appendChild(row);
     });
 
-    status.textContent = `${tab.rows.length} ${
-      tab.rows.length === 1 ? "row" : "rows"
-    }${tab.truncated ? " (showing the first 2,000)" : ""}`;
+    status.textContent =
+      filterText
+        ? `Showing ${visibleRows.length} of ${tab.rows.length} rows${
+            tab.truncated ? " (first 2,000 loaded)" : ""
+          }`
+        : `${tab.rows.length} ${
+            tab.rows.length === 1 ? "row" : "rows"
+          }${tab.truncated ? " (showing the first 2,000)" : ""}`;
     return true;
   }
 
@@ -6074,6 +6195,29 @@
     if (className) element.className = className;
     if (text !== undefined) element.textContent = text;
     return element;
+  }
+
+  function initializeResourceDashboardControls() {
+    const filterColumnControl = document.getElementById(
+      "resource-dashboard-filter-column",
+    );
+    const filterValueControl = document.getElementById(
+      "resource-dashboard-filter-value",
+    );
+    if (filterColumnControl && !filterColumnControl.dataset.initialized) {
+      filterColumnControl.addEventListener("change", () => {
+        resourceDashboardFilterColumn = filterColumnControl.value;
+        if (resourceDashboardData) renderResourceDashboardTab();
+      });
+      filterColumnControl.dataset.initialized = "true";
+    }
+    if (filterValueControl && !filterValueControl.dataset.initialized) {
+      filterValueControl.addEventListener("input", () => {
+        resourceDashboardFilterValue = filterValueControl.value;
+        if (resourceDashboardData) renderResourceDashboardTab();
+      });
+      filterValueControl.dataset.initialized = "true";
+    }
   }
 
   async function loadResourceDashboard() {
@@ -6087,6 +6231,7 @@
     if (!status || !tableHead || !tableBody) return false;
     if (resourceDashboardLoadingPromise) return resourceDashboardLoadingPromise;
 
+    initializeResourceDashboardControls();
     status.textContent = "Loading dashboard…";
     status.setAttribute("aria-busy", "true");
     resourceDashboardData = null;

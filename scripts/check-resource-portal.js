@@ -29,6 +29,11 @@ assert.doesNotMatch(
 );
 assert.match(
   index,
+  /resource-dashboard-filter-column[\s\S]*?resource-dashboard-filter-value/,
+  "the dashboard should expose a column filter",
+);
+assert.match(
+  index,
   /min-height: 64px/,
   "the website header should have increased height",
 );
@@ -40,17 +45,37 @@ assert.match(
 assert.match(
   appCore,
   /function isResourceDashboardLink\(value\)[\s\S]*?drive\.google\.com", "docs\.google\.com"/,
-  "dashboard resource values should be recognized without becoming outbound links",
+  "dashboard resource links should be limited to supported Google resource URLs",
 );
 assert.doesNotMatch(
   appCore,
-  /link\.target\s*=\s*"_blank"|link\.href\s*=\s*href/,
-  "dashboard resource cells must stay within the website",
+  /link\.target\s*=\s*"_blank"/,
+  "dashboard resource links must open in the current tab",
 );
 assert.match(
   appCore,
-  /cell\.textContent = isResourceDashboardLink\(value\)\s*\?\s*"Available"\s*:\s*value/,
-  "spreadsheet resource URLs should be shown as in-site availability indicators",
+  /link\.href = linkUrl/,
+  "spreadsheet resource values should render as working links",
+);
+assert.match(
+  backend,
+  /getRichTextValues\(\)[\s\S]*?getFormulas\(\)[\s\S]*?links:\s*dataRows\.map/,
+  "the backend should retain rich-text and formula hyperlink targets",
+);
+assert.match(
+  appCore,
+  /tab\.links\?\.\[rowIndex\]\?\.\[index\]/,
+  "dashboard rendering should use the backend-provided hyperlink target",
+);
+assert.match(
+  appCore,
+  /sortButton\.addEventListener\("click"[\s\S]*?resourceDashboardSortDirection/,
+  "dashboard table headings should sort their columns",
+);
+assert.match(
+  appCore,
+  /visibleRows = tab\.rows[\s\S]*?filterValues\.some/,
+  "dashboard rows should be filterable by selected column",
 );
 assert.match(
   deckNavigation,
@@ -70,6 +95,7 @@ const spreadsheetTabs = {
   MODULES: [
     ["Year", "Course", "", "PRELIMS", "MIDTERMS", "FINALS"],
     ["3.1", "SHIP'S AUDIT", "", "https://drive.google.com/file/d/module-prelims/view", "", ""],
+    ["4.1", "SAFETY", "", "Prelims module", "Exam guide", ""],
     ["", "", "", "", "", ""],
   ],
   REVIEWERS: [
@@ -98,11 +124,33 @@ const context = {
             getLastRow: () => values.length,
             getLastColumn: () => values[0].length,
             getRange(_row, _column, rowCount, columnCount) {
+              const richLinks = {
+                "2:3": "https://drive.google.com/file/d/linked-module/view",
+              };
+              const formulas = {
+                "2:4": '=HYPERLINK("https://docs.google.com/document/d/exam-guide/edit","Exam guide")',
+              };
               return {
                 getDisplayValues: () =>
                   values
                     .slice(0, rowCount)
                     .map((row) => row.slice(0, columnCount)),
+                getRichTextValues: () =>
+                  values.slice(0, rowCount).map((row, rowIndex) =>
+                    row.slice(0, columnCount).map((_value, columnIndex) => {
+                      const linkUrl = richLinks[`${rowIndex}:${columnIndex}`];
+                      return {
+                        getLinkUrl: () => linkUrl || "",
+                      };
+                    }),
+                  ),
+                getFormulas: () =>
+                  values.slice(0, rowCount).map((row, rowIndex) =>
+                    row.slice(0, columnCount).map(
+                      (_value, columnIndex) =>
+                        formulas[`${rowIndex}:${columnIndex}`] || "",
+                    ),
+                  ),
               };
             },
           };
@@ -145,12 +193,24 @@ assert.deepEqual(
             "",
             "",
           ],
+          ["4.1", "SAFETY", "Prelims module", "Exam guide", ""],
+        ],
+        links: [
+          ["", "", "", "", ""],
+          [
+            "",
+            "",
+            "https://drive.google.com/file/d/linked-module/view",
+            "https://docs.google.com/document/d/exam-guide/edit",
+            "",
+          ],
         ],
         truncated: false,
       },
       REVIEWERS: {
         columns: ["Reviewer", "Course"],
         rows: [["Reviewer One", "NAV6"]],
+        links: [["", ""]],
         truncated: false,
       },
     },
@@ -165,7 +225,7 @@ const routedDashboard = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "get_resource_dashboard",
-          appVersion: "mrh-release-26.10.15-9",
+          appVersion: "mrh-release-26.10.15-10",
         }),
       },
     })
@@ -184,7 +244,7 @@ const disabledListing = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "list_public_resources",
-          appVersion: "mrh-release-26.10.15-9",
+          appVersion: "mrh-release-26.10.15-10",
         }),
       },
     })
@@ -201,7 +261,7 @@ const disabledPreview = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "get_resource_preview",
-          appVersion: "mrh-release-26.10.15-9",
+          appVersion: "mrh-release-26.10.15-10",
         }),
       },
     })
