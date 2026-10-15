@@ -59,7 +59,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /"resource-dashboard-link-button",\s*fileTitle \|\| \(isResourceDashboardLink\(value\) \? "Open resource" : value\)/,
+  /"resource-dashboard-link-button",\s*fileTitle \|\|\s*\(isResourceDashboardLink\(value\) \? "Open resource" : value\)/,
   "resource links should use Drive file titles rather than raw URL labels",
 );
 assert.match(
@@ -81,6 +81,16 @@ assert.match(
   backend,
   /Drive\.Files\.get\(fileId,\s*\{[\s\S]*?fields:\s*"id,name"/,
   "the backend should resolve Drive names for linked resources",
+);
+assert.match(
+  backend,
+  /DriveApp\.getFileById\(fileId\)\.getName\(\)/,
+  "the backend should fall back to DriveApp when the Drive API cannot resolve a title",
+);
+assert.match(
+  backend,
+  /DriveApp\.getFileById\(fileId\)\.getName\(\)/,
+  "the backend should fall back to DriveApp when the Drive API cannot resolve a title",
 );
 assert.match(
   appCore,
@@ -114,8 +124,9 @@ let spreadsheetOpenCount = 0;
 const spreadsheetTabs = {
   MODULES: [
     ["Year", "Course", "", "PRELIMS", "MIDTERMS", "FINALS"],
-    ["3.1", "SHIP'S AUDIT", "", "https://drive.google.com/file/d/module-prelims/view", "", ""],
+    ["3.1", "SHIP'S AUDIT", "", "https://drive.google.com/file/d/modulePrelims_123456/view", "", ""],
     ["4.1", "SAFETY", "", "Prelims module", "Exam guide", ""],
+    ["4.2", "SEARCH AND RESCUE", "", "https://drive.google.com/file/d/fallbackDoc_123456/view", "", ""],
     ["", "", "", "", "", ""],
   ],
   REVIEWERS: [
@@ -145,10 +156,10 @@ const context = {
             getLastColumn: () => values[0].length,
             getRange(_row, _column, rowCount, columnCount) {
               const richLinks = {
-                "2:3": "https://drive.google.com/file/d/linked-module/view",
+                "2:3": "https://drive.google.com/file/d/linkedModule_123456/view",
               };
               const formulas = {
-                "2:4": '=HYPERLINK("https://docs.google.com/document/d/exam-guide/edit","Exam guide")',
+                "2:4": '=HYPERLINK("https://docs.google.com/document/d/examGuide_123456/edit","Exam guide")',
               };
               return {
                 getDisplayValues: () =>
@@ -186,12 +197,21 @@ const context = {
           { fields: "id,name", supportsAllDrives: true },
         );
         const titles = {
-          "module-prelims": "Prelims Module Title",
-          "linked-module": "Linked Module Title",
-          "exam-guide": "Exam Guide Title",
+          "modulePrelims_123456": "Prelims Module Title",
+          "linkedModule_123456": "Linked Module Title",
+          "examGuide_123456": "Exam Guide Title",
         };
+        if (id === "fallbackDoc_123456") {
+          throw new Error("Drive API title lookup unavailable in test.");
+        }
         return { id, name: titles[id] };
       },
+    },
+  },
+  DriveApp: {
+    getFileById(id) {
+      assert.equal(id, "fallbackDoc_123456");
+      return { getName: () => "Fallback Drive Title" };
     },
   },
   ContentService: {
@@ -225,25 +245,34 @@ assert.deepEqual(
           [
             "3.1",
             "SHIP'S AUDIT",
-            "https://drive.google.com/file/d/module-prelims/view",
+            "https://drive.google.com/file/d/modulePrelims_123456/view",
             "",
             "",
           ],
           ["4.1", "SAFETY", "Prelims module", "Exam guide", ""],
+          [
+            "4.2",
+            "SEARCH AND RESCUE",
+            "https://drive.google.com/file/d/fallbackDoc_123456/view",
+            "",
+            "",
+          ],
         ],
         links: [
           ["", "", "", "", ""],
           [
             "",
             "",
-            "https://drive.google.com/file/d/linked-module/view",
-            "https://docs.google.com/document/d/exam-guide/edit",
+            "https://drive.google.com/file/d/linkedModule_123456/view",
+            "https://docs.google.com/document/d/examGuide_123456/edit",
             "",
           ],
+          ["", "", "", "", ""],
         ],
         linkTitles: [
           ["", "", "Prelims Module Title", "", ""],
           ["", "", "Linked Module Title", "Exam Guide Title", ""],
+          ["", "", "Fallback Drive Title", "", ""],
         ],
         truncated: false,
       },
@@ -266,7 +295,7 @@ const routedDashboard = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "get_resource_dashboard",
-          appVersion: "mrh-release-26.10.15-12",
+          appVersion: "mrh-release-26.10.15-13",
         }),
       },
     })
@@ -285,7 +314,7 @@ const disabledListing = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "list_public_resources",
-          appVersion: "mrh-release-26.10.15-12",
+          appVersion: "mrh-release-26.10.15-13",
         }),
       },
     })
@@ -302,7 +331,7 @@ const disabledPreview = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "get_resource_preview",
-          appVersion: "mrh-release-26.10.15-12",
+          appVersion: "mrh-release-26.10.15-13",
         }),
       },
     })

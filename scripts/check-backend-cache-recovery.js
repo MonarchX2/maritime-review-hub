@@ -23,7 +23,7 @@ const context = {
     },
   },
 };
-const currentClientVersion = "mrh-release-26.10.15-12";
+const currentClientVersion = "mrh-release-26.10.15-13";
 vm.createContext(context);
 vm.runInContext(
   fs.readFileSync("backend/main.js", "utf8"),
@@ -42,7 +42,7 @@ assert.equal(
   "the current source release must pass the backend version gate",
 );
 assert.equal(
-  context.isSupportedClientVersion("mrh-26.10.15-12-89f6603f02cb"),
+  context.isSupportedClientVersion("mrh-26.10.15-13-89f6603f02cb"),
   true,
   "the requested deployed release must pass the backend version gate",
 );
@@ -52,12 +52,17 @@ assert.equal(
   "a later date-based release must pass the backend version gate",
 );
 assert.equal(
-  context.isSupportedClientVersion("mrh-26.10.15-12-89f6603f02cb"),
+  context.isSupportedClientVersion("mrh-26.10.15-13-89f6603f02cb"),
   true,
   "the minimum supported release must pass the backend version gate",
 );
 assert.equal(
-  context.isSupportedClientVersion("mrh-26.10.15-11-89f6603f02cb"),
+  context.isSupportedClientVersion("mrh-26.10.15-13-89f6603f02cb"),
+  true,
+  "the minimum supported release must pass the backend version gate",
+);
+assert.equal(
+  context.isSupportedClientVersion("mrh-26.10.15-12-89f6603f02cb"),
   false,
   "releases below the minimum must be rejected by the backend version gate",
 );

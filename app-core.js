@@ -6170,7 +6170,8 @@
           const link = createResourceDashboardElement(
             "a",
             "resource-dashboard-link-button",
-            fileTitle || (isResourceDashboardLink(value) ? "Open resource" : value),
+            fileTitle ||
+              (isResourceDashboardLink(value) ? "Open resource" : value),
           );
           link.href = linkUrl;
           if (fileTitle) link.title = fileTitle;

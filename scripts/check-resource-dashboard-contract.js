@@ -21,13 +21,18 @@ assert.match(
 );
 assert.match(
   appCore,
-  /"resource-dashboard-link-button",\s*fileTitle \|\| \(isResourceDashboardLink\(value\) \? "Open resource" : value\)/,
+  /"resource-dashboard-link-button",\s*fileTitle \|\|\s*\(isResourceDashboardLink\(value\) \? "Open resource" : value\)/,
   "resource buttons should use the Drive title rather than expose its URL",
 );
 assert.match(
   appCore,
   /tab\.linkTitles\?\.\[rowIndex\]\?\.\[index\]/,
   "dashboard rendering should use backend-resolved Drive titles",
+);
+assert.match(
+  appCore,
+  /fileTitle \|\|\s*\(isResourceDashboardLink\(value\) \? "Open resource" : value\)/,
+  "unresolved resource links should never expose their raw URL as button text",
 );
 assert.match(
   network,

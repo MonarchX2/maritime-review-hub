@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.15-13 - 2026-10-15
+
+### Fixed
+- Resolve Drive file titles for dashboard resource links with a DriveApp fallback and avoid exposing unresolved raw URLs.
+
 ## 26.10.15-12 - 2026-10-15
 
 ### Changed
