@@ -20,17 +20,20 @@ accepted. Rename any folder intended to be restricted so it uses the required
 Items that do not match the reviewer rule remain available through the public
 website portal. Do not place content in the configured root unless it is meant
 to be visible to website visitors. Drive permissions are not changed by the
-portal. Folder listings are fetched afresh rather than cached, so a rename or
-move into a matching reviewer folder is reflected by the next request. This
-release removes obsolete portal-listing entries from session storage when the
-application starts.
+portal. Folder listing metadata is cached on the server for at most 30 seconds
+to speed up repeat browsing. The requested folder's ancestry is checked against
+Drive on every request, and preview requests independently check the file's
+current ancestry. A folder rename or move can therefore leave its old listing
+metadata visible for up to 30 seconds, but cannot grant access to a restricted
+folder or its files. The frontend also removes obsolete portal-listing entries
+from session storage when the application starts.
 
 Supported file previews are requested from the backend and kept only in
-page memory for display. Folder listings are not cached, and document bytes
-are not stored in the frontend session cache, IndexedDB, or service-worker
-cache. The in-page viewer can be expanded for focused reading. Unsupported
-file types show a message instead of a download link. The portal does not
-expose original Drive URLs or download controls.
+page memory for display. Document bytes are not stored in the frontend session
+cache, IndexedDB, service-worker cache, or server metadata cache. The in-page
+viewer can be expanded for focused reading. Unsupported file types show a
+message instead of a download link. The portal does not expose original Drive
+URLs or download controls.
 
 These interface restrictions are not a technical barrier to copying. A visitor
 who can view a document can inspect network responses, use browser tools, or

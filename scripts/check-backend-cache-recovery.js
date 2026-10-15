@@ -81,6 +81,7 @@ const access = {
   PRIVATE: "PRIVATE",
 };
 const resourceCache = new Map();
+const resourceCacheTtls = [];
 const rootFolder = {
   getId: () => rootId,
   getName: () => "Maritime Resources",
@@ -134,10 +135,8 @@ const privateFile = {
   getUrl: () => "https://drive.google.com/file/d/private-file-id/view",
   getSharingAccess: () => access.PRIVATE,
 };
-let rootFolderListReads = 0;
 let privateFileBlobReads = 0;
 rootFolder.getFolders = () => {
-  rootFolderListReads += 1;
   return createIterator([
     publicFolder,
     privateFolder,
@@ -170,14 +169,66 @@ context.DriveApp = {
     return privateDriveFile;
   },
 };
+const rootDriveItems = [
+  {
+    id: "public-folder-id",
+    name: "General Resources",
+    mimeType: "application/vnd.google-apps.folder",
+  },
+  {
+    id: "private-folder-id",
+    name: "Restricted Materials",
+    mimeType: "application/vnd.google-apps.folder",
+  },
+  {
+    id: "reviewer-folder-id",
+    name: "REVIEWERS v01.02.03",
+    mimeType: "application/vnd.google-apps.folder",
+  },
+  {
+    id: "legacy-reviewer-folder-id",
+    name: "REVIEWERS v.10.13.26",
+    mimeType: "application/vnd.google-apps.folder",
+  },
+  {
+    id: "public-file-id",
+    name: "Guidelines.pdf",
+    mimeType: "application/pdf",
+    modifiedTime: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "private-file-id",
+    name: "Restricted.pdf",
+    mimeType: "application/pdf",
+    modifiedTime: "2026-01-01T00:00:00.000Z",
+  },
+];
+let driveFolderListReads = 0;
+let lastDriveListOptions = null;
+context.Drive = {
+  Files: {
+    list(options) {
+      lastDriveListOptions = options;
+      const folderId = options.q.match(/^'([^']+)' in parents/)[1];
+      if (folderId === rootId) driveFolderListReads += 1;
+      return {
+        files:
+          folderId === rootId
+            ? rootDriveItems
+            : [],
+      };
+    },
+  },
+};
 context.CacheService = {
   getScriptCache() {
     return {
       get(key) {
         return resourceCache.get(key) || null;
       },
-      put(key, value) {
+      put(key, value, ttlSeconds) {
         resourceCache.set(key, value);
+        resourceCacheTtls.push(ttlSeconds);
       },
       remove(key) {
         resourceCache.delete(key);
@@ -227,9 +278,28 @@ assert.equal(
 );
 context.handleListPublicResourcesRequest({ folderId: rootId });
 assert.equal(
-  rootFolderListReads,
+  driveFolderListReads,
+  1,
+  "a repeat folder request should use the Drive API listing cache",
+);
+assert.equal(lastDriveListOptions.pageSize, 1000);
+assert.equal(
+  lastDriveListOptions.fields,
+  "nextPageToken,files(id,name,mimeType,modifiedTime)",
+  "Drive listing calls should request only fields rendered in the portal",
+);
+assert.equal(lastDriveListOptions.corpora, "user");
+assert.equal(
+  resourceCacheTtls.includes(30),
+  true,
+  "folder listing cache entries should expire after 30 seconds",
+);
+resourceCache.clear();
+context.handleListPublicResourcesRequest({ folderId: rootId });
+assert.equal(
+  driveFolderListReads,
   2,
-  "public folder contents must be relisted to avoid stale exposure after a rename or move",
+  "a folder request should be fetched from Drive again after listing cache expires",
 );
 assert.equal(
   JSON.parse(
@@ -349,6 +419,13 @@ assert.equal(
   ),
   false,
   "preview contents must not be placed in the server metadata cache",
+);
+assert.equal(
+  Array.from(resourceCache.keys()).some((key) =>
+    key.startsWith("mrh_resource_listing_v1_"),
+  ),
+  true,
+  "short-lived folder metadata may be cached to speed up repeated browsing",
 );
 assert.equal(
   JSON.parse(

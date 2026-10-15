@@ -1,8 +1,8 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-release-10.16.4-1";
-  const APP_DISPLAY_VERSION = "10.16.4";
+  const APP_VERSION = "mrh-release-10.16.5-1";
+  const APP_DISPLAY_VERSION = "10.16.5";
   const UPDATE_QUERY_PARAMETER = "__mrh_update";
   const LEGACY_PAGES_BASE_PATH = "/maritime-review-hub/";
   const rootScope = typeof window !== "undefined" ? window : globalThis;

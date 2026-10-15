@@ -1,5 +1,11 @@
 # Changelog
 
+## 10.16.5 - 2026-10-15
+
+### Fixed
+- Use a field-limited Drive API listing for Resources instead of per-item DriveApp metadata reads.
+- Speed up repeat browsing with a bounded 30-second server-side metadata cache while checking folder ancestry on every request.
+
 ## 10.16.4 - 2026-10-15
 
 ### Changed
