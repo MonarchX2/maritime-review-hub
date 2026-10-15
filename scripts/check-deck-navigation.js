@@ -172,13 +172,13 @@ assert.match(
 );
 assert.match(
   indexSource,
-  /<section id="view-resources" class="view-section">[\s\S]*?<h2>My Files<\/h2>/,
-  "the Resources route should open the My Files browser",
+  /<section id="view-resources" class="view-section">[\s\S]*?aria-label="Resource dashboard"/,
+  "the Resources route should open the Resource Dashboard",
 );
 assert.match(
   indexSource,
-  /Public resources[\s\S]*?id="resource-portal-preview-frame"[\s\S]*?id="resource-portal-items"/,
-  "the Resources view should preview shared files inside the portal and retain Drive links",
+  /id="resource-dashboard-return"[\s\S]*?Return to main menu/,
+  "the Resource Dashboard should provide a return-to-main-menu control",
 );
 assert.match(
   indexSource,

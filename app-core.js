@@ -5986,13 +5986,14 @@
   let resourceDashboardData = null;
   let resourceDashboardActiveTab = "MODULES";
   let resourceDashboardLoadingPromise = null;
+  const RESOURCE_DASHBOARD_CACHE_KEY = "resource_dashboard_cache_v1";
   let resourceDashboardSelectedYear = "3";
   let resourceDashboardSelectedSemester = "1";
   let resourceDashboardSortColumn = -1;
   let resourceDashboardSortDirection = "asc";
 
   function openResourceDashboardTab(tabName) {
-    if (!["MODULES", "REVIEWERS"].includes(tabName)) return false;
+    if (!["MODULES", "REVIEWERS", "SYLLABUS"].includes(tabName)) return false;
     if (resourceDashboardActiveTab !== tabName) {
       resourceDashboardSortColumn = -1;
       resourceDashboardSortDirection = "asc";
@@ -6004,9 +6005,13 @@
     const reviewersNav = document.getElementById(
       "resource-dashboard-reviewers-nav",
     );
+    const syllabusNav = document.getElementById(
+      "resource-dashboard-syllabus-nav",
+    );
     [
       [modulesNav, tabName === "MODULES"],
       [reviewersNav, tabName === "REVIEWERS"],
+      [syllabusNav, tabName === "SYLLABUS"],
     ].forEach(([button, isActive]) => {
       if (!button) return;
       button.classList.toggle("is-active", isActive);
@@ -6035,7 +6040,6 @@
 
   function renderResourceDashboardTab() {
     const tab = resourceDashboardData?.[resourceDashboardActiveTab];
-    const title = document.getElementById("resource-dashboard-title");
     const status = document.getElementById("resource-portal-status");
     const tableHead = document.getElementById(
       "resource-dashboard-table-head",
@@ -6043,7 +6047,7 @@
     const tableBody = document.getElementById(
       "resource-dashboard-table-body",
     );
-    if (!tab || !title || !status || !tableHead || !tableBody) return false;
+    if (!tab || !status || !tableHead || !tableBody) return false;
     if (resourceDashboardSortColumn >= tab.columns.length) {
       resourceDashboardSortColumn = -1;
       resourceDashboardSortDirection = "asc";
@@ -6080,51 +6084,70 @@
         if (year && semester) termValues.add(`${year}.${semester}`);
       });
     }
-    const populateTermOptions = (control, values, selectedValue) => {
+    const populateTermOptions = (
+      control,
+      values,
+      selectedValue,
+      fallbackValue,
+      includeAll = false,
+    ) => {
       if (!control) return selectedValue;
-      const options = new Set(values);
-      options.add(selectedValue);
-      control.replaceChildren(
-        ...[...options]
-          .sort((left, right) =>
-            left.localeCompare(right, undefined, { numeric: true }),
-          )
-          .map((value) => {
-            const option = createResourceDashboardElement(
-              "option",
-              "",
-              value,
-            );
-            option.value = value;
-            return option;
-          }),
+      const sortedValues = [...values].sort((left, right) =>
+        left.localeCompare(right, undefined, { numeric: true }),
       );
-      control.value = selectedValue;
-      return control.value || selectedValue;
+      const validSelection =
+        selectedValue === "all" && includeAll
+          ? selectedValue
+          : sortedValues.includes(selectedValue)
+            ? selectedValue
+            : sortedValues.includes(fallbackValue)
+              ? fallbackValue
+              : includeAll
+                ? "all"
+                : sortedValues[0] || "";
+      const options = sortedValues.map((value) => {
+        const option = createResourceDashboardElement("option", "", value);
+        option.value = value;
+        return option;
+      });
+      if (includeAll) {
+        const allOption = createResourceDashboardElement("option", "", "All");
+        allOption.value = "all";
+        options.unshift(allOption);
+      }
+      control.replaceChildren(...options);
+      control.value = validSelection;
+      return control.value || validSelection;
     };
     const years = new Set([...termValues].map((term) => term.split(".")[0]));
-    const semesters = new Set(
-      [...termValues].map((term) => term.split(".")[1]),
-    );
     resourceDashboardSelectedYear = populateTermOptions(
       yearFilterControl,
       years,
       resourceDashboardSelectedYear,
+      "3",
+    );
+    const semesters = new Set(
+      [...termValues]
+        .filter((term) => term.split(".")[0] === resourceDashboardSelectedYear)
+        .map((term) => term.split(".")[1]),
     );
     resourceDashboardSelectedSemester = populateTermOptions(
       semesterFilterControl,
       semesters,
       resourceDashboardSelectedSemester,
+      "1",
+      true,
     );
 
-    const label =
-      resourceDashboardActiveTab === "MODULES" ? "Modules" : "Reviewers";
-    title.textContent = label;
     tableHead.replaceChildren();
     tableBody.replaceChildren();
     const headerRow = document.createElement("tr");
     tab.columns.forEach((column, columnIndex) => {
       const header = document.createElement("th");
+      const columnName = String(column).trim().toLowerCase();
+      if (columnName === "course" || columnName === "year") {
+        header.classList.add(`resource-dashboard-column-${columnName}`);
+      }
       header.setAttribute(
         "aria-sort",
         resourceDashboardSortColumn === columnIndex
@@ -6168,8 +6191,12 @@
     });
     tableHead.appendChild(headerRow);
 
-    const visibleRows = tab.rows
+    const nonEmptyRows = tab.rows
       .map((values, rowIndex) => ({ values, rowIndex }))
+      .filter(({ values }) =>
+        values.some((value) => String(value ?? "").trim() !== ""),
+      );
+    const visibleRows = nonEmptyRows
       .filter(({ values }) => {
         if (!hasTermFilter) return true;
         const yearValue = String(values[yearColumnIndex] || "").trim();
@@ -6182,7 +6209,8 @@
             : "";
         return (
           year === resourceDashboardSelectedYear &&
-          semester === resourceDashboardSelectedSemester
+          (resourceDashboardSelectedSemester === "all" ||
+            semester === resourceDashboardSelectedSemester)
         );
       });
     if (resourceDashboardSortColumn >= 0) {
@@ -6205,11 +6233,16 @@
 
     visibleRows.forEach(({ values, rowIndex }) => {
       const row = document.createElement("tr");
-      tab.columns.forEach((_column, index) => {
+      tab.columns.forEach((column, index) => {
         const cell = document.createElement("td");
+        const columnName = String(column).trim().toLowerCase();
+        if (columnName === "course" || columnName === "year") {
+          cell.classList.add(`resource-dashboard-column-${columnName}`);
+        }
         const value = String(values[index] || "");
         const linkUrl = String(tab.links?.[rowIndex]?.[index] || value);
         if (isResourceDashboardLink(linkUrl)) {
+          cell.classList.add("resource-dashboard-link-cell");
           const fileTitle = String(
             tab.linkTitles?.[rowIndex]?.[index] || "",
           ).trim();
@@ -6217,15 +6250,17 @@
           const resourceTitle = String(
             titleInParentheses ? titleInParentheses[1] : fileTitle,
           ).trim();
-          const isReviewerResource =
-            resourceDashboardActiveTab === "REVIEWERS";
-          const linkLabel = isReviewerResource
-            ? resourceTitle.replace(/\.pdf$/i, "") || "Open resource"
-            : resourceTitle || "Open resource";
+          const isSyllabus = ["syllabus", "course syllabus"].includes(
+            columnName,
+          );
+          const isPdfResource = isSyllabus || /\.pdf\b/i.test(fileTitle);
+          const linkLabel = isSyllabus
+            ? "PDF"
+            : resourceTitle.replace(/\.pdf$/i, "") || "Open resource";
           const icon = createResourceDashboardElement(
             "i",
             `fa-solid ${
-              isReviewerResource ? "fa-file-pdf" : "fa-folder"
+              isPdfResource ? "fa-file-pdf" : "fa-folder"
             } resource-dashboard-link-icon`,
           );
           icon.setAttribute("aria-hidden", "true");
@@ -6242,7 +6277,7 @@
               linkLabel,
             ),
           );
-          if (resourceTitle) link.title = resourceTitle;
+          if (resourceTitle) link.title = isSyllabus ? "PDF" : resourceTitle;
           cell.appendChild(link);
         } else {
           cell.textContent = value;
@@ -6252,13 +6287,17 @@
       tableBody.appendChild(row);
     });
 
+    const selectedTerm =
+      resourceDashboardSelectedSemester === "all"
+        ? `${resourceDashboardSelectedYear}, all semesters`
+        : `${resourceDashboardSelectedYear}.${resourceDashboardSelectedSemester}`;
     status.textContent =
       hasTermFilter
-        ? `Showing ${visibleRows.length} of ${tab.rows.length} rows for ${resourceDashboardSelectedYear}.${resourceDashboardSelectedSemester}${
+        ? `Showing ${visibleRows.length} of ${nonEmptyRows.length} rows for ${selectedTerm}${
             tab.truncated ? " (first 2,000 loaded)" : ""
           }`
-        : `${tab.rows.length} ${
-            tab.rows.length === 1 ? "row" : "rows"
+        : `${nonEmptyRows.length} ${
+            nonEmptyRows.length === 1 ? "row" : "rows"
           }${tab.truncated ? " (showing the first 2,000)" : ""}`;
     return true;
   }
@@ -6293,6 +6332,98 @@
     }
   }
 
+  function normalizeResourceDashboardTabs(tabs) {
+    const requiredTabs = ["MODULES", "REVIEWERS"];
+    const isValidTab = (tab) =>
+      Array.isArray(tab?.columns) &&
+      Array.isArray(tab?.rows) &&
+      tab.rows.every(Array.isArray);
+    const invalidTabs = requiredTabs.filter((name) => !isValidTab(tabs?.[name]));
+    if (invalidTabs.length) {
+      throw new Error(
+        `The dashboard service returned invalid data: missing or malformed ${invalidTabs.join(", ")} tab(s).`,
+      );
+    }
+
+    const normalized = { ...tabs };
+    const reviewerTab = tabs.REVIEWERS;
+    const syllabusColumnIndex = reviewerTab.columns.findIndex((column) =>
+      ["syllabus", "course syllabus"].includes(
+        String(column || "").trim().toLowerCase(),
+      ),
+    );
+    if (!isValidTab(normalized.SYLLABUS)) {
+      const yearColumnIndex = reviewerTab.columns.findIndex(
+        (column) => String(column || "").trim().toLowerCase() === "year",
+      );
+      const courseColumnIndex = reviewerTab.columns.findIndex(
+        (column) => String(column || "").trim().toLowerCase() === "course",
+      );
+      if (syllabusColumnIndex >= 0) {
+        const syllabusRowIndexes = reviewerTab.rows
+          .map((row, index) =>
+            String(row[syllabusColumnIndex] || "").trim() ? index : -1,
+          )
+          .filter((index) => index >= 0);
+        const selectRows = (rows, indexes, columns) =>
+          indexes
+            .filter((index) => Array.isArray(rows[index]))
+            .map((index) => columns.map((columnIndex) => rows[index][columnIndex] || ""));
+        normalized.SYLLABUS = {
+          columns: ["Year", "Course", "COURSE SYLLABUS"],
+          rows: selectRows(reviewerTab.rows, syllabusRowIndexes, [
+            yearColumnIndex,
+            courseColumnIndex,
+            syllabusColumnIndex,
+          ]),
+          links: selectRows(reviewerTab.links || [], syllabusRowIndexes, [
+            yearColumnIndex,
+            courseColumnIndex,
+            syllabusColumnIndex,
+          ]),
+          linkTitles: selectRows(
+            reviewerTab.linkTitles || [],
+            syllabusRowIndexes,
+            [yearColumnIndex, courseColumnIndex, syllabusColumnIndex],
+          ),
+          linkTypes: selectRows(
+            reviewerTab.linkTypes || [],
+            syllabusRowIndexes,
+            [yearColumnIndex, courseColumnIndex, syllabusColumnIndex],
+          ),
+          truncated: Boolean(reviewerTab.truncated),
+        };
+
+        normalized.REVIEWERS = {
+          ...reviewerTab,
+          columns: reviewerTab.columns.filter(
+            (_column, index) => index !== syllabusColumnIndex,
+          ),
+          rows: reviewerTab.rows.map((row) =>
+            row.filter((_value, index) => index !== syllabusColumnIndex),
+          ),
+        };
+        ["links", "linkTitles", "linkTypes"].forEach((field) => {
+          if (Array.isArray(reviewerTab[field])) {
+            normalized.REVIEWERS[field] = reviewerTab[field].map((row) =>
+              row.filter((_value, index) => index !== syllabusColumnIndex),
+            );
+          }
+        });
+      } else {
+        normalized.SYLLABUS = {
+          columns: ["Year", "Course", "COURSE SYLLABUS"],
+          rows: [],
+          links: [],
+          linkTitles: [],
+          linkTypes: [],
+          truncated: false,
+        };
+      }
+    }
+    return normalized;
+  }
+
   async function loadResourceDashboard() {
     const status = document.getElementById("resource-portal-status");
     const tableHead = document.getElementById(
@@ -6305,30 +6436,80 @@
     if (resourceDashboardLoadingPromise) return resourceDashboardLoadingPromise;
 
     initializeResourceDashboardControls();
-    status.textContent = "Loading dashboard…";
+    const storage = globalScope.StorageUtils;
+    const appVersion = String(globalScope.__MRH_APP__?.version || "").trim();
+    let cachedDashboard = null;
+    if (typeof storage?.getStoredJSON === "function" && appVersion) {
+      const stored = storage.getStoredJSON(
+        RESOURCE_DASHBOARD_CACHE_KEY,
+        null,
+      );
+      if (
+        stored?.appVersion === appVersion &&
+        typeof stored.version === "string" &&
+        ["MODULES", "REVIEWERS", "SYLLABUS"].every(
+          (name) =>
+            Array.isArray(stored.tabs?.[name]?.columns) &&
+            Array.isArray(stored.tabs?.[name]?.rows),
+        )
+      ) {
+        cachedDashboard = stored;
+        resourceDashboardData = stored.tabs;
+        renderResourceDashboardTab();
+      }
+    }
+    status.textContent = cachedDashboard
+      ? "Checking for dashboard updates…"
+      : "Loading dashboard…";
     status.setAttribute("aria-busy", "true");
-    resourceDashboardData = null;
-    tableHead.replaceChildren();
-    tableBody.replaceChildren();
+    if (!cachedDashboard) {
+      resourceDashboardData = null;
+      tableHead.replaceChildren();
+      tableBody.replaceChildren();
+    }
     resourceDashboardLoadingPromise = (async () => {
       try {
-        const response = await globalScope.AppNetwork.callBackend(
-          { type: "get_resource_dashboard" },
+        let response = await globalScope.AppNetwork.callBackend(
+          {
+            type: "get_resource_dashboard",
+            ...(cachedDashboard ? { version: cachedDashboard.version } : {}),
+          },
           { timeoutMs: 30000, maxRetries: 0 },
         );
-        if (
-          response?.status !== "success" ||
-          !["MODULES", "REVIEWERS"].every(
-            (name) =>
-              Array.isArray(response.tabs?.[name]?.columns) &&
-              Array.isArray(response.tabs?.[name]?.rows),
-          )
-        ) {
+        if (response?.notModified === true && cachedDashboard) {
+          if (response.version !== cachedDashboard.version) {
+            throw new Error(
+              "The dashboard cache version did not match the backend.",
+            );
+          }
+          renderResourceDashboardTab();
+          return true;
+        }
+        if (response?.notModified === true) {
+          response = await globalScope.AppNetwork.callBackend(
+            { type: "get_resource_dashboard" },
+            { timeoutMs: 30000, maxRetries: 0 },
+          );
+        }
+        if (response?.status !== "success") {
           throw new Error(
             response?.message || "The dashboard service returned invalid data.",
           );
         }
-        resourceDashboardData = response.tabs;
+        resourceDashboardData = normalizeResourceDashboardTabs(response.tabs);
+        if (typeof storage?.setStoredJSON === "function" && appVersion) {
+          const saved = storage.setStoredJSON(RESOURCE_DASHBOARD_CACHE_KEY, {
+            appVersion: appVersion,
+            version:
+              typeof response.version === "string" ? response.version : "",
+            tabs: resourceDashboardData,
+          });
+          if (!saved) {
+            (globalScope.DebugUtils || console).warn(
+              "Resource Dashboard data could not be saved to browser storage.",
+            );
+          }
+        }
         renderResourceDashboardTab();
         return true;
       } catch (error) {

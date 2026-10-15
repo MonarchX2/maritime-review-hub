@@ -1,5 +1,70 @@
 # Changelog
 
+## 26.10.15-28 - 2026-10-15
+
+### Fixed
+- Keep the legacy sync fallback cache-version-aware, avoid nested connection-pool waits, and preserve cold-start handling.
+- Restore the dashboard row count after an unchanged cached-dashboard check.
+
+## 26.10.15-27 - 2026-10-15
+
+### Changed
+- Reduce the Resource Dashboard tab bar height and standardize dashboard typography.
+
+## 26.10.15-26 - 2026-10-15
+
+### Performance
+- Fetch changed sync metadata and the deck summary in one backend request, with a single-request unchanged check.
+
+## 26.10.15-25 - 2026-10-15
+
+### Changed
+- Hide empty Resource Dashboard rows and align the Return control and Dashboard title to the left.
+
+## 26.10.15-24 - 2026-10-15
+
+### Changed
+- Place the centered file-update delay note at the bottom inside the dashboard card.
+
+## 26.10.15-23 - 2026-10-15
+
+### Changed
+- Move the Return control outside the dashboard card, place the Dashboard label beside it, and use an icon-only Return control on small screens.
+
+## 26.10.15-22 - 2026-10-15
+
+### Changed
+- Note that Resource Dashboard updates may take up to three minutes to appear.
+
+## 26.10.15-21 - 2026-10-15
+
+### Changed
+- Rename the dashboard tab to Syllabus, move it before Modules, normalize dashboard spacing, and add a return-to-menu button.
+
+### Fixed
+- Keep dashboard data loading from blocking navigation back to the main menu.
+
+## 26.10.15-20 - 2026-10-15
+
+### Fixed
+- Keep the Resource Dashboard compatible with older backend responses that include syllabus data in the Reviewers tab.
+
+## 26.10.15-19 - 2026-10-15
+
+### Changed
+- Separate Course Syllabus resources into their own Resource Dashboard tab.
+- Support compact Drive-ID and legacy tuple index exports.
+
+## 26.10.15-18 - 2026-10-15
+
+### Changed
+- Show syllabus resources as PDF buttons with PDF icons in the Resource Dashboard.
+
+## 26.10.15-17 - 2026-10-15
+
+### Changed
+- Cache Resource Dashboard data in browser storage and refresh it only when the website release or a Drive JSON index changes.
+
 ## 26.10.15-16 - 2026-10-15
 
 ### Changed
@@ -96,6 +161,11 @@
 ### Fixed
 - Allow the Resources portal's public Drive listing request through frontend backend-payload validation.
 - Preview public Drive files inside the Resources page.
+
+## 10.15.26-9 - 2026-10-15
+
+### Added
+- Publish the public Drive resource browser with folder listing integrated into the Resources view.
 
 ## 10.15.26-8 - 2026-10-15
 

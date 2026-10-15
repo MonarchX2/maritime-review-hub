@@ -296,7 +296,18 @@
         if (disposed) return;
         if (!options.isLeader()) return;
         try {
-          const status = await checkSyncStatusLightweight();
+          const storedTimestamp = options.readStoredSyncStatusTimestamp();
+          const hasSnapshotApi =
+            typeof options.network?.getDeckSyncSnapshot === "function";
+          const status = hasSnapshotApi
+            ? await options.network.getDeckSyncSnapshot({
+                since: isCached() ? storedTimestamp : "",
+                timeoutMs: 20000,
+                maxRetries: 0,
+              })
+            : await checkSyncStatusLightweight();
+          const hasSnapshotSummary =
+            hasSnapshotApi && Array.isArray(status?.summary);
           if (disposed) return;
           if (!status || typeof status !== "object" || status.status !== "ok") {
             if (isCached()) {
@@ -339,7 +350,6 @@
           }
           clearScheduledRetry();
           const timestamp = String(status.syncTimestamp || "").trim();
-          const storedTimestamp = options.readStoredSyncStatusTimestamp();
           const timestampMs = Date.parse(timestamp);
           const storedTimestampMs = Date.parse(storedTimestamp);
           if (
@@ -375,7 +385,12 @@
             }
             pendingSyncTimestamp = "";
           }
-          const synchronized = await syncDatabase(true, true, timestamp);
+          const synchronized = await syncDatabase(
+            true,
+            true,
+            timestamp,
+            hasSnapshotSummary ? status : null,
+          );
           if (timestamp && synchronized) {
             if (pendingSummaryData) pendingSyncTimestamp = timestamp;
             else options.persistSyncStatusTimestamp(timestamp);
@@ -423,6 +438,7 @@
       isRetry = false,
       isBackgroundCheck = false,
       expectedSyncTimestamp = "",
+      prefetchedSnapshot = null,
     ) {
       if (disposed) return false;
       if (inFlightPromise) return inFlightPromise;
@@ -450,14 +466,66 @@
             !isBackgroundCheck,
           );
         try {
-          if (typeof options.network?.getDeckSummary !== "function")
-            throw new Error("AppNetwork summary API is unavailable.");
-          const summaryData = normalizeSummary(
-            await options.network.getDeckSummary({
+          let syncSnapshot = prefetchedSnapshot;
+          if (
+            !syncSnapshot &&
+            typeof options.network?.getDeckSyncSnapshot === "function"
+          ) {
+            syncSnapshot = await options.network.getDeckSyncSnapshot({
+              since: isCached()
+                ? options.readStoredSyncStatusTimestamp()
+                : "",
               timeoutMs: requestTimeoutMs,
               signal: requestController.signal,
               maxRetries: 0,
-            }),
+            });
+            if (syncSnapshot?.status !== "ok") {
+              throw new Error(
+                syncSnapshot?.message || "Backend sync snapshot is invalid.",
+              );
+            }
+            if (syncSnapshot.isColdStart === true) {
+              lifecycle.clearTimeout(timeoutId);
+              setIsColdStart(true);
+              if (!isCached()) options.showColdStartNotification();
+              scheduleRetry(!isBackgroundCheck && !isCached());
+              return false;
+            }
+            if (
+              Number(syncSnapshot.payloadSchemaVersion) !== payloadSchemaVersion
+            ) {
+              throw new Error(
+                "Backend data format is incompatible with this app.",
+              );
+            }
+            if (syncSnapshot.notModified === true) {
+              lifecycle.clearTimeout(timeoutId);
+              attempt = 0;
+              retryAttempt = 0;
+              setConnected(true);
+              setIsColdStart(false);
+              options.updateSyncStatus(
+                '<i class="fa-solid fa-check mr-1"></i> Connected. Database is up to date.',
+                "success",
+                false,
+              );
+              options.setGlobalLoadingState(false);
+              schedulePoll();
+              return true;
+            }
+            expectedSyncTimestamp = String(
+              syncSnapshot.syncTimestamp || expectedSyncTimestamp,
+            ).trim();
+          }
+
+          const summaryData = normalizeSummary(
+            syncSnapshot
+              ? syncSnapshot.summary
+              : await options.network.getDeckSummary({
+                  timeoutMs: requestTimeoutMs,
+                  signal: requestController.signal,
+                  maxRetries: 0,
+                }),
           );
           if (disposed) return false;
           if (
@@ -474,6 +542,9 @@
           if (Array.isArray(summaryData)) {
             if (
               expectedSyncTimestamp &&
+              (!syncSnapshot ||
+                (syncSnapshot.legacySnapshot === true &&
+                  syncSnapshot.consistencyVerified !== true)) &&
               typeof options.network?.getSyncStatus === "function"
             ) {
               const latestStatus = await options.network.getSyncStatus({

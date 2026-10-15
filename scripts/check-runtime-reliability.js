@@ -265,6 +265,17 @@ async function checkBackendErrorHandling() {
   );
   assert.equal(
     network.isRetryableError(
+      Object.assign(new Error("The backend changed during the read."), {
+        isBackendError: true,
+        status: 0,
+        code: "SYNC_RACE",
+      }),
+    ),
+    true,
+    "snapshot race responses should be retried",
+  );
+  assert.equal(
+    network.isRetryableError(
       Object.assign(new Error("Deck not found"), {
         isBackendError: true,
         status: 0,
@@ -500,6 +511,199 @@ async function checkBackendErrorHandling() {
     "backend-cache-8",
     "the standalone cache-version endpoint must prime cache-busted GET requests",
   );
+
+  requestedUrls.length = 0;
+  networkContext.fetch = async (input, options) => {
+    requestedUrls.push(String(input));
+    assert.equal(options.method, "GET");
+    return new Response(
+      JSON.stringify({
+        status: "ok",
+        notModified: true,
+        cacheVersion: "backend-cache-8",
+        syncTimestamp: "2026-10-15T00:00:00.000Z",
+      }),
+      { status: 200 },
+    );
+  };
+  const syncSnapshot = await network.getDeckSyncSnapshot({
+    since: "2026-10-14T00:00:00.000Z",
+    maxRetries: 0,
+  });
+  assert.equal(syncSnapshot.notModified, true);
+  assert.equal(requestedUrls.length, 1);
+  const snapshotUrl = new URL(requestedUrls[0]);
+  assert.equal(snapshotUrl.searchParams.get("sync"), "1");
+  assert.equal(
+    snapshotUrl.searchParams.get("since"),
+    "2026-10-14T00:00:00.000Z",
+  );
+  assert.equal(
+    snapshotUrl.searchParams.get("v"),
+    networkContext.__MRH_APP__.version,
+  );
+
+  requestedUrls.length = 0;
+  let statusReads = 0;
+  let raceLegacyRead = false;
+  let raceLegacyCacheRead = false;
+  let legacyColdStart = false;
+  networkContext.fetch = async (input, options) => {
+    requestedUrls.push(String(input));
+    if (options.method === "GET") {
+      const url = new URL(String(input));
+      if (url.searchParams.has("sync")) {
+        return new Response(JSON.stringify([{ Subject: "COLREGS" }]), {
+          status: 200,
+        });
+      }
+      return new Response(JSON.stringify([{ Subject: "COLREGS" }]), {
+        status: 200,
+      });
+    }
+
+    const read = statusReads++;
+    const timestamp =
+      raceLegacyRead && read % 2 === 1 ? "legacy-v2" : "legacy-v1";
+    const cacheVersion =
+      raceLegacyCacheRead && read % 2 === 1
+        ? "legacy-cache-v2"
+        : "legacy-cache-v1";
+    return new Response(
+      JSON.stringify({
+        status: "ok",
+        syncTimestamp: timestamp,
+        cacheVersion,
+        isColdStart: legacyColdStart,
+      }),
+      { status: 200 },
+    );
+  };
+  const legacySnapshot = await network.getDeckSyncSnapshot({
+    since: "legacy-v0",
+    maxRetries: 0,
+  });
+  assert.equal(legacySnapshot.legacySnapshot, true);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(legacySnapshot.summary)),
+    [{ Subject: "COLREGS" }],
+  );
+  assert.equal(
+    requestedUrls.length,
+    4,
+    "legacy deployments should use status, summary, then a consistency status check",
+  );
+  assert.equal(
+    new URL(requestedUrls[2]).searchParams.get("cv"),
+    "legacy-cache-v1",
+    "legacy status metadata should cache-bust the summary request",
+  );
+
+  const unchangedLegacySnapshot = await network.getDeckSyncSnapshot({
+    since: "legacy-v1",
+    maxRetries: 0,
+  });
+  assert.equal(unchangedLegacySnapshot.notModified, true);
+  assert.equal(unchangedLegacySnapshot.legacySnapshot, true);
+  assert.equal(
+    requestedUrls.length,
+    5,
+    "unchanged legacy syncs should fetch only status",
+  );
+
+  raceLegacyRead = true;
+  await assert.rejects(
+    network.getDeckSyncSnapshot({ since: "legacy-v0", maxRetries: 0 }),
+    (error) => error.code === "SYNC_RACE",
+  );
+  assert.equal(
+    requestedUrls.length,
+    8,
+    "subsequent legacy syncs should skip the unsupported snapshot endpoint",
+  );
+
+  raceLegacyRead = false;
+  raceLegacyCacheRead = true;
+  await assert.rejects(
+    network.getDeckSyncSnapshot({ since: "legacy-v0", maxRetries: 0 }),
+    (error) => error.code === "SYNC_RACE",
+  );
+
+  legacyColdStart = true;
+  const requestsBeforeColdStart = requestedUrls.length;
+  const coldStartSnapshot = await network.getDeckSyncSnapshot({
+    since: "legacy-v1",
+    maxRetries: 0,
+  });
+  assert.equal(coldStartSnapshot.isColdStart, true);
+  assert.equal(
+    requestedUrls.length,
+    requestsBeforeColdStart + 1,
+    "legacy cold starts should not be mistaken for unchanged snapshots",
+  );
+}
+
+async function checkLegacySnapshotPoolConcurrency() {
+  const context = {
+    module: { exports: {} },
+    console,
+    URL,
+    Date,
+    Math,
+    Promise,
+    AbortController,
+    crypto: webcrypto,
+    TextEncoder,
+    Uint8Array,
+    setTimeout,
+    clearTimeout,
+    intervalCallbacks: new Map(),
+    nextIntervalId: 0,
+  };
+  context.MRH_CONFIG = { databaseUrl: "https://example.test/backend" };
+  context.__MRH_APP__ = { version: "mrh-release-test" };
+  context.location = { href: "https://example.test/" };
+  context.LifecycleUtils = {
+    setTimeout,
+    clearTimeout,
+    setInterval(callback) {
+      const id = ++context.nextIntervalId;
+      context.intervalCallbacks.set(id, callback);
+      return id;
+    },
+    clearInterval(id) {
+      context.intervalCallbacks.delete(id);
+    },
+  };
+  context.fetch = async (_input, options) =>
+    new Response(
+      JSON.stringify(
+        options.method === "GET"
+          ? [{ Subject: "COLREGS" }]
+          : {
+              status: "ok",
+              syncTimestamp: "legacy-v1",
+              cacheVersion: "legacy-cache-v1",
+            },
+      ),
+      { status: 200 },
+    );
+  vm.createContext(context);
+  vm.runInContext(
+    fs.readFileSync("app-core-network.js", "utf8"),
+    context,
+    { filename: "app-core-network.js" },
+  );
+  const snapshots = await Promise.all(
+    Array.from({ length: 8 }, () =>
+      context.module.exports.getDeckSyncSnapshot({
+        since: "legacy-v0",
+        maxRetries: 0,
+      }),
+    ),
+  );
+  assert.equal(snapshots.length, 8);
+  assert.ok(snapshots.every((snapshot) => snapshot.legacySnapshot === true));
 }
 
 async function checkConnectionPoolConcurrency() {
@@ -651,6 +855,7 @@ async function checkConnectionPoolCleanupAndHealth() {
 
 Promise.all([
   checkBackendErrorHandling(),
+  checkLegacySnapshotPoolConcurrency(),
   checkConnectionPoolConcurrency(),
   checkConnectionPoolCleanupAndHealth(),
 ])

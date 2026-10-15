@@ -69,6 +69,27 @@ assert.equal(
 );
 assert.throws(() => calculateNextVersion("14.8", []), /Invalid SemVer version/);
 
+const repositoryRoot = path.resolve(__dirname, "..");
+const currentVersion = JSON.parse(
+  fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"),
+).version;
+const changelog = fs.readFileSync(
+  path.join(repositoryRoot, "CHANGELOG.md"),
+  "utf8",
+);
+const changelogVersions = [...changelog.matchAll(/^## (.+?) - /gm)].map(
+  (match) => match[1],
+);
+assert.ok(
+  changelogVersions.includes(currentVersion),
+  `CHANGELOG.md must include the current release ${currentVersion}`,
+);
+assert.equal(
+  new Set(changelogVersions).size,
+  changelogVersions.length,
+  "CHANGELOG.md must not contain duplicate release headings",
+);
+
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "mrh-semver-"));
 function git(args) {
   return execFileSync("git", args, {

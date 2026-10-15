@@ -9,18 +9,33 @@ const index = fs.readFileSync("index.html", "utf8");
 
 assert.match(
   index,
-  /openResourceDashboardTab\('MODULES'\)[\s\S]*?Modules[\s\S]*?openResourceDashboardTab\('REVIEWERS'\)[\s\S]*?Reviewers/,
-  "the dashboard should navigate between the spreadsheet's Modules and Reviewers tabs",
+  /id="resource-dashboard-syllabus-nav"[\s\S]*?Syllabus[\s\S]*?id="resource-dashboard-modules-nav"[\s\S]*?Modules[\s\S]*?id="resource-dashboard-reviewers-nav"[\s\S]*?Reviewers/,
+  "the dashboard should show Syllabus before Modules and Reviewers",
+);
+assert.match(
+  index,
+  /resource-dashboard-topbar[\s\S]*?id="resource-dashboard-return"[\s\S]*?aria-label="Return to main menu"[\s\S]*?<span>Return<\/span>[\s\S]*?resource-dashboard-title">Dashboard[\s\S]*?resource-portal-shell/,
+  "the dashboard should place a Return button and Dashboard label above and outside its card",
+);
+assert.match(
+  index,
+  /resource-dashboard-table-scroll[\s\S]*?class="resource-dashboard-update-note">[\s\S]*?File updates may be delayed by up to 3 minutes/,
+  "the dashboard should show a centered bottom note inside the card explaining file update delays",
 );
 assert.match(
   index,
   /resource-dashboard-table-head[\s\S]*?resource-dashboard-table-body/,
   "the resource view should render the dashboard spreadsheet as a table",
 );
+assert.doesNotMatch(
+  index,
+  /resource-portal-browser-header/,
+  "the resource dashboard should not show a title bar",
+);
 assert.match(
   index,
-  /<span>Dashboard<\/span>/,
-  "the dashboard should use the concise Dashboard brand",
+  /<span class="resource-dashboard-title">Dashboard<\/span>/,
+  "the dashboard label should sit to the right of the Return button",
 );
 assert.doesNotMatch(
   index,
@@ -69,20 +84,45 @@ assert.match(
 );
 assert.match(
   appCore,
-  /isReviewerResource[\s\S]*?resourceTitle\.replace\(\/\\\.pdf\$\/i,\s*""\)/,
-  "reviewer PDF buttons should omit the extension from their visible title",
+  /resourceTitle\.replace\(\/\\\.pdf\$\/i,\s*""\)/,
+  "PDF buttons should omit the extension from their visible title",
 );
 assert.match(
   appCore,
-  /isReviewerResource \? "fa-file-pdf" : "fa-folder"/,
-  "reviewer links should use PDF icons and module links should use folder icons",
+  /isPdfResource = isSyllabus \|\| \/\\\.pdf\\b\/i\.test\(fileTitle\)[\s\S]*?isPdfResource \? "fa-file-pdf" : "fa-folder"/,
+  "resource links should show PDF icons for syllabuses and PDF filenames",
+);
+assert.match(
+  appCore,
+  /if \(!tab \|\| !status \|\| !tableHead \|\| !tableBody\) return false;/,
+  "dashboard rendering should not require a visible title bar",
 );
 assert.match(
   fs.readFileSync("styles.css", "utf8"),
-  /\.resource-dashboard-table\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*100%;/,
-  "dashboard table columns should size to their contents",
+  /\.resource-dashboard-table\s*\{[^}]*width:\s*max-content;[^}]*\}/,
+  "dashboard table columns should size to their contents without stretching",
 );
 const resourceStyles = fs.readFileSync("styles.css", "utf8");
+assert.match(
+  appCore,
+  /const nonEmptyRows = tab\.rows[\s\S]*?values\.some\(\(value\) => String\(value \?\? ""\)\.trim\(\) !== ""\)[\s\S]*?const visibleRows = nonEmptyRows/,
+  "dashboard rendering should omit rows with no displayed values",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-topbar\s*\{[^}]*justify-content:\s*flex-start;/,
+  "the Return button and Dashboard title should align to the dashboard's left",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-return span\s*\{\s*display:\s*none;/,
+  "small screens should show the return arrow without its text label",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-layout\s*\{[^}]*width:\s*fit-content;[^}]*margin-inline:\s*auto;/,
+  "the top controls and dashboard card should share a centered layout",
+);
 assert.match(
   resourceStyles,
   /\.resource-portal-nav-item\.is-active\s*\{[^}]*background:\s*transparent;/,
@@ -103,25 +143,54 @@ assert.match(
   /\.resource-dashboard-table-scroll\s*\{[^}]*max-height:\s*min\(68vh,\s*48rem\);/,
   "the dashboard table should scroll within the available viewport",
 );
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-layout\s*\{[^}]*width:\s*fit-content;[^}]*margin-inline:\s*auto;/,
+  "the dashboard toolbar and card should fit their contents and center on the page",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*fit-content;[^}]*margin-inline:\s*auto;/,
+  "the dashboard table wrapper should fit and center around its contents",
+);
+assert.doesNotMatch(
+  resourceStyles.match(/\.resource-dashboard-table\s*\{[^}]*\}/)?.[0] || "",
+  /min-width:\s*100%/,
+  "the dashboard table should not stretch to fill the available width",
+);
 assert.doesNotMatch(
   resourceStyles,
   /\.resource-dashboard-table\s*\{[^}]*min-width:\s*38rem/,
   "the dashboard should not force fixed-width columns on mobile",
 );
+const dashboardHandler =
+  backend.match(
+    /function handleGetResourceDashboardRequest\(\)\s*\{[\s\S]*?\n\}/,
+  )?.[0] || "";
 assert.match(
   backend,
-  /getRichTextValues\(\)[\s\S]*?getFormulas\(\)[\s\S]*?links:\s*dataRows\.map[\s\S]*?linkTitles:\s*dataRows\.map/,
-  "the backend should retain hyperlink targets and resolved titles",
+  /RESOURCE_DASHBOARD_INDEX_FILES\s*=\s*\{\s*MODULES:\s*"modules_combined\.json",\s*REVIEWERS:\s*"reviewers_combined\.json",\s*SYLLABUS:\s*"reviewers_combined\.json"/,
+  "the backend should use the pasted Drive indexer's combined JSON exports",
 );
 assert.match(
   backend,
-  /Drive\.Files\.get\(fileId,\s*\{[\s\S]*?fields:\s*"id,name,mimeType"/,
-  "the backend should resolve Drive names for linked resources",
+  /DriveApp\.getFolderById\(RESOURCE_DASHBOARD_INDEX_FOLDER_ID\)[\s\S]*?getFilesByName\(fileName\)/,
+  "the backend should read dashboard indexes from their Drive export folder",
 );
 assert.match(
   backend,
-  /DriveApp\.getFileById\(fileId\)\.getName\(\)/,
-  "the backend should fall back to DriveApp when the Drive API cannot resolve a title",
+  /links\.push\(rowLinks\)[\s\S]*?linkTitles\.push\(rowTitles\)/,
+  "the dashboard adapter should preserve indexed resource links and filenames",
+);
+assert.match(
+  backend,
+  /Array\.isArray\(item\)[\s\S]*?item\[1\][\s\S]*?getResourceDashboardExportMimeType/,
+  "the dashboard adapter should support legacy tuple exports as well as compact objects",
+);
+assert.doesNotMatch(
+  dashboardHandler,
+  /SpreadsheetApp|RESOURCE_DASHBOARD_SPREADSHEET_ID/,
+  "the dashboard request must not depend on Google Sheets",
 );
 assert.match(
   appCore,
@@ -140,8 +209,18 @@ assert.match(
 );
 assert.match(
   appCore,
-  /year === resourceDashboardSelectedYear &&\s*semester === resourceDashboardSelectedSemester/,
-  "dashboard rows should be filtered by the selected year and semester",
+  /year === resourceDashboardSelectedYear &&\s*\(resourceDashboardSelectedSemester === "all" \|\|\s*semester === resourceDashboardSelectedSemester\)/,
+  "dashboard rows should be filtered by year and optionally by semester",
+);
+assert.match(
+  appCore,
+  /\.filter\(\(term\) => term\.split\("\."\)\[0\] === resourceDashboardSelectedYear\)/,
+  "semester options should be limited to the selected year",
+);
+assert.match(
+  appCore,
+  /createResourceDashboardElement\("option", "", "All"\)[\s\S]*?allOption\.value = "all"/,
+  "the semester filter should include an All option",
 );
 assert.match(
   appCore,
@@ -150,8 +229,8 @@ assert.match(
 );
 assert.match(
   deckNavigation,
-  /if \(viewId === "resources"\) \{\s*await globalScope\.loadResourceDashboard\?\.\(\);/,
-  "opening the Resources view should load the dashboard instead of scanning Drive",
+  /if \(viewId === "resources"\) \{\s*Promise\.resolve\(globalScope\.loadResourceDashboard\?\.\(\)\)\.catch/,
+  "opening Resources should load the dashboard without blocking navigation",
 );
 assert.doesNotMatch(
   fs
@@ -161,19 +240,79 @@ assert.doesNotMatch(
   "dashboard loading should not call the previous Drive listing or preview APIs",
 );
 
-let spreadsheetOpenCount = 0;
-const spreadsheetTabs = {
-  MODULES: [
-    ["Year", "Course", "", "PRELIMS", "MIDTERMS", "FINALS"],
-    ["3.1", "SHIP'S AUDIT", "", "https://drive.google.com/file/d/modulePrelims_123456/view", "", ""],
-    ["4.1", "SAFETY", "", "Prelims module", "Exam guide", ""],
-    ["4.2", "SEARCH AND RESCUE", "", "https://drive.google.com/file/d/fallbackDoc_123456/view", "", ""],
-    ["", "", "", "", "", ""],
-  ],
-  REVIEWERS: [
-    ["Reviewer", "Course"],
-    ["Reviewer One", "NAV6"],
-  ],
+let indexReadCount = 0;
+const dashboardIndexModifiedTimes = {
+  "modules_combined.json": 1000,
+  "reviewers_combined.json": 2000,
+};
+const dashboardIndexes = {
+  "modules_combined.json": {
+    b: "https://drive.google.com/open?id=",
+    d: {
+      "3.1": {
+        PRELIMS: {
+          "SHIP'S AUDIT": [
+            "01 SHIP'S AUDIT (Prelims module)",
+            "modulePrelims_123456",
+            123,
+          ],
+        },
+      },
+      "4.1": {
+        PRELIMS: {
+          SAFETY: {
+            i: "linkedModule_123456",
+            n: "01 SAFETY (Prelims).pdf",
+            u: "linkedModule_123456",
+            t: 1,
+          },
+        },
+        MIDTERMS: {
+          SAFETY: {
+            i: "midtermModule_123456",
+            n: "02 SAFETY (Exam guide)",
+            u: "midtermModule_123456",
+            t: 1,
+          },
+        },
+      },
+      "4.2": {
+        FINALS: {
+          "SEARCH AND RESCUE": {
+            i: "finalModule_123456",
+            n: "03 SEARCH AND RESCUE",
+            u: "finalModule_123456",
+            t: 1,
+          },
+        },
+      },
+    },
+  },
+  "reviewers_combined.json": {
+    b: "https://drive.google.com/open?id=",
+    d: {
+      "3.1": {
+        PRELIMS: {
+          NAV6: [
+            "01 NAV6 REVIEWER (Reviewer One).pdf",
+            "reviewerPdf_123456",
+            123,
+            4,
+          ],
+        },
+      },
+      "4.2": {
+        SYLLABUS: {
+          "SHIP'S AUDIT": {
+            i: "reviewerSyllabus_123456",
+            n: "SHIP'S AUDIT COURSE SYLLABUS",
+            u: "reviewerSyllabus_123456",
+            t: "gdoc",
+          },
+        },
+      },
+    },
+  },
 };
 const context = {
   console,
@@ -181,86 +320,34 @@ const context = {
   Math,
   Date,
   Logger: { log() {} },
-  SpreadsheetApp: {
-    openById(id) {
-      spreadsheetOpenCount += 1;
-      assert.equal(
-        id,
-        "1TSOO8oD2KLo015eeCf6zb3c7eGFo27uJD5p03L-IVOs",
-      );
+  DriveApp: {
+    getFolderById(id) {
+      assert.equal(id, "1cP2FBOW-Jryu9eknJgDjUZcxx9qwC22Z");
       return {
-        getSheetByName(name) {
-          const values = spreadsheetTabs[name];
-          if (!values) return null;
+        getFilesByName(name) {
+          const content = dashboardIndexes[name];
+          const files = content
+            ? [
+                {
+                  getId: () => `id-${name}`,
+                  getLastUpdated: () =>
+                    new Date(dashboardIndexModifiedTimes[name]),
+                  getBlob: () => {
+                    indexReadCount += 1;
+                    return {
+                      getDataAsString: () => JSON.stringify(content),
+                    };
+                  },
+                },
+              ]
+            : [];
+          let index = 0;
           return {
-            getLastRow: () => values.length,
-            getLastColumn: () => values[0].length,
-            getRange(_row, _column, rowCount, columnCount) {
-              const richLinks = {
-                "2:3": "https://drive.google.com/file/d/linkedModule_123456/view",
-              };
-              const formulas = {
-                "2:4": '=HYPERLINK("https://docs.google.com/document/d/examGuide_123456/edit","Exam guide")',
-              };
-              return {
-                getDisplayValues: () =>
-                  values
-                    .slice(0, rowCount)
-                    .map((row) => row.slice(0, columnCount)),
-                getRichTextValues: () =>
-                  values.slice(0, rowCount).map((row, rowIndex) =>
-                    row.slice(0, columnCount).map((_value, columnIndex) => {
-                      const linkUrl = richLinks[`${rowIndex}:${columnIndex}`];
-                      return {
-                        getLinkUrl: () => linkUrl || "",
-                      };
-                    }),
-                  ),
-                getFormulas: () =>
-                  values.slice(0, rowCount).map((row, rowIndex) =>
-                    row.slice(0, columnCount).map(
-                      (_value, columnIndex) =>
-                        formulas[`${rowIndex}:${columnIndex}`] || "",
-                    ),
-                  ),
-              };
-            },
+            hasNext: () => index < files.length,
+            next: () => files[index++],
           };
         },
       };
-    },
-  },
-  Drive: {
-    Files: {
-      get(id, options) {
-        assert.deepEqual(
-          JSON.parse(JSON.stringify(options)),
-          { fields: "id,name,mimeType", supportsAllDrives: true },
-        );
-        const titles = {
-          "modulePrelims_123456": "Prelims Module Title",
-          "linkedModule_123456": "Linked Module Title",
-          "examGuide_123456": "Exam Guide Title",
-          "fallbackDoc_123456": "Fallback Drive Title",
-        };
-        if (id === "fallbackDoc_123456") {
-          throw new Error("Drive API title lookup unavailable in test.");
-        }
-        return {
-          id,
-          name: titles[id],
-          mimeType:
-            id === "modulePrelims_123456" || id === "linkedModule_123456"
-              ? "application/vnd.google-apps.folder"
-              : "application/pdf",
-        };
-      },
-    },
-  },
-  DriveApp: {
-    getFileById(id) {
-      assert.equal(id, "fallbackDoc_123456");
-      return { getName: () => "Fallback Drive Title" };
     },
   },
   ContentService: {
@@ -287,6 +374,8 @@ assert.deepEqual(
   JSON.parse(JSON.stringify(dashboard)),
   {
     status: "success",
+    version:
+      "modules_combined.json:id-modules_combined.json:1000|reviewers_combined.json:id-reviewers_combined.json:2000",
     tabs: {
       MODULES: {
         columns: ["Year", "Course", "PRELIMS", "MIDTERMS", "FINALS"],
@@ -294,61 +383,81 @@ assert.deepEqual(
           [
             "3.1",
             "SHIP'S AUDIT",
-            "https://drive.google.com/file/d/modulePrelims_123456/view",
+            "01 SHIP'S AUDIT (Prelims module)",
             "",
             "",
           ],
-          ["4.1", "SAFETY", "Prelims module", "Exam guide", ""],
+          [
+            "4.1",
+            "SAFETY",
+            "01 SAFETY (Prelims).pdf",
+            "02 SAFETY (Exam guide)",
+            "",
+          ],
           [
             "4.2",
             "SEARCH AND RESCUE",
-            "https://drive.google.com/file/d/fallbackDoc_123456/view",
             "",
             "",
+            "03 SEARCH AND RESCUE",
           ],
         ],
         links: [
-          ["", "", "", "", ""],
-          [
-            "",
-            "",
-            "https://drive.google.com/file/d/linkedModule_123456/view",
-            "https://docs.google.com/document/d/examGuide_123456/edit",
-            "",
-          ],
-          ["", "", "", "", ""],
+          ["", "", "https://drive.google.com/open?id=modulePrelims_123456", "", ""],
+          ["", "", "https://drive.google.com/open?id=linkedModule_123456", "https://drive.google.com/open?id=midtermModule_123456", ""],
+          ["", "", "", "", "https://drive.google.com/open?id=finalModule_123456"],
         ],
         linkTitles: [
-          ["", "", "Prelims Module Title", "", ""],
-          ["", "", "Linked Module Title", "Exam Guide Title", ""],
-          ["", "", "Fallback Drive Title", "", ""],
+          ["", "", "01 SHIP'S AUDIT (Prelims module)", "", ""],
+          ["", "", "01 SAFETY (Prelims).pdf", "02 SAFETY (Exam guide)", ""],
+          ["", "", "", "", "03 SEARCH AND RESCUE"],
         ],
         linkTypes: [
-          ["", "", "application/vnd.google-apps.folder", "", ""],
           [
             "",
             "",
             "application/vnd.google-apps.folder",
-            "application/pdf",
+            "",
             "",
           ],
-          ["", "", "", "", ""],
+          ["", "", "application/vnd.google-apps.folder", "application/vnd.google-apps.folder", ""],
+          ["", "", "", "", "application/vnd.google-apps.folder"],
         ],
         truncated: false,
       },
       REVIEWERS: {
-        columns: ["Reviewer", "Course"],
-        rows: [["Reviewer One", "NAV6"]],
-        links: [["", ""]],
-        linkTitles: [["", ""]],
-        linkTypes: [["", ""]],
+        columns: ["Year", "Course", "PRELIMS", "MIDTERMS", "FINALS"],
+        rows: [["3.1", "NAV6", "01 NAV6 REVIEWER (Reviewer One).pdf", "", ""]],
+        links: [
+          ["", "", "https://drive.google.com/open?id=reviewerPdf_123456", "", ""],
+        ],
+        linkTitles: [
+          ["", "", "01 NAV6 REVIEWER (Reviewer One).pdf", "", ""],
+        ],
+        linkTypes: [
+          ["", "", "application/pdf", "", ""],
+        ],
+        truncated: false,
+      },
+      SYLLABUS: {
+        columns: ["Year", "Course", "COURSE SYLLABUS"],
+        rows: [["4.2", "SHIP'S AUDIT", "SHIP'S AUDIT COURSE SYLLABUS"]],
+        links: [
+          ["", "", "https://drive.google.com/open?id=reviewerSyllabus_123456"],
+        ],
+        linkTitles: [
+          ["", "", "SHIP'S AUDIT COURSE SYLLABUS"],
+        ],
+        linkTypes: [
+          ["", "", "application/vnd.google-apps.document"],
+        ],
         truncated: false,
       },
     },
   },
-  "the backend should return both named spreadsheet tabs without blank rows or columns",
+  "the backend should reshape combined Drive indexes into Modules, Reviewers, and separate Syllabus dashboard tables",
 );
-assert.equal(spreadsheetOpenCount, 1);
+assert.equal(indexReadCount, 2);
 
 const routedDashboard = JSON.parse(
   context
@@ -365,9 +474,51 @@ const routedDashboard = JSON.parse(
 assert.equal(
   routedDashboard.status,
   "success",
-  "the public backend should expose the spreadsheet dashboard action",
+  "the public backend should expose the Drive-index dashboard action",
 );
-assert.equal(spreadsheetOpenCount, 2);
+assert.equal(indexReadCount, 4);
+
+const unchangedDashboard = JSON.parse(
+  context
+    .doPost({
+      postData: {
+        contents: JSON.stringify({
+          type: "get_resource_dashboard",
+          version: routedDashboard.version,
+          appVersion: "mrh-release-26.10.15-15",
+        }),
+      },
+    })
+    .text,
+);
+assert.equal(unchangedDashboard.notModified, true);
+assert.equal(
+  indexReadCount,
+  4,
+  "unchanged dashboard indexes should not be parsed or returned again",
+);
+
+dashboardIndexModifiedTimes["reviewers_combined.json"] += 1;
+const updatedDashboard = JSON.parse(
+  context
+    .doPost({
+      postData: {
+        contents: JSON.stringify({
+          type: "get_resource_dashboard",
+          version: routedDashboard.version,
+          appVersion: "mrh-release-26.10.15-15",
+        }),
+      },
+    })
+    .text,
+);
+assert.equal(updatedDashboard.status, "success");
+assert.ok(updatedDashboard.version !== routedDashboard.version);
+assert.equal(
+  indexReadCount,
+  6,
+  "updated dashboard indexes should cause the complete dashboard to refresh",
+);
 
 const disabledListing = JSON.parse(
   context
@@ -404,9 +555,56 @@ assert.equal(
   "the former Drive preview API should be explicitly disabled",
 );
 assert.equal(
-  spreadsheetOpenCount,
-  2,
-  "disabled Drive requests should not open the dashboard spreadsheet",
+  indexReadCount,
+  6,
+  "disabled Drive requests should not read dashboard index files",
 );
+
+const snapshotProperties = {
+  MRH_SUBJECT_SCHEMA_VERSION: "10",
+  LAST_CACHE_BUILD_SUCCESS: "2026-10-15T00:00:00.000Z",
+  BUILD_STATUS: "IDLE",
+  MRH_CACHE_VERSION_TIMESTAMP: "2026-10-15T00:00:00.000Z",
+};
+context.getScriptProps = () => ({
+  getProperty: (key) => snapshotProperties[key] || null,
+  setProperty(key, value) {
+    snapshotProperties[key] = value;
+  },
+});
+context.getCacheInvalidationVersion = () => "cache-v1";
+context.generateCacheKey = (key) => key;
+context.cacheGetChunked = () => JSON.stringify([{ Subject: "COLREGS" }]);
+context.filterSummaryDataByAccess = (summary) => summary;
+const unchangedSync = JSON.parse(
+  context
+    .handleDeckSyncSnapshot_("2026-10-15T00:00:00.000Z")
+    .text,
+);
+assert.equal(unchangedSync.notModified, true);
+
+const changedSync = JSON.parse(context.handleDeckSyncSnapshot_("").text);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(changedSync.summary)),
+  [{ Subject: "COLREGS" }],
+);
+assert.equal(changedSync.payloadSchemaVersion, 2);
+
+let cacheVersionReads = 0;
+context.getCacheInvalidationVersion = () =>
+  cacheVersionReads++ === 0 ? "cache-v1" : "cache-v2";
+const racedSync = JSON.parse(context.handleDeckSyncSnapshot_("").text);
+assert.equal(racedSync.code, "SYNC_RACE");
+
+snapshotProperties.LAST_CACHE_BUILD_SUCCESS = "";
+let rebuildTriggerCount = 0;
+context.ensureResumeBuildTrigger = () => {
+  rebuildTriggerCount += 1;
+};
+const coldStartSync = JSON.parse(
+  context.handleDeckSyncSnapshot_("2026-10-15T00:00:00.000Z").text,
+);
+assert.equal(coldStartSync.isColdStart, true);
+assert.equal(rebuildTriggerCount, 1);
 
 console.log("Resource dashboard and disabled Drive portal checks passed.");

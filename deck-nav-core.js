@@ -138,7 +138,9 @@
     if (!returningToDashboard) globalScope.updateDashboard();
     if (viewId === "stats") globalScope.renderCharts();
     if (viewId === "resources") {
-      await globalScope.loadResourceDashboard?.();
+      Promise.resolve(globalScope.loadResourceDashboard?.()).catch((error) => {
+        logger.error("Unable to load the Resource Dashboard.", error);
+      });
     }
     return true;
   }

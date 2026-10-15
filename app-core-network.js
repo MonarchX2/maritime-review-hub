@@ -28,6 +28,7 @@
   let cachedDatabaseUrl = "";
   let latestBackendCacheVersion = "";
   let backendPurgePromise = null;
+  let deckSyncSnapshotSupported = null;
 
   async function purgeAppOwnedData() {
     if (backendPurgePromise) return backendPurgePromise;
@@ -200,7 +201,12 @@
         status === 408 ||
         status === 429 ||
         status >= 500 ||
-        ["NOT_READY", "SERVER_ERROR", "TEMPORARY_UNAVAILABLE"].includes(
+        [
+          "NOT_READY",
+          "SERVER_ERROR",
+          "SYNC_RACE",
+          "TEMPORARY_UNAVAILABLE",
+        ].includes(
           String(error.code || "").toUpperCase(),
         )
       );
@@ -514,7 +520,7 @@
     },
     get_resource_dashboard: {
       required: [],
-      allowed: ["type", "appVersion"],
+      allowed: ["type", "version", "appVersion"],
     },
   });
 
@@ -938,6 +944,125 @@
     );
   }
 
+  async function getDeckSyncSnapshot(options = {}) {
+    const readLegacySnapshot = async () => {
+      const status = rememberBackendCacheVersion(
+        await callBackend(
+          { type: "get_sync_status" },
+          { ...options, maxRetries: 0 },
+        ),
+      );
+      if (status?.status !== "ok") return status;
+      if (status.isColdStart === true) {
+        return { ...status, legacySnapshot: true };
+      }
+      const since = String(options.since || "").trim();
+      if (since && since === String(status.syncTimestamp || "").trim()) {
+        return { ...status, notModified: true, legacySnapshot: true };
+      }
+      const summary = await getDeckSummary({
+        ...options,
+        maxRetries: 0,
+      });
+      const latestStatus = rememberBackendCacheVersion(
+        await callBackend(
+          { type: "get_sync_status" },
+          { ...options, maxRetries: 0 },
+        ),
+      );
+      if (
+        latestStatus?.status !== "ok" ||
+        String(latestStatus.syncTimestamp || "").trim() !==
+          String(status.syncTimestamp || "").trim() ||
+        (status.cacheVersion &&
+          latestStatus.cacheVersion &&
+          String(latestStatus.cacheVersion) !== String(status.cacheVersion))
+      ) {
+        const error = new Error(
+          "The backend changed while the deck summary was being read.",
+        );
+        error.code = "SYNC_RACE";
+        throw error;
+      }
+      return {
+        ...status,
+        summary,
+        legacySnapshot: true,
+        consistencyVerified: true,
+      };
+    };
+
+    if (deckSyncSnapshotSupported === false) {
+      return readLegacySnapshot();
+    }
+
+    const databaseUrl = getDatabaseUrl();
+    if (!databaseUrl) throw new Error("Database URL is not configured.");
+    const url = new URL(
+      databaseUrl,
+      globalScope.location?.href || undefined,
+    );
+    const appVersion =
+      typeof globalThis.__MRH_APP__?.version === "string"
+        ? globalThis.__MRH_APP__.version.trim()
+        : "";
+    if (!appVersion) throw new Error("Client app version is unavailable.");
+    url.searchParams.set("v", appVersion);
+    url.searchParams.set("sync", "1");
+    const since = String(options.since || "").trim();
+    if (since) url.searchParams.set("since", since);
+
+    const result = await defaultConnectionPool.request(
+      async () => {
+        const response = await fetchWithTimeout(
+          url.toString(),
+          {
+            method: "GET",
+            headers: { Accept: "application/json", ...(options.headers || {}) },
+            redirect: "follow",
+            cache: "no-store",
+            keepalive: true,
+            signal: options.signal,
+          },
+          Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 15000,
+        );
+        const body = await parseJsonResponse(response);
+        const backendError = getBackendError(body, response);
+        if (backendError) await processBackendError(backendError);
+        return body;
+      },
+      {
+        maxRetries: Number(
+          options.maxRetries ?? DEFAULT_POOL_CONFIG.maxRetries,
+        ),
+        baseRetryDelayMs: Number(
+          options.baseRetryDelayMs ?? DEFAULT_POOL_CONFIG.baseRetryDelayMs,
+        ),
+        maxRetryDelayMs: Number(
+          options.maxRetryDelayMs ?? DEFAULT_POOL_CONFIG.maxRetryDelayMs,
+        ),
+      },
+    );
+
+    if (Array.isArray(result)) {
+      deckSyncSnapshotSupported = false;
+      return readLegacySnapshot();
+    }
+    if (result?.isColdStart === true && result?.status !== "ok") {
+      deckSyncSnapshotSupported = false;
+      return rememberBackendCacheVersion({
+        ...(await callBackend(
+          { type: "get_sync_status" },
+          { ...options, maxRetries: 0 },
+        )),
+        isColdStart: true,
+        legacySnapshot: true,
+      });
+    }
+    if (result?.status === "ok") deckSyncSnapshotSupported = true;
+    return rememberBackendCacheVersion(result);
+  }
+
   const backendApi = {
     async getCacheVersion(options = {}) {
       return rememberBackendCacheVersion(
@@ -949,11 +1074,13 @@
         await callBackend({ type: "get_sync_status" }, options),
       );
     },
+    getDeckSyncSnapshot,
   };
 
   const AppNetwork = {
     callBackend,
     getDeckSummary,
+    getDeckSyncSnapshot,
     getDeck,
     getPayloadFingerprint,
     calculateRetryDelay,

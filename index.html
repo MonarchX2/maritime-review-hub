@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src blob:; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data: blob:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-26.10.15-16" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-26.10.15-28" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-26.10.15-16"
+      href="icon.svg?v=mrh-release-26.10.15-28"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-26.10.15-16" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-26.10.15-28" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-26.10.15-16"
+      href="tailwind.generated.css?v=mrh-release-26.10.15-28"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-26.10.15-16"
+      href="styles.css?v=mrh-release-26.10.15-28"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-26.10.15-16"
+      href="tailwind.generated.css?v=mrh-release-26.10.15-28"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-26.10.15-16"
+      href="styles.css?v=mrh-release-26.10.15-28"
       media="print"
       onload="
         this.media = 'all';
@@ -609,80 +609,99 @@
       <!-- RESOURCE PORTAL                                               -->
       <!-- ============================================================ -->
       <section id="view-resources" class="view-section">
-        <div class="resource-portal-shell">
-          <aside class="resource-portal-sidebar" aria-label="Dashboard tabs">
-            <div class="resource-portal-brand">
-              <i class="fa-solid fa-anchor" aria-hidden="true"></i>
-              <span>Dashboard</span>
-            </div>
+        <div class="resource-dashboard-layout">
+          <div class="resource-dashboard-topbar">
             <button
               type="button"
-              id="resource-dashboard-modules-nav"
-              class="resource-portal-nav-item is-active"
-              onclick="openResourceDashboardTab('MODULES')"
-              aria-current="page"
+              id="resource-dashboard-return"
+              class="resource-dashboard-return"
+              onclick="navigate('dashboard')"
+              aria-label="Return to main menu"
+              title="Return to main menu"
             >
-              <i class="fa-solid fa-book-open" aria-hidden="true"></i>
-              Modules
+              <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+              <span>Return</span>
             </button>
-            <button
-              type="button"
-              id="resource-dashboard-reviewers-nav"
-              class="resource-portal-nav-item"
-              onclick="openResourceDashboardTab('REVIEWERS')"
-            >
-              <i class="fa-solid fa-users" aria-hidden="true"></i>
-              Reviewers
-            </button>
-          </aside>
-
-          <section
-            class="resource-portal-browser resource-dashboard-browser"
-            aria-label="Resource dashboard"
-          >
-            <header class="resource-portal-browser-header">
-              <div>
-                <h2 id="resource-dashboard-title">Modules</h2>
-              </div>
-            </header>
-            <div class="resource-portal-toolbar">
-              <div class="resource-dashboard-filters">
-                <label class="resource-dashboard-control">
-                  <span>Year</span>
-                  <select id="resource-dashboard-filter-year">
-                    <option value="3">3</option>
-                  </select>
-                </label>
-                <label class="resource-dashboard-control">
-                  <span>Semester</span>
-                  <select id="resource-dashboard-filter-semester">
-                    <option value="1">1</option>
-                  </select>
-                </label>
-              </div>
+            <span class="resource-dashboard-title">Dashboard</span>
+          </div>
+          <div class="resource-portal-shell">
+            <aside class="resource-portal-sidebar" aria-label="Dashboard tabs">
               <button
                 type="button"
-                onclick="loadResourceDashboard()"
-                class="resource-dashboard-refresh"
-                aria-label="Refresh dashboard"
-                title="Refresh dashboard"
+                id="resource-dashboard-syllabus-nav"
+                class="resource-portal-nav-item"
+                onclick="openResourceDashboardTab('SYLLABUS')"
               >
-                <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+                <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
+                Syllabus
               </button>
-            </div>
-            <p
-              id="resource-portal-status"
-              class="resource-portal-status"
-              role="status"
-              aria-live="polite"
-            ></p>
-            <div class="resource-dashboard-table-scroll">
-              <table class="resource-dashboard-table">
-                <thead id="resource-dashboard-table-head"></thead>
-                <tbody id="resource-dashboard-table-body"></tbody>
-              </table>
-            </div>
-          </section>
+              <button
+                type="button"
+                id="resource-dashboard-modules-nav"
+                class="resource-portal-nav-item is-active"
+                onclick="openResourceDashboardTab('MODULES')"
+                aria-current="page"
+              >
+                <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+                Modules
+              </button>
+              <button
+                type="button"
+                id="resource-dashboard-reviewers-nav"
+                class="resource-portal-nav-item"
+                onclick="openResourceDashboardTab('REVIEWERS')"
+              >
+                <i class="fa-solid fa-users" aria-hidden="true"></i>
+                Reviewers
+              </button>
+            </aside>
+
+            <section
+              class="resource-portal-browser resource-dashboard-browser"
+              aria-label="Resource dashboard"
+            >
+              <div class="resource-portal-toolbar">
+                <div class="resource-dashboard-filters">
+                  <label class="resource-dashboard-control">
+                    <span>Year</span>
+                    <select id="resource-dashboard-filter-year">
+                      <option value="3">3</option>
+                    </select>
+                  </label>
+                  <label class="resource-dashboard-control">
+                    <span>Semester</span>
+                    <select id="resource-dashboard-filter-semester">
+                      <option value="1">1</option>
+                    </select>
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  onclick="loadResourceDashboard()"
+                  class="resource-dashboard-refresh"
+                  aria-label="Refresh dashboard"
+                  title="Refresh dashboard"
+                >
+                  <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+                </button>
+              </div>
+              <p
+                id="resource-portal-status"
+                class="resource-portal-status"
+                role="status"
+                aria-live="polite"
+              ></p>
+              <div class="resource-dashboard-table-scroll">
+                <table class="resource-dashboard-table">
+                  <thead id="resource-dashboard-table-head"></thead>
+                  <tbody id="resource-dashboard-table-body"></tbody>
+                </table>
+              </div>
+              <p class="resource-dashboard-update-note">
+                File updates may be delayed by up to 3 minutes.
+              </p>
+            </section>
+          </div>
         </div>
       </section>
 
@@ -2523,7 +2542,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 26.10.15-16</p>
+    <p id="site-version" class="site-version">Version 26.10.15-28</p>
 
     <div
       id="qr-transfer-modal"

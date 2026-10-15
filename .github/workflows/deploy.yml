@@ -70,6 +70,9 @@ jobs:
       - name: Check sync timestamp recovery
         run: npm run check:sync-timestamp
 
+      - name: Check optimized sync snapshots
+        run: npm run check:fast-sync
+
   deploy:
     needs: security
     environment:
