@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.15-9 - 2026-10-15
+
+### Fixed
+- Allow the Resource Dashboard request through frontend backend-payload validation.
+
 ## 26.10.15-8 - 2026-10-15
 
 ### Changed

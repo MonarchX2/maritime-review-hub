@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 
 const appCore = fs.readFileSync("app-core.js", "utf8");
+const appCoreNetwork = fs.readFileSync("app-core-network.js", "utf8");
 const backend = fs.readFileSync("backend/main.js", "utf8");
 const deckNavigation = fs.readFileSync("deck-nav-core.js", "utf8");
 const index = fs.readFileSync("index.html", "utf8");
@@ -36,6 +37,11 @@ assert.match(
   appCore,
   /async function loadResourceDashboard\(\)[\s\S]*?type: "get_resource_dashboard"/,
   "the dashboard should load its sheet data from the backend",
+);
+assert.match(
+  appCoreNetwork,
+  /get_resource_dashboard:\s*\{\s*required:\s*\[\],\s*allowed:\s*\["type",\s*"appVersion"\]/,
+  "the network request validator should allow the dashboard backend action",
 );
 assert.match(
   appCore,
@@ -165,7 +171,7 @@ const routedDashboard = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "get_resource_dashboard",
-          appVersion: "mrh-release-26.10.15-8",
+          appVersion: "mrh-release-26.10.15-9",
         }),
       },
     })
@@ -184,7 +190,7 @@ const disabledListing = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "list_public_resources",
-          appVersion: "mrh-release-26.10.15-8",
+          appVersion: "mrh-release-26.10.15-9",
         }),
       },
     })
@@ -201,7 +207,7 @@ const disabledPreview = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "get_resource_preview",
-          appVersion: "mrh-release-26.10.15-8",
+          appVersion: "mrh-release-26.10.15-9",
         }),
       },
     })

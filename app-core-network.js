@@ -512,6 +512,10 @@
       required: ["fileId"],
       allowed: ["type", "fileId", "appVersion"],
     },
+    get_resource_dashboard: {
+      required: [],
+      allowed: ["type", "appVersion"],
+    },
   });
 
   const STRING_FIELD_LIMITS = Object.freeze({
