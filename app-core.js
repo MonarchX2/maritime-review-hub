@@ -5986,12 +5986,170 @@
   let resourceDashboardData = null;
   let resourceDashboardActiveTab = "MODULES";
   let resourceDashboardLoadingPromise = null;
+  let reviewerAuthConfig = null;
+  let reviewerAuthConfigPromise = null;
+  let reviewerIdentityToken = "";
+  let reviewerAuthorizedEmail = "";
+  let reviewerPendingEnrollmentToken = "";
+  let reviewerDashboardRequestGeneration = 0;
   const RESOURCE_DASHBOARD_CACHE_KEY = "resource_dashboard_cache_v1";
   let resourceDashboardSelectedYear = "3";
   let resourceDashboardSelectedSemester = "1";
 
+  function getResourceDeviceIdentity(createIfMissing = true) {
+    const storageKey = "mrh_device_identity_v1";
+    const identityPattern =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+    const cookieName = "mrh_device_identity_v1";
+    let storedIdentity = "";
+    let cookieIdentity = "";
+    let storageValue = "";
+    let storageAvailable = false;
+    let storageReadFailed = false;
+    let cookieReadFailed = false;
+    try {
+      const storage = globalScope.localStorage;
+      storageValue = String(storage.getItem(storageKey) || "").trim().toLowerCase();
+      storageAvailable = true;
+    } catch (error) {
+      storageAvailable = false;
+      storageReadFailed = true;
+    }
+    try {
+      const cookie = String(globalScope.document?.cookie || "")
+        .split("; ")
+        .find((entry) => entry.startsWith(`${cookieName}=`));
+      cookieIdentity = cookie
+        ? decodeURIComponent(cookie.slice(cookieName.length + 1))
+            .trim()
+            .toLowerCase()
+        : "";
+    } catch (error) {
+      cookieReadFailed = true;
+    }
+    const validStorageIdentity = identityPattern.test(storageValue);
+    const validCookieIdentity = identityPattern.test(cookieIdentity);
+    if (
+      validStorageIdentity &&
+      validCookieIdentity &&
+      storageValue !== cookieIdentity
+    ) {
+      throw new Error(
+        "Saved device identities do not match. Contact the administrator; the identity was not changed.",
+      );
+    }
+    if (storageValue && !validStorageIdentity && !validCookieIdentity) {
+      throw new Error(
+        "The saved device identity is damaged. It was not replaced; contact the administrator.",
+      );
+    }
+    if (cookieIdentity && !validCookieIdentity && !validStorageIdentity) {
+      throw new Error(
+        "The saved device identity is damaged. It was not replaced; contact the administrator.",
+      );
+    }
+    storedIdentity = validStorageIdentity
+      ? storageValue
+      : validCookieIdentity
+        ? cookieIdentity
+        : "";
+    if (storedIdentity) {
+      persistResourceDeviceIdentity(storedIdentity, storageAvailable);
+      return storedIdentity;
+    }
+    if (!createIfMissing) return "";
+    if (storageReadFailed || cookieReadFailed)
+      throw new Error(
+        "The saved device identity could not be checked. Enable site storage and reload; no replacement was generated.",
+      );
+
+    const cryptoApi = globalScope.crypto || globalThis.crypto;
+    if (!cryptoApi?.getRandomValues)
+      throw new Error("Secure device identity generation is unavailable.");
+    const bytes = new Uint8Array(16);
+    cryptoApi.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+    const identity = [
+      hex.slice(0, 8),
+      hex.slice(8, 12),
+      hex.slice(12, 16),
+      hex.slice(16, 20),
+      hex.slice(20),
+    ].join("-");
+    persistResourceDeviceIdentity(identity, storageAvailable);
+    return identity;
+  }
+
+  function persistResourceDeviceIdentity(identity, storageAvailable) {
+    const storageKey = "mrh_device_identity_v1";
+    let persisted = false;
+    if (storageAvailable !== false) {
+      try {
+        globalScope.localStorage.setItem(storageKey, identity);
+        persisted = true;
+      } catch (error) {
+        storageAvailable = false;
+      }
+    }
+    try {
+      if (globalScope.document) {
+        globalScope.document.cookie =
+          `mrh_device_identity_v1=${encodeURIComponent(identity)}; ` +
+          "Max-Age=315360000; Path=/; SameSite=Strict; Secure";
+        const cookie = String(globalScope.document.cookie || "")
+          .split("; ")
+          .find((entry) => entry.startsWith("mrh_device_identity_v1="));
+        if (
+          cookie &&
+          decodeURIComponent(cookie.slice("mrh_device_identity_v1=".length)) ===
+            identity
+        )
+          persisted = true;
+      }
+    } catch (error) {
+      // Local storage may still preserve the identity when cookies are unavailable.
+    }
+    if (!persisted)
+      throw new Error(
+        "The device identity could not be saved. Enable site storage and try again.",
+      );
+  }
+
   function openResourceDashboardTab(tabName) {
-    if (!["MODULES", "SYLLABUS"].includes(tabName)) return false;
+    if (!["MODULES", "REVIEWERS", "SYLLABUS"].includes(tabName)) return false;
+    if (tabName === "REVIEWERS") {
+      if (!reviewerIdentityToken) {
+        const status = document.getElementById("resource-reviewer-auth-status");
+        if (status)
+          status.textContent = "Sign in with an approved Google account first.";
+        return false;
+      }
+      resourceDashboardActiveTab = tabName;
+      const reviewersNav = document.getElementById(
+        "resource-dashboard-reviewers-nav",
+      );
+      const modulesNav = document.getElementById(
+        "resource-dashboard-modules-nav",
+      );
+      const syllabusNav = document.getElementById(
+        "resource-dashboard-syllabus-nav",
+      );
+      [
+        [modulesNav, false],
+        [reviewersNav, true],
+        [syllabusNav, false],
+      ].forEach(([button, isActive]) => {
+        if (!button) return;
+        button.classList.toggle("is-active", isActive);
+        if (isActive) button.setAttribute("aria-current", "page");
+        else button.removeAttribute("aria-current");
+      });
+      return loadReviewerDashboard();
+    }
     resourceDashboardActiveTab = tabName;
     const modulesNav = document.getElementById(
       "resource-dashboard-modules-nav",
@@ -6015,6 +6173,8 @@
 
     if (resourceDashboardData) {
       renderResourceDashboardTab();
+      if (reviewerIdentityToken && tabName !== "REVIEWERS")
+        void logModuleDashboardAccess();
       return true;
     }
     return loadResourceDashboard();
@@ -6290,6 +6450,470 @@
       });
       semesterFilterControl.dataset.initialized = "true";
     }
+    const signoutButton = document.getElementById(
+      "resource-reviewer-signout",
+    );
+    if (signoutButton && !signoutButton.dataset.initialized) {
+      signoutButton.addEventListener("click", signOutReviewer);
+      signoutButton.dataset.initialized = "true";
+    }
+  }
+
+  async function initializeReviewerAuth() {
+    if (reviewerAuthConfigPromise) return reviewerAuthConfigPromise;
+    reviewerAuthConfigPromise = (async () => {
+      const authStatus = document.getElementById(
+        "resource-reviewer-auth-status",
+      );
+      const signInButton = document.getElementById(
+        "resource-reviewer-signin-button",
+      );
+      const enrollmentForm = document.getElementById(
+        "resource-reviewer-enrollment-form",
+      );
+      if (enrollmentForm && !enrollmentForm.dataset.initialized) {
+        enrollmentForm.addEventListener("submit", requestReviewerEnrollment);
+        enrollmentForm.dataset.initialized = "true";
+      }
+      const reviewersNav = document.getElementById(
+        "resource-dashboard-reviewers-nav",
+      );
+      try {
+        const response = await globalScope.AppNetwork.callBackend(
+          { type: "get_reviewer_auth_config" },
+          { timeoutMs: 15000, maxRetries: 0 },
+        );
+        if (
+          response?.status !== "success" ||
+          typeof response.enabled !== "boolean" ||
+          typeof response.clientId !== "string"
+        ) {
+          throw new Error(
+            "The reviewer sign-in service returned invalid configuration.",
+          );
+        }
+        reviewerAuthConfig = response;
+        if (!reviewerAuthConfig.enabled) {
+          if (authStatus)
+            authStatus.textContent =
+              "Reviewer sign-in is not configured. Contact the site administrator.";
+          return false;
+        }
+        if (!reviewerAuthConfig.clientId) {
+          throw new Error("The reviewer sign-in client ID is missing.");
+        }
+
+        if (!globalScope.google?.accounts?.id) {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src = "https://accounts.google.com/gsi/client";
+            script.async = true;
+            script.defer = true;
+            script.onload = resolve;
+            script.onerror = () =>
+              reject(new Error("Unable to load Google sign-in."));
+            document.head.appendChild(script);
+          });
+        }
+        if (!globalScope.google?.accounts?.id)
+          throw new Error("Google sign-in did not initialize.");
+
+        globalScope.google.accounts.id.initialize({
+          client_id: reviewerAuthConfig.clientId,
+          callback: (credentialResponse) => {
+            void completeReviewerSignIn(credentialResponse?.credential || "");
+          },
+          auto_select: false,
+          cancel_on_tap_outside: true,
+        });
+        if (signInButton) {
+          signInButton.replaceChildren();
+          globalScope.google.accounts.id.renderButton(signInButton, {
+            type: "standard",
+            theme: "outline",
+            size: "large",
+            text: "signin_with",
+            shape: "rectangular",
+          });
+        }
+        if (authStatus)
+          authStatus.textContent =
+            "Sign in with your Google account. New accounts require administrator approval.";
+        return true;
+      } catch (error) {
+        reviewerAuthConfigPromise = null;
+        if (authStatus)
+          authStatus.textContent = `Google sign-in is unavailable: ${String(
+            error?.message || error,
+          )}`;
+        (globalScope.DebugUtils || console).error(
+          "Unable to initialize reviewer sign-in.",
+          error,
+        );
+        return false;
+      }
+    })();
+    return reviewerAuthConfigPromise;
+  }
+
+  async function recoverReviewerDeviceIdentity(idToken) {
+    const authStatus = document.getElementById(
+      "resource-reviewer-auth-status",
+    );
+    const deviceIdentity = getResourceDeviceIdentity(false);
+    const response = await globalScope.AppNetwork.callBackend(
+      {
+        type: "request_reviewer_enrollment",
+        idToken,
+        ...(deviceIdentity ? { deviceIdentity } : {}),
+      },
+      { timeoutMs: 30000, maxRetries: 0 },
+    );
+    if (response?.status !== "success")
+      throw new Error(
+        response?.message || "Unable to recover the registered device.",
+      );
+    if (response.requiresEnrollment) {
+      reviewerPendingEnrollmentToken = idToken;
+      const enrollmentForm = document.getElementById(
+        "resource-reviewer-enrollment-form",
+      );
+      if (enrollmentForm) enrollmentForm.hidden = false;
+      if (authStatus)
+        authStatus.textContent =
+          "This Google account is not registered yet. Submit an access request; an administrator must approve it.";
+      return false;
+    }
+    if (typeof response.deviceIdentity !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          response.deviceIdentity,
+        )) {
+      throw new Error("The saved account device identity is invalid.");
+    }
+    persistResourceDeviceIdentity(response.deviceIdentity);
+    if (!response.active) {
+      reviewerPendingEnrollmentToken = "";
+      if (authStatus)
+        authStatus.textContent =
+          "Your account request is on file and awaiting administrator approval.";
+      return false;
+    }
+    return true;
+  }
+
+  async function completeReviewerSignIn(idToken, recoveryAttempted = false) {
+    const authStatus = document.getElementById(
+      "resource-reviewer-auth-status",
+    );
+    if (!idToken) {
+      if (authStatus) authStatus.textContent = "Google sign-in did not return a credential.";
+      return false;
+    }
+    if (authStatus) authStatus.textContent = "Checking approved account…";
+    try {
+      let deviceIdentity = getResourceDeviceIdentity(false);
+      if (!deviceIdentity) {
+        const recovered = await recoverReviewerDeviceIdentity(idToken);
+        if (!recovered) return false;
+        deviceIdentity = getResourceDeviceIdentity(false);
+      }
+      const response = await globalScope.AppNetwork.callBackend(
+        { type: "verify_reviewer_access", idToken, deviceIdentity },
+        { timeoutMs: 30000, maxRetries: 0 },
+      );
+      if (
+        response?.status !== "success" ||
+        typeof response.email !== "string" ||
+        !response.email.trim()
+      ) {
+        throw new Error(
+          response?.message || "This account is not authorized.",
+        );
+      }
+      reviewerIdentityToken = idToken;
+      reviewerAuthorizedEmail = response.email;
+      const reviewersNav = document.getElementById(
+        "resource-dashboard-reviewers-nav",
+      );
+      if (reviewersNav) {
+        reviewersNav.disabled = false;
+        reviewersNav.setAttribute("aria-disabled", "false");
+      }
+      const signInButton = document.getElementById(
+        "resource-reviewer-signin-button",
+      );
+      const signoutButton = document.getElementById(
+        "resource-reviewer-signout",
+      );
+      if (signInButton) signInButton.hidden = true;
+      if (signoutButton) signoutButton.hidden = false;
+      if (authStatus)
+        authStatus.textContent = `Signed in as ${[
+          response.firstName,
+          response.middleInitial,
+          response.lastName,
+        ]
+          .filter(Boolean)
+          .join(" ") || reviewerAuthorizedEmail}.`;
+      return openResourceDashboardTab("REVIEWERS");
+    } catch (error) {
+      reviewerIdentityToken = "";
+      reviewerAuthorizedEmail = "";
+      if (error?.code === "FORBIDDEN" && idToken && !recoveryAttempted) {
+        try {
+          const recovered = await recoverReviewerDeviceIdentity(idToken);
+          return recovered
+            ? completeReviewerSignIn(idToken, true)
+            : false;
+        } catch (recoveryError) {
+          if (authStatus)
+            authStatus.textContent = `Unable to recover account access: ${String(
+              recoveryError?.message || recoveryError,
+            )}`;
+          (globalScope.DebugUtils || console).error(
+            "Unable to recover the registered reviewer device identity.",
+            recoveryError,
+          );
+          return false;
+        }
+      }
+      if (authStatus)
+        authStatus.textContent = String(
+          error?.message || "This Google account is not authorized.",
+        );
+      return false;
+    }
+  }
+
+  async function requestReviewerEnrollment(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const authStatus = document.getElementById(
+      "resource-reviewer-auth-status",
+    );
+    const submitButton = form.querySelector('button[type="submit"]');
+    if (!reviewerPendingEnrollmentToken) {
+      if (authStatus)
+        authStatus.textContent = "Sign in with Google before requesting access.";
+      return false;
+    }
+    const formData = new FormData(form);
+    const lastName = String(formData.get("lastName") || "").trim();
+    const firstName = String(formData.get("firstName") || "").trim();
+    const middleInitial = String(formData.get("middleInitial") || "").trim();
+    if (!lastName || !firstName) {
+      if (authStatus)
+        authStatus.textContent = "Enter your last name and first name.";
+      return false;
+    }
+    if (submitButton) submitButton.disabled = true;
+    const enrollmentToken = reviewerPendingEnrollmentToken;
+    if (authStatus) authStatus.textContent = "Submitting account request…";
+    try {
+      const response = await globalScope.AppNetwork.callBackend(
+        {
+          type: "request_reviewer_enrollment",
+          idToken: enrollmentToken,
+          deviceIdentity: getResourceDeviceIdentity(),
+          lastName,
+          firstName,
+          middleInitial,
+        },
+        { timeoutMs: 30000, maxRetries: 0 },
+      );
+      if (response?.status !== "success")
+        throw new Error(
+          response?.message || "The account request could not be submitted.",
+        );
+      if (typeof response.deviceIdentity === "string") {
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(response.deviceIdentity)) {
+          throw new Error("The registered device identity is invalid.");
+        }
+        persistResourceDeviceIdentity(response.deviceIdentity);
+      }
+      reviewerPendingEnrollmentToken = "";
+      const enrollmentForm = document.getElementById(
+        "resource-reviewer-enrollment-form",
+      );
+      if (enrollmentForm) enrollmentForm.hidden = true;
+      if (response.active) {
+        if (authStatus) authStatus.textContent = "Account found. Signing you in…";
+        return completeReviewerSignIn(enrollmentToken);
+      }
+      if (authStatus)
+        authStatus.textContent = response.existing
+          ? "Your access request is already on file and awaiting administrator approval."
+          : "Your access request was submitted. An administrator must approve it before you can sign in.";
+      return true;
+    } catch (error) {
+      if (authStatus)
+        authStatus.textContent = `Unable to submit account request: ${String(
+          error?.message || error,
+        )}`;
+      (globalScope.DebugUtils || console).error(
+        "Unable to submit reviewer account enrollment.",
+        error,
+      );
+      return false;
+    } finally {
+      if (submitButton) submitButton.disabled = false;
+    }
+  }
+
+  async function logModuleDashboardAccess() {
+    if (!reviewerIdentityToken) return false;
+    try {
+      await globalScope.AppNetwork.callBackend(
+        {
+          type: "log_module_access",
+          idToken: reviewerIdentityToken,
+          deviceIdentity: getResourceDeviceIdentity(false),
+        },
+        { timeoutMs: 15000, maxRetries: 0 },
+      );
+      return true;
+    } catch (error) {
+      const status = document.getElementById("resource-reviewer-auth-status");
+      if (status)
+        status.textContent = `Unable to record module access: ${String(
+          error?.message || error,
+        )}`;
+      (globalScope.DebugUtils || console).error(
+        "Unable to record module dashboard access.",
+        error,
+      );
+      return false;
+    }
+  }
+
+  function signOutReviewer() {
+    reviewerIdentityToken = "";
+    reviewerAuthorizedEmail = "";
+    reviewerDashboardRequestGeneration += 1;
+    if (resourceDashboardData) {
+      resourceDashboardData.REVIEWERS = {
+        columns: [],
+        rows: [],
+        links: [],
+        linkTitles: [],
+        linkTypes: [],
+        truncated: false,
+      };
+    }
+    const reviewersNav = document.getElementById(
+      "resource-dashboard-reviewers-nav",
+    );
+    if (reviewersNav) {
+      reviewersNav.disabled = true;
+      reviewersNav.setAttribute("aria-disabled", "true");
+    }
+    const signInButton = document.getElementById(
+      "resource-reviewer-signin-button",
+    );
+    const signoutButton = document.getElementById(
+      "resource-reviewer-signout",
+    );
+    if (signInButton) signInButton.hidden = false;
+    if (signoutButton) signoutButton.hidden = true;
+    const authStatus = document.getElementById(
+      "resource-reviewer-auth-status",
+    );
+    if (authStatus)
+      authStatus.textContent =
+        "Signed out. Reviewer data has been cleared from this page.";
+    if (resourceDashboardActiveTab === "REVIEWERS") {
+      resourceDashboardActiveTab = "MODULES";
+      renderResourceDashboardTab();
+    }
+    globalScope.google?.accounts?.id?.disableAutoSelect?.();
+    return true;
+  }
+
+  async function loadReviewerDashboard() {
+    if (!reviewerIdentityToken) return false;
+    const requestGeneration = ++reviewerDashboardRequestGeneration;
+    const requestToken = reviewerIdentityToken;
+    const status = document.getElementById("resource-portal-status");
+    const tableHead = document.getElementById(
+      "resource-dashboard-table-head",
+    );
+    const tableBody = document.getElementById(
+      "resource-dashboard-table-body",
+    );
+    if (!status || !tableHead || !tableBody) return false;
+    status.textContent = "Loading reviewer resources…";
+    status.setAttribute("aria-busy", "true");
+    try {
+      const response = await globalScope.AppNetwork.callBackend(
+        {
+          type: "get_reviewer_dashboard",
+          idToken: requestToken,
+          deviceIdentity: getResourceDeviceIdentity(false),
+        },
+        { timeoutMs: 30000, maxRetries: 0 },
+      );
+      if (
+        requestGeneration !== reviewerDashboardRequestGeneration ||
+        requestToken !== reviewerIdentityToken
+      )
+        return false;
+      if (
+        response?.status !== "success" ||
+        typeof response.email !== "string" ||
+        response.email.toLowerCase() !== reviewerAuthorizedEmail.toLowerCase() ||
+        !Array.isArray(response.tab?.columns) ||
+        !Array.isArray(response.tab?.rows) ||
+        !response.tab.rows.every(Array.isArray)
+      ) {
+        throw new Error(
+          response?.message ||
+            "The reviewer dashboard returned invalid or unauthorized data.",
+        );
+      }
+      resourceDashboardData = {
+        ...(resourceDashboardData || {}),
+        REVIEWERS: response.tab,
+      };
+      renderResourceDashboardTab();
+      return true;
+    } catch (error) {
+      if (
+        requestGeneration !== reviewerDashboardRequestGeneration ||
+        requestToken !== reviewerIdentityToken
+      )
+        return false;
+      if (resourceDashboardData) {
+        resourceDashboardData.REVIEWERS = {
+          columns: [],
+          rows: [],
+          links: [],
+          linkTitles: [],
+          linkTypes: [],
+          truncated: false,
+        };
+      }
+      if (["UNAUTHORIZED", "FORBIDDEN"].includes(error?.code)) {
+        signOutReviewer();
+        status.textContent =
+          error.code === "UNAUTHORIZED"
+            ? "Google sign-in expired. Sign in again to view reviewer resources."
+            : "This account is no longer authorized for reviewer resources.";
+      } else {
+        tableHead.replaceChildren();
+        tableBody.replaceChildren();
+        status.textContent = `Unable to load reviewer resources: ${String(
+          error?.message || error,
+        )}`;
+      }
+      (globalScope.DebugUtils || console).error(
+        "Unable to load reviewer resources.",
+        error,
+      );
+      return false;
+    } finally {
+      if (requestGeneration === reviewerDashboardRequestGeneration)
+        status.removeAttribute("aria-busy");
+    }
   }
 
   function normalizeResourceDashboardTabs(tabs) {
@@ -6392,6 +7016,7 @@
     if (resourceDashboardLoadingPromise) return resourceDashboardLoadingPromise;
 
     initializeResourceDashboardControls();
+    void initializeReviewerAuth();
     const storage = globalScope.StorageUtils;
     const appVersion = String(globalScope.__MRH_APP__?.version || "").trim();
     let cachedDashboard = null;
@@ -6449,9 +7074,14 @@
     }
     resourceDashboardLoadingPromise = (async () => {
       try {
+        const deviceIdentity = getResourceDeviceIdentity(false);
         let response = await globalScope.AppNetwork.callBackend(
           {
             type: "get_resource_dashboard",
+            ...(deviceIdentity ? { deviceIdentity } : {}),
+            ...(reviewerIdentityToken
+              ? { idToken: reviewerIdentityToken }
+              : {}),
             ...(cachedDashboard ? { version: cachedDashboard.version } : {}),
           },
           { timeoutMs: 30000, maxRetries: 0 },
@@ -6463,11 +7093,22 @@
             );
           }
           renderResourceDashboardTab();
+          if (
+            reviewerIdentityToken &&
+            resourceDashboardActiveTab === "REVIEWERS"
+          )
+            return loadReviewerDashboard();
           return true;
         }
         if (response?.notModified === true) {
           response = await globalScope.AppNetwork.callBackend(
-            { type: "get_resource_dashboard" },
+            {
+              type: "get_resource_dashboard",
+              ...(deviceIdentity ? { deviceIdentity } : {}),
+              ...(reviewerIdentityToken
+                ? { idToken: reviewerIdentityToken }
+                : {}),
+            },
             { timeoutMs: 30000, maxRetries: 0 },
           );
         }
@@ -6491,6 +7132,11 @@
           }
         }
         renderResourceDashboardTab();
+        if (
+          reviewerIdentityToken &&
+          resourceDashboardActiveTab === "REVIEWERS"
+        )
+          return loadReviewerDashboard();
         return true;
       } catch (error) {
         status.textContent = `Unable to load dashboard: ${String(

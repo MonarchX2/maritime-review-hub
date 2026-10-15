@@ -62,6 +62,7 @@ let savedProgress;
 let navigatedTo;
 let saveCount = 0;
 let confirmationResult = true;
+let confirmationArgs = [];
 const context = {
   module: { exports: {} },
   state: {
@@ -88,7 +89,10 @@ const context = {
     savedProgress = JSON.parse(JSON.stringify(progress));
     return Promise.resolve(true);
   },
-  requestConfirmation: () => Promise.resolve(confirmationResult),
+  requestConfirmation: (...args) => {
+    confirmationArgs = args;
+    return Promise.resolve(confirmationResult);
+  },
   navigate: (viewId) => {
     if (viewId !== "deck-review") navigatedTo = viewId;
     return true;
@@ -120,8 +124,13 @@ const source = fs.readFileSync("deck-review-core.js", "utf8");
 assert.ok(source.includes(marker));
 assert.match(
   source,
-  /<span>of \$\{totalPages\}<\/span>[\s\S]*?<span data-review-question-range class="text-sm font-normal text-white"><\/span>/,
-  "the question range should appear below the page count as normal-weight white text",
+  /<div class="flex items-center justify-center gap-1 text-sm font-bold text-gray-600 dark:text-gray-300">[\s\S]*?<span data-review-question-range class="text-sm font-bold text-gray-600 dark:text-gray-300"><\/span>/,
+  "the question range should match the page indicator's size, weight, and color",
+);
+assert.match(
+  source,
+  /<button onclick="changeStudyPage\(1\)" class="px-4 py-2 bg-purple-500/,
+  "Next must remain clickable on the last page to offer session exit",
 );
 const setup = `  currentReviewSubject = "Deck";\n  currentReviewQuestions = questions;\n  reviewMainElement = main;\n  reviewContainerElement = container;\n  derivedQuestionsCache = { questions, sortedQuestions: questions };\n  globalScope.setSortedQuestions = (sortedQuestions) => {\n    derivedQuestionsCache.sortedQuestions = sortedQuestions;\n  };\n  renderDeckReview = function () {
   const progress = state.prefs.studyProgress[currentReviewSubject];
@@ -247,6 +256,24 @@ assert.equal(progress.questionId, "q2");
   progress.questionId = "";
   progress.index = 0;
   main.scrollTop = 420;
+
+  progress.page = 2;
+  confirmationResult = false;
+  const canceledLastPageExit = await reviewCore.changeStudyPage(1);
+  assert.equal(canceledLastPageExit, false);
+  assert.equal(
+    progress.page,
+    2,
+    "canceling last-page exit keeps the current page",
+  );
+  assert.equal(navigatedTo, undefined);
+  assert.equal(
+    confirmationArgs[0],
+    "You are on the last page. Do you want to exit this review session? Your progress will be saved.",
+  );
+  assert.equal(confirmationArgs[1], "Exit Review Session");
+
+  progress.page = 1;
   confirmationResult = false;
   const previousSaveCount = saveCount;
   const canceled = await reviewCore.returnFromStudyMode();

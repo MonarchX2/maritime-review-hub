@@ -1,64 +1,111 @@
 # Resources access and viewing
 
-The Resources portal reads the Google Drive folder configured in the private
-Apps Script backend. It treats folder names matching
-`^REVIEWERS v\d{2}\.\d{2}\.\d{2}$` as restricted, and denies folder listings and
-file previews anywhere beneath a matching folder. Until recipient identity and
-folder grants are implemented, those resources are unavailable to everyone
-through the website. A folder name classifies resources; it does not authorize
-anyone to access them.
+The old Drive folder-listing and preview endpoints remain disabled. The
+Resource Dashboard links to Drive resources directly; its Reviewer dashboard
+rows are returned only after server-side account authorization. A folder name
+classifies resources; it does not authorize anyone to access them.
 
-The Reviewer access screen is informational until secure Google sign-in,
-server-side identity verification, and reviewer-folder grants are configured.
-Its sign-in control is intentionally disabled; the frontend does not claim to
-authenticate or authorize visitors.
+Reviewer access uses Google sign-in for authorization only; the site does not
+create a separate password. A user who is not yet registered can submit their
+name and device ID after Google sign-in. The backend verifies the Google ID
+token and adds a **pending, inactive** row to the `Accounts` worksheet in the
+`MRH_Accounts` spreadsheet. An administrator must set `Active` to `TRUE`
+before access is granted. The backend checks the token's audience, issuer,
+expiry, and verified email, then requires an active spreadsheet row matching
+both the email and device identity on every reviewer request. Missing or
+invalid configuration fails closed.
 
-The rule is exact and case-sensitive: a dot immediately after `v` is not
-accepted. Rename any folder intended to be restricted so it uses the required
-`REVIEWERS vNN.NN.NN` spelling before relying on this protection.
+The approved identity token exists only in page memory and is sent to the
+backend for each protected request. Reviewer dashboard data is also kept only
+in page memory and cleared on sign-out or page reload. The public dashboard
+does not return reviewer rows.
 
-Items that do not match the reviewer rule remain available through the public
-website portal. Do not place content in the configured root unless it is meant
-to be visible to website visitors. Drive permissions are not changed by the
-portal. Folder listing metadata is cached on the server for at most 30 seconds
-to speed up repeat browsing. The requested folder's ancestry is checked against
-Drive on every request, and preview requests independently check the file's
-current ancestry. A folder rename or move can therefore leave its old listing
-metadata visible for up to 30 seconds, but cannot grant access to a restricted
-folder or its files. The frontend also removes obsolete portal-listing entries
-from session storage when the application starts.
+The browser keeps a random UUID in local storage and a long-lived first-party
+cookie; it is never displayed in the interface. After site storage is cleared,
+Google sign-in automatically recovers the single device ID already registered
+for that verified email before retrying authorization. The ID is not silently
+replaced when saved copies conflict or are damaged. A user account is kept to
+one device ID; administrators must resolve conflicting rows manually. The
+device ID is an enrollment and audit identifier, not a secret or independent
+proof of identity.
 
-Supported file previews are requested from the backend and kept only in
-page memory for display. Document bytes are not stored in the frontend session
-cache, IndexedDB, service-worker cache, or server metadata cache. The in-page
-viewer can be expanded for focused reading. Unsupported file types show a
-message instead of a download link. The portal does not expose original Drive
-URLs or download controls.
+A website cannot read an immutable hardware identifier. Clearing all browser
+storage before the account has been registered, removing or changing the
+spreadsheet record, switching accounts, or using another browser/device can
+prevent recovery or create a different browser UUID. The UUID is not
+cryptographically bound to physical hardware, and must not be treated as
+tamper-proof or used as an authentication factor.
 
-These interface restrictions are not a technical barrier to copying. A visitor
-who can view a document can inspect network responses, use browser tools, or
-capture the displayed content. The Apps Script preview operation returns the
-document bytes to the browser for rendering, and Google Apps Script
-`ContentService` does not provide a way to set arbitrary response headers such
-as `Cache-Control: no-store`. Do not treat hiding browser controls as
-download-proof protection.
+Google Drive permissions are not changed by the dashboard. Anyone who can open
+a linked file can copy or capture its contents. Ensure reviewer files are not
+shared as "Anyone" or "Anyone with the link", since those settings could let
+someone bypass app sign-in by opening a copied Drive URL.
 
-## Recipient access prerequisites
+## Configure accounts and access logs
 
-The existing Apps Script web app is deployed for public access and executes
-Drive operations as its owner. Existing deck password checks are shared-secret
-checks and do not verify a recipient's identity. They are not suitable for
-reviewer-folder authorization. No reviewer identities or folder grants are
-configured by this portal.
+The Apps Script web app remains anonymously callable and executes Drive
+operations as its owner. The protected reviewer endpoint therefore does not
+trust a browser-supplied email: it verifies the Google ID token with Google's
+token information endpoint, checks that the token was issued for the configured
+OAuth client, then checks the verified email and device against the
+administrator-managed `Accounts` worksheet. The OAuth client ID and spreadsheet
+ID are configuration, not credentials. The spreadsheet remains
+administrator-managed and must not be exposed as a public editable document.
 
-To enable reviewer access safely, first choose a verified identity provider
-(for example, Google sign-in with a server-validated identity token), create
-server-managed recipient-to-folder grants, and enforce those grants on every
-listing and preview request. Apps Script's anonymous web-app execution does
-not itself identify the website visitor; if a supported authenticated
-deployment cannot provide a verifiable identity, move these operations to a
-backend that can. Validate Drive's actual inherited permissions before
-changing them. Do not broaden sharing on the root to implement reviewer access.
+To initialize sign-in and access logging:
+
+1. Create a Google OAuth client for the web application and add the deployed
+   site's exact origin to its authorized JavaScript origins.
+2. Create a private Google spreadsheet named `MRH_Accounts` and copy its
+   spreadsheet ID from its URL.
+3. In Apps Script **Project Settings → Script Properties**, set
+   `MRH_GOOGLE_OAUTH_CLIENT_ID` to the OAuth web client ID and
+   `MRH_ACCOUNTS_SPREADSHEET_ID` to the spreadsheet ID.
+4. In the Apps Script editor, run `initializeMRHAccountsSpreadsheet()` once
+   and approve its Sheets access. It creates the `Accounts`, `MODULE`, and
+   `REVIEWERS` tabs and headers without replacing existing rows. Keep the
+   spreadsheet private to administrators.
+5. The first time an unregistered user signs in, they submit `Last Name`,
+   `First Name`, and optional `Middle Initial`. The site sends the verified
+   Google identity and internal device ID to the backend, which creates a pending row
+   with `Active=FALSE`. Verify the name and email, then set `Active` to `TRUE`
+   in `Accounts` to authorize the user. The exact columns are `Email`,
+   `Device Identity`, `Last Name`, `First Name`, `Middle Initial`, and
+   `Active`. There should be one row per email; do not manually create another
+   device ID for an existing account.
+6. Enable the Apps Script Advanced Google service **Google Sheets API v4**
+   (the project manifest declares this service; enable the Google Sheets API
+   in the linked Cloud project if prompted), deploy a new web-app version, and
+   authorize the external-request and Sheets scopes.
+7. Test sign-in from a registered account/device and from an unregistered
+   email/device. Only the registered pair should be allowed to open Reviewers.
+
+Successful access is appended to the `MODULE` or `REVIEWERS` tab with a
+timestamp, email, device ID, name fields, and event type. Anonymous module
+dashboard requests are recorded with a blank email and the browser device ID;
+the module dashboard remains public. Reviewer rows are logged only after
+server-side account authorization succeeds. Removing an account or setting
+`Active` to false takes effect after the account cache expires (at most 30
+seconds). Google token verification results are cached by token hash for at
+most five minutes; the raw token is not stored in the sheet or cache key.
+
+The spreadsheet log is suitable for moderate usage, not unlimited traffic:
+Google Apps Script execution and Sheets API quotas still apply. Appends use the
+Sheets API's server-side append operation to avoid a shared application lock.
+For sustained high-volume traffic, move audit events to a queue or managed
+database and monitor Apps Script / Sheets quota errors. The backend does not
+discard a failed protected reviewer log and return reviewer data anyway.
+
+The account sheet is the account authorization policy; it does not grant
+Google Drive permissions. Any links in reviewer dashboard rows still follow
+their own Drive sharing rules. Do not broaden sharing on the Drive root to
+implement reviewer access. Existing deck password checks remain shared-secret
+checks and are unrelated to account authorization.
+
+Apps Script anonymous deployment does not identify visitors on its own. If
+token verification or outbound token checks cannot be supported by the
+deployment, do not enable reviewer access; move protected operations to a
+backend that can validate the identity instead.
 
 For stronger online-only viewing, replace whole-file preview responses with a
 server-side rendering service that emits view-only page/image responses and

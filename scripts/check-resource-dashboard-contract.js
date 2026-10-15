@@ -3,8 +3,39 @@ const fs = require("node:fs");
 
 const appCore = fs.readFileSync("app-core.js", "utf8");
 const network = fs.readFileSync("app-core-network.js", "utf8");
+const indexHtml = fs.readFileSync("index.html", "utf8");
 const resourceStyles = fs.readFileSync("styles.css", "utf8");
 
+assert.doesNotMatch(
+  indexHtml,
+  /resource-reviewer-device-id|resource-reviewer-copy-device-id/,
+  "the reviewer sign-in panel must not expose or offer to copy the device ID",
+);
+assert.match(
+  appCore,
+  /async function recoverReviewerDeviceIdentity\(idToken\)[\s\S]*?persistResourceDeviceIdentity\(response\.deviceIdentity\)[\s\S]*?completeReviewerSignIn\(idToken, true\)/,
+  "a Google-authenticated returning user should recover the saved device identity after clearing browser storage",
+);
+assert.doesNotMatch(
+  appCore,
+  /function updateResourceDeviceIdentityDisplay|resource-reviewer-device-id|resource-reviewer-copy-device-id/,
+  "frontend code must not display or copy the device ID",
+);
+assert.match(
+  appCore,
+  /async function completeReviewerSignIn[\s\S]*?let deviceIdentity = getResourceDeviceIdentity\(false\)[\s\S]*?recoverReviewerDeviceIdentity\(idToken\)/,
+  "sign-in should recover an existing server-side ID without generating a new local one",
+);
+assert.match(
+  appCore,
+  /async function loadResourceDashboard\(\)[\s\S]*?const deviceIdentity = getResourceDeviceIdentity\(false\)[\s\S]*?type: "get_resource_dashboard",\s*\.\.\.\(deviceIdentity \? \{ deviceIdentity \} : \{\}\)/,
+  "opening the public dashboard must not create a device identity as a side effect",
+);
+assert.match(
+  appCore,
+  /async function requestReviewerEnrollment\(event\)[\s\S]*?deviceIdentity: getResourceDeviceIdentity\(\)/,
+  "a device identity should only be created after a new user submits an enrollment request",
+);
 assert.match(
   appCore,
   /AppNetwork\.callBackend\(\s*\{\s*type:\s*"get_resource_dashboard"/,
@@ -151,15 +182,10 @@ assert.match(
   /resource-dashboard-syllabus-nav/,
   "the dashboard should expose a separate syllabus navigation tab",
 );
-assert.doesNotMatch(
-  appCore,
-  /if \(!\["MODULES", "REVIEWERS", "SYLLABUS"\]\.includes\(tabName\)\)/,
-  "the dashboard tab handler should reject selecting the locked Reviewers tab",
-);
 assert.match(
   appCore,
-  /if \(!\["MODULES", "SYLLABUS"\]\.includes\(tabName\)\) return false;/,
-  "the dashboard tab handler should only allow unlocked tabs",
+  /if \(!\["MODULES", "REVIEWERS", "SYLLABUS"\]\.includes\(tabName\)\) return false;[\s\S]*?if \(tabName === "REVIEWERS"\) \{[\s\S]*?if \(!reviewerIdentityToken\)/,
+  "the dashboard should allow reviewer navigation only after server-verified sign-in",
 );
 assert.match(
   appCore,
@@ -303,8 +329,13 @@ assert.match(
 );
 assert.match(
   network,
-  /get_resource_dashboard:\s*\{\s*required:\s*\[\],\s*allowed:\s*\["type",\s*"version",\s*"appVersion"\]/,
-  "the backend request validator should allow a cached dashboard version",
+  /get_resource_dashboard:\s*\{\s*required:\s*\[\],\s*allowed:\s*\["type",\s*"version",\s*"idToken",\s*"deviceIdentity",\s*"appVersion"\]/,
+  "the backend request validator should allow cached versions and optional module-access identity",
+);
+assert.match(
+  network,
+  /log_module_access:\s*\{\s*required:\s*\["idToken",\s*"deviceIdentity"\]/,
+  "module access logging should require both a verified identity token and device identity",
 );
 assert.match(
   network,

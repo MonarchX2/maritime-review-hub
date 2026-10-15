@@ -1,5 +1,32 @@
 # Changelog
 
+## 26.10.16-4 - 2026-10-16
+
+### Fixed
+- Avoid generating a device ID during public dashboard loads or before a returning Google account has had a chance to recover its registered identity.
+
+## 26.10.16-3 - 2026-10-16
+
+### Changed
+- Hide device IDs from the reviewer interface and recover the account's existing ID automatically after browser storage is cleared.
+
+## 26.10.16-2 - 2026-10-16
+
+### Added
+- Let verified Google users submit pending reviewer-account requests with their name and device identity; an administrator must activate each account.
+
+### Security
+- Preserve device identity in redundant browser storage, refuse silent replacement when saved copies are damaged or disagree, and restore an existing account identity after browser storage loss.
+
+## 26.10.16-1 - 2026-10-16
+
+### Added
+- Add Google account and registered-device authorization using an administrator-managed `MRH_Accounts` spreadsheet, with separate `MODULE` and `REVIEWERS` access logs.
+
+### Changed
+- Match review question-range typography to the page indicator and prompt before exiting Review Mode from the last page.
+- Cache backend dashboard and verified-account data to reduce repeated Drive, Sheets, and Google token-verification work.
+
 ## 26.10.15-29 - 2026-10-15
 
 ### Changed

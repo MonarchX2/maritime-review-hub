@@ -1,5 +1,5 @@
 {
-  "version": "26.10.15-29",
+  "version": "26.10.16-4",
   "scripts": {
     "build:css": "node scripts/build-css.js",
     "check:architecture": "node scripts/frontend-architecture-check.js",
@@ -28,7 +28,8 @@
     "check:fast-sync": "node scripts/check-fast-sync.js",
     "check:app-update-flow": "node scripts/check-app-update-flow.js",
     "check:resource-portal": "node scripts/check-resource-portal.js",
-    "check:resource-dashboard-contract": "node scripts/check-resource-dashboard-contract.js"
+    "check:resource-dashboard-contract": "node scripts/check-resource-dashboard-contract.js",
+    "check:reviewer-authorization": "node scripts/check-reviewer-authorization.js"
   },
   "devDependencies": {
     "@types/google-apps-script": "^2.0.12",

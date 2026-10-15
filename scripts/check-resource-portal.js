@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const vm = require("node:vm");
 
@@ -14,8 +15,23 @@ assert.match(
 );
 assert.match(
   index,
-  /id="resource-dashboard-reviewers-nav"[^>]*aria-label="Reviewers — locked until user accounts are set up"[^>]*title="Locked until user accounts are set up"[^>]*disabled[^>]*aria-disabled="true"[\s\S]*?fa-lock/,
-  "the Reviewers tab should be visibly and accessibly locked until user accounts are ready",
+  /id="resource-dashboard-reviewers-nav"[^>]*aria-label="Reviewers — sign in with an approved Google account"[^>]*title="Sign in with an approved Google account"[^>]*disabled[^>]*aria-disabled="true"[\s\S]*?fa-lock/,
+  "the Reviewers tab should remain locked until an approved account signs in",
+);
+assert.match(
+  index,
+  /resource-reviewer-auth-status[\s\S]*?resource-reviewer-signin-button[\s\S]*?resource-reviewer-signout/,
+  "the resource dashboard should include account sign-in and sign-out controls",
+);
+assert.match(
+  index,
+  /resource-reviewer-enrollment-form[\s\S]*?name="lastName"[\s\S]*?name="firstName"[\s\S]*?name="middleInitial"/,
+  "the sign-in panel should collect the names needed for new account enrollment",
+);
+assert.doesNotMatch(
+  index,
+  /resource-reviewer-device-id|resource-reviewer-copy-device-id/,
+  "the sign-in panel must not display or offer to copy the device identity",
 );
 assert.match(
   index,
@@ -170,7 +186,7 @@ assert.doesNotMatch(
 );
 const dashboardHandler =
   backend.match(
-    /function handleGetResourceDashboardRequest\(cachedVersion\)\s*\{[\s\S]*?\n\}/,
+    /function handleGetResourceDashboardRequest\(cachedVersion(?:,\s*accessData)?\)\s*\{[\s\S]*?\n\}/,
   )?.[0] || "";
 assert.match(
   backend,
@@ -255,6 +271,7 @@ const dashboardIndexModifiedTimes = {
   "modules_combined.json": 1000,
   "reviewers_combined.json": 2000,
 };
+const dashboardCacheValues = new Map();
 const dashboardIndexes = {
   "modules_combined.json": {
     b: "https://drive.google.com/open?id=",
@@ -330,6 +347,23 @@ const context = {
   Math,
   Date,
   Logger: { log() {} },
+  Utilities: {
+    DigestAlgorithm: { SHA_256: "SHA_256" },
+    Charset: { UTF_8: "UTF_8" },
+    computeDigest(_algorithm, value) {
+      return Array.from(
+        crypto.createHash("sha256").update(String(value), "utf8").digest(),
+        (byte) => (byte > 127 ? byte - 256 : byte),
+      );
+    },
+  },
+  CacheService: {
+    getScriptCache: () => ({
+      get: (key) => dashboardCacheValues.get(key) || null,
+      put: (key, value) => dashboardCacheValues.set(key, value),
+      remove: (key) => dashboardCacheValues.delete(key),
+    }),
+  },
   DriveApp: {
     getFolderById(id) {
       assert.equal(id, "1cP2FBOW-Jryu9eknJgDjUZcxx9qwC22Z");
@@ -480,7 +514,11 @@ assert.equal(
   "success",
   "the public backend should expose the Drive-index dashboard action",
 );
-assert.equal(indexReadCount, 4);
+assert.equal(
+  indexReadCount,
+  2,
+  "a shared server cache should avoid rereading unchanged dashboard index contents",
+);
 
 const unchangedDashboard = JSON.parse(
   context
@@ -498,7 +536,7 @@ const unchangedDashboard = JSON.parse(
 assert.equal(unchangedDashboard.notModified, true);
 assert.equal(
   indexReadCount,
-  4,
+  2,
   "unchanged dashboard indexes should not be parsed or returned again",
 );
 
@@ -520,7 +558,7 @@ assert.equal(updatedDashboard.status, "success");
 assert.ok(updatedDashboard.version !== routedDashboard.version);
 assert.equal(
   indexReadCount,
-  6,
+  4,
   "updated dashboard indexes should cause the complete dashboard to refresh",
 );
 
@@ -560,7 +598,7 @@ assert.equal(
 );
 assert.equal(
   indexReadCount,
-  6,
+  4,
   "disabled Drive requests should not read dashboard index files",
 );
 

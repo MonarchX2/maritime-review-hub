@@ -391,6 +391,73 @@ async function checkBackendErrorHandling() {
     "private-resource preview requests should include only the file ID and app version",
   );
 
+  const reviewerDeviceIdentity =
+    "01234567-89ab-4cde-8fab-0123456789ab";
+  await network.callBackend(
+    { type: "get_reviewer_auth_config" },
+    { maxRetries: 0 },
+  );
+  assert.deepEqual(JSON.parse(lastPostBody), {
+    type: "get_reviewer_auth_config",
+    appVersion: networkContext.__MRH_APP__.version,
+  });
+  await network.callBackend(
+    {
+      type: "verify_reviewer_access",
+      idToken: "test-google-id-token",
+      deviceIdentity: reviewerDeviceIdentity,
+    },
+    { maxRetries: 0 },
+  );
+  assert.deepEqual(JSON.parse(lastPostBody), {
+    type: "verify_reviewer_access",
+    idToken: "test-google-id-token",
+    deviceIdentity: reviewerDeviceIdentity,
+    appVersion: networkContext.__MRH_APP__.version,
+  });
+  await network.callBackend(
+    {
+      type: "log_module_access",
+      idToken: "test-google-id-token",
+      deviceIdentity: reviewerDeviceIdentity,
+    },
+    { maxRetries: 0 },
+  );
+  assert.deepEqual(JSON.parse(lastPostBody), {
+    type: "log_module_access",
+    idToken: "test-google-id-token",
+    deviceIdentity: reviewerDeviceIdentity,
+    appVersion: networkContext.__MRH_APP__.version,
+  });
+  await network.callBackend(
+    {
+      type: "get_resource_dashboard",
+      deviceIdentity: reviewerDeviceIdentity,
+      idToken: "test-google-id-token",
+      version: "dashboard-version",
+    },
+    { maxRetries: 0 },
+  );
+  assert.deepEqual(JSON.parse(lastPostBody), {
+    type: "get_resource_dashboard",
+    deviceIdentity: reviewerDeviceIdentity,
+    idToken: "test-google-id-token",
+    version: "dashboard-version",
+    appVersion: networkContext.__MRH_APP__.version,
+  });
+  await assert.rejects(
+    network.callBackend(
+      {
+        type: "verify_reviewer_access",
+        idToken: "test-google-id-token",
+        deviceIdentity: "not-a-uuid",
+      },
+      { maxRetries: 0 },
+    ),
+    /Backend field 'deviceIdentity' must be a UUID/,
+    "malformed device identities should be rejected before sending a request",
+  );
+
   networkContext.fetch = async () =>
     new Response(
       JSON.stringify({

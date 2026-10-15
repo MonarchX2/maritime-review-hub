@@ -9,9 +9,9 @@
     <meta name="theme-color" content="#1e3a8a" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src blob:; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data: blob:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
+      content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src blob: https://accounts.google.com; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data: blob:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net https://accounts.google.com; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-26.10.15-29" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-26.10.16-4" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-26.10.15-29"
+      href="icon.svg?v=mrh-release-26.10.16-4"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-26.10.15-29" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-26.10.16-4" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-26.10.15-29"
+      href="tailwind.generated.css?v=mrh-release-26.10.16-4"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-26.10.15-29"
+      href="styles.css?v=mrh-release-26.10.16-4"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-26.10.15-29"
+      href="tailwind.generated.css?v=mrh-release-26.10.16-4"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-26.10.15-29"
+      href="styles.css?v=mrh-release-26.10.16-4"
       media="print"
       onload="
         this.media = 'all';
@@ -649,8 +649,8 @@
                 type="button"
                 id="resource-dashboard-reviewers-nav"
                 class="resource-portal-nav-item"
-                aria-label="Reviewers — locked until user accounts are set up"
-                title="Locked until user accounts are set up"
+                aria-label="Reviewers — sign in with an approved Google account"
+                title="Sign in with an approved Google account"
                 disabled
                 aria-disabled="true"
               >
@@ -665,6 +665,59 @@
               aria-label="Resource dashboard"
             >
               <div class="resource-portal-toolbar">
+                <div class="resource-reviewer-auth">
+                  <p
+                    id="resource-reviewer-auth-status"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    Sign in with your Google account. New accounts require administrator approval.
+                  </p>
+                  <div id="resource-reviewer-signin-button"></div>
+                  <form
+                    id="resource-reviewer-enrollment-form"
+                    class="resource-reviewer-enrollment"
+                    hidden
+                  >
+                    <label>
+                      <span>Last Name</span>
+                      <input
+                        id="resource-reviewer-last-name"
+                        name="lastName"
+                        autocomplete="family-name"
+                        maxlength="100"
+                        required
+                      />
+                    </label>
+                    <label>
+                      <span>First Name</span>
+                      <input
+                        id="resource-reviewer-first-name"
+                        name="firstName"
+                        autocomplete="given-name"
+                        maxlength="100"
+                        required
+                      />
+                    </label>
+                    <label>
+                      <span>Middle Initial</span>
+                      <input
+                        id="resource-reviewer-middle-initial"
+                        name="middleInitial"
+                        autocomplete="additional-name"
+                        maxlength="10"
+                      />
+                    </label>
+                    <button type="submit">Request account access</button>
+                  </form>
+                  <button
+                    type="button"
+                    id="resource-reviewer-signout"
+                    hidden
+                  >
+                    Sign out
+                  </button>
+                </div>
                 <div class="resource-dashboard-filters">
                   <label class="resource-dashboard-control">
                     <span>Year</span>
@@ -2546,7 +2599,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 26.10.15-29</p>
+    <p id="site-version" class="site-version">Version 26.10.16-4</p>
 
     <div
       id="qr-transfer-modal"

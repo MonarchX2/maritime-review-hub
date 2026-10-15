@@ -496,6 +496,31 @@
   }
 
   const REQUEST_SCHEMAS = Object.freeze({
+    get_reviewer_auth_config: { required: [], allowed: ["type", "appVersion"] },
+    verify_reviewer_access: {
+      required: ["idToken", "deviceIdentity"],
+      allowed: ["type", "idToken", "deviceIdentity", "appVersion"],
+    },
+    request_reviewer_enrollment: {
+      required: ["idToken"],
+      allowed: [
+        "type",
+        "idToken",
+        "deviceIdentity",
+        "lastName",
+        "firstName",
+        "middleInitial",
+        "appVersion",
+      ],
+    },
+    get_reviewer_dashboard: {
+      required: ["idToken", "deviceIdentity"],
+      allowed: ["type", "idToken", "deviceIdentity", "appVersion"],
+    },
+    log_module_access: {
+      required: ["idToken", "deviceIdentity"],
+      allowed: ["type", "idToken", "deviceIdentity", "appVersion"],
+    },
     get_deck: {
       required: ["subject"],
       allowed: ["type", "subject", "password", "page", "limit", "appVersion"],
@@ -520,7 +545,7 @@
     },
     get_resource_dashboard: {
       required: [],
-      allowed: ["type", "version", "appVersion"],
+      allowed: ["type", "version", "idToken", "deviceIdentity", "appVersion"],
     },
   });
 
@@ -530,6 +555,11 @@
     password: 500,
     folderId: 200,
     fileId: 200,
+    idToken: 8192,
+    deviceIdentity: 36,
+    lastName: 100,
+    firstName: 100,
+    middleInitial: 10,
     appVersion: 128,
   });
   const MAX_BACKEND_PAYLOAD_BYTES = 500000;
@@ -632,6 +662,21 @@
           );
         }
       });
+    }
+
+    if (
+      payload.deviceIdentity !== undefined &&
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        payload.deviceIdentity,
+      )
+    ) {
+      throw new Error("Backend field 'deviceIdentity' must be a UUID.");
+    }
+    if (
+      payload.middleInitial !== undefined &&
+      typeof payload.middleInitial !== "string"
+    ) {
+      throw new Error("Backend field 'middleInitial' must be a string.");
     }
 
     const serialized = JSON.stringify(payload);

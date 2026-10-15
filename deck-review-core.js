@@ -507,9 +507,9 @@
                         />
                         <span>of ${totalPages}</span>
                     </div>
-                    <span data-review-question-range class="text-sm font-normal text-white"></span>
+                    <span data-review-question-range class="text-sm font-bold text-gray-600 dark:text-gray-300"></span>
                 </div>
-                <button onclick="changeStudyPage(1)" ${currentPage === totalPages ? "disabled" : ""} class="px-4 py-2 bg-purple-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600 transition-colors">
+                <button onclick="changeStudyPage(1)" class="px-4 py-2 bg-purple-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600 transition-colors">
                     <span class="hidden sm:inline mr-1">Next</span> <i class="fa-solid fa-arrow-right"></i>
                 </button>
             </div>
@@ -895,6 +895,19 @@
     const progress = state.prefs.studyProgress[currentReviewSubject];
     if (!progress) return;
     const currentPage = progress.page || 1;
+    const pageSize = getStudySetting("studyPageSize") || 10;
+    const totalPages =
+      pageSize === "All"
+        ? 1
+        : Math.max(
+            1,
+            Math.ceil(getOrderedReviewQuestions().length / Number(pageSize)),
+          );
+    if (delta > 0 && currentPage >= totalPages)
+      return returnFromStudyMode(
+        "You are on the last page. Do you want to exit this review session? Your progress will be saved.",
+        "Exit Review Session",
+      );
     if (delta < 0 && currentPage <= 1) {
       void returnFromStudyMode();
       return;
@@ -902,7 +915,6 @@
     const nextPage = Math.max(1, currentPage + delta);
     if (nextPage === currentPage) return;
     progress.page = nextPage;
-    const pageSize = getStudySetting("studyPageSize") || 10;
     if (pageSize !== "All") {
       const targetQuestion =
         getOrderedReviewQuestions()[(nextPage - 1) * pageSize];
@@ -919,10 +931,13 @@
     reRenderDeckReview();
   }
 
-  async function returnFromStudyMode() {
+  async function returnFromStudyMode(
+    message = "Do you want to return to the Main Menu? Your study progress will be saved.",
+    title = "Return to Main Menu",
+  ) {
     const confirmed = await globalScope.requestConfirmation?.(
-      "Do you want to return to the Main Menu? Your study progress will be saved.",
-      "Return to Main Menu",
+      message,
+      title,
     );
     if (!confirmed) return false;
 
