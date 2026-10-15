@@ -508,6 +508,10 @@
       required: [],
       allowed: ["type", "folderId", "appVersion"],
     },
+    get_resource_preview: {
+      required: ["fileId"],
+      allowed: ["type", "fileId", "appVersion"],
+    },
   });
 
   const STRING_FIELD_LIMITS = Object.freeze({
@@ -515,6 +519,7 @@
     subject: 500,
     password: 500,
     folderId: 200,
+    fileId: 200,
     appVersion: 128,
   });
   const MAX_BACKEND_PAYLOAD_BYTES = 500000;

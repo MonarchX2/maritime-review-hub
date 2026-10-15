@@ -5970,8 +5970,110 @@
 
   let resourcePortalCurrentFolderId = "";
   let resourcePortalRequestGeneration = 0;
+  let resourcePortalPreviewGeneration = 0;
   let resourcePortalItemCount = 0;
   let resourcePortalStatusMessage = "";
+  let resourcePortalPreviewObjectUrl = "";
+  const resourcePortalListingCache = new Map();
+  const RESOURCE_PORTAL_CACHE_TTL_MS = 5 * 60 * 1000;
+
+  function isValidResourcePortalCacheEntry(entry) {
+    const age = Number(entry?.cachedAt);
+    return Boolean(
+      entry &&
+        Number.isFinite(age) &&
+        Date.now() >= age &&
+        Date.now() - age < RESOURCE_PORTAL_CACHE_TTL_MS &&
+        entry.response?.status === "success" &&
+        Array.isArray(entry.response.items) &&
+        Array.isArray(entry.response.breadcrumbs) &&
+        !entry.response.breadcrumbs.some((crumb) =>
+          /^REVIEWERS v\.\d{2}\.\d{2}\.\d{2}$/i.test(String(crumb.name || "")),
+        ),
+    );
+  }
+
+  function getResourcePortalCacheEntry(cacheKey) {
+    let entry = resourcePortalListingCache.get(cacheKey);
+    if (!isValidResourcePortalCacheEntry(entry)) {
+      const storage = globalScope.StorageUtils;
+      entry =
+        typeof storage?.getSessionStoredJSON === "function"
+          ? storage.getSessionStoredJSON(
+              `resource_portal_listing_${cacheKey}`,
+              null,
+            )
+          : null;
+    }
+    if (!isValidResourcePortalCacheEntry(entry)) {
+      removeResourcePortalCacheEntry(cacheKey);
+      return null;
+    }
+
+    const response = {
+      ...entry.response,
+      items: entry.response.items.filter(
+        (item) =>
+          !(
+            item.type === "folder" &&
+            /^REVIEWERS v\.\d{2}\.\d{2}\.\d{2}$/i.test(
+              String(item.name || ""),
+            )
+          ),
+      ),
+    };
+    const validatedEntry = { cachedAt: entry.cachedAt, response };
+    resourcePortalListingCache.set(cacheKey, validatedEntry);
+    return validatedEntry;
+  }
+
+  function removeResourcePortalCacheEntry(cacheKey) {
+    resourcePortalListingCache.delete(cacheKey);
+    globalScope.StorageUtils?.removeSessionStoredItem?.(
+      `resource_portal_listing_${cacheKey}`,
+    );
+  }
+
+  function storeResourcePortalCacheEntry(cacheKey, response) {
+    if (
+      resourcePortalListingCache.size >= 10 &&
+      !resourcePortalListingCache.has(cacheKey)
+    ) {
+      const oldestKey = resourcePortalListingCache.keys().next().value;
+      removeResourcePortalCacheEntry(oldestKey);
+    }
+
+    const entry = { cachedAt: Date.now(), response };
+    resourcePortalListingCache.set(cacheKey, entry);
+    if (
+      JSON.stringify(entry).length <= 200000 &&
+      typeof globalScope.StorageUtils?.setSessionStoredJSON === "function"
+    ) {
+      globalScope.StorageUtils.setSessionStoredJSON(
+        `resource_portal_listing_${cacheKey}`,
+        entry,
+      );
+    }
+  }
+
+  function renderResourcePortalListing(response, statusSuffix = "") {
+    renderResourcePortalBreadcrumbs(response.breadcrumbs);
+    renderResourcePortalItems(response.items);
+    resourcePortalCurrentFolderId = String(response.folder?.id || "");
+    resourcePortalItemCount = response.items.length;
+    const count = response.items.length;
+    resourcePortalStatusMessage = response.truncated
+      ? `Showing the first ${count} items. This folder has more items than can be displayed at once.`
+      : count === 0
+        ? "This folder has no publicly shared items."
+        : `${count} ${count === 1 ? "item" : "items"}`;
+    const search = document.getElementById("resource-portal-search");
+    filterResourcePortalItems(search?.value || "");
+    if (statusSuffix) {
+      const status = document.getElementById("resource-portal-status");
+      if (status) status.textContent += ` · ${statusSuffix}`;
+    }
+  }
 
   function openResourcePortalRoot() {
     resourcePortalCurrentFolderId = "";
@@ -6103,39 +6205,45 @@
         );
         previewButton.type = "button";
         previewButton.addEventListener("click", () => {
-          previewResourceFile(item.id, item.name, item.mimeType);
+          void previewResourceFile(
+            item.id,
+            item.name,
+            item.mimeType,
+            item.isPublic === true,
+          );
         });
 
-        const driveUrl = new URL(item.url);
-        if (
-          driveUrl.protocol !== "https:" ||
-          !["drive.google.com", "docs.google.com"].includes(
-            driveUrl.hostname,
-          )
-        ) {
-          throw new Error("Drive returned an unsupported file link.");
-        }
-        const openInDrive = createResourcePortalElement(
-          "a",
-          "shrink-0 rounded-md px-2 py-1 text-gray-500 hover:bg-gray-100 hover:text-brand-700 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-brand-300",
-        );
-        openInDrive.href = driveUrl.href;
-        openInDrive.target = "_blank";
-        openInDrive.rel = "noopener noreferrer";
-        openInDrive.setAttribute(
-          "aria-label",
-          `Open ${item.name} in Google Drive`,
-        );
-        openInDrive.title = "Open in Google Drive";
-        openInDrive.className = "resource-portal-drive-link";
-        const externalIcon = createResourcePortalElement(
-          "i",
-          "fa-solid fa-arrow-up-right-from-square",
-        );
-        externalIcon.setAttribute("aria-hidden", "true");
-        openInDrive.appendChild(externalIcon);
         nameCell.appendChild(previewButton);
-        nameCell.appendChild(openInDrive);
+        if (item.isPublic === true) {
+          const driveUrl = new URL(item.url);
+          if (
+            driveUrl.protocol !== "https:" ||
+            !["drive.google.com", "docs.google.com"].includes(
+              driveUrl.hostname,
+            )
+          ) {
+            throw new Error("Drive returned an unsupported file link.");
+          }
+          const openInDrive = createResourcePortalElement(
+            "a",
+            "resource-portal-drive-link",
+          );
+          openInDrive.href = driveUrl.href;
+          openInDrive.target = "_blank";
+          openInDrive.rel = "noopener noreferrer";
+          openInDrive.setAttribute(
+            "aria-label",
+            `Open ${item.name} in Google Drive`,
+          );
+          openInDrive.title = "Open in Google Drive";
+          const externalIcon = createResourcePortalElement(
+            "i",
+            "fa-solid fa-arrow-up-right-from-square",
+          );
+          externalIcon.setAttribute("aria-hidden", "true");
+          openInDrive.appendChild(externalIcon);
+          nameCell.appendChild(openInDrive);
+        }
       }
 
       row.appendChild(nameCell);
@@ -6206,24 +6314,144 @@
     return `https://drive.google.com/file/d/${encodeURIComponent(id)}/preview`;
   }
 
-  function previewResourceFile(fileId, fileName, mimeType) {
+  async function previewResourceFile(
+    fileId,
+    fileName,
+    mimeType,
+    isPublic = true,
+  ) {
     const preview = document.getElementById("resource-portal-preview");
     const title = document.getElementById("resource-portal-preview-title");
     const frame = document.getElementById("resource-portal-preview-frame");
+    const status = document.getElementById(
+      "resource-portal-preview-status",
+    );
+    const download = document.getElementById(
+      "resource-portal-preview-download",
+    );
     if (!preview || !title || !frame) return false;
 
-    frame.src = getResourcePreviewUrl(fileId, mimeType);
+    const previewGeneration = ++resourcePortalPreviewGeneration;
+    if (resourcePortalPreviewObjectUrl) {
+      URL.revokeObjectURL(resourcePortalPreviewObjectUrl);
+      resourcePortalPreviewObjectUrl = "";
+    }
+    frame.removeAttribute("src");
+    frame.hidden = false;
+    if (download) {
+      download.hidden = true;
+      download.removeAttribute("href");
+      download.removeAttribute("download");
+    }
     title.textContent = String(fileName || "File preview");
     frame.title = `Preview of ${title.textContent}`;
     preview.hidden = false;
     preview.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
-    return true;
+
+    if (isPublic !== false) {
+      if (status) status.hidden = true;
+      frame.src = getResourcePreviewUrl(fileId, mimeType);
+      return true;
+    }
+
+    frame.hidden = true;
+    if (status) {
+      status.textContent = "Loading file from the private Drive folder…";
+      status.hidden = false;
+    }
+    try {
+      const response = await globalScope.AppNetwork.callBackend(
+        { type: "get_resource_preview", fileId },
+        { timeoutMs: 25000, maxRetries: 0 },
+      );
+      if (previewGeneration !== resourcePortalPreviewGeneration) return false;
+      if (
+        response?.status !== "success" ||
+        typeof response.data !== "string" ||
+        !/^[A-Za-z0-9+/]*={0,2}$/.test(response.data)
+      ) {
+        throw new Error(
+          response?.message || "The preview service returned invalid file data.",
+        );
+      }
+
+      const binary = atob(response.data);
+      const bytes = Uint8Array.from(binary, (character) =>
+        character.charCodeAt(0),
+      );
+      const responseMimeType = String(response.mimeType || "").toLowerCase();
+      const isSafeInlineType =
+        responseMimeType === "application/pdf" ||
+        responseMimeType === "text/plain" ||
+        responseMimeType === "application/json" ||
+        /^image\/(?:avif|gif|jpeg|png|webp)$/.test(responseMimeType) ||
+        /^(?:audio|video)\/[a-z0-9.+-]+$/.test(responseMimeType);
+      const previewMimeType =
+        responseMimeType === "application/json"
+          ? "text/plain"
+          : isSafeInlineType
+            ? responseMimeType
+            : "application/octet-stream";
+      const previewBlob = new Blob([bytes], { type: previewMimeType });
+      resourcePortalPreviewObjectUrl = URL.createObjectURL(previewBlob);
+      if (download) {
+        download.href = resourcePortalPreviewObjectUrl;
+        download.download = String(response.name || fileName || "resource")
+          .replace(/[\\/:*?"<>|]/g, "_")
+          .slice(0, 200);
+        download.hidden = false;
+      }
+      if (isSafeInlineType) {
+        frame.src = resourcePortalPreviewObjectUrl;
+        frame.hidden = false;
+      }
+      if (status) {
+        status.textContent = isSafeInlineType
+          ? "Private Drive file preview loaded."
+          : "This file type cannot be previewed here. Use Download instead.";
+        status.hidden = false;
+      }
+      return true;
+    } catch (error) {
+      if (previewGeneration !== resourcePortalPreviewGeneration) return false;
+      if (status) {
+        status.textContent = `Unable to load file preview: ${String(
+          error?.message || error,
+        )}`;
+        status.hidden = false;
+      }
+      (globalScope.DebugUtils || console).error(
+        "Unable to preview private Drive file.",
+        error,
+      );
+      return false;
+    }
   }
 
   function closeResourcePreview() {
+    resourcePortalPreviewGeneration += 1;
     const preview = document.getElementById("resource-portal-preview");
     const frame = document.getElementById("resource-portal-preview-frame");
+    const status = document.getElementById(
+      "resource-portal-preview-status",
+    );
+    const download = document.getElementById(
+      "resource-portal-preview-download",
+    );
     if (frame) frame.removeAttribute("src");
+    if (resourcePortalPreviewObjectUrl) {
+      URL.revokeObjectURL(resourcePortalPreviewObjectUrl);
+      resourcePortalPreviewObjectUrl = "";
+    }
+    if (download) {
+      download.hidden = true;
+      download.removeAttribute("href");
+      download.removeAttribute("download");
+    }
+    if (status) {
+      status.textContent = "";
+      status.hidden = true;
+    }
     if (preview) preview.hidden = true;
   }
 
@@ -6233,17 +6461,28 @@
     if (!status || !list) return false;
 
     const requestGeneration = ++resourcePortalRequestGeneration;
-    resourcePortalStatusMessage = "Loading shared resources…";
-    status.textContent = "Loading shared resources…";
+    const requestedFolderId = String(
+      folderId || resourcePortalCurrentFolderId || "",
+    );
+    const cacheKey = requestedFolderId || "root";
+    const cachedEntry = getResourcePortalCacheEntry(cacheKey);
+    const hasFreshCache = Boolean(cachedEntry);
+    if (hasFreshCache) {
+      renderResourcePortalListing(cachedEntry.response, "refreshing");
+    } else {
+      resourcePortalStatusMessage = "Loading shared resources…";
+      status.textContent = resourcePortalStatusMessage;
+      list.replaceChildren();
+    }
     status.setAttribute("aria-busy", "true");
 
     try {
       const response = await globalScope.AppNetwork.callBackend(
         {
           type: "list_public_resources",
-          folderId: String(folderId || resourcePortalCurrentFolderId || ""),
+          folderId: requestedFolderId,
         },
-        { timeoutMs: 20000, maxRetries: 1 },
+        { timeoutMs: 30000, maxRetries: 0 },
       );
       if (requestGeneration !== resourcePortalRequestGeneration) return false;
       if (
@@ -6254,21 +6493,12 @@
         throw new Error("The resource service returned an invalid response.");
       }
 
-      resourcePortalCurrentFolderId = String(response.folder?.id || "");
-      renderResourcePortalBreadcrumbs(response.breadcrumbs);
-      renderResourcePortalItems(response.items);
-      resourcePortalItemCount = response.items.length;
-      const count = response.items.length;
-      resourcePortalStatusMessage = response.truncated
-        ? `Showing the first ${count} items. This folder has more items than can be displayed at once.`
-        : count === 0
-          ? "This folder has no publicly shared items."
-          : `${count} ${count === 1 ? "item" : "items"}`;
-      const search = document.getElementById("resource-portal-search");
-      filterResourcePortalItems(search?.value || "");
+      storeResourcePortalCacheEntry(cacheKey, response);
+      renderResourcePortalListing(response);
       return true;
     } catch (error) {
       if (requestGeneration !== resourcePortalRequestGeneration) return false;
+      removeResourcePortalCacheEntry(cacheKey);
       list.replaceChildren();
       resourcePortalItemCount = 0;
       resourcePortalStatusMessage = `Unable to load shared resources: ${String(

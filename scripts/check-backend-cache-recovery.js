@@ -18,6 +18,9 @@ const context = {
         (byte) => (byte > 127 ? byte - 256 : byte),
       );
     },
+    base64Encode(value) {
+      return Buffer.from(value).toString("base64");
+    },
   },
 };
 const currentClientVersion = "mrh-release-10.15.26-6";
@@ -44,6 +47,11 @@ assert.equal(
   "the current deployed release must pass the backend version gate",
 );
 assert.equal(
+  context.isSupportedClientVersion("mrh-10.16.0-c1c3af44770c"),
+  true,
+  "a SemVer release without a numeric prerelease suffix must pass the backend version gate",
+);
+assert.equal(
   context.isSupportedClientVersion("mrh-10.15.26-4-89f6603f02cb"),
   false,
   "the previous release must be rejected by the backend version gate",
@@ -53,6 +61,202 @@ assert.equal(
   false,
   "requests without a client version must be rejected",
 );
+
+function createIterator(items) {
+  let index = 0;
+  return {
+    hasNext() {
+      return index < items.length;
+    },
+    next() {
+      return items[index++];
+    },
+  };
+}
+
+const rootId = context.RESOURCE_PORTAL_ROOT_FOLDER_ID;
+const access = {
+  ANYONE: "ANYONE",
+  ANYONE_WITH_LINK: "ANYONE_WITH_LINK",
+  PRIVATE: "PRIVATE",
+};
+const resourceCache = new Map();
+const rootFolder = {
+  getId: () => rootId,
+  getName: () => "Maritime Resources",
+  getParents: () => createIterator([]),
+  getSharingAccess: () => access.PRIVATE,
+};
+const publicFolder = {
+  getId: () => "public-folder-id",
+  getName: () => "General Resources",
+  getParents: () => createIterator([rootFolder]),
+  getSharingAccess: () => access.ANYONE_WITH_LINK,
+  getUrl: () => "https://drive.google.com/drive/folders/public-folder-id",
+};
+const privateFolder = {
+  getId: () => "private-folder-id",
+  getName: () => "Restricted Materials",
+  getParents: () => createIterator([rootFolder]),
+  getSharingAccess: () => access.PRIVATE,
+  getUrl: () => "https://drive.google.com/drive/folders/private-folder-id",
+};
+const reviewerFolder = {
+  getId: () => "reviewer-folder-id",
+  getName: () => "REVIEWERS v.01.02.03",
+  getParents: () => createIterator([rootFolder]),
+  getSharingAccess: () => access.ANYONE,
+};
+const publicFile = {
+  getId: () => "public-file-id",
+  getName: () => "Guidelines.pdf",
+  getMimeType: () => "application/pdf",
+  getLastUpdated: () => new Date("2026-01-01T00:00:00Z"),
+  getUrl: () => "https://drive.google.com/file/d/public-file-id/view",
+  getSharingAccess: () => access.ANYONE,
+};
+const privateFile = {
+  getId: () => "private-file-id",
+  getName: () => "Restricted.pdf",
+  getMimeType: () => "application/pdf",
+  getLastUpdated: () => new Date("2026-01-01T00:00:00Z"),
+  getUrl: () => "https://drive.google.com/file/d/private-file-id/view",
+  getSharingAccess: () => access.PRIVATE,
+};
+let rootFolderListReads = 0;
+rootFolder.getFolders = () => {
+  rootFolderListReads += 1;
+  return createIterator([publicFolder, privateFolder, reviewerFolder]);
+};
+rootFolder.getFiles = () => createIterator([publicFile, privateFile]);
+publicFolder.getFolders = () => createIterator([]);
+publicFolder.getFiles = () => createIterator([]);
+privateFolder.getFolders = () => createIterator([]);
+privateFolder.getFiles = () => createIterator([]);
+reviewerFolder.getFolders = () => createIterator([]);
+reviewerFolder.getFiles = () => createIterator([]);
+context.DriveApp = {
+  Access: access,
+  getFolderById(folderId) {
+    if (folderId === rootId) return rootFolder;
+    if (folderId === "reviewer-folder-id") return reviewerFolder;
+    return privateFolder;
+  },
+  getFileById(fileId) {
+    return fileId === "reviewer-file-id"
+      ? reviewerDriveFile
+      : privateDriveFile;
+  },
+};
+context.CacheService = {
+  getScriptCache() {
+    return {
+      get(key) {
+        return resourceCache.get(key) || null;
+      },
+      put(key, value) {
+        resourceCache.set(key, value);
+      },
+      remove(key) {
+        resourceCache.delete(key);
+      },
+    };
+  },
+};
+context.ContentService = {
+  MimeType: { JSON: "application/json" },
+  createTextOutput(text) {
+    return {
+      text,
+      setMimeType() {
+        return this;
+      },
+    };
+  },
+};
+const rootListing = JSON.parse(
+  context.handleListPublicResourcesRequest({}).text,
+);
+assert.equal(
+  rootListing.status,
+  "success",
+  "the configured portal root can be browsed even if the container is not public",
+);
+assert.deepEqual(
+  rootListing.items.map((item) => item.name),
+  [
+    "General Resources",
+    "Restricted Materials",
+    "Guidelines.pdf",
+    "Restricted.pdf",
+  ],
+  "the public website includes private Drive contents but omits reviewer folders",
+);
+assert.equal(
+  rootListing.items.find((item) => item.name === "Restricted Materials")
+    .isPublic,
+  false,
+  "private Drive folders are marked for website-proxied access",
+);
+context.handleListPublicResourcesRequest({ folderId: rootId });
+assert.equal(
+  rootFolderListReads,
+  1,
+  "a recent public root listing should be served from cache without relisting Drive items",
+);
+assert.equal(
+  JSON.parse(
+    context.handleListPublicResourcesRequest({
+      folderId: "private-folder-id",
+    }).text,
+  ).status,
+  "success",
+  "a private Drive subfolder within the portal root can be browsed on the public website",
+);
+assert.equal(
+  JSON.parse(
+    context.handleListPublicResourcesRequest({
+      folderId: "reviewer-folder-id",
+    }).text,
+  ).code,
+  "FORBIDDEN",
+  "reviewer-named folders remain inaccessible through the website",
+);
+const privateDriveFile = {
+  getParents: () => createIterator([privateFolder]),
+  getMimeType: () => "application/pdf",
+  getSize: () => 2,
+  getBlob: () => ({
+    getBytes: () => [72, 105],
+  }),
+  getName: () => "Restricted.pdf",
+};
+const reviewerDriveFile = {
+  getParents: () => createIterator([reviewerFolder]),
+};
+const privatePreview = JSON.parse(
+  context.handleGetResourcePreviewRequest({ fileId: "private-file-id" }).text,
+);
+assert.equal(
+  privatePreview.status,
+  "success",
+  "a private Drive file within the portal root can be served to the public website",
+);
+assert.equal(
+  privatePreview.data,
+  "SGk=",
+  "private file preview data is returned as base64 for an in-site viewer",
+);
+assert.equal(
+  JSON.parse(
+    context.handleGetResourcePreviewRequest({
+      fileId: "reviewer-file-id",
+    }).text,
+  ).code,
+  "FORBIDDEN",
+  "private files inside reviewer folders cannot be served through the website",
+);
+
 assert.equal(
   context.passwordMatches("test", "test"),
   true,

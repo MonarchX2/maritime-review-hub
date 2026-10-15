@@ -1,9 +1,11 @@
 # Changelog
 
-## Unreleased
+## 10.16.1 - 2026-10-15
 
 ### Changed
-- Restyle Resources as a responsive Drive file browser with current-folder search, file types, and modified dates while keeping reviewer folders excluded.
+- Restyle Resources as a responsive Drive file browser with current-folder search, file types, and modified dates.
+- Allow the website to browse and preview files under the private Drive root without changing Drive sharing; reviewer-named folders remain excluded.
+- Cache recent folder listings so previously visited resources appear immediately while refreshing.
 
 ## 10.15.26-10 - 2026-10-15
 

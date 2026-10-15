@@ -349,6 +349,20 @@ async function checkBackendErrorHandling() {
     },
     "public-resource listing requests should pass payload validation and include the folder ID",
   );
+  const privatePreviewResponse = await network.callBackend(
+    { type: "get_resource_preview", fileId: "private-file-id" },
+    { maxRetries: 0 },
+  );
+  assert.equal(privatePreviewResponse.status, "success");
+  assert.deepEqual(
+    JSON.parse(lastPostBody),
+    {
+      type: "get_resource_preview",
+      fileId: "private-file-id",
+      appVersion: networkContext.__MRH_APP__.version,
+    },
+    "private-resource preview requests should include only the file ID and app version",
+  );
 
   networkContext.fetch = async () =>
     new Response(

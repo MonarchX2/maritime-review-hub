@@ -9,9 +9,9 @@
     <meta name="theme-color" content="#1e3a8a" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src https://drive.google.com https://docs.google.com; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
+      content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src https://drive.google.com https://docs.google.com blob:; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data: blob:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-10.15.26-10" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-10.16.1-1" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-10.15.26-10"
+      href="icon.svg?v=mrh-release-10.16.1-1"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-10.15.26-10" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-10.16.1-1" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-10.15.26-10"
+      href="tailwind.generated.css?v=mrh-release-10.16.1-1"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-10.15.26-10"
+      href="styles.css?v=mrh-release-10.16.1-1"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-10.15.26-10"
+      href="tailwind.generated.css?v=mrh-release-10.16.1-1"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-10.15.26-10"
+      href="styles.css?v=mrh-release-10.16.1-1"
       media="print"
       onload="
         this.media = 'all';
@@ -627,7 +627,7 @@
             <div class="resource-portal-sidebar-note">
               <i class="fa-solid fa-globe" aria-hidden="true"></i>
               <span>Public resources</span>
-              <small>Browse files shared from Google Drive.</small>
+              <small>Content is visible to website visitors.</small>
             </div>
             <p class="resource-portal-sidebar-footer">
               <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
@@ -697,14 +697,31 @@
                   id="resource-portal-preview-title"
                   class="min-w-0 truncate text-sm font-semibold"
                 ></h3>
-                <button
-                  type="button"
-                  onclick="closeResourcePreview()"
-                  aria-label="Close file preview"
-                >
-                  <i class="fa-solid fa-xmark" aria-hidden="true"></i>
-                </button>
+                <div class="flex shrink-0 items-center gap-2">
+                  <a
+                    id="resource-portal-preview-download"
+                    class="resource-portal-preview-download"
+                    hidden
+                  >
+                    <i class="fa-solid fa-download" aria-hidden="true"></i>
+                    Download
+                  </a>
+                  <button
+                    type="button"
+                    onclick="closeResourcePreview()"
+                    aria-label="Close file preview"
+                  >
+                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                  </button>
+                </div>
               </div>
+              <p
+                id="resource-portal-preview-status"
+                class="resource-portal-preview-status"
+                role="status"
+                aria-live="polite"
+                hidden
+              ></p>
               <iframe
                 id="resource-portal-preview-frame"
                 class="resource-portal-preview-frame"
@@ -726,7 +743,7 @@
             ></ul>
             <p class="resource-portal-privacy-note">
               <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
-              Reviewer folders are excluded from this public browser.
+              Website visitors can view these files. Reviewer folders remain excluded.
             </p>
           </section>
         </div>
@@ -2569,7 +2586,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 10.15.26-10</p>
+    <p id="site-version" class="site-version">Version 10.16.1</p>
 
     <div
       id="qr-transfer-modal"

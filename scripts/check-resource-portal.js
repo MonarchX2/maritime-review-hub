@@ -44,8 +44,28 @@ assert.throws(
 
 assert.match(
   appCore,
-  /previewButton\.addEventListener\("click", \(\) => \{\s*previewResourceFile\(item\.id, item\.name, item\.mimeType\);/,
-  "clicking a Drive file should preview it inside the Resources view",
+  /previewButton\.addEventListener\("click", \(\) => \{\s*void previewResourceFile\([\s\S]*?item\.isPublic === true/,
+  "clicking a Drive file should choose a public Drive preview or private in-site preview",
+);
+assert.match(
+  appCore,
+  /type: "get_resource_preview",\s*fileId/,
+  "private Drive file contents should load through the backend preview action",
+);
+assert.match(
+  appCore,
+  /getSessionStoredJSON[\s\S]*?setSessionStoredJSON/,
+  "recent folder listings should persist briefly in the current browser session",
+);
+assert.match(
+  appCore,
+  /const RESOURCE_PORTAL_CACHE_TTL_MS = 5 \* 60 \* 1000/,
+  "the browser cache should expire rather than retain resource listings indefinitely",
+);
+assert.match(
+  appCore,
+  /renderResourcePortalListing\(cachedEntry\.response, "refreshing"\)/,
+  "cached folders should appear immediately while the portal refreshes them",
 );
 assert.match(
   appCore,
@@ -64,8 +84,8 @@ assert.match(
 );
 assert.match(
   index,
-  /frame-src https:\/\/drive\.google\.com https:\/\/docs\.google\.com/,
-  "the content security policy should allow only Google Drive preview frames",
+  /frame-src https:\/\/drive\.google\.com https:\/\/docs\.google\.com blob:/,
+  "the content security policy should allow Drive and in-site preview frames",
 );
 assert.match(
   index,
@@ -84,8 +104,13 @@ assert.match(
 );
 assert.match(
   index,
-  /Public resources[\s\S]*?Reviewer folders are excluded from this public browser/,
-  "the file browser should clearly retain its public-only access boundary",
+  /id="resource-portal-preview-download"[\s\S]*?Download/,
+  "private files should have an in-site download link",
+);
+assert.match(
+  index,
+  /Content is visible to website visitors[\s\S]*?Reviewer folders remain excluded/,
+  "the file browser should disclose website visibility and retained reviewer restrictions",
 );
 
 console.log("Resource Portal in-site preview checks passed.");

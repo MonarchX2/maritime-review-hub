@@ -1599,6 +1599,31 @@ button:active:not(:disabled) {
   background: #f1f5f9;
 }
 
+.resource-portal-preview-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  color: #fff;
+  background: #1e3a8a;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.resource-portal-preview-download:hover {
+  background: #1d4ed8;
+}
+
+.resource-portal-preview-status {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  color: #475569;
+  background: #f8fafc;
+  font-size: 0.72rem;
+}
+
 .resource-portal-status {
   min-height: 1.15rem;
   margin: 0.6rem 0;
@@ -1785,6 +1810,11 @@ button:active:not(:disabled) {
 }
 
 .dark .resource-portal-preview-header {
+  background: #0f172a;
+}
+
+.dark .resource-portal-preview-status {
+  color: #cbd5e1;
   background: #0f172a;
 }
 
