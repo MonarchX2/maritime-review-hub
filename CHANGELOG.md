@@ -1,5 +1,12 @@
 # Changelog
 
+## 10.15.26-2 - 2026-10-15
+
+### Changed
+- Increase spacing above the dashboard navigation bar and below the session progress area.
+- Adjust review title and action spacing for small and large screens.
+- Shorten the deck source filter to “All” and capitalize the dashboard heading as “SUBJECTS”.
+
 ## 10.16.0 - 2026-10-15
 
 ### Added

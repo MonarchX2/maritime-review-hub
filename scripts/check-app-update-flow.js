@@ -48,7 +48,7 @@ const workerVersion = worker.match(/^const APP_VERSION = "([^"]+)";$/m)?.[1];
 assert.ok(appVersion, "app entry must declare its release version");
 assert.match(
   appDisplayVersion || "",
-  /^\d+\.\d+(?:\.\d+)?$/,
+  /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
   "app entry must declare a human-readable display version",
 );
 assert.equal(workerVersion, appVersion);
@@ -226,7 +226,7 @@ try {
   }
 
   const nextVersion = "mrh-check-release-stamp";
-  const nextDisplayVersion = "14.9.1";
+  const nextDisplayVersion = "14.9.1-2";
   const env = {
     ...process.env,
     RELEASE_VERSION: nextVersion,

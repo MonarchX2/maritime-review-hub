@@ -242,8 +242,16 @@ vm.runInContext(
     reviewHeader,
     /text-base md:text-xl[\s\S]*?id="deck-review-parent"/,
   );
-  assert.match(reviewHeader, /<div class="-mt-1 flex items-center justify-between/);
+  assert.match(
+    reviewHeader,
+    /<div class="mt-2 md:mt-0 flex items-center justify-between/,
+  );
   assert.match(reviewHeader, /flex flex-col gap-0/);
+  assert.match(
+    html,
+    /<div id="quiz-navigation-top" class="mt-6"><\/div>/,
+    "The session navigation bar should have increased spacing from the progress area above it.",
+  );
   assert.match(
     reviewSource,
     /parentElement\.textContent = subjectParts\.at\(-2\) \|\| "";\s*parentElement\.hidden = subjectParts\.length < 2;/,

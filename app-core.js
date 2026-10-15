@@ -1835,7 +1835,7 @@
       let html = isTree
         ? treeReadabilityNoticeHtml
         : `
-      <div data-deck-breadcrumb class="flex flex-nowrap items-center gap-2 mb-5 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto pb-2 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
+      <div data-deck-breadcrumb class="mt-4 flex flex-nowrap items-center gap-2 mb-5 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto pb-2 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
         <button onclick="goToPath(-1)" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2 flex-shrink-0">
           <i class="fa-solid fa-folder-open text-brand-500"></i> HOME
         </button>

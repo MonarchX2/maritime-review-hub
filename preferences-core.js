@@ -358,7 +358,7 @@
       : "all";
 
     const sourceLabels = {
-      all: "All Decks",
+      all: "All",
       favorites: "Favorites",
       downloaded: "Downloaded",
       cloud: "Cloud Only",

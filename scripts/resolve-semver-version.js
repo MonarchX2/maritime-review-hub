@@ -3,7 +3,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const rootDir = path.resolve(__dirname, "..");
-const semverPattern = /^(\d+)\.(\d+)\.(\d+)$/;
+const semverPattern =
+  /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
 function parseVersion(version) {
   const match = semverPattern.exec(version);
@@ -91,7 +92,9 @@ function getReleaseContext(repositoryDir = rootDir, commitSha = process.env.GITH
   )
     .trim()
     .split(/\r?\n/)
-    .filter((tag) => /^v\d+\.\d+\.\d+$/.test(tag));
+    .filter((tag) =>
+      /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(tag),
+    );
   const previousTag = tags[0] || "";
   const packageJson = JSON.parse(
     fs.readFileSync(path.join(repositoryDir, "package.json"), "utf8"),

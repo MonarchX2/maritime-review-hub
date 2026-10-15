@@ -18,8 +18,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /<div data-deck-breadcrumb class="[^"]*\bmb-5\b/,
-  "The navigation bar should have the same 1.25rem bottom spacing as the deck layout.",
+  /<div data-deck-breadcrumb class="[^"]*\bmt-4\b[^"]*\bmb-5\b/,
+  "The navigation bar should have spacing above it and retain its 1.25rem bottom spacing.",
 );
 assert.doesNotMatch(
   appCore,

@@ -408,14 +408,14 @@
     const sourceLabel = document.getElementById("deck-source-label");
     if (sourceLabel) {
       const sourceLabels = {
-        all: "All Decks",
+        all: "All",
         favorites: "Favorites",
         downloaded: "Downloaded",
         cloud: "Cloud Only",
         archived: "Archived",
       };
       sourceLabel.innerText =
-        sourceLabels[state.prefs.deckSourceFilter] || "All Decks";
+        sourceLabels[state.prefs.deckSourceFilter] || "All";
     }
 
     dashboardControls

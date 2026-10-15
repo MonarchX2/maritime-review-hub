@@ -35,6 +35,14 @@ assert.equal(
   calculateNextVersion("14.8.0", ["docs: update guide", "chore: cleanup"]),
   "14.8.0",
 );
+assert.equal(
+  calculateNextVersion("10.15.26-2", ["docs: update guide"]),
+  "10.15.26-2",
+);
+assert.equal(
+  calculateNextVersion("10.15.26-2", ["fix: correct layout"]),
+  "10.15.27",
+);
 assert.throws(() => calculateNextVersion("14.8", []), /Invalid SemVer version/);
 
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "mrh-semver-"));
@@ -86,6 +94,17 @@ try {
   const fixRelease = getReleaseContext(fixture);
   assert.equal(fixRelease.displayVersion, "1.3.2");
   assert.equal(fixRelease.shouldTag, true);
+
+  fs.writeFileSync(
+    path.join(fixture, "package.json"),
+    JSON.stringify({ version: "1.3.2-2" }),
+  );
+  git(["add", "package.json"]);
+  git(["commit", "-m", "chore: bump version to 1.3.2-2"]);
+  const prereleaseRelease = getReleaseContext(fixture);
+  assert.equal(prereleaseRelease.displayVersion, "1.3.2-2");
+  assert.equal(prereleaseRelease.releaseTag, "v1.3.2-2");
+  assert.equal(prereleaseRelease.shouldTag, true);
 } finally {
   fs.rmSync(fixture, { recursive: true, force: true });
 }

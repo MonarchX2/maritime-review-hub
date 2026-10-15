@@ -6,8 +6,13 @@ if (!version || !/^mrh-[A-Za-z0-9._-]+$/.test(version)) {
   throw new Error("RELEASE_VERSION must be a non-empty mrh- release identifier.");
 }
 const displayVersion = process.env.DISPLAY_VERSION;
-if (!displayVersion || !/^\d+\.\d+\.\d+$/.test(displayVersion)) {
-  throw new Error("DISPLAY_VERSION must be a valid MAJOR.MINOR.PATCH version.");
+if (
+  !displayVersion ||
+  !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
+    displayVersion,
+  )
+) {
+  throw new Error("DISPLAY_VERSION must be a valid SemVer version.");
 }
 
 const rootDir = path.resolve(__dirname, "..");

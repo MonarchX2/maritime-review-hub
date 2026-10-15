@@ -6,8 +6,13 @@ if (!expectedVersion || !/^mrh-[A-Za-z0-9._-]+$/.test(expectedVersion)) {
   throw new Error("RELEASE_VERSION must be a non-empty mrh- release identifier.");
 }
 const expectedDisplayVersion = process.env.DISPLAY_VERSION;
-if (!expectedDisplayVersion || !/^\d+\.\d+\.\d+$/.test(expectedDisplayVersion)) {
-  throw new Error("DISPLAY_VERSION must be a valid MAJOR.MINOR.PATCH version.");
+if (
+  !expectedDisplayVersion ||
+  !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
+    expectedDisplayVersion,
+  )
+) {
+  throw new Error("DISPLAY_VERSION must be a valid SemVer version.");
 }
 
 const rootDir = path.resolve(__dirname, "..");
@@ -45,7 +50,7 @@ const releaseMarkers = [
         (match) => match[1] === expectedVersion,
       ) &&
       new RegExp(
-        `<p\\b(?=[^>]*\\bid=["']?site-version["']?(?:\\s|>))(?=[^>]*\\bclass=["']?site-version["']?(?:\\s|>))[^>]*>Version ${expectedDisplayVersion}(?:<\\/p>)?`,
+        `<p\\b(?=[^>]*\\bid=["']?site-version["']?(?:\\s|>))(?=[^>]*\\bclass=["']?site-version["']?(?:\\s|>))[^>]*>Version ${expectedDisplayVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:<\\/p>)?`,
       ).test(source),
   ],
   [
