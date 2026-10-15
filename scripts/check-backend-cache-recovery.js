@@ -23,7 +23,7 @@ const context = {
     },
   },
 };
-const currentClientVersion = "mrh-release-10.15.26-6";
+const currentClientVersion = "mrh-release-26.10.15-8";
 vm.createContext(context);
 vm.runInContext(
   fs.readFileSync("backend/main.js", "utf8"),
@@ -42,17 +42,17 @@ assert.equal(
   "the current source release must pass the backend version gate",
 );
 assert.equal(
-  context.isSupportedClientVersion("mrh-10.15.26-5-89f6603f02cb"),
+  context.isSupportedClientVersion("mrh-26.10.15-8-89f6603f02cb"),
   true,
-  "the current deployed release must pass the backend version gate",
+  "the requested deployed release must pass the backend version gate",
 );
 assert.equal(
-  context.isSupportedClientVersion("mrh-10.16.0-c1c3af44770c"),
+  context.isSupportedClientVersion("mrh-26.10.16-1-c1c3af44770c"),
   true,
-  "a SemVer release without a numeric prerelease suffix must pass the backend version gate",
+  "a later date-based release must pass the backend version gate",
 );
 assert.equal(
-  context.isSupportedClientVersion("mrh-10.15.26-4-89f6603f02cb"),
+  context.isSupportedClientVersion("mrh-26.10.15-7-89f6603f02cb"),
   false,
   "the previous release must be rejected by the backend version gate",
 );

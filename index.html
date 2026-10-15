@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src blob:; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data: blob:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-10.16.5-1" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-26.10.15-8" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -105,7 +105,7 @@
       header {
         background: #1e3a8a;
         color: #ffffff;
-        min-height: 48px;
+        min-height: 64px;
       }
       .app-content-shell,
       #view-dashboard {
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-10.16.5-1"
+      href="icon.svg?v=mrh-release-26.10.15-8"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-10.16.5-1" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-26.10.15-8" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-10.16.5-1"
+      href="tailwind.generated.css?v=mrh-release-26.10.15-8"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-10.16.5-1"
+      href="styles.css?v=mrh-release-26.10.15-8"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-10.16.5-1"
+      href="tailwind.generated.css?v=mrh-release-26.10.15-8"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-10.16.5-1"
+      href="styles.css?v=mrh-release-26.10.15-8"
       media="print"
       onload="
         this.media = 'all';
@@ -292,7 +292,7 @@
     class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen flex flex-col transition-colors duration-500"
   >
     <header
-      class="bg-brand-900 text-white px-3 py-2 sm:px-4 sm:py-2 flex justify-between items-center shadow-lg sticky top-0 z-50 w-full transition-all duration-300"
+      class="bg-brand-900 text-white px-3 py-3 sm:px-4 sm:py-3 flex justify-between items-center shadow-lg sticky top-0 z-50 w-full transition-all duration-300"
     >
       <div class="flex items-center gap-2 relative">
         <button
@@ -610,80 +610,48 @@
       <!-- ============================================================ -->
       <section id="view-resources" class="view-section">
         <div class="resource-portal-shell">
-          <aside class="resource-portal-sidebar" aria-label="Resource navigation">
+          <aside class="resource-portal-sidebar" aria-label="Dashboard tabs">
             <div class="resource-portal-brand">
               <i class="fa-solid fa-anchor" aria-hidden="true"></i>
-              <span>Maritime Resources<br />Portal</span>
+              <span>Dashboard</span>
             </div>
             <button
               type="button"
-              id="resource-portal-library-nav"
+              id="resource-dashboard-modules-nav"
               class="resource-portal-nav-item is-active"
-              onclick="openResourcePortalRoot()"
+              onclick="openResourceDashboardTab('MODULES')"
               aria-current="page"
             >
-              <i class="fa-solid fa-folder-open" aria-hidden="true"></i>
-              My Files
+              <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+              Modules
             </button>
             <button
               type="button"
-              id="resource-portal-access-nav"
+              id="resource-dashboard-reviewers-nav"
               class="resource-portal-nav-item"
-              onclick="openResourcePortalAccess()"
+              onclick="openResourceDashboardTab('REVIEWERS')"
             >
-              <i class="fa-solid fa-lock" aria-hidden="true"></i>
-              Reviewer access
+              <i class="fa-solid fa-users" aria-hidden="true"></i>
+              Reviewers
             </button>
-            <div class="resource-portal-sidebar-note">
-              <i class="fa-solid fa-globe" aria-hidden="true"></i>
-              <span>Public resources</span>
-              <small>Reviewer folders are withheld until access is configured.</small>
-            </div>
-            <p class="resource-portal-sidebar-footer">
-              <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
-              Public access
-            </p>
           </aside>
 
           <section
-            class="resource-portal-browser"
-            aria-label="Public shared resources"
+            class="resource-portal-browser resource-dashboard-browser"
+            aria-label="Resource dashboard"
           >
             <header class="resource-portal-browser-header">
               <div>
-                <h2>My Files</h2>
-                <p>Browse and preview files from the resource library.</p>
+                <h2 id="resource-dashboard-title">Modules</h2>
               </div>
-              <span class="resource-portal-access-badge">
-                <i class="fa-solid fa-globe" aria-hidden="true"></i>
-                Public resources
-              </span>
             </header>
             <div class="resource-portal-toolbar">
-              <label class="resource-portal-search">
-                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                <span class="sr-only">Search files and folders</span>
-                <input
-                  id="resource-portal-search"
-                  type="search"
-                  placeholder="Search this folder..."
-                  oninput="filterResourcePortalItems(this.value)"
-                  autocomplete="off"
-                />
-              </label>
-            </div>
-            <div class="resource-portal-location-bar">
-              <nav
-                id="resource-portal-breadcrumbs"
-                class="resource-portal-breadcrumbs"
-                aria-label="Resource folder path"
-              ></nav>
               <button
                 type="button"
-                onclick="loadResourcePortalFolder()"
-                class="resource-portal-refresh"
-                aria-label="Refresh folder"
-                title="Refresh"
+                onclick="loadResourceDashboard()"
+                class="resource-dashboard-refresh"
+                aria-label="Refresh dashboard"
+                title="Refresh dashboard"
               >
                 <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
               </button>
@@ -693,122 +661,12 @@
               class="resource-portal-status"
               role="status"
               aria-live="polite"
-            >
-              Open Resources to load shared files.
-            </p>
-            <section
-              id="resource-portal-preview"
-              class="resource-portal-preview"
-              aria-label="File preview"
-              hidden
-            >
-              <div class="resource-portal-preview-header">
-                <h3
-                  id="resource-portal-preview-title"
-                  class="min-w-0 truncate text-sm font-semibold"
-                ></h3>
-                <div class="flex shrink-0 items-center gap-2">
-                  <button
-                    id="resource-portal-preview-expand"
-                    type="button"
-                    onclick="toggleResourceViewer()"
-                    aria-label="Expand online viewer"
-                    title="Expand viewer"
-                    aria-pressed="false"
-                  >
-                    <i
-                      class="fa-solid fa-up-right-and-down-left-from-center"
-                      aria-hidden="true"
-                    ></i>
-                  </button>
-                  <button
-                    type="button"
-                    onclick="closeResourcePreview()"
-                    aria-label="Close file preview"
-                  >
-                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
-                  </button>
-                </div>
-              </div>
-              <p
-                id="resource-portal-preview-status"
-                class="resource-portal-preview-status"
-                role="status"
-                aria-live="polite"
-                hidden
-              ></p>
-              <iframe
-                id="resource-portal-preview-frame"
-                class="resource-portal-preview-frame"
-                title="Resource file online preview"
-                loading="lazy"
-                referrerpolicy="no-referrer"
-                allowfullscreen
-              ></iframe>
-            </section>
-            <div class="resource-portal-table-head" aria-hidden="true">
-              <span>Name</span>
-              <span>Type</span>
-              <span>Modified</span>
-            </div>
-            <ul
-              id="resource-portal-items"
-              class="resource-portal-items"
-              aria-label="Folders and files"
-            ></ul>
-            <p class="resource-portal-privacy-note">
-              <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
-              Matching reviewer folders and their contents are withheld. Individual
-              reviewer access is not yet configured. Browser-based copying or
-              capture cannot be prevented.
-            </p>
-          </section>
-
-          <section
-            id="resource-portal-access-screen"
-            class="resource-portal-access-screen"
-            aria-labelledby="resource-portal-access-title"
-            hidden
-          >
-            <div class="resource-portal-signin">
-              <div class="resource-portal-signin-form">
-                <span class="resource-portal-signin-kicker">
-                  <i class="fa-solid fa-lock" aria-hidden="true"></i>
-                  Restricted library
-                </span>
-                <h2 id="resource-portal-access-title">Reviewer access</h2>
-                <p>
-                  Sign-in is required before reviewer-only resources can be
-                  opened.
-                </p>
-                <div class="resource-portal-auth-status" role="status">
-                  <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
-                  <span>
-                    Secure Google sign-in has not been configured for this
-                    portal yet. Reviewer files remain blocked.
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  class="resource-portal-google-signin"
-                  disabled
-                  aria-describedby="resource-portal-auth-help"
-                >
-                  <i class="fa-brands fa-google" aria-hidden="true"></i>
-                  Sign in with Google
-                </button>
-                <p id="resource-portal-auth-help" class="resource-portal-auth-help">
-                  Access will be enabled only after account verification and
-                  reviewer-folder grants are configured.
-                </p>
-              </div>
-              <div class="resource-portal-signin-art" aria-hidden="true">
-                <div class="resource-portal-shield">
-                  <i class="fa-solid fa-shield-halved"></i>
-                  <i class="fa-solid fa-lock"></i>
-                </div>
-                <p>Private materials stay protected</p>
-              </div>
+            ></p>
+            <div class="resource-dashboard-table-scroll">
+              <table class="resource-dashboard-table">
+                <thead id="resource-dashboard-table-head"></thead>
+                <tbody id="resource-dashboard-table-body"></tbody>
+              </table>
             </div>
           </section>
         </div>
@@ -2651,7 +2509,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 10.16.5</p>
+    <p id="site-version" class="site-version">Version 26.10.15-8</p>
 
     <div
       id="qr-transfer-modal"

@@ -1,142 +1,221 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const vm = require("node:vm");
 
 const appCore = fs.readFileSync("app-core.js", "utf8");
+const backend = fs.readFileSync("backend/main.js", "utf8");
+const deckNavigation = fs.readFileSync("deck-nav-core.js", "utf8");
 const index = fs.readFileSync("index.html", "utf8");
+
 assert.match(
-  appCore,
-  /previewButton\.addEventListener\("click", \(\) => \{\s*void previewResourceFile\(\s*item\.id,\s*item\.name/,
-  "clicking a file should open the portal's own online preview",
-);
-const appNetwork = fs.readFileSync("app-core-network.js", "utf8");
-assert.match(
-  appNetwork,
-  /cache: "no-store"/,
-  "backend requests, including document preview responses, must not use the browser HTTP cache",
-);
-assert.match(
-  appCore,
-  /type: "get_resource_preview",\s*fileId/,
-  "file contents should load only through the backend preview action",
-);
-assert.match(
-  appCore,
-  /type: "get_resource_preview",\s*fileId\s*\},\s*\{\s*timeoutMs: 60000,\s*maxRetries: 0/,
-  "Google Workspace exports should have time to complete without duplicate requests",
-);
-assert.doesNotMatch(
-  appCore,
-  /resource_portal_listing_\$\{|RESOURCE_PORTAL_CACHE_TTL|setSessionStoredJSON/,
-  "folder listings must not be persisted in browser storage",
-);
-assert.match(
-  appCore,
-  /removeSessionStoredItemsByPrefix\("resource_portal_listing_"\)/,
-  "obsolete listing data from previous portal releases should be removed",
-);
-assert.match(
-  appCore,
-  /function filterResourcePortalItems\(query\)[\s\S]*?row\.dataset\.search\.includes\(normalizedQuery\)/,
-  "search should filter the files and folders currently displayed",
-);
-assert.match(
-  appCore,
-  /function openResourcePortalRoot\(\)[\s\S]*?resourcePortalCurrentFolderId = ""/,
-  "the My Files navigation should return to the resource root",
-);
-assert.match(
-  appCore,
-  /resource-portal-row[\s\S]*?resource-portal-item-type[\s\S]*?resource-portal-item-modified/,
-  "resource rows should include name, type, and modified-time fields",
+  index,
+  /openResourceDashboardTab\('MODULES'\)[\s\S]*?Modules[\s\S]*?openResourceDashboardTab\('REVIEWERS'\)[\s\S]*?Reviewers/,
+  "the dashboard should navigate between the spreadsheet's Modules and Reviewers tabs",
 );
 assert.match(
   index,
-  /frame-src blob:/,
-  "the content security policy should allow only in-site preview frames",
+  /resource-dashboard-table-head[\s\S]*?resource-dashboard-table-body/,
+  "the resource view should render the dashboard spreadsheet as a table",
 );
 assert.match(
   index,
-  /id="resource-portal-preview-frame"[\s\S]*?allowfullscreen/,
-  "the Resources view should contain an embedded file preview",
-);
-assert.match(
-  index,
-  /id="resource-portal-preview-expand"[\s\S]*?onclick="toggleResourceViewer\(\)"/,
-  "online file previews should be expandable into a focused viewer",
-);
-assert.match(
-  appCore,
-  /function openResourcePortalAccess\(\)[\s\S]*?browser\.hidden = true;[\s\S]*?accessScreen\.hidden = false/,
-  "reviewer access navigation should open its dedicated access screen",
-);
-assert.match(
-  appCore,
-  /function toggleResourceViewer\(\)[\s\S]*?preview\.classList\.toggle\("is-expanded"\)/,
-  "the online viewer should support expanded and inline modes",
-);
-assert.match(
-  index,
-  /class="resource-portal-shell"[\s\S]*?class="resource-portal-sidebar"[\s\S]*?class="resource-portal-browser"/,
-  "the Resources view should use the file portal sidebar layout",
-);
-assert.match(
-  index,
-  /id="resource-portal-access-nav"[\s\S]*?Reviewer access[\s\S]*?id="resource-portal-access-screen"/,
-  "the portal should provide a separate reviewer access screen",
-);
-assert.match(
-  index,
-  /id="resource-portal-access-screen"[\s\S]*?Secure Google sign-in has not been configured[\s\S]*?id="resource-portal-auth-help"[\s\S]*?Access will be enabled only after account verification/,
-  "reviewer sign-in must clearly remain unavailable until identity and grants are configured",
-);
-assert.match(
-  index,
-  /class="resource-portal-google-signin"[\s\S]*?disabled/,
-  "the portal must not present an unconfigured sign-in button as functional",
-);
-assert.match(
-  index,
-  /id="resource-portal-search"[\s\S]*?oninput="filterResourcePortalItems\(this\.value\)"/,
-  "the portal should provide live search within the current folder",
+  /<span>Dashboard<\/span>/,
+  "the dashboard should use the concise Dashboard brand",
 );
 assert.doesNotMatch(
   index,
-  /resource-portal-preview-download|>\s*Download\s*</i,
-  "the portal should not expose a file download control",
+  /My Files|Reviewer access|resource-portal-preview|resource-portal-items|resource-portal-access-screen|resource-dashboard-search|Open spreadsheet|docs\.google\.com\/spreadsheets/,
+  "the dashboard should not expose Drive controls, search, or a link back to its source",
 );
-assert.ok(
-  index.includes("Matching reviewer folders and their contents are withheld") &&
-    index.includes("Browser-based copying or") &&
-    index.includes("capture cannot be prevented"),
-  "the portal should disclose reviewer restrictions and the limits of online viewing",
-);
-assert.doesNotMatch(
-  `${appCore}\n${index}`,
-  /https:\/\/(?:drive|docs)\.google\.com\/(?:file|document|spreadsheets|presentation)/i,
-  "the portal should not embed reusable Google Drive viewer URLs",
-);
-assert.doesNotMatch(
-  appCore,
-  /resource-portal-preview-download|item\.url|resource-portal-drive-link/,
-  "the portal should not create download or original-file links",
+assert.match(
+  index,
+  /min-height: 64px/,
+  "the website header should have increased height",
 );
 assert.match(
   appCore,
-  /Online preview is not available for this file type\./,
-  "unsupported file types should show a view-only unsupported message",
+  /async function loadResourceDashboard\(\)[\s\S]*?type: "get_resource_dashboard"/,
+  "the dashboard should load its sheet data from the backend",
+);
+assert.match(
+  appCore,
+  /function isResourceDashboardLink\(value\)[\s\S]*?drive\.google\.com", "docs\.google\.com"/,
+  "dashboard resource values should be recognized without becoming outbound links",
 );
 assert.doesNotMatch(
   appCore,
-  /REVIEWERS v/,
-  "reviewer authorization must not rely on client-side name filtering",
+  /link\.target\s*=\s*"_blank"|link\.href\s*=\s*href/,
+  "dashboard resource cells must stay within the website",
+);
+assert.match(
+  appCore,
+  /cell\.textContent = isResourceDashboardLink\(value\)\s*\?\s*"Available"\s*:\s*value/,
+  "spreadsheet resource URLs should be shown as in-site availability indicators",
+);
+assert.match(
+  deckNavigation,
+  /if \(viewId === "resources"\) \{\s*await globalScope\.loadResourceDashboard\?\.\(\);/,
+  "opening the Resources view should load the dashboard instead of scanning Drive",
+);
+assert.doesNotMatch(
+  fs
+    .readFileSync("app-core.js", "utf8")
+    .match(/async function loadResourceDashboard\(\)[\s\S]*?\n  \}\n/)?.[0] || "",
+  /list_public_resources|get_resource_preview/,
+  "dashboard loading should not call the previous Drive listing or preview APIs",
 );
 
-const reviewerNamePattern = /^REVIEWERS v\d{2}\.\d{2}\.\d{2}$/;
-assert.equal(reviewerNamePattern.test("REVIEWERS v01.02.03"), true);
-assert.equal(reviewerNamePattern.test("REVIEWERS v12.05.26"), true);
-assert.equal(reviewerNamePattern.test("REVIEWERS v1.2"), false);
-assert.equal(reviewerNamePattern.test("REVIEWERS archive"), false);
-assert.equal(reviewerNamePattern.test("REVIEWERS v01.02"), false);
-assert.equal(reviewerNamePattern.test("REVIEWERS v01.02.03 Draft"), false);
+let spreadsheetOpenCount = 0;
+const spreadsheetTabs = {
+  MODULES: [
+    ["Year", "Course", "", "PRELIMS", "MIDTERMS", "FINALS"],
+    ["3.1", "SHIP'S AUDIT", "", "https://drive.google.com/file/d/module-prelims/view", "", ""],
+    ["", "", "", "", "", ""],
+  ],
+  REVIEWERS: [
+    ["Reviewer", "Course"],
+    ["Reviewer One", "NAV6"],
+  ],
+};
+const context = {
+  console,
+  JSON,
+  Math,
+  Date,
+  Logger: { log() {} },
+  SpreadsheetApp: {
+    openById(id) {
+      spreadsheetOpenCount += 1;
+      assert.equal(
+        id,
+        "1TSOO8oD2KLo015eeCf6zb3c7eGFo27uJD5p03L-IVOs",
+      );
+      return {
+        getSheetByName(name) {
+          const values = spreadsheetTabs[name];
+          if (!values) return null;
+          return {
+            getLastRow: () => values.length,
+            getLastColumn: () => values[0].length,
+            getRange(_row, _column, rowCount, columnCount) {
+              return {
+                getDisplayValues: () =>
+                  values
+                    .slice(0, rowCount)
+                    .map((row) => row.slice(0, columnCount)),
+              };
+            },
+          };
+        },
+      };
+    },
+  },
+  ContentService: {
+    MimeType: { JSON: "application/json" },
+    createTextOutput(text) {
+      return {
+        text,
+        setMimeType() {
+          return this;
+        },
+      };
+    },
+  },
+};
+vm.createContext(context);
+vm.runInContext(backend, context, { filename: "backend/main.js" });
 
-console.log("Resource Portal privacy and preview checks passed.");
+const dashboard = JSON.parse(
+  context
+    .handleGetResourceDashboardRequest()
+    .text,
+);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(dashboard)),
+  {
+    status: "success",
+    tabs: {
+      MODULES: {
+        columns: ["Year", "Course", "PRELIMS", "MIDTERMS", "FINALS"],
+        rows: [
+          [
+            "3.1",
+            "SHIP'S AUDIT",
+            "https://drive.google.com/file/d/module-prelims/view",
+            "",
+            "",
+          ],
+        ],
+        truncated: false,
+      },
+      REVIEWERS: {
+        columns: ["Reviewer", "Course"],
+        rows: [["Reviewer One", "NAV6"]],
+        truncated: false,
+      },
+    },
+  },
+  "the backend should return both named spreadsheet tabs without blank rows or columns",
+);
+assert.equal(spreadsheetOpenCount, 1);
+
+const routedDashboard = JSON.parse(
+  context
+    .doPost({
+      postData: {
+        contents: JSON.stringify({
+          type: "get_resource_dashboard",
+          appVersion: "mrh-release-26.10.15-8",
+        }),
+      },
+    })
+    .text,
+);
+assert.equal(
+  routedDashboard.status,
+  "success",
+  "the public backend should expose the spreadsheet dashboard action",
+);
+assert.equal(spreadsheetOpenCount, 2);
+
+const disabledListing = JSON.parse(
+  context
+    .doPost({
+      postData: {
+        contents: JSON.stringify({
+          type: "list_public_resources",
+          appVersion: "mrh-release-26.10.15-8",
+        }),
+      },
+    })
+    .text,
+);
+assert.equal(
+  disabledListing.code,
+  "FEATURE_DISABLED",
+  "the former Drive listing API should be explicitly disabled",
+);
+const disabledPreview = JSON.parse(
+  context
+    .doPost({
+      postData: {
+        contents: JSON.stringify({
+          type: "get_resource_preview",
+          appVersion: "mrh-release-26.10.15-8",
+        }),
+      },
+    })
+    .text,
+);
+assert.equal(
+  disabledPreview.code,
+  "FEATURE_DISABLED",
+  "the former Drive preview API should be explicitly disabled",
+);
+assert.equal(
+  spreadsheetOpenCount,
+  2,
+  "disabled Drive requests should not open the dashboard spreadsheet",
+);
+
+console.log("Resource dashboard and disabled Drive portal checks passed.");

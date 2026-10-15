@@ -14,6 +14,10 @@ function parseVersion(version) {
 
 function calculateNextVersion(baseVersion, commitMessages) {
   const [major, minor, patch] = parseVersion(baseVersion);
+  const dateVersion =
+    /^(\d{2})\.(0[1-9]|1[0-2])\.(0[1-9]|[12]\d|3[01])-(\d+)$/.exec(
+      baseVersion,
+    );
   let bump = 0;
 
   for (const message of commitMessages) {
@@ -36,6 +40,11 @@ function calculateNextVersion(baseVersion, commitMessages) {
     }
   }
 
+  if (dateVersion && bump > 0) {
+    return `${dateVersion[1]}.${dateVersion[2]}.${dateVersion[3]}-${Number(
+      dateVersion[4],
+    ) + 1}`;
+  }
   if (bump === 3) return `${major + 1}.0.0`;
   if (bump === 2) return `${major}.${minor + 1}.0`;
   if (bump === 1) return `${major}.${minor}.${patch + 1}`;

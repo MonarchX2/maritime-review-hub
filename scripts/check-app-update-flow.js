@@ -100,9 +100,9 @@ assert.match(appEntry, /const checkUpdateWhenForegrounded = \(\) => \{[\s\S]*?ch
 assert.match(appEntry, /window\.addEventListener\("online"/);
 const siteHeader = html.match(/<header[\s\S]*?<\/header>/)?.[0];
 assert.ok(siteHeader, "the app header should be present");
-assert.match(siteHeader, /px-3 py-2 sm:px-4 sm:py-2/);
+assert.match(siteHeader, /px-3 py-3 sm:px-4 sm:py-3/);
 assert.match(siteHeader, /gap-4 relative/);
-assert.match(html, /header\s*\{[\s\S]*?min-height:\s*48px;/);
+assert.match(html, /header\s*\{[\s\S]*?min-height:\s*64px;/);
 assert.match(appEntry, /serviceWorkerRegistration\.update\(\)/);
 assert.match(appEntry, /updateViaCache:\s*"none"/);
 assert.equal(

@@ -5983,6 +5983,152 @@
   let resourcePortalItemCount = 0;
   let resourcePortalStatusMessage = "";
   let resourcePortalPreviewObjectUrl = "";
+  let resourceDashboardData = null;
+  let resourceDashboardActiveTab = "MODULES";
+  let resourceDashboardLoadingPromise = null;
+
+  function openResourceDashboardTab(tabName) {
+    if (!["MODULES", "REVIEWERS"].includes(tabName)) return false;
+    resourceDashboardActiveTab = tabName;
+    const modulesNav = document.getElementById(
+      "resource-dashboard-modules-nav",
+    );
+    const reviewersNav = document.getElementById(
+      "resource-dashboard-reviewers-nav",
+    );
+    [
+      [modulesNav, tabName === "MODULES"],
+      [reviewersNav, tabName === "REVIEWERS"],
+    ].forEach(([button, isActive]) => {
+      if (!button) return;
+      button.classList.toggle("is-active", isActive);
+      if (isActive) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
+
+    if (resourceDashboardData) {
+      renderResourceDashboardTab();
+      return true;
+    }
+    return loadResourceDashboard();
+  }
+
+  function isResourceDashboardLink(value) {
+    try {
+      const url = new URL(String(value || ""));
+      return (
+        url.protocol === "https:" &&
+        ["drive.google.com", "docs.google.com"].includes(url.hostname)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  function renderResourceDashboardTab() {
+    const tab = resourceDashboardData?.[resourceDashboardActiveTab];
+    const title = document.getElementById("resource-dashboard-title");
+    const status = document.getElementById("resource-portal-status");
+    const tableHead = document.getElementById(
+      "resource-dashboard-table-head",
+    );
+    const tableBody = document.getElementById(
+      "resource-dashboard-table-body",
+    );
+    if (!tab || !title || !status || !tableHead || !tableBody) return false;
+
+    const label =
+      resourceDashboardActiveTab === "MODULES" ? "Modules" : "Reviewers";
+    title.textContent = label;
+    tableHead.replaceChildren();
+    tableBody.replaceChildren();
+    const headerRow = document.createElement("tr");
+    tab.columns.forEach((column) => {
+      headerRow.appendChild(
+        createResourceDashboardElement("th", "", column),
+      );
+    });
+    tableHead.appendChild(headerRow);
+
+    tab.rows.forEach((values) => {
+      const row = document.createElement("tr");
+      tab.columns.forEach((_column, index) => {
+        const cell = document.createElement("td");
+        const value = String(values[index] || "");
+        cell.textContent = isResourceDashboardLink(value)
+          ? "Available"
+          : value;
+        row.appendChild(cell);
+      });
+      tableBody.appendChild(row);
+    });
+
+    status.textContent = `${tab.rows.length} ${
+      tab.rows.length === 1 ? "row" : "rows"
+    }${tab.truncated ? " (showing the first 2,000)" : ""}`;
+    return true;
+  }
+
+  function createResourceDashboardElement(tagName, className, text) {
+    const element = document.createElement(tagName);
+    if (className) element.className = className;
+    if (text !== undefined) element.textContent = text;
+    return element;
+  }
+
+  async function loadResourceDashboard() {
+    const status = document.getElementById("resource-portal-status");
+    const tableHead = document.getElementById(
+      "resource-dashboard-table-head",
+    );
+    const tableBody = document.getElementById(
+      "resource-dashboard-table-body",
+    );
+    if (!status || !tableHead || !tableBody) return false;
+    if (resourceDashboardLoadingPromise) return resourceDashboardLoadingPromise;
+
+    status.textContent = "Loading dashboard…";
+    status.setAttribute("aria-busy", "true");
+    resourceDashboardData = null;
+    tableHead.replaceChildren();
+    tableBody.replaceChildren();
+    resourceDashboardLoadingPromise = (async () => {
+      try {
+        const response = await globalScope.AppNetwork.callBackend(
+          { type: "get_resource_dashboard" },
+          { timeoutMs: 30000, maxRetries: 0 },
+        );
+        if (
+          response?.status !== "success" ||
+          !["MODULES", "REVIEWERS"].every(
+            (name) =>
+              Array.isArray(response.tabs?.[name]?.columns) &&
+              Array.isArray(response.tabs?.[name]?.rows),
+          )
+        ) {
+          throw new Error(
+            response?.message || "The dashboard service returned invalid data.",
+          );
+        }
+        resourceDashboardData = response.tabs;
+        renderResourceDashboardTab();
+        return true;
+      } catch (error) {
+        status.textContent = `Unable to load dashboard: ${String(
+          error?.message || error,
+        )}`;
+        (globalScope.DebugUtils || console).error(
+          "Unable to load the Resource Dashboard.",
+          error,
+        );
+        return false;
+      } finally {
+        status.removeAttribute("aria-busy");
+        resourceDashboardLoadingPromise = null;
+      }
+    })();
+    return resourceDashboardLoadingPromise;
+  }
 
   function removeCachedResourcePortalListings() {
     const storage = globalScope.StorageUtils;
@@ -6321,9 +6467,8 @@
           : resourcePortalPreviewObjectUrl;
       frame.hidden = false;
       if (status) {
-        status.textContent =
-          "Online preview loaded. Browser-based copying or capture cannot be prevented.";
-        status.hidden = false;
+        status.textContent = "";
+        status.hidden = true;
       }
       return true;
     } catch (error) {
@@ -6560,12 +6705,8 @@
     isRecentlyViewedPath,
     jumpToStudyPage,
     loadState,
-    loadResourcePortalFolder,
-    openResourcePortalRoot,
-    openResourcePortalAccess,
-    filterResourcePortalItems,
-    closeResourcePreview,
-    toggleResourceViewer,
+    openResourceDashboardTab,
+    loadResourceDashboard,
     markLocalDownloadDeleted,
     nextQuestion,
     normalizeAccessFlag,

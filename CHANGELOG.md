@@ -1,5 +1,23 @@
 # Changelog
 
+## 26.10.15-8 - 2026-10-15
+
+### Changed
+- Increase the website header height and simplify the resource dashboard title.
+- Remove dashboard search and external spreadsheet/document links so dashboard data stays in the website.
+
+## 26.10.15-7 - 2026-10-15
+
+### Changed
+- Replace the Resources Drive browser with Modules and Reviewers dashboards backed by the shared spreadsheet.
+- Disable the Resource Portal Drive listing and preview endpoints.
+
+## 26.10.15-6 - 2026-10-15
+
+### Changed
+- Remove explanatory and access-disclosure copy from the Resources portal while retaining functional status messages.
+- Adopt `YY.MM.DD-sequence` release numbering and advance the sequence for subsequent code releases on the same date.
+
 ## 10.16.5 - 2026-10-15
 
 ### Fixed

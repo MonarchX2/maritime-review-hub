@@ -43,6 +43,30 @@ assert.equal(
   calculateNextVersion("10.15.26-2", ["fix: correct layout"]),
   "10.15.27",
 );
+assert.equal(
+  calculateNextVersion("26.10.15-6", ["fix(resources): remove portal commentary"]),
+  "26.10.15-7",
+  "date-based release fixes should increment the daily patch sequence",
+);
+assert.equal(
+  calculateNextVersion("09.12.31-2", ["fix: correct layout"]),
+  "09.12.31-3",
+  "date-based release sequences should work for two-digit years across the full calendar",
+);
+assert.equal(
+  calculateNextVersion("26.10.15-6", ["feat: add a resource view"]),
+  "26.10.15-7",
+  "date-based feature releases should increment the daily patch sequence",
+);
+assert.equal(
+  calculateNextVersion("26.10.15-6", ["fix: update portal"]),
+  "26.10.15-7",
+  "date-based breaking releases should increment the daily patch sequence without rolling the date",
+);
+assert.equal(
+  calculateNextVersion("26.10.15-6", ["docs: update guide"]),
+  "26.10.15-6",
+);
 assert.throws(() => calculateNextVersion("14.8", []), /Invalid SemVer version/);
 
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "mrh-semver-"));
@@ -105,6 +129,16 @@ try {
   assert.equal(prereleaseRelease.displayVersion, "1.3.2-2");
   assert.equal(prereleaseRelease.releaseTag, "v1.3.2-2");
   assert.equal(prereleaseRelease.shouldTag, true);
+
+  fs.writeFileSync(
+    path.join(fixture, "package.json"),
+    JSON.stringify({ version: "26.10.15-6" }),
+  );
+  git(["add", "package.json"]);
+  git(["commit", "-m", "chore: set date-based release baseline"]);
+  const dateVersionBaseline = getReleaseContext(fixture);
+  assert.equal(dateVersionBaseline.displayVersion, "26.10.15-6");
+  assert.equal(dateVersionBaseline.releaseTag, "v26.10.15-6");
 } finally {
   fs.rmSync(fixture, { recursive: true, force: true });
 }

@@ -138,7 +138,7 @@
     if (!returningToDashboard) globalScope.updateDashboard();
     if (viewId === "stats") globalScope.renderCharts();
     if (viewId === "resources") {
-      await globalScope.loadResourcePortalFolder?.();
+      await globalScope.loadResourceDashboard?.();
     }
     return true;
   }
