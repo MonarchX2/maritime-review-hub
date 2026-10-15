@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.15-14 - 2026-10-15
+
+### Changed
+- Show parenthesized resource filenames in dashboard buttons, with PDF icons for Reviewers and folder icons for Modules.
+
 ## 26.10.15-13 - 2026-10-15
 
 ### Fixed

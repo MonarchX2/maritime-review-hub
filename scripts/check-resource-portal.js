@@ -59,8 +59,18 @@ assert.match(
 );
 assert.match(
   appCore,
-  /"resource-dashboard-link-button",\s*fileTitle \|\|\s*\(isResourceDashboardLink\(value\) \? "Open resource" : value\)/,
-  "resource links should use Drive file titles rather than raw URL labels",
+  /titleInParentheses\s*\?\s*titleInParentheses\[1\]\s*:\s*fileTitle/,
+  "resource link buttons should keep only the filename in parentheses",
+);
+assert.match(
+  appCore,
+  /isReviewerResource[\s\S]*?resourceTitle\.replace\(\/\\\.pdf\$\/i,\s*""\)/,
+  "reviewer PDF buttons should omit the extension from their visible title",
+);
+assert.match(
+  appCore,
+  /isReviewerResource \? "fa-file-pdf" : "fa-folder"/,
+  "reviewer links should use PDF icons and module links should use folder icons",
 );
 assert.match(
   fs.readFileSync("styles.css", "utf8"),
@@ -79,13 +89,8 @@ assert.match(
 );
 assert.match(
   backend,
-  /Drive\.Files\.get\(fileId,\s*\{[\s\S]*?fields:\s*"id,name"/,
+  /Drive\.Files\.get\(fileId,\s*\{[\s\S]*?fields:\s*"id,name,mimeType"/,
   "the backend should resolve Drive names for linked resources",
-);
-assert.match(
-  backend,
-  /DriveApp\.getFileById\(fileId\)\.getName\(\)/,
-  "the backend should fall back to DriveApp when the Drive API cannot resolve a title",
 );
 assert.match(
   backend,
@@ -194,17 +199,25 @@ const context = {
       get(id, options) {
         assert.deepEqual(
           JSON.parse(JSON.stringify(options)),
-          { fields: "id,name", supportsAllDrives: true },
+          { fields: "id,name,mimeType", supportsAllDrives: true },
         );
         const titles = {
           "modulePrelims_123456": "Prelims Module Title",
           "linkedModule_123456": "Linked Module Title",
           "examGuide_123456": "Exam Guide Title",
+          "fallbackDoc_123456": "Fallback Drive Title",
         };
         if (id === "fallbackDoc_123456") {
           throw new Error("Drive API title lookup unavailable in test.");
         }
-        return { id, name: titles[id] };
+        return {
+          id,
+          name: titles[id],
+          mimeType:
+            id === "modulePrelims_123456" || id === "linkedModule_123456"
+              ? "application/vnd.google-apps.folder"
+              : "application/pdf",
+        };
       },
     },
   },
@@ -274,6 +287,17 @@ assert.deepEqual(
           ["", "", "Linked Module Title", "Exam Guide Title", ""],
           ["", "", "Fallback Drive Title", "", ""],
         ],
+        linkTypes: [
+          ["", "", "application/vnd.google-apps.folder", "", ""],
+          [
+            "",
+            "",
+            "application/vnd.google-apps.folder",
+            "application/pdf",
+            "",
+          ],
+          ["", "", "", "", ""],
+        ],
         truncated: false,
       },
       REVIEWERS: {
@@ -281,6 +305,7 @@ assert.deepEqual(
         rows: [["Reviewer One", "NAV6"]],
         links: [["", ""]],
         linkTitles: [["", ""]],
+        linkTypes: [["", ""]],
         truncated: false,
       },
     },
@@ -295,7 +320,7 @@ const routedDashboard = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "get_resource_dashboard",
-          appVersion: "mrh-release-26.10.15-13",
+          appVersion: "mrh-release-26.10.15-14",
         }),
       },
     })
@@ -314,7 +339,7 @@ const disabledListing = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "list_public_resources",
-          appVersion: "mrh-release-26.10.15-13",
+          appVersion: "mrh-release-26.10.15-14",
         }),
       },
     })
@@ -331,7 +356,7 @@ const disabledPreview = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "get_resource_preview",
-          appVersion: "mrh-release-26.10.15-13",
+          appVersion: "mrh-release-26.10.15-14",
         }),
       },
     })

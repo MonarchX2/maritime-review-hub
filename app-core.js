@@ -6167,14 +6167,36 @@
           const fileTitle = String(
             tab.linkTitles?.[rowIndex]?.[index] || "",
           ).trim();
+          const titleInParentheses = /\(([^()]*)\)/.exec(fileTitle);
+          const resourceTitle = String(
+            titleInParentheses ? titleInParentheses[1] : fileTitle,
+          ).trim();
+          const isReviewerResource =
+            resourceDashboardActiveTab === "REVIEWERS";
+          const linkLabel = isReviewerResource
+            ? resourceTitle.replace(/\.pdf$/i, "") || "Open resource"
+            : resourceTitle || "Open resource";
+          const icon = createResourceDashboardElement(
+            "i",
+            `fa-solid ${
+              isReviewerResource ? "fa-file-pdf" : "fa-folder"
+            } resource-dashboard-link-icon`,
+          );
+          icon.setAttribute("aria-hidden", "true");
           const link = createResourceDashboardElement(
             "a",
             "resource-dashboard-link-button",
-            fileTitle ||
-              (isResourceDashboardLink(value) ? "Open resource" : value),
           );
           link.href = linkUrl;
-          if (fileTitle) link.title = fileTitle;
+          link.append(
+            icon,
+            createResourceDashboardElement(
+              "span",
+              "resource-dashboard-link-label",
+              linkLabel,
+            ),
+          );
+          if (resourceTitle) link.title = resourceTitle;
           cell.appendChild(link);
         } else {
           cell.textContent = value;

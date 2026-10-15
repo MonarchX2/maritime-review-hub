@@ -21,8 +21,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /"resource-dashboard-link-button",\s*fileTitle \|\|\s*\(isResourceDashboardLink\(value\) \? "Open resource" : value\)/,
-  "resource buttons should use the Drive title rather than expose its URL",
+  /titleInParentheses\s*\?\s*titleInParentheses\[1\]\s*:\s*fileTitle/,
+  "resource buttons should use only the parenthesized filename",
 );
 assert.match(
   appCore,
@@ -31,8 +31,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /fileTitle \|\|\s*\(isResourceDashboardLink\(value\) \? "Open resource" : value\)/,
-  "unresolved resource links should never expose their raw URL as button text",
+  /isReviewerResource \? "fa-file-pdf" : "fa-folder"/,
+  "reviewer links should show PDF icons while module links show folders",
+);
+assert.match(
+  appCore,
+  /resourceTitle\.replace\(\/\\\.pdf\$\/i,\s*""\)/,
+  "reviewer button labels should omit the PDF extension",
 );
 assert.match(
   network,
