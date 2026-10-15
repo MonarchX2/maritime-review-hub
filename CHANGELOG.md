@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-12 - 2026-10-16
+
+### Changed
+- Add a dedicated Profile section for Google sign-in, new-account enrollment, and signed-in account details/sign-out.
+
 ## 26.10.16-11 - 2026-10-16
 
 ### Changed

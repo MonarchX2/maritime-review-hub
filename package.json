@@ -1,5 +1,5 @@
 {
-  "version": "26.10.16-11",
+  "version": "26.10.16-12",
   "scripts": {
     "build:css": "node scripts/build-css.js",
     "check:architecture": "node scripts/frontend-architecture-check.js",

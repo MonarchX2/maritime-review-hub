@@ -5,8 +5,10 @@ Resource Dashboard links to Drive resources directly; its Reviewer dashboard
 rows are returned only after server-side account authorization. A folder name
 classifies resources; it does not authorize anyone to access them.
 
-Reviewer access uses Google sign-in for authorization only; the site does not
-create a separate password. A user who is not yet registered can submit their
+Reviewer access uses Google sign-in from the Resource Dashboard's Profile
+section; the site does not create a separate password. The Profile section
+shows the verified account name and email after sign-in, provides sign-out, and
+lets a new user request access. A user who is not yet registered can submit their
 name and device ID after Google sign-in. The backend verifies the Google ID
 token and adds a **pending, inactive** row to the `Accounts` worksheet in the
 `MRH_Accounts` spreadsheet. An administrator must set `Active` to `TRUE`

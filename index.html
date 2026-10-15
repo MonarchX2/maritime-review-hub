@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src blob: https://accounts.google.com; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com; img-src 'self' https: data: blob:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net https://accounts.google.com; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-26.10.16-11" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-26.10.16-12" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-26.10.16-11"
+      href="icon.svg?v=mrh-release-26.10.16-12"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-26.10.16-11" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-26.10.16-12" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-26.10.16-11"
+      href="tailwind.generated.css?v=mrh-release-26.10.16-12"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-26.10.16-11"
+      href="styles.css?v=mrh-release-26.10.16-12"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-26.10.16-11"
+      href="tailwind.generated.css?v=mrh-release-26.10.16-12"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-26.10.16-11"
+      href="styles.css?v=mrh-release-26.10.16-12"
       media="print"
       onload="
         this.media = 'all';
@@ -658,109 +658,144 @@
                 Reviewers
                 <i class="fa-solid fa-lock resource-dashboard-lock-icon" aria-hidden="true"></i>
               </button>
-              <div class="resource-reviewer-auth">
-                <p
-                  id="resource-reviewer-auth-status"
-                  role="status"
-                  aria-live="polite"
-                >
-                  Sign in with your Google account. New accounts require administrator approval.
-                </p>
-                <div id="resource-reviewer-signin-button"></div>
-                <form
-                  id="resource-reviewer-enrollment-form"
-                  class="resource-reviewer-enrollment"
-                  hidden
-                >
-                  <label>
-                    <span>Last Name</span>
-                    <input
-                      id="resource-reviewer-last-name"
-                      name="lastName"
-                      autocomplete="family-name"
-                      maxlength="100"
-                      required
-                    />
-                  </label>
-                  <label>
-                    <span>First Name</span>
-                    <input
-                      id="resource-reviewer-first-name"
-                      name="firstName"
-                      autocomplete="given-name"
-                      maxlength="100"
-                      required
-                    />
-                  </label>
-                  <label>
-                    <span>Middle Initial</span>
-                    <input
-                      id="resource-reviewer-middle-initial"
-                      name="middleInitial"
-                      autocomplete="additional-name"
-                      maxlength="10"
-                    />
-                  </label>
-                  <button type="submit">Request account access</button>
-                </form>
-                <button
-                  type="button"
-                  id="resource-reviewer-signout"
-                  class="resource-reviewer-signout"
-                  aria-label="Sign out"
-                  title="Sign out"
-                  hidden
-                >
-                  <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
-                  <span>Sign out</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                id="resource-dashboard-profile-nav"
+                class="resource-profile-toggle"
+                onclick="openResourceDashboardTab('PROFILE')"
+                aria-label="Profile"
+                title="Profile"
+              >
+                <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
+                <span class="sr-only">Profile</span>
+              </button>
             </aside>
 
             <section
               class="resource-portal-browser resource-dashboard-browser"
               aria-label="Resource dashboard"
             >
-              <div class="resource-portal-toolbar">
-                <div class="resource-dashboard-filters">
-                  <label class="resource-dashboard-control">
-                    <span>Year</span>
-                    <select id="resource-dashboard-filter-year">
-                      <option value="3">3</option>
-                    </select>
-                  </label>
-                  <label class="resource-dashboard-control">
-                    <span>Semester</span>
-                    <select id="resource-dashboard-filter-semester">
-                      <option value="1">1</option>
-                    </select>
-                  </label>
+              <div id="resource-dashboard-content">
+                <div class="resource-portal-toolbar">
+                  <div class="resource-dashboard-filters">
+                    <label class="resource-dashboard-control">
+                      <span>Year</span>
+                      <select id="resource-dashboard-filter-year">
+                        <option value="3">3</option>
+                      </select>
+                    </label>
+                    <label class="resource-dashboard-control">
+                      <span>Semester</span>
+                      <select id="resource-dashboard-filter-semester">
+                        <option value="1">1</option>
+                      </select>
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    onclick="loadResourceDashboard()"
+                    class="resource-dashboard-refresh"
+                    aria-label="Refresh dashboard"
+                    title="Refresh dashboard"
+                  >
+                    <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onclick="loadResourceDashboard()"
-                  class="resource-dashboard-refresh"
-                  aria-label="Refresh dashboard"
-                  title="Refresh dashboard"
-                >
-                  <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
-                </button>
+                <p
+                  id="resource-portal-status"
+                  class="resource-portal-status"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+                <div class="resource-dashboard-table-scroll">
+                  <table class="resource-dashboard-table">
+                    <thead id="resource-dashboard-table-head"></thead>
+                    <tbody id="resource-dashboard-table-body"></tbody>
+                  </table>
+                </div>
+                <p class="resource-dashboard-update-note">
+                  File updates may be delayed by up to 3 minutes.
+                </p>
               </div>
-              <p
-                id="resource-portal-status"
-                class="resource-portal-status"
-                role="status"
-                aria-live="polite"
-              ></p>
-              <div class="resource-dashboard-table-scroll">
-                <table class="resource-dashboard-table">
-                  <thead id="resource-dashboard-table-head"></thead>
-                  <tbody id="resource-dashboard-table-body"></tbody>
-                </table>
-              </div>
-              <p class="resource-dashboard-update-note">
-                File updates may be delayed by up to 3 minutes.
-              </p>
+              <section
+                id="resource-dashboard-profile"
+                class="resource-profile-screen"
+                aria-label="Profile settings"
+                hidden
+              >
+                <div class="resource-profile-card">
+                  <div class="resource-profile-heading">
+                    <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
+                    <div>
+                      <h2>Profile</h2>
+                      <p>Sign in or manage your reviewer account.</p>
+                    </div>
+                  </div>
+                  <p
+                    id="resource-reviewer-auth-status"
+                    class="resource-profile-status"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    Sign in with your Google account. New accounts require administrator approval.
+                  </p>
+                  <div id="resource-reviewer-signin-button"></div>
+                  <form
+                    id="resource-reviewer-enrollment-form"
+                    class="resource-reviewer-enrollment"
+                    hidden
+                  >
+                    <label>
+                      <span>Last Name</span>
+                      <input
+                        id="resource-reviewer-last-name"
+                        name="lastName"
+                        autocomplete="family-name"
+                        maxlength="100"
+                        required
+                      />
+                    </label>
+                    <label>
+                      <span>First Name</span>
+                      <input
+                        id="resource-reviewer-first-name"
+                        name="firstName"
+                        autocomplete="given-name"
+                        maxlength="100"
+                        required
+                      />
+                    </label>
+                    <label>
+                      <span>Middle Initial</span>
+                      <input
+                        id="resource-reviewer-middle-initial"
+                        name="middleInitial"
+                        autocomplete="additional-name"
+                        maxlength="10"
+                      />
+                    </label>
+                    <button type="submit">Request account access</button>
+                  </form>
+                  <div
+                    id="resource-profile-account-details"
+                    class="resource-profile-account-details"
+                    hidden
+                  >
+                    <p id="resource-profile-name" class="resource-profile-name"></p>
+                    <p id="resource-profile-email" class="resource-profile-email"></p>
+                    <p class="resource-profile-approval-note">
+                      This Google account is used to access approved reviewer resources.
+                    </p>
+                    <button
+                      type="button"
+                      id="resource-reviewer-signout"
+                      class="resource-reviewer-signout"
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                </div>
+              </section>
             </section>
           </div>
         </div>
@@ -2603,7 +2638,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 26.10.16-11</p>
+    <p id="site-version" class="site-version">Version 26.10.16-12</p>
 
     <div
       id="qr-transfer-modal"

@@ -113,18 +113,28 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-reviewer-auth\s*\{[^}]*justify-content:\s*flex-end;[^}]*margin-left:\s*auto;/,
-  "reviewer sign-in and profile controls should align to the far right of the tab header",
+  /\.resource-profile-toggle\s*\{[^}]*margin-left:\s*auto;[^}]*border-radius:\s*9999px;/,
+  "the Profile icon button should align to the far right of the tab header",
 );
 assert.match(
   resourceStyles,
-  /\.resource-reviewer-signout\s*\{[^}]*border-radius:\s*9999px;[\s\S]*?\.resource-reviewer-signout i\s*\{[^}]*font-size:\s*1rem;/,
-  "the signed-in profile control should display a compact user icon",
+  /\.resource-profile-screen\s*\{[^}]*max-width:[\s\S]*?\.resource-profile-card\s*\{[^}]*border-radius:[\s\S]*?\.resource-profile-account-details\[hidden\]\s*\{\s*display:\s*none;/,
+  "Profile should have a dedicated account settings screen",
 );
 assert.match(
   appCore,
   /script\.src = "https:\/\/accounts\.google\.com\/gsi\/client\?hl=en"[\s\S]*?renderButton\(signInButton,\s*\{[\s\S]*?locale:\s*"en"/,
   "the Google sign-in interface should request English explicitly",
+);
+assert.match(
+  appCore,
+  /includes\(tabName\)[\s\S]*?const dashboardContent = document\.getElementById\(\s*"resource-dashboard-content"[\s\S]*?dashboardContent\.hidden = tabName === "PROFILE"[\s\S]*?profileScreen\.hidden = tabName !== "PROFILE"[\s\S]*?if \(tabName === "PROFILE"\) \{\s*void initializeReviewerAuth\(\)/,
+  "selecting Profile should show its dedicated screen and initialize Google sign-in only when opened",
+);
+assert.match(
+  appCore,
+  /resource-profile-account-details[\s\S]*?profileName\.textContent = profileDisplayName[\s\S]*?profileEmail\.textContent = response\.email[\s\S]*?return openResourceDashboardTab\("PROFILE"\)/,
+  "successful sign-in should populate account details and remain in Profile",
 );
 assert.match(
   indexHtml,
@@ -229,7 +239,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(!\["MODULES", "REVIEWERS", "SYLLABUS"\]\.includes\(tabName\)\) return false;[\s\S]*?if \(tabName === "REVIEWERS"\) \{[\s\S]*?if \(!reviewerIdentityToken\)/,
+  /if \(!\["MODULES", "REVIEWERS", "SYLLABUS", "PROFILE"\]\.includes\(tabName\)\)[\s\S]*?if \(tabName === "REVIEWERS" && !reviewerIdentityToken\) return false;/,
   "the dashboard should allow reviewer navigation only after server-verified sign-in",
 );
 assert.match(

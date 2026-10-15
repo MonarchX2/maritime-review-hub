@@ -6120,36 +6120,10 @@
   }
 
   function openResourceDashboardTab(tabName) {
-    if (!["MODULES", "REVIEWERS", "SYLLABUS"].includes(tabName)) return false;
-    if (tabName === "REVIEWERS") {
-      if (!reviewerIdentityToken) {
-        const status = document.getElementById("resource-reviewer-auth-status");
-        if (status)
-          status.textContent = "Sign in with an approved Google account first.";
-        return false;
-      }
-      resourceDashboardActiveTab = tabName;
-      const reviewersNav = document.getElementById(
-        "resource-dashboard-reviewers-nav",
-      );
-      const modulesNav = document.getElementById(
-        "resource-dashboard-modules-nav",
-      );
-      const syllabusNav = document.getElementById(
-        "resource-dashboard-syllabus-nav",
-      );
-      [
-        [modulesNav, false],
-        [reviewersNav, true],
-        [syllabusNav, false],
-      ].forEach(([button, isActive]) => {
-        if (!button) return;
-        button.classList.toggle("is-active", isActive);
-        if (isActive) button.setAttribute("aria-current", "page");
-        else button.removeAttribute("aria-current");
-      });
-      return loadReviewerDashboard();
-    }
+    if (!["MODULES", "REVIEWERS", "SYLLABUS", "PROFILE"].includes(tabName))
+      return false;
+    if (tabName === "REVIEWERS" && !reviewerIdentityToken) return false;
+
     resourceDashboardActiveTab = tabName;
     const modulesNav = document.getElementById(
       "resource-dashboard-modules-nav",
@@ -6160,10 +6134,14 @@
     const syllabusNav = document.getElementById(
       "resource-dashboard-syllabus-nav",
     );
+    const profileNav = document.getElementById(
+      "resource-dashboard-profile-nav",
+    );
     [
       [modulesNav, tabName === "MODULES"],
       [reviewersNav, tabName === "REVIEWERS"],
       [syllabusNav, tabName === "SYLLABUS"],
+      [profileNav, tabName === "PROFILE"],
     ].forEach(([button, isActive]) => {
       if (!button) return;
       button.classList.toggle("is-active", isActive);
@@ -6171,9 +6149,23 @@
       else button.removeAttribute("aria-current");
     });
 
+    const dashboardContent = document.getElementById(
+      "resource-dashboard-content",
+    );
+    const profileScreen = document.getElementById(
+      "resource-dashboard-profile",
+    );
+    if (dashboardContent) dashboardContent.hidden = tabName === "PROFILE";
+    if (profileScreen) profileScreen.hidden = tabName !== "PROFILE";
+    if (tabName === "PROFILE") {
+      void initializeReviewerAuth();
+      return true;
+    }
+    if (tabName === "REVIEWERS") return loadReviewerDashboard();
+
     if (resourceDashboardData) {
       renderResourceDashboardTab();
-      if (reviewerIdentityToken && tabName !== "REVIEWERS")
+      if (reviewerIdentityToken)
         void logModuleDashboardAccess();
       return true;
     }
@@ -6601,7 +6593,11 @@
       const enrollmentForm = document.getElementById(
         "resource-reviewer-enrollment-form",
       );
+      const signInButton = document.getElementById(
+        "resource-reviewer-signin-button",
+      );
       if (enrollmentForm) enrollmentForm.hidden = false;
+      if (signInButton) signInButton.hidden = true;
       if (authStatus)
         authStatus.textContent =
           "This Google account is not registered yet. Submit an access request; an administrator must approve it.";
@@ -6662,6 +6658,25 @@
         reviewersNav.disabled = false;
         reviewersNav.setAttribute("aria-disabled", "false");
       }
+      const profileDetails = document.getElementById(
+        "resource-profile-account-details",
+      );
+      const profileName = document.getElementById("resource-profile-name");
+      const profileEmail = document.getElementById("resource-profile-email");
+      const profileDisplayName =
+        [
+          response.firstName,
+          response.middleInitial,
+          response.lastName,
+        ]
+          .filter(Boolean)
+          .join(" ") || response.email;
+      if (profileName) profileName.textContent = profileDisplayName;
+      if (profileEmail) profileEmail.textContent = response.email;
+      if (profileDetails) profileDetails.hidden = false;
+      const enrollmentForm = document.getElementById(
+        "resource-reviewer-enrollment-form",
+      );
       const signInButton = document.getElementById(
         "resource-reviewer-signin-button",
       );
@@ -6669,16 +6684,11 @@
         "resource-reviewer-signout",
       );
       if (signInButton) signInButton.hidden = true;
+      if (enrollmentForm) enrollmentForm.hidden = true;
       if (signoutButton) signoutButton.hidden = false;
       if (authStatus)
-        authStatus.textContent = `Signed in as ${[
-          response.firstName,
-          response.middleInitial,
-          response.lastName,
-        ]
-          .filter(Boolean)
-          .join(" ") || reviewerAuthorizedEmail}.`;
-      return openResourceDashboardTab("REVIEWERS");
+        authStatus.textContent = "You are signed in to your reviewer account.";
+      return openResourceDashboardTab("PROFILE");
     } catch (error) {
       reviewerIdentityToken = "";
       reviewerAuthorizedEmail = "";
@@ -6763,6 +6773,10 @@
         if (authStatus) authStatus.textContent = "Account found. Signing you in…";
         return completeReviewerSignIn(enrollmentToken);
       }
+      const signInButton = document.getElementById(
+        "resource-reviewer-signin-button",
+      );
+      if (signInButton) signInButton.hidden = false;
       if (authStatus)
         authStatus.textContent = response.existing
           ? "Your access request is already on file and awaiting administrator approval."
@@ -6838,6 +6852,14 @@
     );
     if (signInButton) signInButton.hidden = false;
     if (signoutButton) signoutButton.hidden = true;
+    const enrollmentForm = document.getElementById(
+      "resource-reviewer-enrollment-form",
+    );
+    if (enrollmentForm) enrollmentForm.hidden = true;
+    const profileDetails = document.getElementById(
+      "resource-profile-account-details",
+    );
+    if (profileDetails) profileDetails.hidden = true;
     const authStatus = document.getElementById(
       "resource-reviewer-auth-status",
     );
@@ -7039,7 +7061,6 @@
     if (resourceDashboardLoadingPromise) return resourceDashboardLoadingPromise;
 
     initializeResourceDashboardControls();
-    void initializeReviewerAuth();
     const storage = globalScope.StorageUtils;
     const appVersion = String(globalScope.__MRH_APP__?.version || "").trim();
     let cachedDashboard = null;

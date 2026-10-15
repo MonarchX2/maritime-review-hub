@@ -25,16 +25,21 @@ assert.match(
 );
 assert.match(
   index,
-  /<aside class="resource-portal-sidebar"[\s\S]*?id="resource-dashboard-reviewers-nav"[\s\S]*?class="resource-reviewer-auth"[\s\S]*?resource-reviewer-signin-button[\s\S]*?resource-reviewer-signout[\s\S]*?<\/aside>[\s\S]*?<div class="resource-portal-toolbar">/,
-  "the sign-in and profile controls should appear at the right side of the Syllabus/Modules/Reviewers header",
+  /<aside class="resource-portal-sidebar"[\s\S]*?id="resource-dashboard-reviewers-nav"[\s\S]*?id="resource-dashboard-profile-nav"[^>]*onclick="openResourceDashboardTab\('PROFILE'\)"[^>]*aria-label="Profile"[\s\S]*?<\/aside>/,
+  "the Syllabus/Modules/Reviewers header should include a right-aligned Profile section button",
 );
 assert.doesNotMatch(
   index.slice(
-    index.indexOf('<div class="resource-portal-toolbar">'),
-    index.indexOf('<div class="resource-portal-toolbar">') + 1200,
+    index.indexOf('<aside class="resource-portal-sidebar"'),
+    index.indexOf("</aside>", index.indexOf('<aside class="resource-portal-sidebar"')),
   ),
-  /resource-reviewer-auth/,
-  "reviewer sign-in controls should no longer occupy the dashboard filter toolbar",
+  /resource-reviewer-signin-button|resource-reviewer-enrollment-form|resource-reviewer-signout/,
+  "profile sign-in and settings controls should live in the Profile screen, not the tab header",
+);
+assert.match(
+  index,
+  /id="resource-dashboard-content"[\s\S]*?id="resource-dashboard-profile"[^>]*class="resource-profile-screen"[^>]*aria-label="Profile settings"[^>]*hidden[\s\S]*?resource-reviewer-auth-status[\s\S]*?resource-reviewer-signin-button[\s\S]*?resource-reviewer-enrollment-form[\s\S]*?resource-profile-account-details[\s\S]*?resource-profile-name[\s\S]*?resource-profile-email[\s\S]*?resource-reviewer-signout/,
+  "Profile should show login/enrollment when signed out and account details/sign-out when signed in",
 );
 assert.match(
   index,
