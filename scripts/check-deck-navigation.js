@@ -182,8 +182,8 @@ assert.match(
 );
 assert.match(
   indexSource,
-  /frame-src https:\/\/drive\.google\.com https:\/\/docs\.google\.com blob:/,
-  "the app content security policy should permit Drive and in-site preview frames",
+  /frame-src blob:/,
+  "the app content security policy should permit only in-site preview frames",
 );
 for (const inputId of ["deck-password-input", "folder-password-input"]) {
   const inputMarkup = indexSource.match(

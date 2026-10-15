@@ -103,15 +103,20 @@ const privateFolder = {
 };
 const reviewerFolder = {
   getId: () => "reviewer-folder-id",
-  getName: () => "REVIEWERS v.01.02.03",
+  getName: () => "REVIEWERS v01.02.03",
   getParents: () => createIterator([rootFolder]),
   getSharingAccess: () => access.ANYONE,
 };
 const legacyReviewerFolder = {
   getId: () => "legacy-reviewer-folder-id",
-  getName: () => "REVIEWERS v10.13.26",
+  getName: () => "REVIEWERS v.10.13.26",
   getParents: () => createIterator([rootFolder]),
   getSharingAccess: () => access.ANYONE,
+};
+const nestedReviewerFolder = {
+  getId: () => "nested-reviewer-folder",
+  getName: () => "Nested Materials",
+  getParents: () => createIterator([reviewerFolder]),
 };
 const publicFile = {
   getId: () => "public-file-id",
@@ -155,10 +160,12 @@ context.DriveApp = {
     if (folderId === rootId) return rootFolder;
     if (folderId === "reviewer-folder-id") return reviewerFolder;
     if (folderId === "legacy-reviewer-folder-id") return legacyReviewerFolder;
+    if (folderId === "nested-reviewer-folder") return nestedReviewerFolder;
     return privateFolder;
   },
   getFileById(fileId) {
     if (fileId === "reviewer-file-id") return reviewerDriveFile;
+    if (fileId === "nested-reviewer-file-id") return nestedReviewerDriveFile;
     if (fileId === "legacy-reviewer-file-id") return legacyReviewerDriveFile;
     return privateDriveFile;
   },
@@ -202,22 +209,27 @@ assert.deepEqual(
   [
     "General Resources",
     "Restricted Materials",
+    "REVIEWERS v.10.13.26",
     "Guidelines.pdf",
     "Restricted.pdf",
   ],
   "the public website includes private Drive contents but omits reviewer folders",
 );
 assert.equal(
-  rootListing.items.find((item) => item.name === "Restricted Materials")
-    .isPublic,
+  rootListing.items.some((item) => item.name === "REVIEWERS v01.02.03"),
   false,
-  "private Drive folders are marked for website-proxied access",
+  "exactly named reviewer folders are omitted from public listings",
+);
+assert.equal(
+  rootListing.items.some((item) => "url" in item || "isPublic" in item),
+  false,
+  "resource listings must not expose Drive URLs or permission claims",
 );
 context.handleListPublicResourcesRequest({ folderId: rootId });
 assert.equal(
   rootFolderListReads,
-  1,
-  "a recent public root listing should be served from cache without relisting Drive items",
+  2,
+  "public folder contents must be relisted to avoid stale exposure after a rename or move",
 );
 assert.equal(
   JSON.parse(
@@ -240,12 +252,44 @@ assert.equal(
 assert.equal(
   JSON.parse(
     context.handleListPublicResourcesRequest({
-      folderId: "legacy-reviewer-folder-id",
+      folderId: "nested-reviewer-folder",
     }).text,
   ).code,
   "FORBIDDEN",
-  "reviewer folder names without a dot after v remain inaccessible",
+  "nested descendants of reviewer folders remain inaccessible",
 );
+assert.equal(
+  JSON.parse(
+    context.handleListPublicResourcesRequest({
+      folderId: "legacy-reviewer-folder-id",
+    }).text,
+  ).status,
+  "success",
+  "folder names outside the exact reviewer naming rule remain browsable",
+);
+assert.equal(
+  context.isPrivateResourceFolderName("REVIEWERS v01.02.03"),
+  true,
+  "the required reviewer folder name is classified as private",
+);
+assert.equal(
+  context.isPrivateResourceFolderName("REVIEWERS v12.05.26"),
+  true,
+  "the second required reviewer folder example is classified as private",
+);
+[
+  "REVIEWERS v1.2",
+  "REVIEWERS archive",
+  "REVIEWERS v01.02",
+  "REVIEWERS v01.02.03 Draft",
+  "REVIEWERS v.01.02.03",
+].forEach((name) => {
+  assert.equal(
+    context.isPrivateResourceFolderName(name),
+    false,
+    `${name} must not match the exact reviewer folder rule`,
+  );
+});
 const privateDriveFile = {
   getParents: () => createIterator([privateFolder]),
   getMimeType: () => "application/pdf",
@@ -261,8 +305,17 @@ const privateDriveFile = {
 const reviewerDriveFile = {
   getParents: () => createIterator([reviewerFolder]),
 };
+const nestedReviewerDriveFile = {
+  getParents: () => createIterator([nestedReviewerFolder]),
+};
 const legacyReviewerDriveFile = {
   getParents: () => createIterator([legacyReviewerFolder]),
+  getMimeType: () => "application/pdf",
+  getSize: () => 2,
+  getBlob: () => ({
+    getBytes: () => [72, 105],
+  }),
+  getName: () => "Nonmatching-reviewer-name.pdf",
 };
 const privatePreview = JSON.parse(
   context.handleGetResourcePreviewRequest({ fileId: "private-file-id" }).text,
@@ -287,8 +340,15 @@ assert.equal(
 );
 assert.equal(
   privateFileBlobReads,
-  1,
-  "a recent private preview should be served from cache without exporting the file again",
+  2,
+  "preview file bytes must be fetched for each request instead of retained in cache",
+);
+assert.equal(
+  Array.from(resourceCache.keys()).some((key) =>
+    key.startsWith("MRH_RESOURCE_PREVIEW_"),
+  ),
+  false,
+  "preview contents must not be placed in the server metadata cache",
 );
 assert.equal(
   JSON.parse(
@@ -302,11 +362,20 @@ assert.equal(
 assert.equal(
   JSON.parse(
     context.handleGetResourcePreviewRequest({
-      fileId: "legacy-reviewer-file-id",
+      fileId: "nested-reviewer-file-id",
     }).text,
   ).code,
   "FORBIDDEN",
-  "private files inside reviewer folders without a dot after v remain blocked",
+  "files nested beneath reviewer folders remain inaccessible",
+);
+assert.equal(
+  JSON.parse(
+    context.handleGetResourcePreviewRequest({
+      fileId: "legacy-reviewer-file-id",
+    }).text,
+  ).status,
+  "success",
+  "files under names that do not match the exact reviewer rule remain available",
 );
 
 assert.equal(

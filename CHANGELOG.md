@@ -1,5 +1,12 @@
 # Changelog
 
+## 10.16.3 - 2026-10-15
+
+### Changed
+- Apply the exact `REVIEWERS vXX.XX.XX` folder rule and deny public access to matching folders and descendants until recipient authorization is configured.
+- Remove stale listing caches, direct Google Drive links, and download controls; route supported previews through the portal without caching document bytes.
+- Disclose that browser-based copying or capture cannot be prevented.
+
 ## 10.16.2 - 2026-10-15
 
 ### Fixed

@@ -439,6 +439,36 @@
     return removedCurrent && removedLegacy;
   }
 
+  function removeSessionStoredItemsByPrefix(prefix) {
+    const normalizedPrefix = normalizeStorageKey(prefix);
+    if (!normalizedPrefix) {
+      throw new Error("A storage key prefix is required.");
+    }
+
+    const store = getSessionStorage();
+    const keys = [];
+    for (let index = 0; index < store.length; index += 1) {
+      const key = safeGetStorageKeyAtIndex(store, index);
+      if (!key) continue;
+      const namespaceSeparator = key.indexOf(":");
+      const hasNamespacedPrefix =
+        namespaceSeparator > 0 &&
+        key.startsWith("mrh_") &&
+        key.slice(namespaceSeparator + 1).startsWith(normalizedPrefix);
+      const hasLegacyPrefix = key.startsWith(`mrh_${normalizedPrefix}`);
+      if (hasNamespacedPrefix || hasLegacyPrefix) keys.push(key);
+    }
+
+    let failed = 0;
+    keys.forEach((key) => {
+      if (!safeRemoveItem(store, key)) failed += 1;
+    });
+    if (failed > 0) {
+      throw new Error(`Unable to remove ${failed} matching session entries.`);
+    }
+    return keys.length;
+  }
+
   function getSessionStoredJSON(key, fallback = null) {
     const stored = getSessionStoredItem(key);
     return safeParseJSON(stored, fallback);
@@ -638,6 +668,7 @@
     getSessionStoredItem,
     setSessionStoredItem,
     removeSessionStoredItem,
+    removeSessionStoredItemsByPrefix,
     getSessionStoredJSON,
     setSessionStoredJSON,
     migrateLegacyStorageKeys,

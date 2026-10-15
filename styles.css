@@ -1599,23 +1599,6 @@ button:active:not(:disabled) {
   background: #f1f5f9;
 }
 
-.resource-portal-preview-download {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  border-radius: 0.4rem;
-  padding: 0.4rem 0.6rem;
-  color: #fff;
-  background: #1e3a8a;
-  font-size: 0.68rem;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.resource-portal-preview-download:hover {
-  background: #1d4ed8;
-}
-
 .resource-portal-preview-status {
   margin: 0;
   padding: 0.5rem 0.75rem;
@@ -1718,15 +1701,6 @@ button:active:not(:disabled) {
 }
 
 .resource-portal-item-name:hover {
-  color: #1d4ed8;
-}
-
-.resource-portal-drive-link {
-  flex: 0 0 auto;
-  color: #64748b;
-}
-
-.resource-portal-drive-link:hover {
   color: #1d4ed8;
 }
 

@@ -9,9 +9,9 @@
     <meta name="theme-color" content="#1e3a8a" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src https://drive.google.com https://docs.google.com blob:; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data: blob:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
+      content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src blob:; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data: blob:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-10.16.2-1" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-10.16.3-1" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-10.16.2-1"
+      href="icon.svg?v=mrh-release-10.16.3-1"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-10.16.2-1" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-10.16.3-1" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-10.16.2-1"
+      href="tailwind.generated.css?v=mrh-release-10.16.3-1"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-10.16.2-1"
+      href="styles.css?v=mrh-release-10.16.3-1"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-10.16.2-1"
+      href="tailwind.generated.css?v=mrh-release-10.16.3-1"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-10.16.2-1"
+      href="styles.css?v=mrh-release-10.16.3-1"
       media="print"
       onload="
         this.media = 'all';
@@ -627,7 +627,7 @@
             <div class="resource-portal-sidebar-note">
               <i class="fa-solid fa-globe" aria-hidden="true"></i>
               <span>Public resources</span>
-              <small>Content is visible to website visitors.</small>
+              <small>Reviewer folders are withheld until access is configured.</small>
             </div>
             <p class="resource-portal-sidebar-footer">
               <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
@@ -642,7 +642,7 @@
             <header class="resource-portal-browser-header">
               <div>
                 <h2>My Files</h2>
-                <p>Browse public files and folders shared from Google Drive.</p>
+                <p>Browse and preview files from the resource library.</p>
               </div>
               <span class="resource-portal-access-badge">
                 <i class="fa-solid fa-globe" aria-hidden="true"></i>
@@ -698,14 +698,6 @@
                   class="min-w-0 truncate text-sm font-semibold"
                 ></h3>
                 <div class="flex shrink-0 items-center gap-2">
-                  <a
-                    id="resource-portal-preview-download"
-                    class="resource-portal-preview-download"
-                    hidden
-                  >
-                    <i class="fa-solid fa-download" aria-hidden="true"></i>
-                    Download
-                  </a>
                   <button
                     type="button"
                     onclick="closeResourcePreview()"
@@ -725,7 +717,7 @@
               <iframe
                 id="resource-portal-preview-frame"
                 class="resource-portal-preview-frame"
-                title="Google Drive file preview"
+                title="Resource file online preview"
                 loading="lazy"
                 referrerpolicy="no-referrer"
                 allowfullscreen
@@ -743,7 +735,9 @@
             ></ul>
             <p class="resource-portal-privacy-note">
               <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
-              Website visitors can view these files. Reviewer folders remain excluded.
+              Matching reviewer folders and their contents are withheld. Individual
+              reviewer access is not yet configured. Browser-based copying or
+              capture cannot be prevented.
             </p>
           </section>
         </div>
@@ -2586,7 +2580,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 10.16.2</p>
+    <p id="site-version" class="site-version">Version 10.16.3</p>
 
     <div
       id="qr-transfer-modal"

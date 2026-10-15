@@ -752,7 +752,7 @@
             },
             body: JSON.stringify(versionedPayload),
             redirect: "follow",
-            cache: "reload",
+            cache: "no-store",
             keepalive: true,
             signal: options.signal,
           },

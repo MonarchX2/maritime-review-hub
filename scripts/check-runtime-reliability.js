@@ -73,7 +73,23 @@ Object.assign(appStorage, {
   unrelated: "keep",
 });
 const appSessionStorage = storageContext.__mrhNodeSessionStorage;
-Object.assign(appSessionStorage, { "mrh_device_three:session": "saved" });
+Object.assign(appSessionStorage, {
+  "mrh_device_three:session": "saved",
+  "mrh_device_three:resource_portal_listing_root": "private listing",
+  "mrh_device_four:resource_portal_listing_folder": "private listing",
+  mrh_resource_portal_listing_legacy: "private listing",
+  "mrh_device_four:unrelated": "keep",
+});
+assert.equal(
+  storage.removeSessionStoredItemsByPrefix("resource_portal_listing_"),
+  3,
+  "obsolete portal listing caches should be removed across app namespaces",
+);
+assert.equal(
+  appSessionStorage["mrh_device_four:unrelated"],
+  "keep",
+  "targeted resource cache cleanup must preserve unrelated session data",
+);
 storage.clearAllAppNamespaces();
 assert.deepEqual(Object.keys(appStorage), ["unrelated"]);
 assert.deepEqual(Object.keys(appSessionStorage), []);
