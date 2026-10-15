@@ -1560,17 +1560,22 @@ button:active:not(:disabled) {
 
 .resource-reviewer-auth {
   display: flex;
+  order: 3;
   min-width: 0;
-  flex: 1 1 100%;
+  flex: 0 1 auto;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--resource-dashboard-space);
+  margin-left: auto;
 }
 
 .resource-reviewer-auth p {
+  flex: 1 0 100%;
   margin: 0;
   color: #64748b;
   font-size: var(--resource-dashboard-font-small);
+  text-align: right;
 }
 
 .resource-reviewer-enrollment {
@@ -1613,6 +1618,7 @@ button:active:not(:disabled) {
 
 .resource-dashboard-filters {
   display: flex;
+  order: 1;
   min-width: 0;
   flex: 0 1 auto;
   flex-wrap: wrap;
@@ -1641,10 +1647,6 @@ button:active:not(:disabled) {
   width: 3.5rem;
 }
 
-#resource-dashboard-filter-year.resource-dashboard-year-all {
-  width: 9rem;
-}
-
 .resource-dashboard-control select {
   width: 3.5rem;
   max-width: 100%;
@@ -1671,6 +1673,7 @@ button:active:not(:disabled) {
 }
 
 .resource-dashboard-refresh {
+  order: 2;
   flex: 0 0 auto;
 }
 

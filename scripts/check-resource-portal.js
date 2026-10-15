@@ -245,8 +245,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /control\.id === "resource-dashboard-filter-year"\s*\?\s*"All Year Levels"\s*:\s*"All"[\s\S]*?allOption\.value = "all"/,
-  "the year and semester filters should label their All options correctly",
+  /createResourceDashboardElement\(\s*"option",\s*"",\s*"All",?\s*\)[\s\S]*?allOption\.value = "all"/,
+  "year and semester filters should label their all-values option All",
 );
 assert.match(
   appCore,

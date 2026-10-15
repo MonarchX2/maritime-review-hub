@@ -6264,9 +6264,7 @@
         const allOption = createResourceDashboardElement(
           "option",
           "",
-          control.id === "resource-dashboard-filter-year"
-            ? "All Year Levels"
-            : "All",
+          "All",
         );
         allOption.value = "all";
         options.unshift(allOption);
@@ -6284,12 +6282,6 @@
       true,
     );
     const allYearLevelsSelected = resourceDashboardSelectedYear === "all";
-    if (yearFilterControl) {
-      yearFilterControl.classList.toggle(
-        "resource-dashboard-year-all",
-        allYearLevelsSelected,
-      );
-    }
     if (semesterFilterControl) {
       semesterFilterControl.disabled = allYearLevelsSelected;
     }

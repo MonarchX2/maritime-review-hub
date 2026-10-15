@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-6 - 2026-10-16
+
+### Changed
+- Label the all-years dropdown option “All” and align reviewer sign-in/profile controls to the far right of the dashboard toolbar.
+
 ## 26.10.16-5 - 2026-10-16
 
 ### Changed

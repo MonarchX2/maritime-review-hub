@@ -78,18 +78,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /control\.id === "resource-dashboard-filter-year"\s*\?\s*"All Year Levels"/,
-  "the year filter should include an All Year Levels option",
+  /createResourceDashboardElement\(\s*"option",\s*"",\s*"All",?\s*\)[\s\S]*?allOption\.value = "all"/,
+  "the year dropdown should label its all-levels option simply All",
 );
 assert.match(
   appCore,
   /const allYearLevelsSelected = resourceDashboardSelectedYear === "all"[\s\S]*?semesterFilterControl\.disabled = allYearLevelsSelected[\s\S]*?if \(allYearLevelsSelected\)[\s\S]*?resourceDashboardSelectedSemester = "all"/,
   "All Year Levels should disable the semester filter and select all semesters",
-);
-assert.match(
-  appCore,
-  /yearFilterControl\.classList\.toggle\(\s*"resource-dashboard-year-all",\s*allYearLevelsSelected/,
-  "the All Year Levels option should have enough width to remain readable",
 );
 assert.match(
   appCore,
@@ -103,13 +98,13 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-control:first-child select\s*\{\s*width:\s*3\.5rem;\s*\}[\s\S]*?#resource-dashboard-filter-year\.resource-dashboard-year-all\s*\{\s*width:\s*9rem;\s*\}/,
-  "the All Year Levels option should not be clipped by the compact dropdown width",
+  /\.resource-dashboard-control:first-child select\s*\{\s*width:\s*3\.5rem;\s*\}[\s\S]*?\.resource-dashboard-control:nth-child\(2\) select\s*\{\s*width:\s*3\.5rem;/,
+  "year and semester dropdowns should use compact widths",
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-control:first-child select\s*\{\s*width:\s*3\.5rem;\s*\}[\s\S]*?\.resource-dashboard-control:nth-child\(2\) select\s*\{\s*width:\s*3\.5rem;/,
-  "year and semester dropdowns should use compact widths",
+  /\.resource-reviewer-auth\s*\{[^}]*order:\s*3;[^}]*justify-content:\s*flex-end;[^}]*margin-left:\s*auto;[\s\S]*?\.resource-dashboard-filters\s*\{[^}]*order:\s*1;[\s\S]*?\.resource-dashboard-refresh\s*\{[^}]*order:\s*2;/,
+  "reviewer sign-in and profile controls should appear at the far right of the dashboard toolbar",
 );
 assert.match(
   resourceStyles,
@@ -224,8 +219,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /control\.id === "resource-dashboard-filter-year"\s*\?\s*"All Year Levels"\s*:\s*"All"[\s\S]*?allOption\.value = "all"/,
-  "year and semester filters should label their All options appropriately",
+  /createResourceDashboardElement\(\s*"option",\s*"",\s*"All",?\s*\)[\s\S]*?allOption\.value = "all"/,
+  "year and semester filters should label their all-values option All",
 );
 assert.doesNotMatch(
   appCore,
