@@ -1641,6 +1641,10 @@ button:active:not(:disabled) {
   width: 3.5rem;
 }
 
+#resource-dashboard-filter-year.resource-dashboard-year-all {
+  width: 9rem;
+}
+
 .resource-dashboard-control select {
   width: 3.5rem;
   max-width: 100%;

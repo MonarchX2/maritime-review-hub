@@ -6261,7 +6261,13 @@
         return option;
       });
       if (includeAll) {
-        const allOption = createResourceDashboardElement("option", "", "All");
+        const allOption = createResourceDashboardElement(
+          "option",
+          "",
+          control.id === "resource-dashboard-filter-year"
+            ? "All Year Levels"
+            : "All",
+        );
         allOption.value = "all";
         options.unshift(allOption);
       }
@@ -6277,22 +6283,35 @@
       "3",
       true,
     );
-    const semesters = new Set(
-      [...termValues]
-        .filter(
-          (term) =>
-            resourceDashboardSelectedYear === "all" ||
-            term.split(".")[0] === resourceDashboardSelectedYear,
-        )
-        .map((term) => term.split(".")[1]),
-    );
-    resourceDashboardSelectedSemester = populateTermOptions(
-      semesterFilterControl,
-      semesters,
-      resourceDashboardSelectedSemester,
-      "1",
-      true,
-    );
+    const allYearLevelsSelected = resourceDashboardSelectedYear === "all";
+    if (yearFilterControl) {
+      yearFilterControl.classList.toggle(
+        "resource-dashboard-year-all",
+        allYearLevelsSelected,
+      );
+    }
+    if (semesterFilterControl) {
+      semesterFilterControl.disabled = allYearLevelsSelected;
+    }
+    if (allYearLevelsSelected) {
+      resourceDashboardSelectedSemester = "all";
+      if (semesterFilterControl) semesterFilterControl.value = "all";
+    } else {
+      const semesters = new Set(
+        [...termValues]
+          .filter(
+            (term) => term.split(".")[0] === resourceDashboardSelectedYear,
+          )
+          .map((term) => term.split(".")[1]),
+      );
+      resourceDashboardSelectedSemester = populateTermOptions(
+        semesterFilterControl,
+        semesters,
+        resourceDashboardSelectedSemester,
+        "1",
+        true,
+      );
+    }
 
     const nonEmptyRows = tab.rows
       .map((values, rowIndex) => ({ values, rowIndex }))
@@ -6327,9 +6346,9 @@
           : semesterColumnIndex >= 0
             ? String(values[semesterColumnIndex] || "").trim()
             : "";
+        if (resourceDashboardSelectedYear === "all") return true;
         return (
-          (resourceDashboardSelectedYear === "all" ||
-            year === resourceDashboardSelectedYear) &&
+          year === resourceDashboardSelectedYear &&
           (resourceDashboardSelectedSemester === "all" ||
             semester === resourceDashboardSelectedSemester)
         );
@@ -6408,9 +6427,11 @@
     });
 
     const selectedTerm =
-      resourceDashboardSelectedSemester === "all"
-        ? `${resourceDashboardSelectedYear}, all semesters`
-        : `${resourceDashboardSelectedYear}.${resourceDashboardSelectedSemester}`;
+      resourceDashboardSelectedYear === "all"
+        ? "All Year Levels"
+        : resourceDashboardSelectedSemester === "all"
+          ? `${resourceDashboardSelectedYear}, all semesters`
+          : `${resourceDashboardSelectedYear}.${resourceDashboardSelectedSemester}`;
     status.textContent =
       hasTermFilter
         ? `Showing ${visibleRows.length} of ${nonEmptyRows.length} rows for ${selectedTerm}${
@@ -6439,6 +6460,8 @@
     if (yearFilterControl && !yearFilterControl.dataset.initialized) {
       yearFilterControl.addEventListener("change", () => {
         resourceDashboardSelectedYear = yearFilterControl.value;
+        if (resourceDashboardSelectedYear === "all")
+          resourceDashboardSelectedSemester = "all";
         if (resourceDashboardData) renderResourceDashboardTab();
       });
       yearFilterControl.dataset.initialized = "true";

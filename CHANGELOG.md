@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-5 - 2026-10-16
+
+### Changed
+- Label the year-wide dashboard filter “All Year Levels”, include every semester, and disable the semester selector while it is active.
+
 ## 26.10.16-4 - 2026-10-16
 
 ### Fixed

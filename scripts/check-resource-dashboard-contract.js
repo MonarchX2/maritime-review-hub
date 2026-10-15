@@ -74,12 +74,37 @@ assert.match(
 assert.match(
   appCore,
   /resourceDashboardSelectedYear = populateTermOptions\([\s\S]*?"3",\s*true,\s*\)/,
-  "the year filter should include an All option",
+  "the year filter should support an all-levels selection",
 );
 assert.match(
   appCore,
-  /resourceDashboardSelectedYear === "all" \|\|\s*year === resourceDashboardSelectedYear/,
-  "selecting All years should show rows across every year",
+  /control\.id === "resource-dashboard-filter-year"\s*\?\s*"All Year Levels"/,
+  "the year filter should include an All Year Levels option",
+);
+assert.match(
+  appCore,
+  /const allYearLevelsSelected = resourceDashboardSelectedYear === "all"[\s\S]*?semesterFilterControl\.disabled = allYearLevelsSelected[\s\S]*?if \(allYearLevelsSelected\)[\s\S]*?resourceDashboardSelectedSemester = "all"/,
+  "All Year Levels should disable the semester filter and select all semesters",
+);
+assert.match(
+  appCore,
+  /yearFilterControl\.classList\.toggle\(\s*"resource-dashboard-year-all",\s*allYearLevelsSelected/,
+  "the All Year Levels option should have enough width to remain readable",
+);
+assert.match(
+  appCore,
+  /if \(resourceDashboardSelectedYear === "all"\) return true;[\s\S]*?year === resourceDashboardSelectedYear/,
+  "All Year Levels should include every row regardless of semester",
+);
+assert.match(
+  appCore,
+  /resourceDashboardSelectedYear === "all"\s*\?\s*"All Year Levels"/,
+  "the dashboard status should say All Year Levels instead of all.1",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-control:first-child select\s*\{\s*width:\s*3\.5rem;\s*\}[\s\S]*?#resource-dashboard-filter-year\.resource-dashboard-year-all\s*\{\s*width:\s*9rem;\s*\}/,
+  "the All Year Levels option should not be clipped by the compact dropdown width",
 );
 assert.match(
   resourceStyles,
@@ -189,18 +214,18 @@ assert.match(
 );
 assert.match(
   appCore,
-  /\(resourceDashboardSelectedYear === "all" \|\|\s*year === resourceDashboardSelectedYear\) &&\s*\(resourceDashboardSelectedSemester === "all" \|\|\s*semester === resourceDashboardSelectedSemester\)/,
-  "the dashboard should filter by year and optionally by semester, including All years",
+  /if \(resourceDashboardSelectedYear === "all"\) return true;[\s\S]*?year === resourceDashboardSelectedYear &&\s*\(resourceDashboardSelectedSemester === "all" \|\|\s*semester === resourceDashboardSelectedSemester\)/,
+  "All Year Levels should bypass year and semester filtering",
 );
 assert.match(
   appCore,
-  /\.filter\([\s\S]*?resourceDashboardSelectedYear === "all" \|\|\s*term\.split\("\."\)\[0\] === resourceDashboardSelectedYear/,
-  "semester options should reflect the selected year or all years",
+  /\.filter\(\s*\(term\) => term\.split\("\."\)\[0\] === resourceDashboardSelectedYear/,
+  "semester options should reflect the selected year",
 );
 assert.match(
   appCore,
-  /createResourceDashboardElement\("option", "", "All"\)[\s\S]*?allOption\.value = "all"/,
-  "the semester filter should include an All option",
+  /control\.id === "resource-dashboard-filter-year"\s*\?\s*"All Year Levels"\s*:\s*"All"[\s\S]*?allOption\.value = "all"/,
+  "year and semester filters should label their All options appropriately",
 );
 assert.doesNotMatch(
   appCore,
