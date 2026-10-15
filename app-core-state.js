@@ -284,7 +284,14 @@
     }
     const isSettingsRoute =
       urlPath.length === 1 && urlPath[0].toLowerCase() === "settings";
-    const targetView = isSettingsRoute ? "settings" : "dashboard";
+    const isResourcesRoute =
+      urlPath.length === 1 && urlPath[0].toLowerCase() === "resources";
+    const isSpecialRoute = isSettingsRoute || isResourcesRoute;
+    const targetView = isSettingsRoute
+      ? "settings"
+      : isResourcesRoute
+        ? "resources"
+        : "dashboard";
     const previousView =
       typeof document !== "undefined"
         ? document
@@ -294,11 +301,12 @@
     const previousPath = Array.isArray(state.currentPath)
       ? [...state.currentPath]
       : [];
-    const previousRoute =
-      previousView === "settings" ? ["settings"] : previousPath;
+    const previousRoute = ["settings", "resources"].includes(previousView)
+      ? [previousView]
+      : previousPath;
 
     if (previousView === targetView) {
-      if (!isSettingsRoute) {
+      if (!isSpecialRoute) {
         state.currentPath = urlPath;
         globalScope.renderCategoryProgress?.();
       }
@@ -327,8 +335,12 @@
         return;
       }
 
-      state.currentPath = isSettingsRoute ? [] : urlPath;
-      if (!isSettingsRoute) globalScope.renderCategoryProgress?.();
+      state.currentPath = isSettingsRoute
+        ? []
+        : isResourcesRoute
+          ? previousPath
+          : urlPath;
+      if (!isSpecialRoute) globalScope.renderCategoryProgress?.();
     } finally {
       navigationChangeInFlight = false;
     }
@@ -1123,15 +1135,23 @@
       !hasInvalidUrl &&
       urlPath.length === 1 &&
       urlPath[0].toLowerCase() === "settings";
-    state.currentPath = isSettingsRoute
-      ? []
-      : sessionRoute
-        ? urlPath
-        : !hasInvalidUrl && urlPath.length > 0
-          ? urlPath
-          : savedPath;
+    const isResourcesRoute =
+      !hasInvalidUrl &&
+      urlPath.length === 1 &&
+      urlPath[0].toLowerCase() === "resources";
+    if (isSettingsRoute) {
+      state.currentPath = [];
+    } else if (isResourcesRoute) {
+      state.currentPath = savedPath;
+    } else if (sessionRoute || (!hasInvalidUrl && urlPath.length > 0)) {
+      state.currentPath = urlPath;
+    } else {
+      state.currentPath = savedPath;
+    }
     if (isSettingsRoute) {
       await globalScope.navigate?.("settings");
+    } else if (isResourcesRoute) {
+      await globalScope.navigate?.("resources");
     } else if (!hasInvalidUrl && !sessionRoute) {
       updateNavigationUrl(state.currentPath, { replace: true });
     }

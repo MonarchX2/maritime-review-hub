@@ -8,4 +8,5 @@ scripts/
 !scripts/
 !scripts/frontend-architecture-check.js
 !scripts/browser-performance-check.js
+!scripts/check-resource-portal.js
 node_modules/

@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-10.15.26-6" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-10.15.26-9" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-10.15.26-6"
+      href="icon.svg?v=mrh-release-10.15.26-9"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-10.15.26-6" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-10.15.26-9" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-10.15.26-6"
+      href="tailwind.generated.css?v=mrh-release-10.15.26-9"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-10.15.26-6"
+      href="styles.css?v=mrh-release-10.15.26-9"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-10.15.26-6"
+      href="tailwind.generated.css?v=mrh-release-10.15.26-9"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-10.15.26-6"
+      href="styles.css?v=mrh-release-10.15.26-9"
       media="print"
       onload="
         this.media = 'all';
@@ -308,6 +308,15 @@
           title="Checking database connection"
           aria-label="Database connection status"
         ></i>
+        <button
+          onclick="navigate('resources')"
+          class="rounded-md px-2 py-1 text-xs font-semibold transition-colors hover:bg-brand-800 hover:text-brand-100"
+          aria-label="Open Resources"
+          type="button"
+        >
+          <i class="fa-solid fa-folder-open mr-1" aria-hidden="true"></i>
+          Resources
+        </button>
       </div>
       <div class="flex items-center gap-4 relative">
         <!-- Theme Toggle Button (Sun/Moon) -->
@@ -594,6 +603,58 @@
         </div>
 
         <div id="category-list"></div>
+      </section>
+
+      <!-- ============================================================ -->
+      <!-- RESOURCE PORTAL                                               -->
+      <!-- ============================================================ -->
+      <section id="view-resources" class="view-section">
+        <div class="mx-auto w-full max-w-3xl">
+          <div class="mb-6">
+            <h2 class="text-2xl font-bold">Resources</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Access resources that have been shared with you.
+            </p>
+          </div>
+
+          <section
+            class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-5"
+            aria-label="Public shared resources"
+          >
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <nav
+                id="resource-portal-breadcrumbs"
+                class="flex min-w-0 flex-wrap items-center gap-2 text-sm"
+                aria-label="Resource folder path"
+              ></nav>
+              <button
+                type="button"
+                onclick="loadResourcePortalFolder()"
+                class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                <i class="fa-solid fa-rotate-right mr-1" aria-hidden="true"></i>
+                Refresh
+              </button>
+            </div>
+            <p
+              id="resource-portal-status"
+              class="mb-3 text-sm text-gray-600 dark:text-gray-300"
+              role="status"
+              aria-live="polite"
+            >
+              Open Resources to load shared files.
+            </p>
+            <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+              Reviewer folders are kept out of this public resource browser.
+              Files open through Google Drive.
+            </p>
+            <ul
+              id="resource-portal-items"
+              class="divide-y divide-gray-200 dark:divide-gray-700"
+              aria-label="Folders and files"
+            ></ul>
+          </section>
+        </div>
       </section>
 
       <!-- ============================================================ -->
@@ -2433,7 +2494,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 10.15.26-6</p>
+    <p id="site-version" class="site-version">Version 10.15.26-9</p>
 
     <div
       id="qr-transfer-modal"

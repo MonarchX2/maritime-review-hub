@@ -1,5 +1,5 @@
 {
-  "version": "10.15.26-6",
+  "version": "10.15.26-9",
   "scripts": {
     "build:css": "node scripts/build-css.js",
     "check:architecture": "node scripts/frontend-architecture-check.js",
@@ -25,7 +25,8 @@
     "vendor:qr": "node scripts/vendor-qr-libraries.js",
     "check:deck-clear": "node scripts/check-deck-clear-race.js",
     "check:sync-timestamp": "node scripts/check-sync-timestamp-recovery.js",
-    "check:app-update-flow": "node scripts/check-app-update-flow.js"
+    "check:app-update-flow": "node scripts/check-app-update-flow.js",
+    "check:resource-portal": "node scripts/check-resource-portal.js"
   },
   "devDependencies": {
     "@types/google-apps-script": "^2.0.12",

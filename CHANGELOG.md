@@ -1,5 +1,17 @@
 # Changelog
 
+## 10.15.26-8 - 2026-10-15
+
+### Added
+- Browse publicly shared Drive folders and files in the Resources portal while excluding private reviewer folders.
+- Open publicly shared files using their Google Drive links.
+- Use `/resources` and the shorter “Resources” page title.
+
+## 10.15.26-7 - 2026-10-15
+
+### Added
+- Add a Resource Portal frontend view with a dedicated navigation route and setup empty state.
+
 ## 10.15.26-6 - 2026-10-15
 
 ### Changed

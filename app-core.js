@@ -5968,6 +5968,169 @@
     }
   }
 
+  let resourcePortalCurrentFolderId = "";
+  let resourcePortalRequestGeneration = 0;
+
+  function createResourcePortalElement(tagName, className, text) {
+    const element = document.createElement(tagName);
+    if (className) element.className = className;
+    if (text !== undefined) element.textContent = text;
+    return element;
+  }
+
+  function renderResourcePortalBreadcrumbs(breadcrumbs) {
+    const navigation = document.getElementById(
+      "resource-portal-breadcrumbs",
+    );
+    if (!navigation) return;
+
+    navigation.replaceChildren();
+    breadcrumbs.forEach((crumb, index) => {
+      if (index > 0) {
+        navigation.appendChild(
+          createResourcePortalElement(
+            "span",
+            "text-gray-400",
+            "/",
+          ),
+        );
+      }
+
+      const isCurrent = index === breadcrumbs.length - 1;
+      if (isCurrent) {
+        const current = createResourcePortalElement(
+          "span",
+          "truncate font-semibold text-gray-800 dark:text-gray-100",
+          crumb.name,
+        );
+        current.setAttribute("aria-current", "location");
+        navigation.appendChild(current);
+        return;
+      }
+
+      const button = createResourcePortalElement(
+        "button",
+        "truncate text-brand-700 hover:underline dark:text-brand-300",
+        crumb.name,
+      );
+      button.type = "button";
+      button.addEventListener("click", () => {
+        void loadResourcePortalFolder(crumb.id);
+      });
+      navigation.appendChild(button);
+    });
+  }
+
+  function renderResourcePortalItems(items) {
+    const list = document.getElementById("resource-portal-items");
+    if (!list) return;
+
+    list.replaceChildren();
+    items.forEach((item) => {
+      const row = createResourcePortalElement(
+        "li",
+        "flex items-center gap-3 py-3 text-left",
+      );
+      const icon = createResourcePortalElement(
+        "i",
+        item.type === "folder"
+          ? "fa-solid fa-folder text-amber-500"
+          : "fa-solid fa-file-lines text-brand-500",
+      );
+      icon.setAttribute("aria-hidden", "true");
+      row.appendChild(icon);
+
+      if (item.type === "folder") {
+        const button = createResourcePortalElement(
+          "button",
+          "min-w-0 flex-1 truncate text-left text-sm font-semibold text-gray-800 hover:text-brand-700 dark:text-gray-100 dark:hover:text-brand-300",
+          item.name,
+        );
+        button.type = "button";
+        button.addEventListener("click", () => {
+          void loadResourcePortalFolder(item.id);
+        });
+        row.appendChild(button);
+      } else {
+        const link = createResourcePortalElement(
+          "a",
+          "min-w-0 flex-1 truncate text-sm font-semibold text-gray-800 hover:text-brand-700 dark:text-gray-100 dark:hover:text-brand-300",
+          item.name,
+        );
+        const resourceUrl = new URL(item.url);
+        if (
+          resourceUrl.protocol !== "https:" ||
+          !["drive.google.com", "docs.google.com"].includes(
+            resourceUrl.hostname,
+          )
+        ) {
+          throw new Error("Drive returned an unsupported file link.");
+        }
+        link.href = resourceUrl.href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.setAttribute("aria-label", `Open ${item.name} in Google Drive`);
+        row.appendChild(link);
+      }
+
+      list.appendChild(row);
+    });
+  }
+
+  async function loadResourcePortalFolder(folderId) {
+    const status = document.getElementById("resource-portal-status");
+    const list = document.getElementById("resource-portal-items");
+    if (!status || !list) return false;
+
+    const requestGeneration = ++resourcePortalRequestGeneration;
+    status.textContent = "Loading shared resources…";
+    status.setAttribute("aria-busy", "true");
+
+    try {
+      const response = await globalScope.AppNetwork.callBackend(
+        {
+          type: "list_public_resources",
+          folderId: String(folderId || resourcePortalCurrentFolderId || ""),
+        },
+        { timeoutMs: 20000, maxRetries: 1 },
+      );
+      if (requestGeneration !== resourcePortalRequestGeneration) return false;
+      if (
+        response?.status !== "success" ||
+        !Array.isArray(response.items) ||
+        !Array.isArray(response.breadcrumbs)
+      ) {
+        throw new Error("The resource service returned an invalid response.");
+      }
+
+      resourcePortalCurrentFolderId = String(response.folder?.id || "");
+      renderResourcePortalBreadcrumbs(response.breadcrumbs);
+      renderResourcePortalItems(response.items);
+      const count = response.items.length;
+      status.textContent = response.truncated
+        ? `Showing the first ${count} items. This folder has more items than can be displayed at once.`
+        : count === 0
+          ? "This folder has no publicly shared items."
+          : `${count} ${count === 1 ? "item" : "items"}`;
+      return true;
+    } catch (error) {
+      if (requestGeneration !== resourcePortalRequestGeneration) return false;
+      list.replaceChildren();
+      status.textContent = `Unable to load shared resources: ${String(
+        error?.message || error,
+      )}`;
+      (globalScope.DebugUtils || console).error(
+        "Unable to load Resource Portal contents.",
+        error,
+      );
+      return false;
+    } finally {
+      if (requestGeneration === resourcePortalRequestGeneration) {
+        status.removeAttribute("aria-busy");
+      }
+    }
+  }
+
   const compatibilityExports = {
     applyNavigationPosition,
     applySummaryData,
@@ -6052,6 +6215,7 @@
     isRecentlyViewedPath,
     jumpToStudyPage,
     loadState,
+    loadResourcePortalFolder,
     markLocalDownloadDeleted,
     nextQuestion,
     normalizeAccessFlag,

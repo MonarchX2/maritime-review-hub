@@ -10,6 +10,7 @@ const appCoreStateSource = fs.readFileSync("app-core-state.js", "utf8");
 const modalCoreSource = fs.readFileSync("ui-modal-core.js", "utf8");
 const stylesSource = fs.readFileSync("styles.css", "utf8");
 const indexSource = fs.readFileSync("index.html", "utf8");
+const backendSource = fs.readFileSync("backend/main.js", "utf8");
 const textUtils = require("../text-utils.js");
 
 const protectedDeckName = "Maritime Safety";
@@ -155,9 +156,52 @@ function checkSessionNavigationUrls() {
     "Parent 1::Parent 2::Deck A",
     "the quiz route should retain the complete deck subject for refresh recovery",
   );
+
+  location.hash = "#/resources";
+  assert.deepEqual(
+    Array.from(window.getNavigationPathFromUrl()),
+    ["resources"],
+    "the Resources URL should parse as its own route",
+  );
 }
 
 checkSessionNavigationUrls();
+assert.match(
+  indexSource,
+  /id="database-connection-icon"[\s\S]*?onclick="navigate\('resources'\)"[\s\S]*?aria-label="Open Resources"[\s\S]*?Resources/,
+  "the Resources button should appear immediately after the sync status icon",
+);
+assert.match(
+  indexSource,
+  /<section id="view-resources" class="view-section">[\s\S]*?<h2 class="text-2xl font-bold">Resources<\/h2>/,
+  "the Resources view should use the /resources route and title",
+);
+assert.match(
+  indexSource,
+  /Files open through Google Drive\.[\s\S]*?id="resource-portal-items"/,
+  "the Resource Portal should include a Drive-backed resource list and explain its access boundary",
+);
+assert.match(
+  backendSource,
+  /RESOURCE_PORTAL_ROOT_FOLDER_ID = "19LoMUsogxTHB5xrI1Gd08NASQv2Zqi6E"/,
+  "the resource endpoint should use the supplied Drive folder as its root",
+);
+assert.ok(
+  backendSource.includes(
+    "/^REVIEWERS v\\.\\d{2}\\.\\d{2}\\.\\d{2}$/i",
+  ),
+  "reviewer version folders should be recognized as private",
+);
+assert.match(
+  backendSource,
+  /function hasPublicResourceAccess\(item\)[\s\S]*?DriveApp\.Access\.ANYONE_WITH_LINK/,
+  "the backend should list only items explicitly available to anyone",
+);
+assert.match(
+  backendSource,
+  /if \(requestType === "list_public_resources"\)\s*return handleListPublicResourcesRequest\(data\);/,
+  "the backend should register the public resources listing request",
+);
 
 for (const inputId of ["deck-password-input", "folder-password-input"]) {
   const inputMarkup = indexSource.match(
@@ -557,6 +601,7 @@ for (const [id, active] of [
   ["practice", false],
   ["deck-review", false],
   ["settings", false],
+  ["resources", false],
 ]) {
   views.set(`view-${id}`, createView(id, active));
 }
@@ -646,6 +691,19 @@ async function checkConcurrentNavigation() {
     navigationUrlUpdates.at(-1).options.replace,
     true,
     "study return should replace the session URL in browser history",
+  );
+
+  await context.module.exports.navigate("resources");
+  assert.equal(
+    navigationUrlUpdates.at(-1).path.join("/"),
+    "resources",
+    "opening Resources should set its dedicated navigation route",
+  );
+  await context.module.exports.navigate("dashboard");
+  assert.equal(
+    navigationUrlUpdates.at(-1).path.join("::"),
+    "Parent 1::Parent 2",
+    "leaving Resources should restore the current dashboard path",
   );
 }
 

@@ -124,17 +124,22 @@
         },
       );
     }
-    if (viewId === "settings") {
-      globalScope.updateNavigationUrl?.(["settings"]);
+    if (viewId === "settings" || viewId === "resources") {
+      globalScope.updateNavigationUrl?.([viewId]);
     } else if (leavingSessionView) {
       globalScope.updateNavigationUrl?.(state.currentPath || [], {
         replace: true,
       });
-    } else if (globalScope.getNavigationPathFromUrl?.()[0] === "settings") {
+    } else if (
+      ["view-settings", "view-resources"].includes(currentView?.id)
+    ) {
       globalScope.updateNavigationUrl?.(state.currentPath || []);
     }
     if (!returningToDashboard) globalScope.updateDashboard();
     if (viewId === "stats") globalScope.renderCharts();
+    if (viewId === "resources") {
+      await globalScope.loadResourcePortalFolder?.();
+    }
     return true;
   }
 
