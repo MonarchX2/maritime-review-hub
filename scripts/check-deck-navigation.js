@@ -172,12 +172,12 @@ assert.match(
 );
 assert.match(
   indexSource,
-  /<section id="view-resources" class="view-section">[\s\S]*?<h2 class="text-2xl font-bold">Resources<\/h2>/,
-  "the Resources view should use the /resources route and title",
+  /<section id="view-resources" class="view-section">[\s\S]*?<h2>My Files<\/h2>/,
+  "the Resources route should open the My Files browser",
 );
 assert.match(
   indexSource,
-  /Public Drive files can be previewed here or opened in Drive\.[\s\S]*?id="resource-portal-preview-frame"[\s\S]*?id="resource-portal-items"/,
+  /Public resources[\s\S]*?id="resource-portal-preview-frame"[\s\S]*?id="resource-portal-items"/,
   "the Resources view should preview shared files inside the portal and retain Drive links",
 );
 assert.match(

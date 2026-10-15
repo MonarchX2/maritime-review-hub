@@ -5970,6 +5970,40 @@
 
   let resourcePortalCurrentFolderId = "";
   let resourcePortalRequestGeneration = 0;
+  let resourcePortalItemCount = 0;
+  let resourcePortalStatusMessage = "";
+
+  function openResourcePortalRoot() {
+    resourcePortalCurrentFolderId = "";
+    const search = document.getElementById("resource-portal-search");
+    if (search) search.value = "";
+    closeResourcePreview();
+    return loadResourcePortalFolder("");
+  }
+
+  function filterResourcePortalItems(query) {
+    const list = document.getElementById("resource-portal-items");
+    const status = document.getElementById("resource-portal-status");
+    if (!list || !status) return 0;
+
+    const normalizedQuery = String(query || "").trim().toLocaleLowerCase();
+    let visibleCount = 0;
+    list.querySelectorAll(".resource-portal-row").forEach((row) => {
+      const matches =
+        !normalizedQuery || row.dataset.search.includes(normalizedQuery);
+      row.hidden = !matches;
+      if (matches) visibleCount += 1;
+    });
+
+    if (normalizedQuery) {
+      status.textContent = visibleCount
+        ? `${visibleCount} of ${resourcePortalItemCount} items`
+        : "No matching files or folders.";
+    } else {
+      status.textContent = resourcePortalStatusMessage;
+    }
+    return visibleCount;
+  }
 
   function createResourcePortalElement(tagName, className, text) {
     const element = document.createElement(tagName);
@@ -6029,39 +6063,48 @@
     items.forEach((item) => {
       const row = createResourcePortalElement(
         "li",
-        "flex items-center gap-3 py-3 text-left",
+        "resource-portal-row",
       );
+      row.dataset.search = String(item.name || "").toLocaleLowerCase();
       const icon = createResourcePortalElement(
         "i",
         item.type === "folder"
-          ? "fa-solid fa-folder text-amber-500"
-          : "fa-solid fa-file-lines text-brand-500",
+          ? "fa-solid fa-folder"
+          : "fa-solid fa-file-lines",
       );
       icon.setAttribute("aria-hidden", "true");
-      row.appendChild(icon);
+      const nameCell = createResourcePortalElement(
+        "div",
+        "resource-portal-name-cell",
+      );
+      icon.classList.add(
+        item.type === "folder"
+          ? "resource-portal-folder-icon"
+          : "resource-portal-file-icon",
+      );
+      nameCell.appendChild(icon);
 
       if (item.type === "folder") {
         const button = createResourcePortalElement(
           "button",
-          "min-w-0 flex-1 truncate text-left text-sm font-semibold text-gray-800 hover:text-brand-700 dark:text-gray-100 dark:hover:text-brand-300",
+          "resource-portal-item-name",
           item.name,
         );
         button.type = "button";
         button.addEventListener("click", () => {
           void loadResourcePortalFolder(item.id);
         });
-        row.appendChild(button);
+        nameCell.appendChild(button);
       } else {
         const previewButton = createResourcePortalElement(
           "button",
-          "min-w-0 flex-1 truncate text-left text-sm font-semibold text-gray-800 hover:text-brand-700 dark:text-gray-100 dark:hover:text-brand-300",
+          "resource-portal-item-name",
           item.name,
         );
         previewButton.type = "button";
         previewButton.addEventListener("click", () => {
           previewResourceFile(item.id, item.name, item.mimeType);
         });
-        row.appendChild(previewButton);
 
         const driveUrl = new URL(item.url);
         if (
@@ -6079,17 +6122,66 @@
         openInDrive.href = driveUrl.href;
         openInDrive.target = "_blank";
         openInDrive.rel = "noopener noreferrer";
-        openInDrive.setAttribute("aria-label", `Open ${item.name} in Google Drive`);
+        openInDrive.setAttribute(
+          "aria-label",
+          `Open ${item.name} in Google Drive`,
+        );
         openInDrive.title = "Open in Google Drive";
+        openInDrive.className = "resource-portal-drive-link";
         const externalIcon = createResourcePortalElement(
           "i",
           "fa-solid fa-arrow-up-right-from-square",
         );
         externalIcon.setAttribute("aria-hidden", "true");
         openInDrive.appendChild(externalIcon);
-        row.appendChild(openInDrive);
+        nameCell.appendChild(previewButton);
+        nameCell.appendChild(openInDrive);
       }
 
+      row.appendChild(nameCell);
+      const mimeType = String(item.mimeType || "");
+      const fileType =
+        item.type === "folder"
+          ? "Folder"
+          : mimeType === "application/pdf"
+            ? "PDF"
+            : mimeType === "application/vnd.google-apps.document"
+              ? "Google Doc"
+              : mimeType === "application/vnd.google-apps.spreadsheet"
+                ? "Google Sheet"
+                : mimeType === "application/vnd.google-apps.presentation"
+                  ? "Google Slides"
+                  : String(item.name || "").includes(".")
+                    ? String(item.name).split(".").pop().slice(0, 8).toUpperCase()
+                    : "File";
+      row.appendChild(
+        createResourcePortalElement(
+          "span",
+          "resource-portal-item-type",
+          fileType,
+        ),
+      );
+      let modifiedDate = "—";
+      if (item.modifiedTime) {
+        const date = new Date(item.modifiedTime);
+        if (!Number.isNaN(date.getTime())) {
+          modifiedDate = new Intl.DateTimeFormat(undefined, {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }).format(date);
+        }
+      }
+      row.appendChild(
+        createResourcePortalElement(
+          "time",
+          "resource-portal-item-modified",
+          modifiedDate,
+        ),
+      );
+      if (item.modifiedTime && modifiedDate !== "—") {
+        row.lastChild.dateTime = new Date(item.modifiedTime).toISOString();
+      }
       list.appendChild(row);
     });
   }
@@ -6141,6 +6233,7 @@
     if (!status || !list) return false;
 
     const requestGeneration = ++resourcePortalRequestGeneration;
+    resourcePortalStatusMessage = "Loading shared resources…";
     status.textContent = "Loading shared resources…";
     status.setAttribute("aria-busy", "true");
 
@@ -6164,19 +6257,24 @@
       resourcePortalCurrentFolderId = String(response.folder?.id || "");
       renderResourcePortalBreadcrumbs(response.breadcrumbs);
       renderResourcePortalItems(response.items);
+      resourcePortalItemCount = response.items.length;
       const count = response.items.length;
-      status.textContent = response.truncated
+      resourcePortalStatusMessage = response.truncated
         ? `Showing the first ${count} items. This folder has more items than can be displayed at once.`
         : count === 0
           ? "This folder has no publicly shared items."
           : `${count} ${count === 1 ? "item" : "items"}`;
+      const search = document.getElementById("resource-portal-search");
+      filterResourcePortalItems(search?.value || "");
       return true;
     } catch (error) {
       if (requestGeneration !== resourcePortalRequestGeneration) return false;
       list.replaceChildren();
-      status.textContent = `Unable to load shared resources: ${String(
+      resourcePortalItemCount = 0;
+      resourcePortalStatusMessage = `Unable to load shared resources: ${String(
         error?.message || error,
       )}`;
+      status.textContent = resourcePortalStatusMessage;
       (globalScope.DebugUtils || console).error(
         "Unable to load Resource Portal contents.",
         error,
@@ -6274,6 +6372,8 @@
     jumpToStudyPage,
     loadState,
     loadResourcePortalFolder,
+    openResourcePortalRoot,
+    filterResourcePortalItems,
     closeResourcePreview,
     markLocalDownloadDeleted,
     nextQuestion,

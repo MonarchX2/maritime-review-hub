@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- Restyle Resources as a responsive Drive file browser with current-folder search, file types, and modified dates while keeping reviewer folders excluded.
+
 ## 10.15.26-10 - 2026-10-15
 
 ### Fixed
