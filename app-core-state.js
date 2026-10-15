@@ -186,6 +186,12 @@
       segments.pop();
       if (segments.length > 0) segments.pop();
     }
+    if (
+      segments.length === 1 &&
+      ["dashboard", "resources"].includes(segments[0].toLowerCase())
+    ) {
+      segments[0] = "resources";
+    }
     return segments;
   }
 
@@ -207,7 +213,11 @@
       ? path.filter((entry) => typeof entry === "string" && entry.trim())
       : [];
     const basePath = getAppBasePath();
-    const route = normalized
+    const routeSegments =
+      normalized.length === 1 && normalized[0].toLowerCase() === "resources"
+        ? ["dashboard"]
+        : normalized;
+    const route = routeSegments
       .map((entry) => encodeNavigationSegment(entry.trim()))
       .join("/");
     if (window.location.protocol === "file:") {

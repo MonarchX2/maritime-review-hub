@@ -1,5 +1,14 @@
 # Changelog
 
+## 26.10.15-29 - 2026-10-15
+
+### Changed
+- Use `/dashboard` as the Resource Dashboard route while preserving `/resources` links, add an All-years filter, improve loading visibility, and standardize dashboard typography and spacing.
+- Refresh dashboard navigation labels and icons, and hide empty rows and columns.
+
+### Security
+- Lock Reviewers pending account setup, omit reviewer data from the public dashboard response, and remove reviewer data from previously cached dashboard indexes.
+
 ## 26.10.15-28 - 2026-10-15
 
 ### Fixed

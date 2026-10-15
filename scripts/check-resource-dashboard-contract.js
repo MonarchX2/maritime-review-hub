@@ -12,8 +12,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /getStoredJSON\(\s*RESOURCE_DASHBOARD_CACHE_KEY[\s\S]*?stored\?\.appVersion === appVersion[\s\S]*?stored\.tabs/,
-  "the dashboard should restore valid data cached for the current website version",
+  /getStoredJSON\(\s*RESOURCE_DASHBOARD_CACHE_KEY[\s\S]*?normalizeResourceDashboardTabs\(stored\.tabs\)[\s\S]*?stored\.appVersion === appVersion[\s\S]*?resourceDashboardData = sanitizedTabs/,
+  "the dashboard should sanitize cached reviewer data before restoring data for the current website version",
 );
 assert.match(
   appCore,
@@ -38,7 +38,27 @@ assert.match(
 assert.match(
   appCore,
   /resource-dashboard-filter-year[\s\S]*?resource-dashboard-filter-semester/,
-  "the dashboard should provide year and semester filters only",
+  "the dashboard should provide year and semester filters",
+);
+assert.match(
+  appCore,
+  /resourceDashboardSelectedYear = populateTermOptions\([\s\S]*?"3",\s*true,\s*\)/,
+  "the year filter should include an All option",
+);
+assert.match(
+  appCore,
+  /resourceDashboardSelectedYear === "all" \|\|\s*year === resourceDashboardSelectedYear/,
+  "selecting All years should show rows across every year",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-control:first-child select\s*\{\s*width:\s*3\.5rem;\s*\}[\s\S]*?\.resource-dashboard-control:nth-child\(2\) select\s*\{\s*width:\s*3\.5rem;/,
+  "year and semester dropdowns should use compact widths",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-control input,\s*\.resource-dashboard-control select\s*\{[^}]*min-height:\s*2rem;[^}]*padding:\s*var\(--resource-dashboard-space-tight\) var\(--resource-dashboard-space\);/,
+  "dashboard filter controls should use consistent spacing and align with refresh",
 );
 assert.match(
   appCore,
@@ -98,36 +118,68 @@ assert.deepEqual(legacyTabs.SYLLABUS.rows, [
 assert.deepEqual(legacyTabs.SYLLABUS.links, [
   ["", "", "https://drive.google.com/open?id=syllabusId"],
 ]);
-assert.deepEqual(legacyTabs.REVIEWERS.columns, ["Year", "Course", "PRELIMS"]);
+assert.deepEqual(legacyTabs.REVIEWERS, {
+  columns: [],
+  rows: [],
+  links: [],
+  linkTitles: [],
+  linkTypes: [],
+  truncated: false,
+});
+const lockedTabs = normalizeDashboardTabs({
+  MODULES: { columns: ["Year", "Course"], rows: [["3.1", "NAV6"]] },
+  SYLLABUS: { columns: ["Year", "Course", "SYLLABUS"], rows: [] },
+});
+assert.deepEqual(lockedTabs.REVIEWERS.rows, []);
 assert.match(
   appCore,
-  /\["MODULES", "REVIEWERS", "SYLLABUS"\]\.every/,
-  "the dashboard cache should include all three normalized tabs",
+  /normalized\.REVIEWERS = \{\s*columns: \[\],\s*rows: \[\],\s*links: \[\],/,
+  "the dashboard normalizer should remove reviewer data before rendering or caching",
+);
+assert.match(
+  appCore,
+  /hasValidCachedTab\(stored\?\.tabs\?\.MODULES\)[\s\S]*?normalizeResourceDashboardTabs\(stored\.tabs\)[\s\S]*?JSON\.stringify\(stored\.tabs\) !== JSON\.stringify\(sanitizedTabs\)[\s\S]*?setStoredJSON\(RESOURCE_DASHBOARD_CACHE_KEY/,
+  "old and current cached reviewer data should be replaced with a sanitized dashboard cache",
+);
+assert.match(
+  appCore,
+  /if \(!saved\) \{[\s\S]*?removeStoredItem\(RESOURCE_DASHBOARD_CACHE_KEY\)[\s\S]*?Unable to remove reviewer data from the cached dashboard/,
+  "stale reviewer cache data should be removed if sanitization cannot be persisted",
 );
 assert.match(
   appCore,
   /resource-dashboard-syllabus-nav/,
   "the dashboard should expose a separate syllabus navigation tab",
 );
-assert.match(
+assert.doesNotMatch(
   appCore,
-  /year === resourceDashboardSelectedYear &&\s*\(resourceDashboardSelectedSemester === "all" \|\|\s*semester === resourceDashboardSelectedSemester\)/,
-  "the dashboard should filter by year and optionally by semester",
+  /if \(!\["MODULES", "REVIEWERS", "SYLLABUS"\]\.includes\(tabName\)\)/,
+  "the dashboard tab handler should reject selecting the locked Reviewers tab",
 );
 assert.match(
   appCore,
-  /\.filter\(\(term\) => term\.split\("\."\)\[0\] === resourceDashboardSelectedYear\)/,
-  "semester options should be limited to the selected year",
+  /if \(!\["MODULES", "SYLLABUS"\]\.includes\(tabName\)\) return false;/,
+  "the dashboard tab handler should only allow unlocked tabs",
+);
+assert.match(
+  appCore,
+  /\(resourceDashboardSelectedYear === "all" \|\|\s*year === resourceDashboardSelectedYear\) &&\s*\(resourceDashboardSelectedSemester === "all" \|\|\s*semester === resourceDashboardSelectedSemester\)/,
+  "the dashboard should filter by year and optionally by semester, including All years",
+);
+assert.match(
+  appCore,
+  /\.filter\([\s\S]*?resourceDashboardSelectedYear === "all" \|\|\s*term\.split\("\."\)\[0\] === resourceDashboardSelectedYear/,
+  "semester options should reflect the selected year or all years",
 );
 assert.match(
   appCore,
   /createResourceDashboardElement\("option", "", "All"\)[\s\S]*?allOption\.value = "all"/,
   "the semester filter should include an All option",
 );
-assert.match(
+assert.doesNotMatch(
   appCore,
   /sortButton\.addEventListener\("click"/,
-  "the dashboard should provide sortable column headings",
+  "the dashboard should not sort rows when column headings are clicked",
 );
 assert.match(
   appCore,
@@ -146,6 +198,16 @@ assert.match(
 );
 assert.match(
   appCore,
+  /const populatedColumnIndices = tab\.columns[\s\S]*?nonEmptyRows\.some\([\s\S]*?populatedColumnIndices\.forEach\(\(columnIndex\) => \{[\s\S]*?tableHead\.appendChild\(headerRow\)/,
+  "dashboard headers should omit columns that are empty across the dataset",
+);
+assert.match(
+  appCore,
+  /const nonEmptyRows = tab\.rows[\s\S]*?tab\.columns\.some\(\(_, columnIndex\) => \{[\s\S]*?isResourceDashboardLink\(linkUrl\)/,
+  "dashboard rows containing resource links should not be treated as empty",
+);
+assert.match(
+  appCore,
   /columnName === "course" \|\| columnName === "year"[\s\S]*?resource-dashboard-column-\$\{columnName\}/,
   "dashboard cells and headers should identify the Course and Year columns",
 );
@@ -159,10 +221,15 @@ assert.match(
   /\.resource-dashboard-table th\s*\{[^}]*text-align:\s*center;/,
   "the dashboard header row should be center-aligned",
 );
-assert.match(
+assert.doesNotMatch(
+  appCore,
+  /resource-dashboard-sort|resourceDashboardSortColumn|resourceDashboardSortDirection|"A-Z"|"Z-A"/,
+  "dashboard headers should not provide alphabetical sorting controls",
+);
+assert.doesNotMatch(
   resourceStyles,
-  /\.resource-dashboard-sort\s*\{[^}]*justify-content:\s*center;[^}]*text-align:\s*center;/,
-  "dashboard header buttons should be center-aligned",
+  /resource-dashboard-sort/,
+  "dashboard styles should not include alphabetical sorting controls",
 );
 assert.match(
   resourceStyles,
@@ -181,8 +248,33 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-portal-sidebar\s*\{[^}]*padding:\s*0 clamp\(/,
-  "the dashboard tab bar should not have excess vertical padding",
+  /\.resource-dashboard-layout\s*\{[\s\S]*?--resource-dashboard-space-tight:\s*0\.25rem;[\s\S]*?--resource-dashboard-space:\s*0\.5rem;[\s\S]*?--resource-dashboard-space-wide:\s*0\.75rem;/,
+  "the Resource Dashboard should define a consistent spacing scale",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-browser \.resource-portal-status\[aria-busy="true"\]\s*\{[^}]*border:\s*1px solid #bfdbfe;[^}]*color:\s*#1e40af;[^}]*background:\s*#eff6ff;[^}]*font-weight:\s*600;/,
+  "dashboard loading and update checks should have a visible but restrained status treatment",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-browser \.resource-portal-status\[aria-busy="true"\]::before\s*\{[^}]*animation:\s*resource-dashboard-status-spin/,
+  "dashboard loading and update checks should show a subtle progress indicator",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-sidebar\s*\{[^}]*gap:\s*var\(--resource-dashboard-space\);[^}]*padding:\s*0 var\(--resource-dashboard-space-wide\);/,
+  "dashboard tabs should use the shared spacing scale",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-table th,\s*\.resource-dashboard-table td\s*\{[^}]*padding:\s*var\(--resource-dashboard-space\);/,
+  "dashboard table cells should have equal, consistent spacing",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-layout\s*\{\s*--resource-dashboard-font-title:\s*1\.125rem;\s*--resource-dashboard-font:\s*0\.875rem;\s*--resource-dashboard-font-small:\s*0\.75rem;/,
+  "Resource Dashboard typography should match the main dashboard title, body, and small-text scale",
 );
 assert.match(
   resourceStyles,
@@ -197,7 +289,7 @@ assert.match(
 assert.match(
   resourceStyles,
   /\.resource-dashboard-table th\s*\{[^}]*font-size:\s*var\(--resource-dashboard-font-small\)/,
-  "dashboard column headings should use the shared smaller dashboard font",
+  "dashboard column headings should use the shared small-text dashboard font",
 );
 assert.match(
   appCore,

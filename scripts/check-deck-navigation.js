@@ -156,24 +156,36 @@ function checkSessionNavigationUrls() {
     "the quiz route should retain the complete deck subject for refresh recovery",
   );
 
+  location.hash = "#/dashboard";
+  assert.deepEqual(
+    Array.from(window.getNavigationPathFromUrl()),
+    ["resources"],
+    "the Dashboard URL should open the Resource Dashboard view",
+  );
   location.hash = "#/resources";
   assert.deepEqual(
     Array.from(window.getNavigationPathFromUrl()),
     ["resources"],
-    "the Resources URL should parse as its own route",
+    "the legacy Resources URL should continue opening the Resource Dashboard",
+  );
+  window.updateNavigationUrl(["resources"]);
+  assert.equal(
+    location.hash,
+    "#/dashboard",
+    "opening the Resource Dashboard should use the canonical Dashboard URL",
   );
 }
 
 checkSessionNavigationUrls();
 assert.match(
   indexSource,
-  /id="database-connection-icon"[\s\S]*?onclick="navigate\('resources'\)"[\s\S]*?aria-label="Open Resources"[\s\S]*?Resources/,
-  "the Resources button should appear immediately after the sync status icon",
+  /id="database-connection-icon"[\s\S]*?onclick="navigate\('resources'\)"[\s\S]*?aria-label="Open Resource Dashboard"[\s\S]*?Resource Dashboard/,
+  "the Resource Dashboard button should appear immediately after the sync status icon",
 );
 assert.match(
   indexSource,
   /<section id="view-resources" class="view-section">[\s\S]*?aria-label="Resource dashboard"/,
-  "the Resources route should open the Resource Dashboard",
+  "the dashboard route should open the Resource Dashboard",
 );
 assert.match(
   indexSource,

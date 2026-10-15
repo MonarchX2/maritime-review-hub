@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src blob:; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data: blob:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-26.10.15-28" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-26.10.15-29" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-26.10.15-28"
+      href="icon.svg?v=mrh-release-26.10.15-29"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-26.10.15-28" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-26.10.15-29" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-26.10.15-28"
+      href="tailwind.generated.css?v=mrh-release-26.10.15-29"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-26.10.15-28"
+      href="styles.css?v=mrh-release-26.10.15-29"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-26.10.15-28"
+      href="tailwind.generated.css?v=mrh-release-26.10.15-29"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-26.10.15-28"
+      href="styles.css?v=mrh-release-26.10.15-29"
       media="print"
       onload="
         this.media = 'all';
@@ -297,7 +297,7 @@
       <div class="flex items-center gap-2 relative">
         <button
           onclick="navigate('dashboard')"
-          class="font-bold text-base hover:text-brand-200 transition-colors text-left flex items-center transform hover:scale-105 active:scale-95 origin-left"
+          class="font-bold text-xl hover:text-brand-200 transition-colors text-left flex items-center transform hover:scale-105 active:scale-95 origin-left"
           type="button"
         >
           <i class="fa-solid fa-anchor mr-1.5"></i> MRH
@@ -310,12 +310,12 @@
         ></i>
         <button
           onclick="navigate('resources')"
-          class="rounded-md px-2 py-1 text-xs font-semibold transition-colors hover:bg-brand-800 hover:text-brand-100"
-          aria-label="Open Resources"
+          class="rounded-md px-2 py-1 text-sm font-semibold transition-colors hover:bg-brand-800 hover:text-brand-100"
+          aria-label="Open Resource Dashboard"
           type="button"
         >
           <i class="fa-solid fa-folder-open mr-1" aria-hidden="true"></i>
-          Resources
+          Resource Dashboard
         </button>
       </div>
       <div class="flex items-center gap-4 relative">
@@ -622,7 +622,7 @@
               <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
               <span>Return</span>
             </button>
-            <span class="resource-dashboard-title">Dashboard</span>
+            <span class="resource-dashboard-title">Resource Dashboard</span>
           </div>
           <div class="resource-portal-shell">
             <aside class="resource-portal-sidebar" aria-label="Dashboard tabs">
@@ -632,7 +632,7 @@
                 class="resource-portal-nav-item"
                 onclick="openResourceDashboardTab('SYLLABUS')"
               >
-                <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
+                <i class="fa-solid fa-book" aria-hidden="true"></i>
                 Syllabus
               </button>
               <button
@@ -642,17 +642,21 @@
                 onclick="openResourceDashboardTab('MODULES')"
                 aria-current="page"
               >
-                <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+                <i class="fa-solid fa-folder" aria-hidden="true"></i>
                 Modules
               </button>
               <button
                 type="button"
                 id="resource-dashboard-reviewers-nav"
                 class="resource-portal-nav-item"
-                onclick="openResourceDashboardTab('REVIEWERS')"
+                aria-label="Reviewers — locked until user accounts are set up"
+                title="Locked until user accounts are set up"
+                disabled
+                aria-disabled="true"
               >
-                <i class="fa-solid fa-users" aria-hidden="true"></i>
+                <i class="fa-solid fa-note-sticky" aria-hidden="true"></i>
                 Reviewers
+                <i class="fa-solid fa-lock resource-dashboard-lock-icon" aria-hidden="true"></i>
               </button>
             </aside>
 
@@ -2542,7 +2546,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 26.10.15-28</p>
+    <p id="site-version" class="site-version">Version 26.10.15-29</p>
 
     <div
       id="qr-transfer-modal"

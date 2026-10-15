@@ -5989,15 +5989,9 @@
   const RESOURCE_DASHBOARD_CACHE_KEY = "resource_dashboard_cache_v1";
   let resourceDashboardSelectedYear = "3";
   let resourceDashboardSelectedSemester = "1";
-  let resourceDashboardSortColumn = -1;
-  let resourceDashboardSortDirection = "asc";
 
   function openResourceDashboardTab(tabName) {
-    if (!["MODULES", "REVIEWERS", "SYLLABUS"].includes(tabName)) return false;
-    if (resourceDashboardActiveTab !== tabName) {
-      resourceDashboardSortColumn = -1;
-      resourceDashboardSortDirection = "asc";
-    }
+    if (!["MODULES", "SYLLABUS"].includes(tabName)) return false;
     resourceDashboardActiveTab = tabName;
     const modulesNav = document.getElementById(
       "resource-dashboard-modules-nav",
@@ -6048,10 +6042,6 @@
       "resource-dashboard-table-body",
     );
     if (!tab || !status || !tableHead || !tableBody) return false;
-    if (resourceDashboardSortColumn >= tab.columns.length) {
-      resourceDashboardSortColumn = -1;
-      resourceDashboardSortDirection = "asc";
-    }
 
     const yearFilterControl = document.getElementById(
       "resource-dashboard-filter-year",
@@ -6125,10 +6115,15 @@
       years,
       resourceDashboardSelectedYear,
       "3",
+      true,
     );
     const semesters = new Set(
       [...termValues]
-        .filter((term) => term.split(".")[0] === resourceDashboardSelectedYear)
+        .filter(
+          (term) =>
+            resourceDashboardSelectedYear === "all" ||
+            term.split(".")[0] === resourceDashboardSelectedYear,
+        )
         .map((term) => term.split(".")[1]),
     );
     resourceDashboardSelectedSemester = populateTermOptions(
@@ -6139,62 +6134,27 @@
       true,
     );
 
-    tableHead.replaceChildren();
-    tableBody.replaceChildren();
-    const headerRow = document.createElement("tr");
-    tab.columns.forEach((column, columnIndex) => {
-      const header = document.createElement("th");
-      const columnName = String(column).trim().toLowerCase();
-      if (columnName === "course" || columnName === "year") {
-        header.classList.add(`resource-dashboard-column-${columnName}`);
-      }
-      header.setAttribute(
-        "aria-sort",
-        resourceDashboardSortColumn === columnIndex
-          ? resourceDashboardSortDirection === "asc"
-            ? "ascending"
-            : "descending"
-          : "none",
-      );
-      const sortButton = createResourceDashboardElement(
-        "button",
-        "resource-dashboard-sort",
-        column,
-      );
-      sortButton.type = "button";
-      sortButton.setAttribute("aria-label", `Sort by ${column}`);
-      sortButton.setAttribute(
-        "aria-pressed",
-        String(resourceDashboardSortColumn === columnIndex),
-      );
-      if (resourceDashboardSortColumn === columnIndex) {
-        sortButton.appendChild(
-          createResourceDashboardElement(
-            "span",
-            "resource-dashboard-sort-direction",
-            resourceDashboardSortDirection === "asc" ? "A-Z" : "Z-A",
-          ),
-        );
-      }
-      sortButton.addEventListener("click", () => {
-        if (resourceDashboardSortColumn === columnIndex) {
-          resourceDashboardSortDirection =
-            resourceDashboardSortDirection === "asc" ? "desc" : "asc";
-        } else {
-          resourceDashboardSortColumn = columnIndex;
-          resourceDashboardSortDirection = "asc";
-        }
-        renderResourceDashboardTab();
-      });
-      header.appendChild(sortButton);
-      headerRow.appendChild(header);
-    });
-    tableHead.appendChild(headerRow);
-
     const nonEmptyRows = tab.rows
       .map((values, rowIndex) => ({ values, rowIndex }))
-      .filter(({ values }) =>
-        values.some((value) => String(value ?? "").trim() !== ""),
+      .filter(({ values, rowIndex }) =>
+        tab.columns.some((_, columnIndex) => {
+          const displayValue = String(values[columnIndex] ?? "").trim();
+          const linkUrl = String(
+            tab.links?.[rowIndex]?.[columnIndex] || displayValue,
+          );
+          return displayValue !== "" || isResourceDashboardLink(linkUrl);
+        }),
+      );
+    const populatedColumnIndices = tab.columns
+      .map((_, columnIndex) => columnIndex)
+      .filter((columnIndex) =>
+        nonEmptyRows.some(({ values, rowIndex }) => {
+          const displayValue = String(values[columnIndex] ?? "").trim();
+          const linkUrl = String(
+            tab.links?.[rowIndex]?.[columnIndex] || displayValue,
+          );
+          return displayValue !== "" || isResourceDashboardLink(linkUrl);
+        }),
       );
     const visibleRows = nonEmptyRows
       .filter(({ values }) => {
@@ -6208,32 +6168,32 @@
             ? String(values[semesterColumnIndex] || "").trim()
             : "";
         return (
-          year === resourceDashboardSelectedYear &&
+          (resourceDashboardSelectedYear === "all" ||
+            year === resourceDashboardSelectedYear) &&
           (resourceDashboardSelectedSemester === "all" ||
             semester === resourceDashboardSelectedSemester)
         );
       });
-    if (resourceDashboardSortColumn >= 0) {
-      visibleRows.sort((left, right) => {
-        const leftValue = String(
-          left.values[resourceDashboardSortColumn] || "",
-        );
-        const rightValue = String(
-          right.values[resourceDashboardSortColumn] || "",
-        );
-        const comparison = leftValue.localeCompare(rightValue, undefined, {
-          numeric: true,
-          sensitivity: "base",
-        });
-        return resourceDashboardSortDirection === "asc"
-          ? comparison
-          : -comparison;
-      });
-    }
+
+    tableHead.replaceChildren();
+    tableBody.replaceChildren();
+    const headerRow = document.createElement("tr");
+    populatedColumnIndices.forEach((columnIndex) => {
+      const column = tab.columns[columnIndex];
+      const header = document.createElement("th");
+      const columnName = String(column).trim().toLowerCase();
+      if (columnName === "course" || columnName === "year") {
+        header.classList.add(`resource-dashboard-column-${columnName}`);
+      }
+      header.textContent = String(column);
+      headerRow.appendChild(header);
+    });
+    if (populatedColumnIndices.length) tableHead.appendChild(headerRow);
 
     visibleRows.forEach(({ values, rowIndex }) => {
       const row = document.createElement("tr");
-      tab.columns.forEach((column, index) => {
+      populatedColumnIndices.forEach((index) => {
+        const column = tab.columns[index];
         const cell = document.createElement("td");
         const columnName = String(column).trim().toLowerCase();
         if (columnName === "course" || columnName === "year") {
@@ -6333,26 +6293,31 @@
   }
 
   function normalizeResourceDashboardTabs(tabs) {
-    const requiredTabs = ["MODULES", "REVIEWERS"];
     const isValidTab = (tab) =>
       Array.isArray(tab?.columns) &&
       Array.isArray(tab?.rows) &&
       tab.rows.every(Array.isArray);
-    const invalidTabs = requiredTabs.filter((name) => !isValidTab(tabs?.[name]));
-    if (invalidTabs.length) {
+    if (!isValidTab(tabs?.MODULES)) {
       throw new Error(
-        `The dashboard service returned invalid data: missing or malformed ${invalidTabs.join(", ")} tab(s).`,
+        "The dashboard service returned invalid data: missing or malformed MODULES tab.",
       );
     }
 
     const normalized = { ...tabs };
-    const reviewerTab = tabs.REVIEWERS;
-    const syllabusColumnIndex = reviewerTab.columns.findIndex((column) =>
-      ["syllabus", "course syllabus"].includes(
-        String(column || "").trim().toLowerCase(),
-      ),
-    );
+    const reviewerTab = isValidTab(tabs.REVIEWERS) ? tabs.REVIEWERS : null;
+    const syllabusColumnIndex = reviewerTab
+      ? reviewerTab.columns.findIndex((column) =>
+          ["syllabus", "course syllabus"].includes(
+            String(column || "").trim().toLowerCase(),
+          ),
+        )
+      : -1;
     if (!isValidTab(normalized.SYLLABUS)) {
+      if (!reviewerTab) {
+        throw new Error(
+          "The dashboard service returned invalid data: missing or malformed SYLLABUS tab.",
+        );
+      }
       const yearColumnIndex = reviewerTab.columns.findIndex(
         (column) => String(column || "").trim().toLowerCase() === "year",
       );
@@ -6393,23 +6358,6 @@
           ),
           truncated: Boolean(reviewerTab.truncated),
         };
-
-        normalized.REVIEWERS = {
-          ...reviewerTab,
-          columns: reviewerTab.columns.filter(
-            (_column, index) => index !== syllabusColumnIndex,
-          ),
-          rows: reviewerTab.rows.map((row) =>
-            row.filter((_value, index) => index !== syllabusColumnIndex),
-          ),
-        };
-        ["links", "linkTitles", "linkTypes"].forEach((field) => {
-          if (Array.isArray(reviewerTab[field])) {
-            normalized.REVIEWERS[field] = reviewerTab[field].map((row) =>
-              row.filter((_value, index) => index !== syllabusColumnIndex),
-            );
-          }
-        });
       } else {
         normalized.SYLLABUS = {
           columns: ["Year", "Course", "COURSE SYLLABUS"],
@@ -6421,6 +6369,14 @@
         };
       }
     }
+    normalized.REVIEWERS = {
+      columns: [],
+      rows: [],
+      links: [],
+      linkTitles: [],
+      linkTypes: [],
+      truncated: false,
+    };
     return normalized;
   }
 
@@ -6439,23 +6395,47 @@
     const storage = globalScope.StorageUtils;
     const appVersion = String(globalScope.__MRH_APP__?.version || "").trim();
     let cachedDashboard = null;
-    if (typeof storage?.getStoredJSON === "function" && appVersion) {
+    if (typeof storage?.getStoredJSON === "function") {
       const stored = storage.getStoredJSON(
         RESOURCE_DASHBOARD_CACHE_KEY,
         null,
       );
+      const hasValidCachedTab = (tab) =>
+        Array.isArray(tab?.columns) &&
+        Array.isArray(tab?.rows) &&
+        tab.rows.every(Array.isArray);
       if (
-        stored?.appVersion === appVersion &&
-        typeof stored.version === "string" &&
-        ["MODULES", "REVIEWERS", "SYLLABUS"].every(
-          (name) =>
-            Array.isArray(stored.tabs?.[name]?.columns) &&
-            Array.isArray(stored.tabs?.[name]?.rows),
-        )
+        hasValidCachedTab(stored?.tabs?.MODULES) &&
+        (hasValidCachedTab(stored?.tabs?.SYLLABUS) ||
+          hasValidCachedTab(stored?.tabs?.REVIEWERS))
       ) {
-        cachedDashboard = stored;
-        resourceDashboardData = stored.tabs;
-        renderResourceDashboardTab();
+        const sanitizedTabs = normalizeResourceDashboardTabs(stored.tabs);
+        if (JSON.stringify(stored.tabs) !== JSON.stringify(sanitizedTabs)) {
+          const saved =
+            typeof storage.setStoredJSON === "function" &&
+            storage.setStoredJSON(RESOURCE_DASHBOARD_CACHE_KEY, {
+              ...cachedDashboard,
+            });
+          if (!saved) {
+            const removed =
+              typeof storage.removeStoredItem === "function" &&
+              storage.removeStoredItem(RESOURCE_DASHBOARD_CACHE_KEY);
+            if (!removed) {
+              (globalScope.DebugUtils || console).error(
+                "Unable to remove reviewer data from the cached dashboard.",
+                new Error("The browser dashboard cache could not be sanitized."),
+              );
+            }
+          }
+        }
+        if (
+          stored.appVersion === appVersion &&
+          typeof stored.version === "string"
+        ) {
+          cachedDashboard = { ...stored, tabs: sanitizedTabs };
+          resourceDashboardData = sanitizedTabs;
+          renderResourceDashboardTab();
+        }
       }
     }
     status.textContent = cachedDashboard

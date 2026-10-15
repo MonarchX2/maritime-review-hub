@@ -14,8 +14,13 @@ assert.match(
 );
 assert.match(
   index,
-  /resource-dashboard-topbar[\s\S]*?id="resource-dashboard-return"[\s\S]*?aria-label="Return to main menu"[\s\S]*?<span>Return<\/span>[\s\S]*?resource-dashboard-title">Dashboard[\s\S]*?resource-portal-shell/,
-  "the dashboard should place a Return button and Dashboard label above and outside its card",
+  /id="resource-dashboard-reviewers-nav"[^>]*aria-label="Reviewers — locked until user accounts are set up"[^>]*title="Locked until user accounts are set up"[^>]*disabled[^>]*aria-disabled="true"[\s\S]*?fa-lock/,
+  "the Reviewers tab should be visibly and accessibly locked until user accounts are ready",
+);
+assert.match(
+  index,
+  /resource-dashboard-topbar[\s\S]*?id="resource-dashboard-return"[\s\S]*?aria-label="Return to main menu"[\s\S]*?<span>Return<\/span>[\s\S]*?resource-dashboard-title">Resource Dashboard[\s\S]*?resource-portal-shell/,
+  "the dashboard should place a Return button and Resource Dashboard label above and outside its card",
 );
 assert.match(
   index,
@@ -34,7 +39,7 @@ assert.doesNotMatch(
 );
 assert.match(
   index,
-  /<span class="resource-dashboard-title">Dashboard<\/span>/,
+  /<span class="resource-dashboard-title">Resource Dashboard<\/span>/,
   "the dashboard label should sit to the right of the Return button",
 );
 assert.doesNotMatch(
@@ -105,8 +110,8 @@ assert.match(
 const resourceStyles = fs.readFileSync("styles.css", "utf8");
 assert.match(
   appCore,
-  /const nonEmptyRows = tab\.rows[\s\S]*?values\.some\(\(value\) => String\(value \?\? ""\)\.trim\(\) !== ""\)[\s\S]*?const visibleRows = nonEmptyRows/,
-  "dashboard rendering should omit rows with no displayed values",
+  /const nonEmptyRows = tab\.rows[\s\S]*?tab\.columns\.some\(\(_, columnIndex\) => \{[\s\S]*?displayValue !== "" \|\| isResourceDashboardLink\(linkUrl\)[\s\S]*?const populatedColumnIndices = tab\.columns[\s\S]*?nonEmptyRows\.some\(/,
+  "dashboard rendering should omit rows and columns with no displayed values or resource links",
 );
 assert.match(
   resourceStyles,
@@ -130,12 +135,12 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-control:first-child select\s*\{[^}]*width:\s*4\.5rem;/,
+  /\.resource-dashboard-control:first-child select\s*\{[^}]*width:\s*3\.5rem;/,
   "the year filter dropdown should have a compact width",
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-control:nth-child\(2\) select\s*\{[^}]*width:\s*5\.5rem;/,
+  /\.resource-dashboard-control:nth-child\(2\) select\s*\{[^}]*width:\s*3\.5rem;/,
   "the semester filter dropdown should have a compact width",
 );
 assert.match(
@@ -165,7 +170,7 @@ assert.doesNotMatch(
 );
 const dashboardHandler =
   backend.match(
-    /function handleGetResourceDashboardRequest\(\)\s*\{[\s\S]*?\n\}/,
+    /function handleGetResourceDashboardRequest\(cachedVersion\)\s*\{[\s\S]*?\n\}/,
   )?.[0] || "";
 assert.match(
   backend,
@@ -193,14 +198,19 @@ assert.doesNotMatch(
   "the dashboard request must not depend on Google Sheets",
 );
 assert.match(
+  dashboardHandler,
+  /versionParts\.push\("reviewers-locked-v1"\)[\s\S]*?\["MODULES", "SYLLABUS"\]\.forEach[\s\S]*?tabs\.REVIEWERS = \{\s*columns: \[\],\s*rows: \[\],/,
+  "the public backend should invalidate old caches and return no reviewer content while locked",
+);
+assert.match(
   appCore,
   /tab\.links\?\.\[rowIndex\]\?\.\[index\]/,
   "dashboard rendering should use the backend-provided hyperlink target",
 );
-assert.match(
+assert.doesNotMatch(
   appCore,
   /sortButton\.addEventListener\("click"[\s\S]*?resourceDashboardSortDirection/,
-  "dashboard table headings should sort their columns",
+  "dashboard table headings should not sort their columns",
 );
 assert.match(
   appCore,
@@ -209,13 +219,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /year === resourceDashboardSelectedYear &&\s*\(resourceDashboardSelectedSemester === "all" \|\|\s*semester === resourceDashboardSelectedSemester\)/,
-  "dashboard rows should be filtered by year and optionally by semester",
+  /\(resourceDashboardSelectedYear === "all" \|\|\s*year === resourceDashboardSelectedYear\) &&\s*\(resourceDashboardSelectedSemester === "all" \|\|\s*semester === resourceDashboardSelectedSemester\)/,
+  "dashboard rows should be filtered by year and semester, including All years",
 );
 assert.match(
   appCore,
-  /\.filter\(\(term\) => term\.split\("\."\)\[0\] === resourceDashboardSelectedYear\)/,
-  "semester options should be limited to the selected year",
+  /\.filter\([\s\S]*?resourceDashboardSelectedYear === "all" \|\|\s*term\.split\("\."\)\[0\] === resourceDashboardSelectedYear/,
+  "semester options should reflect the selected year or all years",
 );
 assert.match(
   appCore,
@@ -375,7 +385,7 @@ assert.deepEqual(
   {
     status: "success",
     version:
-      "modules_combined.json:id-modules_combined.json:1000|reviewers_combined.json:id-reviewers_combined.json:2000",
+      "modules_combined.json:id-modules_combined.json:1000|reviewers_combined.json:id-reviewers_combined.json:2000|reviewers-locked-v1",
     tabs: {
       MODULES: {
         columns: ["Year", "Course", "PRELIMS", "MIDTERMS", "FINALS"],
@@ -426,17 +436,11 @@ assert.deepEqual(
         truncated: false,
       },
       REVIEWERS: {
-        columns: ["Year", "Course", "PRELIMS", "MIDTERMS", "FINALS"],
-        rows: [["3.1", "NAV6", "01 NAV6 REVIEWER (Reviewer One).pdf", "", ""]],
-        links: [
-          ["", "", "https://drive.google.com/open?id=reviewerPdf_123456", "", ""],
-        ],
-        linkTitles: [
-          ["", "", "01 NAV6 REVIEWER (Reviewer One).pdf", "", ""],
-        ],
-        linkTypes: [
-          ["", "", "application/pdf", "", ""],
-        ],
+        columns: [],
+        rows: [],
+        links: [],
+        linkTitles: [],
+        linkTypes: [],
         truncated: false,
       },
       SYLLABUS: {
@@ -455,7 +459,7 @@ assert.deepEqual(
       },
     },
   },
-  "the backend should reshape combined Drive indexes into Modules, Reviewers, and separate Syllabus dashboard tables",
+  "the backend should return Modules and Syllabus while withholding Reviewers dashboard content",
 );
 assert.equal(indexReadCount, 2);
 
