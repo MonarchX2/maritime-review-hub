@@ -6382,7 +6382,8 @@
             titleInParentheses ? titleInParentheses[1] : fileTitle,
           ).trim();
           const isModuleFolderFallback =
-            resourceDashboardActiveTab === "MODULES" && !titleInParentheses;
+            resourceDashboardActiveTab === "MODULES" &&
+            (!titleInParentheses || !resourceTitle);
           const isSyllabus = ["syllabus", "course syllabus"].includes(
             columnName,
           );
@@ -7060,7 +7061,8 @@
           const saved =
             typeof storage.setStoredJSON === "function" &&
             storage.setStoredJSON(RESOURCE_DASHBOARD_CACHE_KEY, {
-              ...cachedDashboard,
+              ...stored,
+              tabs: sanitizedTabs,
             });
           if (!saved) {
             const removed =

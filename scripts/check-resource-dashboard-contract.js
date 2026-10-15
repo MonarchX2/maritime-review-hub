@@ -48,6 +48,11 @@ assert.match(
 );
 assert.match(
   appCore,
+  /JSON\.stringify\(stored\.tabs\) !== JSON\.stringify\(sanitizedTabs\)[\s\S]*?setStoredJSON\(RESOURCE_DASHBOARD_CACHE_KEY,\s*\{\s*\.\.\.stored,\s*tabs:\s*sanitizedTabs/,
+  "sanitized dashboard tabs should replace the cached legacy data without discarding safe cache metadata",
+);
+assert.match(
+  appCore,
   /cachedDashboard \? \{ version: cachedDashboard\.version \} : \{\}/,
   "the dashboard should ask the backend to validate its cached index version",
 );
@@ -239,7 +244,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /isModuleFolderFallback\s*=\s*resourceDashboardActiveTab === "MODULES" && !titleInParentheses[\s\S]*?isPdfResource\s*=\s*!isModuleFolderFallback[\s\S]*?isModuleFolderFallback\s*\?\s*"Folder"/,
+  /isModuleFolderFallback\s*=\s*resourceDashboardActiveTab === "MODULES" &&\s*\(!titleInParentheses \|\| !resourceTitle\)[\s\S]*?isPdfResource\s*=\s*!isModuleFolderFallback[\s\S]*?isModuleFolderFallback\s*\?\s*"Folder"/,
   "Module resources without a parenthesized title should use the Folder label and folder icon",
 );
 assert.match(

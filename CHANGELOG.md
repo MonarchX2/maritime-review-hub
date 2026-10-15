@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-9 - 2026-10-16
+
+### Fixed
+- Treat empty Module title parentheses as a missing title and preserve safe dashboard cache data when sanitizing legacy reviewer rows.
+
 ## 26.10.16-8 - 2026-10-16
 
 ### Changed
