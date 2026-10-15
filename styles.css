@@ -1481,6 +1481,10 @@ button:active:not(:disabled) {
   gap: 0.65rem;
 }
 
+.resource-dashboard-filters[hidden] {
+  display: none;
+}
+
 .resource-dashboard-control {
   display: grid;
   min-width: min(100%, 10rem);

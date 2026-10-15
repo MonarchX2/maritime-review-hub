@@ -5986,15 +5986,14 @@
   let resourceDashboardData = null;
   let resourceDashboardActiveTab = "MODULES";
   let resourceDashboardLoadingPromise = null;
-  let resourceDashboardFilterColumn = "";
-  let resourceDashboardFilterValue = "";
+  let resourceDashboardSelectedYear = "3";
+  let resourceDashboardSelectedSemester = "1";
   let resourceDashboardSortColumn = -1;
   let resourceDashboardSortDirection = "asc";
 
   function openResourceDashboardTab(tabName) {
     if (!["MODULES", "REVIEWERS"].includes(tabName)) return false;
     if (resourceDashboardActiveTab !== tabName) {
-      resourceDashboardFilterColumn = "";
       resourceDashboardSortColumn = -1;
       resourceDashboardSortDirection = "asc";
     }
@@ -6050,29 +6049,73 @@
       resourceDashboardSortDirection = "asc";
     }
 
-    const filterColumnControl = document.getElementById(
-      "resource-dashboard-filter-column",
+    const yearFilterControl = document.getElementById(
+      "resource-dashboard-filter-year",
     );
-    const filterValueControl = document.getElementById(
-      "resource-dashboard-filter-value",
+    const semesterFilterControl = document.getElementById(
+      "resource-dashboard-filter-semester",
     );
-    if (filterColumnControl) {
-      const selectedFilterColumn = resourceDashboardFilterColumn;
-      filterColumnControl.replaceChildren(
-        createResourceDashboardElement("option", "", "All columns"),
-      );
-      filterColumnControl.options[0].value = "";
-      tab.columns.forEach((column, index) => {
-        const option = createResourceDashboardElement("option", "", column);
-        option.value = String(index);
-        filterColumnControl.appendChild(option);
+    const filterContainer = yearFilterControl?.closest(
+      ".resource-dashboard-filters",
+    );
+    const yearColumnIndex = tab.columns.findIndex(
+      (column) => String(column).trim().toLocaleLowerCase() === "year",
+    );
+    const semesterColumnIndex = tab.columns.findIndex(
+      (column) => String(column).trim().toLocaleLowerCase() === "semester",
+    );
+    const hasTermFilter = yearColumnIndex >= 0;
+    if (filterContainer) filterContainer.hidden = !hasTermFilter;
+    const termValues = new Set();
+    if (hasTermFilter) {
+      tab.rows.forEach((values) => {
+        const yearValue = String(values[yearColumnIndex] || "").trim();
+        const combinedTerm = /^(\d+)\s*[./-]\s*(\d+)$/.exec(yearValue);
+        const year = combinedTerm ? combinedTerm[1] : yearValue;
+        const semester = combinedTerm
+          ? combinedTerm[2]
+          : semesterColumnIndex >= 0
+            ? String(values[semesterColumnIndex] || "").trim()
+            : "";
+        if (year && semester) termValues.add(`${year}.${semester}`);
       });
-      filterColumnControl.value = selectedFilterColumn;
-      resourceDashboardFilterColumn = filterColumnControl.value;
     }
-    if (filterValueControl) {
-      filterValueControl.value = resourceDashboardFilterValue;
-    }
+    const populateTermOptions = (control, values, selectedValue) => {
+      if (!control) return selectedValue;
+      const options = new Set(values);
+      options.add(selectedValue);
+      control.replaceChildren(
+        ...[...options]
+          .sort((left, right) =>
+            left.localeCompare(right, undefined, { numeric: true }),
+          )
+          .map((value) => {
+            const option = createResourceDashboardElement(
+              "option",
+              "",
+              value,
+            );
+            option.value = value;
+            return option;
+          }),
+      );
+      control.value = selectedValue;
+      return control.value || selectedValue;
+    };
+    const years = new Set([...termValues].map((term) => term.split(".")[0]));
+    const semesters = new Set(
+      [...termValues].map((term) => term.split(".")[1]),
+    );
+    resourceDashboardSelectedYear = populateTermOptions(
+      yearFilterControl,
+      years,
+      resourceDashboardSelectedYear,
+    );
+    resourceDashboardSelectedSemester = populateTermOptions(
+      semesterFilterControl,
+      semesters,
+      resourceDashboardSelectedSemester,
+    );
 
     const label =
       resourceDashboardActiveTab === "MODULES" ? "Modules" : "Reviewers";
@@ -6125,18 +6168,21 @@
     });
     tableHead.appendChild(headerRow);
 
-    const filterText = resourceDashboardFilterValue.trim().toLocaleLowerCase();
     const visibleRows = tab.rows
       .map((values, rowIndex) => ({ values, rowIndex }))
       .filter(({ values }) => {
-        if (!filterText) return true;
-        const selectedColumn = Number(resourceDashboardFilterColumn);
-        const filterValues =
-          resourceDashboardFilterColumn === ""
-            ? values
-            : [values[selectedColumn] || ""];
-        return filterValues.some((value) =>
-          String(value || "").toLocaleLowerCase().includes(filterText),
+        if (!hasTermFilter) return true;
+        const yearValue = String(values[yearColumnIndex] || "").trim();
+        const combinedTerm = /^(\d+)\s*[./-]\s*(\d+)$/.exec(yearValue);
+        const year = combinedTerm ? combinedTerm[1] : yearValue;
+        const semester = combinedTerm
+          ? combinedTerm[2]
+          : semesterColumnIndex >= 0
+            ? String(values[semesterColumnIndex] || "").trim()
+            : "";
+        return (
+          year === resourceDashboardSelectedYear &&
+          semester === resourceDashboardSelectedSemester
         );
       });
     if (resourceDashboardSortColumn >= 0) {
@@ -6207,8 +6253,8 @@
     });
 
     status.textContent =
-      filterText
-        ? `Showing ${visibleRows.length} of ${tab.rows.length} rows${
+      hasTermFilter
+        ? `Showing ${visibleRows.length} of ${tab.rows.length} rows for ${resourceDashboardSelectedYear}.${resourceDashboardSelectedSemester}${
             tab.truncated ? " (first 2,000 loaded)" : ""
           }`
         : `${tab.rows.length} ${
@@ -6225,25 +6271,25 @@
   }
 
   function initializeResourceDashboardControls() {
-    const filterColumnControl = document.getElementById(
-      "resource-dashboard-filter-column",
+    const yearFilterControl = document.getElementById(
+      "resource-dashboard-filter-year",
     );
-    const filterValueControl = document.getElementById(
-      "resource-dashboard-filter-value",
+    const semesterFilterControl = document.getElementById(
+      "resource-dashboard-filter-semester",
     );
-    if (filterColumnControl && !filterColumnControl.dataset.initialized) {
-      filterColumnControl.addEventListener("change", () => {
-        resourceDashboardFilterColumn = filterColumnControl.value;
+    if (yearFilterControl && !yearFilterControl.dataset.initialized) {
+      yearFilterControl.addEventListener("change", () => {
+        resourceDashboardSelectedYear = yearFilterControl.value;
         if (resourceDashboardData) renderResourceDashboardTab();
       });
-      filterColumnControl.dataset.initialized = "true";
+      yearFilterControl.dataset.initialized = "true";
     }
-    if (filterValueControl && !filterValueControl.dataset.initialized) {
-      filterValueControl.addEventListener("input", () => {
-        resourceDashboardFilterValue = filterValueControl.value;
+    if (semesterFilterControl && !semesterFilterControl.dataset.initialized) {
+      semesterFilterControl.addEventListener("change", () => {
+        resourceDashboardSelectedSemester = semesterFilterControl.value;
         if (resourceDashboardData) renderResourceDashboardTab();
       });
-      filterValueControl.dataset.initialized = "true";
+      semesterFilterControl.dataset.initialized = "true";
     }
   }
 

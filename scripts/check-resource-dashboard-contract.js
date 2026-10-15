@@ -11,8 +11,18 @@ assert.match(
 );
 assert.match(
   appCore,
-  /resource-dashboard-filter-column[\s\S]*?resource-dashboard-filter-value/,
-  "the dashboard should provide a column and value filter",
+  /resource-dashboard-filter-year[\s\S]*?resource-dashboard-filter-semester/,
+  "the dashboard should provide year and semester filters only",
+);
+assert.match(
+  appCore,
+  /resourceDashboardSelectedYear = "3"[\s\S]*?resourceDashboardSelectedSemester = "1"/,
+  "the dashboard should default to year 3, semester 1",
+);
+assert.match(
+  appCore,
+  /year === resourceDashboardSelectedYear &&\s*semester === resourceDashboardSelectedSemester/,
+  "the dashboard should filter rows by the selected year and semester",
 );
 assert.match(
   appCore,

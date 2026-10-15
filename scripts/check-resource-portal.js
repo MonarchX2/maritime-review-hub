@@ -29,8 +29,13 @@ assert.doesNotMatch(
 );
 assert.match(
   index,
-  /resource-dashboard-filter-column[\s\S]*?resource-dashboard-filter-value/,
-  "the dashboard should expose a column filter",
+  /<span>Year<\/span>[\s\S]*?resource-dashboard-filter-year[\s\S]*?<span>Semester<\/span>[\s\S]*?resource-dashboard-filter-semester/,
+  "the dashboard should expose only year and semester filters",
+);
+assert.doesNotMatch(
+  index,
+  /resource-dashboard-filter-column|resource-dashboard-filter-value|Filter column|Filter value/,
+  "the dashboard should not expose generic column or text filters",
 );
 assert.match(
   index,
@@ -109,8 +114,18 @@ assert.match(
 );
 assert.match(
   appCore,
-  /visibleRows = tab\.rows[\s\S]*?filterValues\.some/,
-  "dashboard rows should be filterable by selected column",
+  /resourceDashboardSelectedYear = "3"[\s\S]*?resourceDashboardSelectedSemester = "1"/,
+  "dashboard filters should default to year 3, semester 1",
+);
+assert.match(
+  appCore,
+  /year === resourceDashboardSelectedYear &&\s*semester === resourceDashboardSelectedSemester/,
+  "dashboard rows should be filtered by the selected year and semester",
+);
+assert.match(
+  appCore,
+  /if \(!hasTermFilter\) return true;/,
+  "tabs without year data should remain visible without term filtering",
 );
 assert.match(
   deckNavigation,
@@ -320,7 +335,7 @@ const routedDashboard = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "get_resource_dashboard",
-          appVersion: "mrh-release-26.10.15-14",
+          appVersion: "mrh-release-26.10.15-15",
         }),
       },
     })
@@ -339,7 +354,7 @@ const disabledListing = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "list_public_resources",
-          appVersion: "mrh-release-26.10.15-14",
+          appVersion: "mrh-release-26.10.15-15",
         }),
       },
     })
@@ -356,7 +371,7 @@ const disabledPreview = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "get_resource_preview",
-          appVersion: "mrh-release-26.10.15-14",
+          appVersion: "mrh-release-26.10.15-15",
         }),
       },
     })

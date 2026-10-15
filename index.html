@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src blob:; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data: blob:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-26.10.15-14" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-26.10.15-15" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-26.10.15-14"
+      href="icon.svg?v=mrh-release-26.10.15-15"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-26.10.15-14" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-26.10.15-15" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-26.10.15-14"
+      href="tailwind.generated.css?v=mrh-release-26.10.15-15"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-26.10.15-14"
+      href="styles.css?v=mrh-release-26.10.15-15"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-26.10.15-14"
+      href="tailwind.generated.css?v=mrh-release-26.10.15-15"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-26.10.15-14"
+      href="styles.css?v=mrh-release-26.10.15-15"
       media="print"
       onload="
         this.media = 'all';
@@ -648,19 +648,16 @@
             <div class="resource-portal-toolbar">
               <div class="resource-dashboard-filters">
                 <label class="resource-dashboard-control">
-                  <span>Filter column</span>
-                  <select id="resource-dashboard-filter-column">
-                    <option value="">All columns</option>
+                  <span>Year</span>
+                  <select id="resource-dashboard-filter-year">
+                    <option value="3">3</option>
                   </select>
                 </label>
                 <label class="resource-dashboard-control">
-                  <span>Filter value</span>
-                  <input
-                    id="resource-dashboard-filter-value"
-                    type="text"
-                    autocomplete="off"
-                    placeholder="Show matching rows"
-                  />
+                  <span>Semester</span>
+                  <select id="resource-dashboard-filter-semester">
+                    <option value="1">1</option>
+                  </select>
                 </label>
               </div>
               <button
@@ -2526,7 +2523,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 26.10.15-14</p>
+    <p id="site-version" class="site-version">Version 26.10.15-15</p>
 
     <div
       id="qr-transfer-modal"

@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.15-15 - 2026-10-15
+
+### Changed
+- Limit Resource Dashboard filtering to Year and Semester, defaulting to 3.1.
+
 ## 26.10.15-14 - 2026-10-15
 
 ### Changed
