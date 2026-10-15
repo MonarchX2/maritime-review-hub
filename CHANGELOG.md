@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.15-16 - 2026-10-15
+
+### Changed
+- Refresh the Resource Dashboard layout, remove filled active-tab backgrounds, and compact the term filters.
+
 ## 26.10.15-15 - 2026-10-15
 
 ### Changed

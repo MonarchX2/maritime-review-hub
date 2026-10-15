@@ -23,7 +23,7 @@ const context = {
     },
   },
 };
-const currentClientVersion = "mrh-release-26.10.15-15";
+const currentClientVersion = "mrh-release-26.10.15-16";
 vm.createContext(context);
 vm.runInContext(
   fs.readFileSync("backend/main.js", "utf8"),
@@ -42,7 +42,7 @@ assert.equal(
   "the current source release must pass the backend version gate",
 );
 assert.equal(
-  context.isSupportedClientVersion("mrh-26.10.15-15-89f6603f02cb"),
+  context.isSupportedClientVersion("mrh-26.10.15-16-89f6603f02cb"),
   true,
   "the requested deployed release must pass the backend version gate",
 );

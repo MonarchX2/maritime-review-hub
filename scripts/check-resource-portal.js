@@ -82,8 +82,29 @@ assert.match(
   /\.resource-dashboard-table\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*100%;/,
   "dashboard table columns should size to their contents",
 );
+const resourceStyles = fs.readFileSync("styles.css", "utf8");
+assert.match(
+  resourceStyles,
+  /\.resource-portal-nav-item\.is-active\s*\{[^}]*background:\s*transparent;/,
+  "active dashboard tabs should not have a filled blue background",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-control:first-child select\s*\{[^}]*width:\s*4\.5rem;/,
+  "the year filter dropdown should have a compact width",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-control:nth-child\(2\) select\s*\{[^}]*width:\s*5\.5rem;/,
+  "the semester filter dropdown should have a compact width",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-table-scroll\s*\{[^}]*max-height:\s*min\(68vh,\s*48rem\);/,
+  "the dashboard table should scroll within the available viewport",
+);
 assert.doesNotMatch(
-  fs.readFileSync("styles.css", "utf8"),
+  resourceStyles,
   /\.resource-dashboard-table\s*\{[^}]*min-width:\s*38rem/,
   "the dashboard should not force fixed-width columns on mobile",
 );
