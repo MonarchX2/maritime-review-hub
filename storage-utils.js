@@ -553,6 +553,36 @@
     return removed;
   }
 
+  function clearAllAppNamespaces() {
+    const stores = [getLocalStorage(), getSessionStorage()];
+    let failed = 0;
+    let removed = 0;
+
+    stores.forEach((store) => {
+      const keys = [];
+      for (let index = 0; index < store.length; index += 1) {
+        const key = safeGetStorageKeyAtIndex(store, index);
+        if (
+          key &&
+          (/^mrh_[^:]+:/.test(key) ||
+            key.startsWith("mrh_") ||
+            key.startsWith("__mrh_"))
+        ) {
+          keys.push(key);
+        }
+      }
+      keys.forEach((key) => {
+        if (safeRemoveItem(store, key)) removed += 1;
+        else failed += 1;
+      });
+    });
+
+    if (failed > 0) {
+      throw new Error(`Unable to remove ${failed} app storage entries.`);
+    }
+    return removed;
+  }
+
   function purgeOrphanedStorage(identityToKeep = null) {
     const store = getLocalStorage();
     const activeIdentity = normalizeIdentity(
@@ -613,6 +643,7 @@
     migrateLegacyStorageKeys,
     purgeOrphanedStorage,
     clearCurrentNamespace,
+    clearAllAppNamespaces,
   };
 
   if (typeof module !== "undefined" && module.exports)

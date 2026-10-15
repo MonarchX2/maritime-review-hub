@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>App data cleared</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        box-sizing: border-box;
+        display: grid;
+        min-height: 100vh;
+        margin: 0;
+        padding: 1.5rem;
+        place-items: center;
+      }
+      main {
+        max-width: 34rem;
+        line-height: 1.6;
+      }
+      h1 {
+        line-height: 1.2;
+      }
+      a {
+        color: #2563eb;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>This app version is no longer supported</h1>
+      <p>
+        The server has disabled this version. Maritime Review Hub's locally
+        saved data and offline app files were removed from this browser.
+      </p>
+      <p>
+        Open the current website to continue:
+        <a href="./">Maritime Review Hub</a>
+      </p>
+      <p id="cleanup-status" role="status"></p>
+    </main>
+    <script>
+      const cleanupStatus = document.getElementById("cleanup-status");
+      if (new URLSearchParams(location.search).get("cleanup") === "incomplete") {
+        cleanupStatus.textContent =
+          "Some browser storage could not be removed. Close other Maritime Review Hub tabs and clear this site's stored data in your browser settings.";
+      }
+    </script>
+  </body>
+</html>

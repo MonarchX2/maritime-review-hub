@@ -64,6 +64,19 @@ assert.equal(storage.setStoredItem("fallback-check", "saved"), true);
 assert.equal(storage.getStoredItem("fallback-check"), "saved");
 assert.equal(storage.setSessionStoredItem("fallback-check", "session"), true);
 assert.equal(storage.getSessionStoredItem("fallback-check"), "session");
+const appStorage = storageContext.__mrhNodeStorage;
+Object.assign(appStorage, {
+  "mrh_device_one:stats": "saved",
+  "mrh_device_two:db": "saved",
+  mrh_legacy: "saved",
+  "__mrh_storage_lock:test": "saved",
+  unrelated: "keep",
+});
+const appSessionStorage = storageContext.__mrhNodeSessionStorage;
+Object.assign(appSessionStorage, { "mrh_device_three:session": "saved" });
+storage.clearAllAppNamespaces();
+assert.deepEqual(Object.keys(appStorage), ["unrelated"]);
+assert.deepEqual(Object.keys(appSessionStorage), []);
 assert.equal(
   storage.setStoredJSON("oversized-unicode", {
     value: "\u{1f6a2}".repeat(70000),
@@ -102,7 +115,67 @@ const networkContext = {
   },
 };
 networkContext.MRH_CONFIG = { databaseUrl: "https://example.test/backend" };
-networkContext.__MRH_APP__ = { version: "mrh-release-10.15.26-5" };
+networkContext.__MRH_APP__ = { version: "mrh-release-10.15.26-6" };
+networkContext.__MRH_APP_BASE_PATH = "/mrh/";
+networkContext.location = {
+  origin: "https://example.test",
+  replace(url) {
+    networkContext.replacedLocation = url;
+  },
+};
+networkContext.StorageUtils = {
+  clearAllAppNamespaces() {
+    networkContext.appNamespacesPurged = true;
+  },
+};
+networkContext.indexedDB = {
+  deleteDatabase(name) {
+    assert.equal(name, "mrh_db");
+    const request = {};
+    setTimeout(() => request.onsuccess(), 0);
+    return request;
+  },
+};
+const deletedCacheNames = [];
+networkContext.caches = {
+  async keys() {
+    return ["mrh-cache-old", "other-app-cache"];
+  },
+  async delete(name) {
+    deletedCacheNames.push(name);
+    return true;
+  },
+};
+const unregisteredScopes = [];
+networkContext.navigator = {
+  serviceWorker: {
+    async getRegistrations() {
+      return [
+        {
+          scope: "https://example.test/mrh/",
+          async unregister() {
+            unregisteredScopes.push(this.scope);
+            return true;
+          },
+        },
+        {
+          scope: "https://example.test/maritime-review-hub/",
+          async unregister() {
+            unregisteredScopes.push(this.scope);
+            return true;
+          },
+        },
+        {
+          scope: "https://example.test/other-app/",
+          async unregister() {
+            unregisteredScopes.push(this.scope);
+            return true;
+          },
+        },
+      ];
+    },
+  },
+};
 vm.createContext(networkContext);
 vm.runInContext(
   fs.readFileSync("app-core-network.js", "utf8"),
@@ -245,6 +318,31 @@ async function checkBackendErrorHandling() {
     JSON.parse(lastPostBody).appVersion,
     networkContext.__MRH_APP__.version,
     "every POST request must include the running app version",
+  );
+
+  networkContext.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        status: "error",
+        code: "CLIENT_UPDATE_REQUIRED",
+        purgeClientData: true,
+        message: "This app version is no longer supported.",
+      }),
+      { status: 200 },
+    );
+  await assert.rejects(
+    network.callBackend({ type: "get_sync_status" }, { maxRetries: 0 }),
+    /This app version is no longer supported/,
+  );
+  assert.equal(networkContext.appNamespacesPurged, true);
+  assert.deepEqual(deletedCacheNames, ["mrh-cache-old"]);
+  assert.deepEqual(unregisteredScopes, [
+    "https://example.test/mrh/",
+    "https://example.test/maritime-review-hub/",
+  ]);
+  assert.equal(
+    networkContext.replacedLocation,
+    "https://example.test/mrh/client-update-required.html?cleanup=complete",
   );
 
   fetchCount = 0;

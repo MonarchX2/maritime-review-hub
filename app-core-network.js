@@ -2,6 +2,7 @@
   "use strict";
 
   const DEFAULT_TIMEOUT_MS = 15000;
+  const LEGACY_APP_PATH = "/maritime-review-hub/";
   const DEFAULT_POOL_CONFIG = {
     maxConnections: 8,
     maxRetries: 7,
@@ -26,6 +27,137 @@
     : { warn: () => {}, error: () => {} };
   let cachedDatabaseUrl = "";
   let latestBackendCacheVersion = "";
+  let backendPurgePromise = null;
+
+  async function purgeAppOwnedData() {
+    if (backendPurgePromise) return backendPurgePromise;
+
+    backendPurgePromise = (async () => {
+      const basePath =
+        typeof globalScope.__MRH_APP_BASE_PATH === "string"
+          ? globalScope.__MRH_APP_BASE_PATH
+          : "/";
+      const currentPath = basePath.endsWith("/")
+        ? basePath
+        : `${basePath}/`;
+      const legacyPath = LEGACY_APP_PATH;
+      const isAppPath = (pathname) =>
+        pathname === currentPath.slice(0, -1) ||
+        pathname.startsWith(currentPath) ||
+        pathname === legacyPath.slice(0, -1) ||
+        pathname.startsWith(legacyPath);
+      const operations = [];
+      const logger = globalScope.DebugUtils || console;
+
+      if (typeof globalScope.StorageUtils?.clearAllAppNamespaces === "function") {
+        operations.push(() =>
+          globalScope.StorageUtils.clearAllAppNamespaces(),
+        );
+      } else {
+        operations.push(() => {
+          throw new Error("App storage cleanup is unavailable.");
+        });
+      }
+
+      if (typeof globalScope.indexedDB?.deleteDatabase === "function") {
+        operations.push(
+          () =>
+            new Promise((resolve, reject) => {
+              const request = globalScope.indexedDB.deleteDatabase("mrh_db");
+              request.onsuccess = () => resolve();
+              request.onerror = () =>
+                reject(request.error || new Error("Unable to delete app database."));
+              request.onblocked = () =>
+                reject(new Error("App database deletion is blocked by another tab."));
+            }),
+        );
+      }
+
+      if (
+        typeof globalScope.caches?.keys === "function" &&
+        typeof globalScope.caches?.delete === "function"
+      ) {
+        operations.push(async () => {
+          const names = await globalScope.caches.keys();
+          const appCaches = names.filter((name) => name.startsWith("mrh-cache-"));
+          const results = await Promise.all(
+            appCaches.map((name) => globalScope.caches.delete(name)),
+          );
+          if (results.some((deleted) => !deleted)) {
+            throw new Error("Unable to delete one or more app caches.");
+          }
+        });
+      }
+
+      if (
+        typeof globalScope.navigator?.serviceWorker?.getRegistrations ===
+        "function"
+      ) {
+        operations.push(async () => {
+          const registrations =
+            await globalScope.navigator.serviceWorker.getRegistrations();
+          const ownedRegistrations = registrations.filter((registration) => {
+            const scopeUrl = new URL(registration.scope);
+            return (
+              scopeUrl.origin === globalScope.location?.origin &&
+              isAppPath(scopeUrl.pathname)
+            );
+          });
+          const results = await Promise.allSettled(
+            ownedRegistrations.map((registration) => registration.unregister()),
+          );
+          if (
+            results.some(
+              (result) =>
+                result.status === "rejected" ||
+                (result.status === "fulfilled" && !result.value),
+            )
+          ) {
+            throw new Error("Unable to unregister one or more app workers.");
+          }
+        });
+      }
+
+      const results = await Promise.allSettled(
+        operations.map((operation) => Promise.resolve().then(operation)),
+      );
+      const failed = results.filter((result) => result.status === "rejected");
+      failed.forEach((result) =>
+        logger.error?.(
+          "Unable to completely purge app-owned browser data:",
+          result.reason,
+        ),
+      );
+
+      if (typeof globalScope.location?.replace === "function") {
+        const terminalUrl = new URL(
+          "client-update-required.html",
+          new URL(currentPath, globalScope.location.origin),
+        );
+        terminalUrl.searchParams.set(
+          "cleanup",
+          failed.length === 0 ? "complete" : "incomplete",
+        );
+        globalScope.location.replace(terminalUrl.href);
+      }
+
+      if (failed.length > 0) {
+        throw new Error(
+          "The server required outdated app data to be removed, but some app storage could not be cleared.",
+        );
+      }
+    })();
+
+    return backendPurgePromise;
+  }
+
+  async function processBackendError(error) {
+    if (!error) return;
+    if (error.payload?.purgeClientData === true) {
+      await purgeAppOwnedData();
+    }
+    throw error;
+  }
 
   function rememberBackendCacheVersion(response) {
     const version = String(
@@ -621,7 +753,7 @@
 
         const result = await parseJsonResponse(response);
         const backendError = getBackendError(result, response);
-        if (backendError) throw backendError;
+        if (backendError) await processBackendError(backendError);
         return result;
       },
       {
@@ -683,7 +815,7 @@
         );
         const result = await parseJsonResponse(response);
         const backendError = getBackendError(result, response);
-        if (backendError) throw backendError;
+        if (backendError) await processBackendError(backendError);
         return result;
       },
       {
@@ -763,7 +895,7 @@
         );
         const result = await parseJsonResponse(response);
         const backendError = getBackendError(result, response);
-        if (backendError) throw backendError;
+        if (backendError) await processBackendError(backendError);
         return result;
       } catch (error) {
         if (options.allowFallback !== false && !error?.isBackendError) {

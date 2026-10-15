@@ -1,5 +1,11 @@
 # Changelog
 
+## 10.15.26-6 - 2026-10-15
+
+### Changed
+- When the backend retires an app version, clear all Maritime Review Hub browser namespaces, its local database, offline caches, and app service workers before showing an update-required page.
+- Keep unrelated origin storage, caches, and service workers untouched.
+
 ## 10.15.26-5 - 2026-10-15
 
 ### Changed

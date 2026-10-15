@@ -20,7 +20,7 @@ const context = {
     },
   },
 };
-const currentClientVersion = "mrh-release-10.15.26-5";
+const currentClientVersion = "mrh-release-10.15.26-6";
 vm.createContext(context);
 vm.runInContext(
   fs.readFileSync("backend/main.js", "utf8"),
@@ -222,10 +222,11 @@ assert.deepEqual(
 assert.equal(properties.get("FORCE_REBUILD"), "true");
 assert.equal(rebuildScheduled, true);
 
-context.errorResponse = (message, code) => ({
+context.errorResponse = (message, code, details = {}) => ({
   status: "error",
   code,
   message,
+  ...details,
 });
 context.loadDeckMetadataMap = () => Object.create(null);
 context.getEffectivePassword = () => "";
@@ -280,6 +281,12 @@ assert.equal(
   }).code,
   "CLIENT_UPDATE_REQUIRED",
   "POST requests without a client version must be rejected",
+);
+assert.equal(
+  context.clientVersionRequired("mrh-10.15.26-4-4daaf03c73b69520")
+    .purgeClientData,
+  true,
+  "the backend must tell compatible stale clients to purge their app-owned data",
 );
 assert.equal(
   context.doPost({
