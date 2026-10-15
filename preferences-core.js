@@ -11,6 +11,29 @@
     return globalScope.renderCategoryProgress?.();
   }
 
+  const SESSION_SETTING_KEYS = {
+    quiz: new Set([
+      "activeRecall",
+      "shuffleChoices",
+      "shuffleQuestions",
+      "quizHideABCD",
+      "clozeEnabled",
+      "srsEnabled",
+      "qTypeOverride",
+      "quizShowExplanations",
+    ]),
+    study: new Set([
+      "hideABCD",
+      "showWrongChoices",
+      "studyShowExplanations",
+      "studyLayout",
+      "studyPageSize",
+      "studyFilterMode",
+    ]),
+  };
+  const hasOwn = (object, key) =>
+    Object.prototype.hasOwnProperty.call(object, key);
+
   function syncPreferenceControls() {
     if (typeof globalScope.AppState?.syncPreferenceControls === "function") {
       return globalScope.AppState.syncPreferenceControls();
@@ -36,6 +59,78 @@
     return "";
   }
 
+  function getDeckSessionSetting(
+    mode,
+    key,
+    subject = getNavigationContextSubject(),
+  ) {
+    const deckKey = String(subject || "").trim();
+    if (!SESSION_SETTING_KEYS[mode]?.has(key) || !deckKey) {
+      return state.prefs[key];
+    }
+    const decks = state.prefs.deckSessionSettings;
+    const settings =
+      decks && hasOwn(decks, deckKey)
+        ? decks[deckKey]?.[mode]
+        : null;
+    return settings && hasOwn(settings, key)
+      ? settings[key]
+      : state.prefs[key];
+  }
+
+  function setDeckSessionSetting(
+    mode,
+    key,
+    value,
+    subject = getNavigationContextSubject(),
+  ) {
+    const deckKey = String(subject || "").trim();
+    if (!SESSION_SETTING_KEYS[mode]?.has(key) || !deckKey) return false;
+
+    let deckSettings = state.prefs.deckSessionSettings;
+    if (!deckSettings || Object.getPrototypeOf(deckSettings) !== null) {
+      deckSettings = Object.assign(
+        Object.create(null),
+        deckSettings || {},
+      );
+    }
+    state.prefs.deckSessionSettings = deckSettings;
+    if (
+      !hasOwn(deckSettings, deckKey) ||
+      !deckSettings[deckKey] ||
+      typeof deckSettings[deckKey] !== "object"
+    ) {
+      deckSettings[deckKey] = Object.create(null);
+    }
+    if (
+      !hasOwn(deckSettings[deckKey], mode) ||
+      !deckSettings[deckKey][mode] ||
+      typeof deckSettings[deckKey][mode] !== "object"
+    ) {
+      deckSettings[deckKey][mode] = Object.create(null);
+    }
+    deckSettings[deckKey][mode][key] = value;
+    return true;
+  }
+
+  function getDeckSessionSettings(
+    mode,
+    subject = getNavigationContextSubject(),
+  ) {
+    const deckKey = String(subject || "").trim();
+    const decks = state.prefs.deckSessionSettings;
+    const settings =
+      decks && hasOwn(decks, deckKey)
+        ? decks[deckKey]?.[mode]
+        : null;
+    if (!SESSION_SETTING_KEYS[mode] || !settings) return {};
+    return Object.fromEntries(
+      Object.entries(settings).filter(([key]) =>
+        SESSION_SETTING_KEYS[mode].has(key),
+      ),
+    );
+  }
+
   function getQuizNavigationPosition(subject = getNavigationContextSubject()) {
     const deckKey = String(subject || "").trim();
     const override = deckKey
@@ -55,27 +150,51 @@
     const deckKey = String(subject || "").trim();
     if (!deckKey) return null;
     const overrides = state.prefs.deckNavigationOverrides || {};
+    if (!hasOwn(overrides, deckKey)) return null;
     const deckOverrides = overrides[deckKey];
-    if (!deckOverrides || !deckOverrides[type]) return null;
+    if (!deckOverrides || !hasOwn(deckOverrides, type) || !deckOverrides[type])
+      return null;
     return deckOverrides[type];
   }
 
   function setDeckNavigationOverride(subject, type, value) {
     const deckKey = String(subject || "").trim();
-    if (!deckKey) return;
-    state.prefs.deckNavigationOverrides =
-      state.prefs.deckNavigationOverrides || {};
-    state.prefs.deckNavigationOverrides[deckKey] =
-      state.prefs.deckNavigationOverrides[deckKey] || {};
-    state.prefs.deckNavigationOverrides[deckKey][type] = value;
+    if (!deckKey) return false;
+    let overrides = state.prefs.deckNavigationOverrides;
+    if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) {
+      overrides = Object.create(null);
+    } else if (Object.getPrototypeOf(overrides) !== null) {
+      overrides = Object.assign(Object.create(null), overrides);
+    }
+    state.prefs.deckNavigationOverrides = overrides;
+    if (
+      !hasOwn(overrides, deckKey) ||
+      !overrides[deckKey] ||
+      typeof overrides[deckKey] !== "object" ||
+      Array.isArray(overrides[deckKey])
+    ) {
+      overrides[deckKey] = Object.create(null);
+    } else if (Object.getPrototypeOf(overrides[deckKey]) !== null) {
+      overrides[deckKey] = Object.assign(
+        Object.create(null),
+        overrides[deckKey],
+      );
+    }
+    overrides[deckKey][type] = value;
     saveState();
+    return true;
   }
 
   function getStudyNavigationPosition(
-    layoutType = state.prefs.studyLayout || "scroll",
+    layoutType,
     subject = getNavigationContextSubject(),
   ) {
-    const normalizedLayout = layoutType === "single" ? "single" : "scroll";
+    const effectiveLayout =
+      layoutType ||
+      getDeckSessionSetting("study", "studyLayout", subject) ||
+      "scroll";
+    const normalizedLayout =
+      effectiveLayout === "single" ? "single" : "scroll";
     const overrideKey =
       normalizedLayout === "single" ? "studySingle" : "studyScroll";
     const overrideValue = getDeckNavigationOverride(subject, overrideKey);
@@ -112,27 +231,14 @@
       position === "bottom" ? "bottom" : position === "both" ? "both" : "top";
     const effectiveLayout = layoutType === "single" ? "single" : "scroll";
 
+    if (!String(subject || "").trim()) return false;
+
     if (effectiveLayout === "single") {
       const nextValue = normalized === "both" ? "top" : normalized;
-      if (subject) {
-        setDeckNavigationOverride(subject, "studySingle", nextValue);
-      } else {
-        state.prefs.studySingleNavigationPosition = nextValue;
-      }
-    } else if (subject) {
-      setDeckNavigationOverride(subject, "studyScroll", normalized);
+      return setDeckNavigationOverride(subject, "studySingle", nextValue);
     } else {
-      state.prefs.studyScrollNavigationPosition = normalized;
+      return setDeckNavigationOverride(subject, "studyScroll", normalized);
     }
-
-    state.prefs.reviewNavigationPosition =
-      effectiveLayout === "single"
-        ? subject
-          ? getStudyNavigationPosition("single", subject)
-          : state.prefs.studySingleNavigationPosition
-        : subject
-          ? getStudyNavigationPosition("scroll", subject)
-          : state.prefs.studyScrollNavigationPosition;
   }
 
   function getScrollNavigationButtonLabel(position) {
@@ -156,7 +262,10 @@
       return;
     }
 
-    const studyLayout = state.prefs.studyLayout || "scroll";
+    const studyLayout =
+      getDeckSessionSetting("study", "studyLayout") ||
+      state.prefs.studyLayout ||
+      "scroll";
     const positions = {
       "toggle-main-navigation-quiz": getQuizPosition(),
       "toggle-main-navigation-single": getStudyPosition("single"),
@@ -174,7 +283,8 @@
   function cycleNavigationModeButton(mode, button) {
     const layoutType =
       mode === "study"
-        ? state.prefs.studyLayout === "single"
+        ? (getDeckSessionSetting("study", "studyLayout") ||
+            state.prefs.studyLayout) === "single"
           ? "single"
           : "scroll"
         : mode;
@@ -197,16 +307,20 @@
 
     const next = order[(order.indexOf(current) + 1) % order.length];
     if (layoutType === "quiz") {
-      if (subject) {
-        setDeckNavigationOverride(subject, "quiz", next);
-      } else {
-        state.prefs.quizNavigationPosition = next;
-        state.prefs.quizNavigationMode = "manual";
+      if (!subject || !setDeckNavigationOverride(subject, "quiz", next)) {
+        notifyNavigationSettingUnavailable();
+        return false;
       }
     } else if (layoutType === "single") {
-      setStudyNavigationPosition("single", next, subject);
+      if (!setStudyNavigationPosition("single", next, subject)) {
+        notifyNavigationSettingUnavailable();
+        return false;
+      }
     } else {
-      setStudyNavigationPosition("scroll", next, subject);
+      if (!setStudyNavigationPosition("scroll", next, subject)) {
+        notifyNavigationSettingUnavailable();
+        return false;
+      }
     }
 
     saveState();
@@ -218,6 +332,7 @@
     }
     syncNavigationButtonLabels();
     if (button) button.textContent = getScrollNavigationButtonLabel(next);
+    return true;
   }
 
   function cycleScrollNavigationPosition() {
@@ -235,7 +350,7 @@
 
     const savedPosition = state.session.active
       ? getQuizNavigationPosition()
-      : getStudyNavigationPosition(state.prefs.studyLayout || "scroll");
+      : getStudyNavigationPosition();
     const position = ["top", "bottom", "both"].includes(savedPosition)
       ? savedPosition
       : "top";
@@ -263,32 +378,66 @@
     bottomAnchor.classList.toggle("hidden", position !== "bottom");
   }
 
+  function notifyNavigationSettingUnavailable() {
+    if (typeof globalScope.showToast === "function") {
+      globalScope.showToast(
+        "Open a deck session before changing navigation position.",
+        "warning",
+      );
+      return;
+    }
+    throw new Error(
+      "Unable to save navigation position without an active deck.",
+    );
+  }
+
   function changeNavigationPosition(position) {
     const normalized = position === "top" ? "top" : "bottom";
-    if (
-      document.getElementById("view-deck-review")?.classList.contains("active")
-    ) {
+    const isStudyActive = document
+      .getElementById("view-deck-review")
+      ?.classList.contains("active");
+    const subject = getNavigationContextSubject();
+    if (!subject) {
+      notifyNavigationSettingUnavailable();
+      return false;
+    }
+    if (isStudyActive) {
       const layoutType =
-        state.prefs.studyLayout === "single" ? "single" : "scroll";
-      setStudyNavigationPosition(layoutType, normalized);
-    } else {
-      state.prefs.quizNavigationPosition = normalized;
-      state.prefs.quizNavigationMode = "manual";
+        (getDeckSessionSetting("study", "studyLayout", subject) ||
+          state.prefs.studyLayout) === "single"
+          ? "single"
+          : "scroll";
+      if (!setStudyNavigationPosition(layoutType, normalized, subject)) {
+        notifyNavigationSettingUnavailable();
+        return false;
+      }
+    } else if (!setDeckNavigationOverride(subject, "quiz", normalized)) {
+      notifyNavigationSettingUnavailable();
+      return false;
     }
     saveState();
     applyNavigationPosition();
     syncNavigationButtonLabels();
     const select = document.getElementById("navigation-position-select");
     if (select) select.value = normalized;
+    return true;
   }
 
   function toggleMainNavigationPosition(mode, source) {
     const normalized = source.checked ? "bottom" : "top";
+    const subject = getNavigationContextSubject();
+    if (!subject) {
+      notifyNavigationSettingUnavailable();
+      return false;
+    }
     if (mode === "quiz") {
-      state.prefs.quizNavigationPosition = normalized;
-      state.prefs.quizNavigationMode = "manual";
-    } else {
-      setStudyNavigationPosition(mode, normalized);
+      if (!setDeckNavigationOverride(subject, "quiz", normalized)) {
+        notifyNavigationSettingUnavailable();
+        return false;
+      }
+    } else if (!setStudyNavigationPosition(mode, normalized, subject)) {
+      notifyNavigationSettingUnavailable();
+      return false;
     }
     saveState();
     applyNavigationPosition();
@@ -298,6 +447,7 @@
     ) {
       globalScope.reRenderDeckReview?.();
     }
+    return true;
   }
 
   function toggleNavigationPosition(source) {
@@ -542,6 +692,9 @@
     applyTextAlignment,
     setTextAlignment,
     getNavigationContextSubject,
+    getDeckSessionSetting,
+    setDeckSessionSetting,
+    getDeckSessionSettings,
     getQuizNavigationPosition,
     getDeckNavigationOverride,
     setDeckNavigationOverride,

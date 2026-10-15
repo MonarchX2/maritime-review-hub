@@ -41,6 +41,7 @@
       shuffleQuestions: true,
       hideABCD: true,
       quizHideABCD: false,
+      deckSessionSettings: {},
       showWrongChoices: true,
       clozeEnabled: false,
       srsEnabled: false,
@@ -712,6 +713,41 @@
     );
     normalized.clozeEnabled = coerceBoolean(normalized.clozeEnabled, false);
     normalized.srsEnabled = coerceBoolean(normalized.srsEnabled, false);
+    normalized.deckSessionSettings =
+      normalized.deckSessionSettings &&
+      typeof normalized.deckSessionSettings === "object" &&
+      !Array.isArray(normalized.deckSessionSettings)
+        ? Object.fromEntries(
+            Object.entries(normalized.deckSessionSettings)
+              .filter(
+                ([deck, settings]) =>
+                  deck !== "__proto__" &&
+                  settings &&
+                  typeof settings === "object" &&
+                  !Array.isArray(settings),
+              )
+              .map(([deck, settings]) => [
+                deck,
+                Object.fromEntries(
+                  ["quiz", "study"]
+                    .filter(
+                      (mode) =>
+                        settings[mode] &&
+                        typeof settings[mode] === "object" &&
+                        !Array.isArray(settings[mode]),
+                    )
+                    .map((mode) => [
+                      mode,
+                      Object.fromEntries(
+                        Object.entries(settings[mode]).filter(
+                          ([key]) => key !== "__proto__",
+                        ),
+                      ),
+                    ]),
+                ),
+              ]),
+          )
+        : {};
     normalized.layoutMode = ["grid", "list", "tree"].includes(
       normalized.layoutMode,
     )
@@ -817,6 +853,28 @@
 
   function syncPreferenceControls() {
     if (typeof document === "undefined") return;
+    const isStudyActive = document
+      .getElementById("view-deck-review")
+      ?.classList.contains("active");
+    const isQuizActive = Boolean(state.session?.active);
+    const sessionMode = isStudyActive
+      ? "study"
+      : isQuizActive
+        ? "quiz"
+        : null;
+    const deckSubject = sessionMode
+      ? sessionMode === "study"
+        ? globalScope.getCurrentReviewSubject?.() || ""
+        : state.session.questions?.[state.session.currentIndex]?.Subject || ""
+      : "";
+    const getSessionValue = (key) =>
+      sessionMode
+        ? globalScope.getDeckSessionSetting?.(
+            sessionMode,
+            key,
+            deckSubject,
+          ) ?? state.prefs[key]
+        : state.prefs[key];
 
     const textAlignment = ["left", "center", "right", "justify"].includes(
       state.prefs.textAlignment,
@@ -830,17 +888,19 @@
     globalScope.applyTextAlignment?.(textAlignment);
 
     const controls = {
-      "toggle-active-recall": state.prefs.activeRecall === true,
-      "toggle-shuffle-choices": state.prefs.shuffleChoices !== false,
-      "toggle-modal-shuffle-choices": state.prefs.shuffleChoices !== false,
-      "toggle-shuffle-questions": state.prefs.shuffleQuestions !== false,
-      "toggle-hide-abcd": state.prefs.hideABCD === true,
-      "toggle-quiz-hide-abcd": state.prefs.quizHideABCD === true,
-      "toggle-cloze-mode": state.prefs.clozeEnabled === true,
-      "toggle-main-cloze-mode": state.prefs.clozeEnabled === true,
-      "toggle-srs-mode": state.prefs.srsEnabled === true,
-      "toggle-main-srs-mode": state.prefs.srsEnabled === true,
-      "toggle-wrong-choices": state.prefs.showWrongChoices !== false,
+      "toggle-active-recall": getSessionValue("activeRecall") === true,
+      "toggle-shuffle-choices": getSessionValue("shuffleChoices") !== false,
+      "toggle-modal-shuffle-choices":
+        getSessionValue("shuffleChoices") !== false,
+      "toggle-shuffle-questions":
+        getSessionValue("shuffleQuestions") !== false,
+      "toggle-hide-abcd": getSessionValue("hideABCD") === true,
+      "toggle-quiz-hide-abcd": getSessionValue("quizHideABCD") === true,
+      "toggle-cloze-mode": getSessionValue("clozeEnabled") === true,
+      "toggle-main-cloze-mode": getSessionValue("clozeEnabled") === true,
+      "toggle-srs-mode": getSessionValue("srsEnabled") === true,
+      "toggle-main-srs-mode": getSessionValue("srsEnabled") === true,
+      "toggle-wrong-choices": getSessionValue("showWrongChoices") !== false,
       globalModeToggle: state.prefs.lastActivity?.mode === "review",
     };
 
@@ -877,7 +937,7 @@
         ?.classList.contains("active");
       const navigationPosition = reviewIsActive
         ? globalScope.getStudyNavigationPosition?.(
-            state.prefs.studyLayout || "scroll",
+            getSessionValue("studyLayout") || "scroll",
           )
         : globalScope.getQuizNavigationPosition?.();
       if (navigationPosition) navigationSelect.value = navigationPosition;
@@ -910,8 +970,8 @@
     const warning = document.getElementById("shuffle-warning");
     if (warning) {
       const shouldShowWarning =
-        state.prefs.shuffleChoices === false ||
-        state.prefs.shuffleQuestions === false;
+        getSessionValue("shuffleChoices") === false ||
+        getSessionValue("shuffleQuestions") === false;
       warning.classList.toggle("hidden", !shouldShowWarning);
       warning.setAttribute("aria-hidden", String(!shouldShowWarning));
     }

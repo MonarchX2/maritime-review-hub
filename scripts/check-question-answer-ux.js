@@ -67,11 +67,42 @@ assert.ok(displayStart >= 0 && displayEnd > displayStart && changeEnd > changeSt
 
 const confirmations = [];
 const toasts = [];
+const questionTypeSelect = { value: "" };
+let confirmationResult = true;
+const modeContextState = {
+  prefs: { qTypeOverride: "" },
+  session: {
+    active: true,
+    currentIndex: 0,
+    questions: [{ Subject: "Deck" }],
+  },
+};
 const modeContext = {
-  state: { prefs: { qTypeOverride: "" }, session: { active: false } },
+  state: modeContextState,
+  rootScope: {
+    getDeckSessionSetting(mode, key, subject) {
+      return (
+        modeContextState.prefs.deckSessionSettings?.[subject]?.[mode]?.[key] ??
+        modeContextState.prefs[key]
+      );
+    },
+    setDeckSessionSetting(mode, key, value, subject) {
+      if (!subject) return false;
+      modeContextState.prefs.deckSessionSettings ??= {};
+      modeContextState.prefs.deckSessionSettings[subject] ??= {};
+      modeContextState.prefs.deckSessionSettings[subject][mode] ??= {};
+      modeContextState.prefs.deckSessionSettings[subject][mode][key] = value;
+      return true;
+    },
+  },
+  document: {
+    getElementById(id) {
+      return id === "toggle-question-type" ? questionTypeSelect : null;
+    },
+  },
   async requestConfirmation(message, title) {
     confirmations.push({ message, title });
-    return true;
+    return confirmationResult;
   },
   showToast(message) {
     toasts.push(message);
@@ -81,7 +112,10 @@ const modeContext = {
 };
 vm.createContext(modeContext);
 vm.runInContext(
-  `${appSource.slice(displayStart, displayEnd)}
+  `function setActiveDeckSessionPreference(mode, key, value, subject) {
+    return rootScope.setDeckSessionSetting(mode, key, value, subject);
+  }
+${appSource.slice(displayStart, displayEnd)}
 ${appSource.slice(changeStart, changeEnd)}
 globalThis.changeQuestionTypeMode = changeQuestionTypeMode;`,
   modeContext,
@@ -90,9 +124,21 @@ globalThis.changeQuestionTypeMode = changeQuestionTypeMode;`,
 
 async function verifyMode(mode, expandedName) {
   modeContext.state.prefs.qTypeOverride = "";
+  delete modeContext.state.prefs.deckSessionSettings;
+  questionTypeSelect.value = mode;
+  confirmationResult = true;
   confirmations.length = 0;
   await modeContext.changeQuestionTypeMode(mode);
-  assert.equal(modeContext.state.prefs.qTypeOverride, mode);
+  assert.equal(
+    modeContext.state.prefs.deckSessionSettings.Deck.quiz.qTypeOverride,
+    mode,
+    "the selected question type should be saved for the active deck",
+  );
+  assert.equal(
+    modeContext.state.prefs.qTypeOverride,
+    "",
+    "changing the question type should not update the global default",
+  );
   assert.equal(confirmations.length, 1);
   assert.deepEqual(
     JSON.parse(JSON.stringify(confirmations[0])),
@@ -111,6 +157,30 @@ async function verifyMode(mode, expandedName) {
   await verifyMode("auto", "Auto (Mixed)");
   await verifyMode("ident", "Identification");
   await verifyMode("mcq", "Multiple Choices");
+
+  modeContext.state.prefs.qTypeOverride = "";
+  modeContext.state.prefs.deckSessionSettings = {
+    Deck: { quiz: { qTypeOverride: "auto" } },
+  };
+  questionTypeSelect.value = "ident";
+  confirmationResult = false;
+  const toastCountBeforeCancel = toasts.length;
+  await modeContext.changeQuestionTypeMode("ident");
+  assert.equal(
+    questionTypeSelect.value,
+    "auto",
+    "canceling a question type override should immediately restore the previous selection",
+  );
+  assert.equal(
+    modeContext.state.prefs.deckSessionSettings.Deck.quiz.qTypeOverride,
+    "auto",
+    "canceling a question type override should not change the saved preference",
+  );
+  assert.equal(
+    toasts.length,
+    toastCountBeforeCancel,
+    "canceling a question type override should not show an enabled-mode toast",
+  );
 
   assert.match(
     modalSource,

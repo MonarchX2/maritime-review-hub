@@ -25,8 +25,8 @@
         document
           .getElementById("view-deck-review")
           ?.classList.contains("active") &&
-        globalScope.state?.prefs?.studyLayout !== "single" &&
-        globalScope.state?.prefs?.studyPageSize === "All"
+        getStudySetting("studyLayout") !== "single" &&
+        getStudySetting("studyPageSize") === "All"
       ) {
         reRenderDeckReview(true);
       }
@@ -115,8 +115,8 @@
         question,
       ]),
     );
-    const globalShowWrong = state.prefs.showWrongChoices !== false;
-    const hideABCD = state.prefs.hideABCD === true;
+    const globalShowWrong = getStudySetting("showWrongChoices") !== false;
+    const hideABCD = getStudySetting("hideABCD") === true;
     const cards = container.querySelectorAll(".review-question-card");
     const scrollContainer =
       reviewMainElement || document.querySelector("main");
@@ -157,19 +157,14 @@
   }
 
   function updateStudyProgressIndicator() {
-    const text = document.getElementById("study-progress-text");
-    const bar = document.getElementById("study-progress");
-    const track = document.getElementById("study-progress-track");
-    if (!text || !bar || !track) return;
-
     const progress = state?.prefs?.studyProgress?.[currentReviewSubject] || {};
     const reviewQuestions =
       derivedQuestionsCache?.questions === currentReviewQuestions
         ? derivedQuestionsCache.sortedQuestions
         : currentReviewQuestions;
     const total = reviewQuestions.length;
-    const layout = state.prefs.studyLayout || "scroll";
-    const pageSize = state.prefs.studyPageSize || 10;
+    const layout = getStudySetting("studyLayout") || "scroll";
+    const pageSize = getStudySetting("studyPageSize") || 10;
     const questionIndexById = new Map(
       reviewQuestions.map((question, index) => [
         String(question.ID),
@@ -192,7 +187,7 @@
       total > 0
         ? Math.min(total, Math.max(1, (progress.index || 0) + 1))
         : 0;
-    let label = `0 / ${total}`;
+    let label = "";
 
     if (total > 0) {
       const container = reviewContainerElement;
@@ -251,11 +246,11 @@
         label = `${questionLabel} ${current} / ${total}`;
       }
     }
-
-    const percent = total > 0 ? (current / total) * 100 : 0;
-    text.textContent = label;
-    bar.style.width = `${percent}%`;
-    track.setAttribute("aria-valuenow", String(Math.round(percent)));
+    document
+      .querySelectorAll("[data-review-question-range]")
+      .forEach((text) => {
+        text.textContent = label;
+      });
   }
 
   function renderDeckReviewImplementation(
@@ -290,11 +285,12 @@
         reviewMainElement === container ? 0 : container.offsetTop;
     }
 
-    const globalShowWrong = state.prefs.showWrongChoices !== false;
-    const showExplanations = state.prefs.studyShowExplanations !== false;
-    const hideABCD = state.prefs.hideABCD === true;
-    let layout = state.prefs.studyLayout || "scroll";
-    let pageSize = state.prefs.studyPageSize || 10;
+    const globalShowWrong = getStudySetting("showWrongChoices") !== false;
+    const showExplanations =
+      getStudySetting("studyShowExplanations") !== false;
+    const hideABCD = getStudySetting("hideABCD") === true;
+    let layout = getStudySetting("studyLayout") || "scroll";
+    let pageSize = getStudySetting("studyPageSize") || 10;
     const reviewNavigationPosition = getStudyNavigationPosition(layout);
 
     if (!state.prefs.studyProgress[subject]) {
@@ -321,7 +317,7 @@
         : [],
     );
 
-    const studyFilterMode = state.prefs.studyFilterMode || "all";
+    const studyFilterMode = getStudySetting("studyFilterMode") || "all";
     const favoriteSignature = [...favoriteQuestions].join("\u001f");
     const canReuseCache =
       derivedQuestionsCache &&
@@ -488,23 +484,26 @@
                 <button onclick="changeStudyPage(-1)" class="px-4 py-2 bg-purple-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600 transition-colors">
                     <i class="fa-solid fa-arrow-left"></i> <span class="hidden sm:inline ml-1">Previous</span>
                 </button>
-                <div class="flex-1 flex items-center justify-center gap-1 text-sm font-bold text-gray-600 dark:text-gray-300">
-                    <span>Page</span>
-                    <label class="sr-only" for="study-page-input">Go to page</label>
-                    <input
-                        id="study-page-input"
-                        type="text"
-                        inputmode="numeric"
-                        pattern="[0-9]*"
-                        min="1"
-                        max="${totalPages}"
-                        value="${currentPage}"
-                        onchange="jumpToStudyPage(this.value)"
-                        oninput="this.style.width = Math.max(1.8, (this.value.length || String(${currentPage}).length) + 1.2) + 'ch';"
-                        class="border-0 border-b border-gray-300 dark:border-gray-600 bg-transparent px-0 py-0 text-center text-sm font-bold text-gray-800 dark:text-gray-100 outline-none focus:border-brand-500 focus:ring-0 [-moz-appearance:textfield]"
-                        style="width: ${Math.max(1.8, String(currentPage).length + 1.2)}ch;"
-                    />
-                    <span>of ${totalPages}</span>
+                <div class="flex-1 flex flex-col items-center justify-center">
+                    <div class="flex items-center justify-center gap-1 text-sm font-bold text-gray-600 dark:text-gray-300">
+                        <span>Page</span>
+                        <label class="sr-only" for="study-page-input">Go to page</label>
+                        <input
+                            id="study-page-input"
+                            type="text"
+                            inputmode="numeric"
+                            pattern="[0-9]*"
+                            min="1"
+                            max="${totalPages}"
+                            value="${currentPage}"
+                            onchange="jumpToStudyPage(this.value)"
+                            oninput="this.style.width = Math.max(1.8, (this.value.length || String(${currentPage}).length) + 1.2) + 'ch';"
+                            class="border-0 border-b border-gray-300 dark:border-gray-600 bg-transparent px-0 py-0 text-center text-sm font-bold text-gray-800 dark:text-gray-100 outline-none focus:border-brand-500 focus:ring-0 [-moz-appearance:textfield]"
+                            style="width: ${Math.max(1.8, String(currentPage).length + 1.2)}ch;"
+                        />
+                        <span>of ${totalPages}</span>
+                    </div>
+                    <span data-review-question-range class="text-sm font-normal text-white"></span>
                 </div>
                 <button onclick="changeStudyPage(1)" ${currentPage === totalPages ? "disabled" : ""} class="px-4 py-2 bg-purple-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600 transition-colors">
                     <span class="hidden sm:inline mr-1">Next</span> <i class="fa-solid fa-arrow-right"></i>
@@ -802,10 +801,32 @@
 
   const state = globalScope.state;
   const saveState = globalScope.saveState;
+  function getStudySetting(key) {
+    return (
+      globalScope.getDeckSessionSetting?.("study", key, currentReviewSubject) ??
+      state.prefs[key]
+    );
+  }
 
   function changeStudyLayout(layout) {
-    if (!(state && ["scroll", "single"].includes(layout))) return;
-    state.prefs.studyLayout = layout;
+    if (!(state && ["scroll", "single"].includes(layout))) return false;
+    if (
+      globalScope.setDeckSessionSetting?.(
+        "study",
+        "studyLayout",
+        layout,
+        currentReviewSubject,
+      ) !== true
+    ) {
+      if (typeof globalScope.showToast === "function") {
+        globalScope.showToast(
+          "Open a deck in Study Mode before changing this setting.",
+          "warning",
+        );
+        return false;
+      }
+      throw new Error("Unable to save Study settings without an active deck.");
+    }
     if (
       layout === "single" &&
       !state.prefs.studyProgress[currentReviewSubject]
@@ -819,6 +840,7 @@
     }
     saveState();
     reRenderDeckReview();
+    return true;
   }
 
   function changeStudyPageSize(size) {
@@ -839,7 +861,23 @@
     }
     if (pageSizeInput) pageSizeInput.setCustomValidity("");
 
-    state.prefs.studyPageSize = normalizedSize;
+    if (
+      globalScope.setDeckSessionSetting?.(
+        "study",
+        "studyPageSize",
+        normalizedSize,
+        currentReviewSubject,
+      ) !== true
+    ) {
+      if (typeof globalScope.showToast === "function") {
+        globalScope.showToast(
+          "Open a deck in Study Mode before changing this setting.",
+          "warning",
+        );
+        return false;
+      }
+      throw new Error("Unable to save Study settings without an active deck.");
+    }
     if (state.prefs.studyProgress[currentReviewSubject]) {
       state.prefs.studyProgress[currentReviewSubject].page = 1;
       markStudyProgressChanged(
@@ -862,7 +900,7 @@
     const nextPage = Math.max(1, currentPage + delta);
     if (nextPage === currentPage) return;
     progress.page = nextPage;
-    const pageSize = state.prefs.studyPageSize || 10;
+    const pageSize = getStudySetting("studyPageSize") || 10;
     if (pageSize !== "All") {
       const targetQuestion =
         getOrderedReviewQuestions()[(nextPage - 1) * pageSize];
@@ -930,7 +968,7 @@
     const page = parseInt(pageNumber, 10);
     if (!progress || Number.isNaN(page)) return;
     progress.page = Math.max(1, page);
-    const pageSize = state.prefs.studyPageSize || 10;
+    const pageSize = getStudySetting("studyPageSize") || 10;
     if (pageSize !== "All") {
       const targetIndex = (progress.page - 1) * pageSize;
       const targetQuestion = getOrderedReviewQuestions()[targetIndex];

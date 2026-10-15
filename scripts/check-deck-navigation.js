@@ -10,6 +10,26 @@ const appCoreStateSource = fs.readFileSync("app-core-state.js", "utf8");
 const modalCoreSource = fs.readFileSync("ui-modal-core.js", "utf8");
 const stylesSource = fs.readFileSync("styles.css", "utf8");
 const indexSource = fs.readFileSync("index.html", "utf8");
+const textUtils = require("../text-utils.js");
+
+const protectedDeckName = "Maritime Safety";
+const scrambledDeckName = textUtils.scrambleWords(protectedDeckName);
+assert.notEqual(scrambledDeckName, protectedDeckName);
+assert.equal(
+  textUtils.scrambleWords(protectedDeckName),
+  scrambledDeckName,
+  "scrambled locked names should remain stable between renders",
+);
+assert.equal(
+  scrambledDeckName.split(" ").length,
+  protectedDeckName.split(" ").length,
+  "scrambling should preserve word boundaries",
+);
+assert.equal(
+  textUtils.scrambleWords("A-B 12"),
+  "A-B 12",
+  "scrambling should preserve punctuation and numeric identifiers",
+);
 
 assert.match(
   deckNavSource,
@@ -246,14 +266,24 @@ assert.doesNotMatch(
   "locked decks should not render an overlay lock icon",
 );
 assert.doesNotMatch(
+  appCoreSource,
+  /fa-lock text-red-500 ml-2/,
+  "locked deck and folder names should not have a redundant lock icon",
+);
+assert.doesNotMatch(
   stylesSource,
   /deck-card-lock-overlay/,
   "locked deck blur should not style an overlay lock icon",
 );
 assert.match(
   modalCoreSource,
-  /className:\s*"locked-deck-name-blurred"[\s\S]*?textContent:\s*shortName/,
-  "the locked deck name should be isolated in a blurred text element",
+  /className:\s*"locked-deck-name-blurred"[\s\S]*?scrambleWords\(shortName\)/,
+  "the locked deck name should be scrambled inside its blurred text element",
+);
+assert.match(
+  modalCoreSource,
+  /createTextNode\('The folder "'\)[\s\S]*?className:\s*"locked-deck-name-blurred"[\s\S]*?scrambleWords\(folderName\)/,
+  "the locked folder name should be scrambled and blurred in its password dialog",
 );
 assert.match(
   stylesSource,
@@ -532,7 +562,6 @@ for (const [id, active] of [
 }
 
 const navigationUrlUpdates = [];
-const dashboardProgressAlignmentCalls = [];
 const context = {
   module: { exports: {} },
   state: { session: { active: false }, currentPath: [] },
@@ -547,11 +576,6 @@ const context = {
         : null,
   },
   updateDashboard() {},
-  updateDeckProgressBarsByRow() {
-    dashboardProgressAlignmentCalls.push(
-      views.get("view-dashboard").isActive(),
-    );
-  },
   updateNavigationUrl(path, options) {
     navigationUrlUpdates.push({ path: [...path], options });
   },
@@ -596,12 +620,6 @@ async function checkConcurrentNavigation() {
     true,
     "returning to the dashboard should render its latest deck state before revealing it",
   );
-  assert.equal(
-    dashboardProgressAlignmentCalls.at(-1),
-    true,
-    "dashboard progress slots should be realigned after the dashboard is revealed",
-  );
-
   context.state.currentPath = ["Parent 1", "Parent 2"];
   context.state.session.active = true;
   await context.module.exports.navigate("practice");

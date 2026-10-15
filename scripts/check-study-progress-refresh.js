@@ -41,7 +41,17 @@ const getStudyDeckProgress = (position) => {
   progress.questionId = `q${position + 1}`;
   return vm.runInNewContext(
     `${progressHelper[0]}; getStudyDeckProgress("Deck", 3)`,
-    { state: global.state },
+    {
+      state: global.state,
+      rootScope: {
+        getDeckSessionSetting(mode, key, subject) {
+          return (
+            global.state.prefs.deckSessionSettings?.[subject]?.[mode]?.[key] ??
+            global.state.prefs[key]
+          );
+        },
+      },
+    },
   );
 };
 assert.equal(

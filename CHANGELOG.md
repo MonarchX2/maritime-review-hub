@@ -1,5 +1,16 @@
 # Changelog
 
+## 10.15.26-3 - 2026-10-15
+
+### Added
+- Keep Quiz and Study preferences, including navigation position, scoped to the active deck.
+
+### Changed
+- Remove progress bars and completed/total counters from deck cards and sessions while retaining the Study question range below pagination.
+- Scramble protected deck and folder names before blurring them, and remove redundant lock icons beside those names.
+- Keep sort and filter menus within small viewports.
+- Restore the previous question type when its confirmation is canceled.
+
 ## 10.15.26-2 - 2026-10-15
 
 ### Changed

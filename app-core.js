@@ -69,7 +69,6 @@
   let __mrhPollLoopToken = 0;
   let treeViewNoticeDismissed = false;
   let treeViewResizeListenerInstalled = false;
-  let deckProgressBarsResizeListenerInstalled = false;
   const collapsedTreePaths = new Set();
   let treeCollapseInitialized = false;
 
@@ -1590,32 +1589,6 @@
     renderCategoryProgress();
   }
 
-  function updateDeckProgressBarsByRow() {
-    const layout = document.querySelector(
-      "#category-list [data-deck-list-layout]",
-    );
-    if (!layout) return;
-
-    const rows = new Map();
-    layout.querySelectorAll(":scope > .deck-card").forEach((card) => {
-      const rowTop = Math.round(card.getBoundingClientRect().top);
-      if (!rows.has(rowTop)) rows.set(rowTop, []);
-      rows.get(rowTop).push(card);
-    });
-
-    rows.forEach((cards) => {
-      const rowHasProgress = cards.some(
-        (card) =>
-          card.querySelector("[data-deck-progress-slot]")?.dataset
-            .hasProgress === "true",
-      );
-      cards.forEach((card) => {
-        const progressSlot = card.querySelector("[data-deck-progress-slot]");
-        if (progressSlot) progressSlot.hidden = !rowHasProgress;
-      });
-    });
-  }
-
   function renderCategoryProgressNow({ allowInactive = false } = {}) {
     if (!document.body) {
       if (!categoryProgressRenderScheduled) {
@@ -1719,8 +1692,18 @@
         }
 
         let current = 0;
-        const layout = state.prefs.studyLayout || "scroll";
-        const pageSize = state.prefs.studyPageSize || 10;
+        const layout =
+          rootScope.getDeckSessionSetting?.("study", "studyLayout", subject) ||
+          state.prefs.studyLayout ||
+          "scroll";
+        const pageSize =
+          rootScope.getDeckSessionSetting?.(
+            "study",
+            "studyPageSize",
+            subject,
+          ) ||
+          state.prefs.studyPageSize ||
+          10;
         const hasQuestionPosition =
           Boolean(progress.questionId) || Number(progress.index) > 0;
         if (layout === "single") {
@@ -2205,12 +2188,17 @@
               const hasChildren = Object.keys(item._children || {}).length > 0;
               const explicitFolder = item._data && item._data.IsFolder === true;
               const stats = getTreeStats(item);
-              const safeKey = escapeHTML(key);
               const indent = Math.min(depth * 24 + 12, 420);
               const folderSubject = childPath.join("::");
               const isPopular = isPopularDeckPath(folderSubject);
               const isGroup = hasChildren || explicitFolder;
               const deckSubject = item._data?.Subject || folderSubject;
+              const isPasswordProtected =
+                !isGroup &&
+                (isDeckLocked(deckSubject) || Boolean(item._data?.Locked));
+              const safeKey = escapeHTML(
+                isPasswordProtected ? TextUtils.scrambleWords(key) : key,
+              );
               const isCollapsed = collapsedTreePaths.has(folderSubject);
               const isActive = state.currentPath?.join("::") === folderSubject;
               const isTopLevelGroup = depth === 0 && isGroup;
@@ -2240,9 +2228,6 @@
               const action = isGroup
                 ? `toggleTreeNode('${encodeHandlerValue(folderSubject)}')`
                 : `handleDeckClick('${encodeHandlerValue(item._data?.Subject || folderSubject)}')`;
-              const isPasswordProtected =
-                !isGroup &&
-                (isDeckLocked(deckSubject) || Boolean(item._data?.Locked));
               const icon = isGroup
                 ? `<span class="deck-tree-toggle" aria-hidden="true">${isCollapsed ? "+" : "−"}</span>`
                 : '<span class="deck-tree-toggle" aria-hidden="true"></span>';
@@ -2372,7 +2357,10 @@
         const subj = cat.Subject;
         const safeSubj = escapeHTML(subj);
         const encodedSubj = encodeHandlerValue(subj);
-        const safeName = escapeHTML(displayName);
+        const isLocked = isDeckLocked(subj) || Boolean(cat?.Locked);
+        const safeName = escapeHTML(
+          isLocked ? TextUtils.scrambleWords(displayName) : displayName,
+        );
         const loaderId = getDeckLoaderId(subj);
         const deckTypeBadge = getDeckTypeBadgeLabel(cat);
         const explanationsAvailableBadge =
@@ -2404,7 +2392,6 @@
         );
         const completedCount = progressStats.completedCount;
         const mistakesCount = progressStats.mistakesCount;
-        const progressPercent = progressStats.progressPercent;
         const isCompleted = progressStats.isCompleted;
         const cardClasses = isCompleted
           ? "bg-green-50 dark:bg-green-900/30 border-green-300"
@@ -2430,7 +2417,6 @@
         const themeColorText = isReview
           ? "text-purple-600 dark:text-purple-400"
           : "text-brand-600 dark:text-brand-400";
-        const themeColorBg = isReview ? "bg-purple-500" : "bg-brand-500";
         const themeShadowHover = isReview
           ? "hover:shadow-purple-500/10"
           : "hover:shadow-brand-500/10";
@@ -2441,26 +2427,17 @@
         const syncLockClass = databaseUnavailable ? "deck-sync-locked" : "";
         const isDeckLoading =
           deckInteractionLocked && subj === activeDeckInteractionSubject;
-        const isLocked = isDeckLocked(subj) || Boolean(cat?.Locked);
-        const lockIcon = isLocked
-          ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected"></i>`
-          : "";
 
         let statsHTML = "";
-        let progressBarHTML = "";
         let countBadgeHTML = "";
         let resetBtnHTML = "";
 
-        if (!isReview) {
-          countBadgeHTML = `
+        countBadgeHTML = `
           <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
-            <span class="text-sm font-black ${themeColorText} transition-colors">${completedCount} / ${totalQuestionsInDb} cards</span>
+            <span class="text-sm font-black ${themeColorText} transition-colors">${totalQuestionsInDb} cards</span>
           </div>`;
-          progressBarHTML = `
-            <div data-deck-progress-slot data-has-progress="${completedCount > 0}" hidden class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden">
-              <div class="${themeColorBg} h-full rounded-full" style="width: ${progressPercent}%"></div>
-            </div>`;
 
+        if (!isReview) {
           if (completedCount > 0 || mistakesCount > 0) {
             resetBtnHTML = `
             <button ${databaseUnavailable ? "disabled" : ""} data-reset-subject="${escapeHTML(subj)}" onclick="resetCategory('${encodedSubj}')" class="reset-deck-btn w-10 sm:w-12 shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
@@ -2469,14 +2446,6 @@
           }
         } else {
           const studyProgress = getStudyDeckProgress(subj, totalQuestionsInDb);
-          countBadgeHTML = `
-          <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
-            <span class="text-sm font-black ${themeColorText} transition-colors">${studyProgress.current} / ${studyProgress.total} cards</span>
-          </div>`;
-          progressBarHTML = `
-            <div data-deck-progress-slot data-has-progress="${studyProgress.current > 0}" hidden class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4 overflow-hidden" role="progressbar" aria-label="Review progress" aria-valuemin="0" aria-valuemax="${studyProgress.total}" aria-valuenow="${studyProgress.current}">
-              <div class="${themeColorBg} h-full rounded-full" style="width: ${studyProgress.percent}%"></div>
-            </div>`;
           if (studyProgress.current > 0) {
             resetBtnHTML = `
             <button ${databaseUnavailable ? "disabled" : ""} data-reset-subject="${escapeHTML(subj)}" onclick="resetCategory('${encodedSubj}')" class="reset-deck-btn w-10 sm:w-12 shrink-0 bg-red-50 text-red-600 dark:bg-red-900/20 py-2 px-1 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-90 transition-all duration-300 text-xs sm:text-sm border border-red-100 dark:border-red-800 flex items-center justify-center" title="Reset Progress">
@@ -2497,7 +2466,7 @@
                 <h3 class="deck-card-title font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center transition-colors min-w-0 gap-1" title="${safeName}">
                   ${recentViewedBadge}
                   ${unfinishedBadge}
-                  <span class="deck-card-title-text ${deckTitleModeClass} ${deckNameMode} break-words">${safeName}</span> ${lockIcon}
+                  <span class="deck-card-title-text ${deckTitleModeClass} ${deckNameMode} break-words">${safeName}</span>
                 </h3>
                 ${statsHTML}
               </div>
@@ -2507,8 +2476,6 @@
             </div>
             <div class="deck-card-badges mt-1 flex flex-wrap items-start gap-1">${deckTypeBadge ? renderDeckBadge(deckTypeBadge) : ""}${explanationsAvailableBadge}</div>
           </div>
-
-          ${progressBarHTML}
 
           <div class="flex gap-2 mt-auto w-full" onclick="event.stopPropagation()">
             <button ${databaseUnavailable ? "disabled" : ""} onclick="handleDeckClick('${encodedSubj}')" class="flex-1 ${primaryActionColor} text-white py-2 px-2 rounded-lg font-bold active:scale-95 text-xs sm:text-sm shadow-sm hover:shadow transition-all duration-300 flex items-center justify-center group truncate" title="${primaryActionText}">
@@ -2567,9 +2534,6 @@
                 : "";
             const isLocked =
               isDeckLocked(folderSubject) || Boolean(item?._data?.Locked);
-            const lockIcon = isLocked
-              ? `<i class="fa-solid fa-lock text-red-500 ml-2" title="Password Protected Folder"></i>`
-              : "";
 
             const isRoot = !state.currentPath || state.currentPath.length === 0;
             let pinBtnHtml = "";
@@ -2617,9 +2581,9 @@
             <div class="p-4 flex flex-col flex-1">
               <div class="flex justify-between items-start w-full gap-2">
                 <div class="min-w-0 flex flex-col flex-1">
-                  <h3 class="deck-folder-title font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg flex items-center min-w-0 gap-1" title="${escapeHTML(key)}">
+                  <h3 class="deck-folder-title font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide ${folderTextHover} transition-colors text-lg flex items-center min-w-0 gap-1" title="${escapeHTML(isLocked ? TextUtils.scrambleWords(key) : key)}">
                     ${isRecentlyViewedFolder ? '<i class="fa-regular fa-clock text-base text-amber-500 mr-0.5 flex-shrink-0" title="Recently Viewed"></i>' : ""}
-                    <span class="deck-card-title-text ${state.prefs.deckNameMode === "clip" ? "deck-card-title-clip truncate" : "whitespace-normal break-words"}">${escapeHTML(key)}</span> ${lockIcon}
+                    <span class="deck-card-title-text ${state.prefs.deckNameMode === "clip" ? "deck-card-title-clip truncate" : "whitespace-normal break-words"}">${escapeHTML(isLocked ? TextUtils.scrambleWords(key) : key)}</span>
                   </h3>
                 </div>
                 <div class="flex items-center gap-0">
@@ -2738,19 +2702,6 @@
         reconcileChildren(container, template.content);
         container.className = "";
       }
-      updateDeckProgressBarsByRow();
-      if (
-        !deckProgressBarsResizeListenerInstalled &&
-        typeof rootScope.addEventListener === "function"
-      ) {
-        rootScope.addEventListener(
-          "resize",
-          updateDeckProgressBarsByRow,
-          { signal: uiEventController.signal },
-        );
-        deckProgressBarsResizeListenerInstalled = true;
-      }
-
       if (isTree && !treeViewResizeListenerInstalled) {
         if (typeof rootScope.addEventListener === "function") {
           rootScope.addEventListener(
@@ -4311,9 +4262,23 @@
     }, duration);
   }
 
+  function setActiveDeckSessionPreference(mode, key, value, subject) {
+    if (
+      rootScope.setDeckSessionSetting?.(mode, key, value, subject) === true
+    ) {
+      return true;
+    }
+    showToast(
+      "Open a deck session before changing this setting.",
+      "warning",
+    );
+    return false;
+  }
+
   function toggleActiveRecall() {
     const isChecked = document.getElementById("toggle-active-recall").checked;
-    state.prefs.activeRecall = Boolean(isChecked);
+    const value = Boolean(isChecked);
+    if (!setActiveDeckSessionPreference("quiz", "activeRecall", value)) return;
     saveState();
     syncPreferenceControls();
 
@@ -4463,7 +4428,8 @@
         )
       : [];
     const customFilter =
-      state.prefs.qTypeOverride === "mcq"
+      rootScope.getDeckSessionSetting?.("quiz", "qTypeOverride", subject) ===
+      "mcq"
         ? (question) =>
             typeof question.ChoiceA === "string" &&
             question.ChoiceA.trim() !== "" &&
@@ -4486,7 +4452,10 @@
       return false;
     }
 
-    if (state.prefs.srsEnabled === true) {
+    if (
+      rootScope.getDeckSessionSetting?.("quiz", "srsEnabled", subject) ??
+      state.prefs.srsEnabled
+    ) {
       const now = Date.now();
       const duePool = pool.filter((question) => {
         const srs = state.stats.srsMap?.[question.ID];
@@ -5002,7 +4971,8 @@
       document.getElementById("toggle-shuffle-choices") ||
       document.getElementById("toggle-modal-shuffle-choices");
     const isChecked = source ? source.checked : true;
-    state.prefs.shuffleChoices = isChecked;
+    if (!setActiveDeckSessionPreference("quiz", "shuffleChoices", isChecked))
+      return;
     saveState();
     syncPreferenceControls();
 
@@ -5010,7 +4980,9 @@
       const remainingQuestions = state.session.questions.slice(
         state.session.currentIndex,
       );
-      const reprepared = prepareSessionPool(remainingQuestions);
+      const subject =
+        state.session.questions?.[state.session.currentIndex]?.Subject || "";
+      const reprepared = prepareSessionPool(remainingQuestions, subject);
       state.session.questions.splice(
         state.session.currentIndex,
         reprepared.length,
@@ -5024,7 +4996,10 @@
     const element =
       source || document.getElementById("toggle-shuffle-questions");
     const isChecked = element ? element.checked : true;
-    state.prefs.shuffleQuestions = isChecked;
+    if (
+      !setActiveDeckSessionPreference("quiz", "shuffleQuestions", isChecked)
+    )
+      return;
     saveState();
     syncPreferenceControls();
   }
@@ -5265,7 +5240,11 @@
     if (!state.prefs.qToggles) state.prefs.qToggles = {};
     let currentState = state.prefs.qToggles[qId];
     if (currentState === undefined) {
-      currentState = state.prefs.showWrongChoices !== false;
+      currentState =
+        rootScope.getDeckSessionSetting?.(
+          "study",
+          "showWrongChoices",
+        ) !== false;
     }
 
     state.prefs.qToggles[qId] = !currentState;
@@ -5326,8 +5305,11 @@
   if (!state.prefs.qTypeOverride) state.prefs.qTypeOverride = "auto";
 
   function getQuestionTypeMode(q) {
-    const isForcedIdent = state.prefs.qTypeOverride === "ident";
-    const isForcedMCQ = state.prefs.qTypeOverride === "mcq";
+    const qTypeOverride =
+      rootScope.getDeckSessionSetting?.("quiz", "qTypeOverride", q?.Subject) ||
+      state.prefs.qTypeOverride;
+    const isForcedIdent = qTypeOverride === "ident";
+    const isForcedMCQ = qTypeOverride === "mcq";
 
     let isPureIdent;
     let validChoicesCount = 0;
@@ -5369,7 +5351,14 @@
 
   async function changeQuestionTypeMode(mode) {
     const normalizedMode = String(mode || "auto").toLowerCase();
-    if (state.prefs.qTypeOverride === normalizedMode) return;
+    const subject =
+      state.session?.active
+        ? state.session.questions?.[state.session.currentIndex]?.Subject
+        : "";
+    const currentOverride =
+      rootScope.getDeckSessionSetting?.("quiz", "qTypeOverride", subject) ||
+      state.prefs.qTypeOverride;
+    if (currentOverride === normalizedMode) return;
 
     const displayName = getQuestionTypeDisplayName(normalizedMode);
     const userConfirmed = await requestConfirmation(
@@ -5382,6 +5371,23 @@
     );
 
     if (!userConfirmed) {
+      const questionTypeSelect = document.getElementById(
+        "toggle-question-type",
+      );
+      if (questionTypeSelect) {
+        questionTypeSelect.value = currentOverride || "auto";
+      }
+      return;
+    }
+
+    if (
+      !setActiveDeckSessionPreference(
+        "quiz",
+        "qTypeOverride",
+        normalizedMode,
+        subject,
+      )
+    ) {
       return;
     }
 
@@ -5399,7 +5405,6 @@
       showToast("Auto (Mixed) mode enabled.", "info");
     }
 
-    state.prefs.qTypeOverride = normalizedMode;
     saveState();
     if (state.session.active) renderQuestion();
   }
@@ -6057,7 +6062,6 @@
     reloadAppStateInMemory,
     renderCategoryProgress,
     renderCategoryProgressNow,
-    updateDeckProgressBarsByRow,
     refreshPendingDeckPayloads,
     dismissTreeViewReadabilityNotice,
     dismissDeckNotFound,

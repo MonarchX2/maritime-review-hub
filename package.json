@@ -1,5 +1,5 @@
 {
-  "version": "10.15.26-2",
+  "version": "10.15.26-3",
   "scripts": {
     "build:css": "node scripts/build-css.js",
     "check:architecture": "node scripts/frontend-architecture-check.js",
@@ -15,6 +15,7 @@
     "check:review-question-progress": "node scripts/check-review-question-progress.js",
     "check:practice-review-switch": "node scripts/check-practice-review-switch.js",
     "check:study-progress-refresh": "node scripts/check-study-progress-refresh.js",
+    "check:deck-session-settings": "node scripts/check-deck-session-settings.js",
     "check:text-alignment": "node scripts/check-text-alignment.js",
     "check:deck-layout-spacing": "node scripts/check-deck-layout-spacing.js",
     "check:deck-navigation": "node scripts/check-deck-navigation.js",

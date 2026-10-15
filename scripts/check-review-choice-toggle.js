@@ -47,6 +47,9 @@ const context = {
     querySelector(selector) {
       return selector === "main" ? main : null;
     },
+    querySelectorAll() {
+      return [];
+    },
   },
   getQuestionTypeMode() {
     return { isIdent: false };

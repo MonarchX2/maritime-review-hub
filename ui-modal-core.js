@@ -111,7 +111,10 @@
           const emphasis = document.createElement("strong");
           emphasis.className =
             message.blurEmphasis === true ? "locked-deck-name-blurred" : "";
-          emphasis.textContent = message.emphasis;
+          emphasis.textContent =
+            message.blurEmphasis === true
+              ? globalScope.TextUtils.scrambleWords(message.emphasis)
+              : message.emphasis;
           messageEl.replaceChildren(
             document.createTextNode(String(message.before || "")),
             emphasis,
@@ -137,42 +140,45 @@
   // ===================== SESSION SETTINGS MODAL =====================
   function openSessionSettingsModal() {
     const state = globalScope.state;
+    const getQuizSetting = (key) =>
+      globalScope.getDeckSessionSetting?.("quiz", key) ?? state.prefs[key];
     const recallToggle = document.getElementById("toggle-active-recall");
-    if (recallToggle) recallToggle.checked = state.prefs.activeRecall === true;
+    if (recallToggle) recallToggle.checked = getQuizSetting("activeRecall") === true;
 
     const quizExplanationsToggle = document.getElementById(
       "toggle-quiz-show-explanations",
     );
     if (quizExplanationsToggle) {
       quizExplanationsToggle.checked =
-        state.prefs.quizShowExplanations !== false;
+        getQuizSetting("quizShowExplanations") !== false;
     }
 
     const choicesToggle = document.getElementById("toggle-shuffle-choices");
     if (choicesToggle)
-      choicesToggle.checked = state.prefs.shuffleChoices !== false;
+      choicesToggle.checked = getQuizSetting("shuffleChoices") !== false;
     const modalChoicesToggle = document.getElementById(
       "toggle-modal-shuffle-choices",
     );
     if (modalChoicesToggle)
-      modalChoicesToggle.checked = state.prefs.shuffleChoices !== false;
+      modalChoicesToggle.checked = getQuizSetting("shuffleChoices") !== false;
 
     const questionsToggle = document.getElementById("toggle-shuffle-questions");
     if (questionsToggle)
-      questionsToggle.checked = state.prefs.shuffleQuestions !== false;
+      questionsToggle.checked = getQuizSetting("shuffleQuestions") !== false;
 
     const quizHideToggle = document.getElementById("toggle-quiz-hide-abcd");
     if (quizHideToggle)
-      quizHideToggle.checked = state.prefs.quizHideABCD === true;
+      quizHideToggle.checked = getQuizSetting("quizHideABCD") === true;
 
     const clozeToggle = document.getElementById("toggle-cloze-mode");
-    if (clozeToggle) clozeToggle.checked = state.prefs.clozeEnabled !== false;
+    if (clozeToggle) clozeToggle.checked = getQuizSetting("clozeEnabled") !== false;
 
     const srsToggle = document.getElementById("toggle-srs-mode");
-    if (srsToggle) srsToggle.checked = state.prefs.srsEnabled === true;
+    if (srsToggle) srsToggle.checked = getQuizSetting("srsEnabled") === true;
 
     const qTypeSelect = document.getElementById("toggle-question-type");
-    if (qTypeSelect) qTypeSelect.value = state.prefs.qTypeOverride || "auto";
+    if (qTypeSelect)
+      qTypeSelect.value = getQuizSetting("qTypeOverride") || "auto";
 
     const navigationSelect = document.getElementById(
       "navigation-position-select",
@@ -196,9 +202,26 @@
     const explanationsToggle = document.getElementById(
       "toggle-study-show-explanations",
     );
+    const getStudySetting = (key) =>
+      globalScope.getDeckSessionSetting?.("study", key) ??
+      globalScope.state.prefs[key];
     if (explanationsToggle) {
       explanationsToggle.checked =
-        globalScope.state?.prefs?.studyShowExplanations !== false;
+        getStudySetting("studyShowExplanations") !== false;
+    }
+    const hideABCDToggle = document.getElementById("toggle-hide-abcd");
+    if (hideABCDToggle)
+      hideABCDToggle.checked = getStudySetting("hideABCD") === true;
+    const wrongChoicesToggle = document.getElementById("toggle-wrong-choices");
+    if (wrongChoicesToggle)
+      wrongChoicesToggle.checked = getStudySetting("showWrongChoices") !== false;
+    const layoutSelect = document.getElementById("review-layout-select");
+    if (layoutSelect)
+      layoutSelect.value = getStudySetting("studyLayout") || "scroll";
+    const pageSizeInput = document.getElementById("review-page-size-input");
+    if (pageSizeInput) {
+      const pageSize = getStudySetting("studyPageSize") || 10;
+      pageSizeInput.value = pageSize === "All" ? "" : String(pageSize);
     }
 
     globalScope.syncNavigationButtonLabels?.();
@@ -247,7 +270,9 @@
     if (!toggle || !icon) return;
 
     const isFavorites =
-      (globalScope.state.prefs.studyFilterMode || "all") === "favorites";
+      (globalScope.getDeckSessionSetting?.("study", "studyFilterMode") ||
+        globalScope.state.prefs.studyFilterMode ||
+        "all") === "favorites";
     toggle.setAttribute("aria-pressed", String(isFavorites));
     toggle.setAttribute(
       "aria-label",
@@ -268,8 +293,12 @@
   }
 
   function toggleStudyFilterMode() {
+    const currentMode =
+      globalScope.getDeckSessionSetting?.("study", "studyFilterMode") ||
+      globalScope.state.prefs.studyFilterMode ||
+      "all";
     const nextMode =
-      (globalScope.state.prefs.studyFilterMode || "all") === "favorites"
+      currentMode === "favorites"
         ? "all"
         : "favorites";
     changeStudyFilterMode(nextMode);
@@ -278,7 +307,22 @@
   function changeStudyFilterMode(mode) {
     const state = globalScope.state;
     const nextMode = mode === "favorites" ? "favorites" : "all";
-    state.prefs.studyFilterMode = nextMode;
+    if (
+      globalScope.setDeckSessionSetting?.(
+        "study",
+        "studyFilterMode",
+        nextMode,
+      ) !== true
+    ) {
+      if (typeof globalScope.showToast === "function") {
+        globalScope.showToast(
+          "Open a deck in Study Mode before changing this setting.",
+          "warning",
+        );
+        return false;
+      }
+      throw new Error("Unable to save Study settings without an active deck.");
+    }
     globalScope.saveState();
     updateStudyFilterToggle();
     const currentReviewSubject =
@@ -291,6 +335,7 @@
         globalScope.renderDeckReview(currentReviewSubject, currentQuestions);
       }
     }
+    return true;
   }
 
   // ===================== PASSWORD PROTECTION MODALS =====================
@@ -302,8 +347,16 @@
     pendingLockedFolderName = folderName;
 
     const messageEl = document.getElementById("folder-password-message");
-    if (messageEl)
-      messageEl.textContent = `The folder "${folderName}" requires a password to view its contents.`;
+    if (messageEl) {
+      messageEl.replaceChildren(
+        document.createTextNode('The folder "'),
+        Object.assign(document.createElement("span"), {
+          className: "locked-deck-name-blurred",
+          textContent: globalScope.TextUtils.scrambleWords(folderName),
+        }),
+        document.createTextNode('" requires a password to view its contents.'),
+      );
+    }
 
     const inputEl = document.getElementById("folder-password-input");
     if (inputEl) {
@@ -344,7 +397,7 @@
         document.createTextNode("The deck "),
         Object.assign(document.createElement("span"), {
           className: "locked-deck-name-blurred",
-          textContent: shortName,
+          textContent: globalScope.TextUtils.scrambleWords(shortName),
         }),
         document.createTextNode(" requires a password."),
       );

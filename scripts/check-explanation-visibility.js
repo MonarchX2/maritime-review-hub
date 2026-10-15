@@ -40,11 +40,61 @@ const elements = new Map([
 let saveCount = 0;
 let renderCount = 0;
 let reviewRenderCount = 0;
+let warningToastCount = 0;
+let reviewSubject = "Deck A";
 
 const context = {
   module: { exports: {} },
   console,
-  state: { prefs: {}, session: { active: true } },
+  state: {
+    prefs: {
+      quizShowExplanations: true,
+      studyShowExplanations: true,
+    },
+    session: {
+      active: true,
+      questions: [{ Subject: "Deck A" }],
+      currentIndex: 0,
+    },
+  },
+  getCurrentReviewSubject() {
+    return reviewSubject;
+  },
+  getDeckSessionSetting(mode, key, subject) {
+    const deck =
+      subject ||
+      (context.state.session.active
+        ? context.state.session.questions[context.state.session.currentIndex]
+            ?.Subject
+        : reviewSubject);
+    return (
+      context.state.prefs.deckSessionSettings?.[deck]?.[mode]?.[key] ??
+      context.state.prefs[key]
+    );
+  },
+  getDeckSessionSettings(mode, subject) {
+    const deck =
+      subject ||
+      (context.state.session.active
+        ? context.state.session.questions[context.state.session.currentIndex]
+            ?.Subject
+        : reviewSubject);
+    return context.state.prefs.deckSessionSettings?.[deck]?.[mode] || {};
+  },
+  setDeckSessionSetting(mode, key, value, subject) {
+    const deck =
+      subject ||
+      (context.state.session.active
+        ? context.state.session.questions[context.state.session.currentIndex]
+            ?.Subject
+        : reviewSubject);
+    if (!deck) return false;
+    context.state.prefs.deckSessionSettings ??= {};
+    context.state.prefs.deckSessionSettings[deck] ??= {};
+    context.state.prefs.deckSessionSettings[deck][mode] ??= {};
+    context.state.prefs.deckSessionSettings[deck][mode][key] = value;
+    return true;
+  },
   document: {
     getElementById(id) {
       return elements.get(id) || null;
@@ -55,6 +105,9 @@ const context = {
   },
   saveState() {
     saveCount += 1;
+  },
+  showToast(message, type) {
+    if (type === "warning") warningToastCount += 1;
   },
   reRenderDeckReview() {
     reviewRenderCount += 1;
@@ -82,8 +135,13 @@ assert.equal(explanationBox.classList.contains("hidden"), false);
 assert.equal(explanationText.innerHTML, "formatted:Visible explanation");
 
 context.QuizRenderingCore.toggleQuizShowExplanations(quizToggle);
-assert.equal(context.state.prefs.quizShowExplanations, false);
-assert.equal(context.state.prefs.studyShowExplanations, undefined);
+assert.equal(
+  context.state.prefs.deckSessionSettings["Deck A"].quiz
+    .quizShowExplanations,
+  false,
+);
+assert.equal(context.state.prefs.quizShowExplanations, true);
+assert.equal(context.state.prefs.studyShowExplanations, true);
 assert.equal(explanationBox.classList.contains("hidden"), true);
 assert.equal(explanationText.textContent, "");
 assert.equal(renderCount, 1);
@@ -99,13 +157,36 @@ assert.equal(explanationText.textContent, "");
 
 practiceView.classList.remove("active");
 reviewView.classList.add("active");
+context.state.session.active = false;
 studyToggle.checked = false;
 context.QuizRenderingCore.toggleStudyShowExplanations(studyToggle);
-assert.equal(context.state.prefs.studyShowExplanations, false);
-assert.equal(context.state.prefs.quizShowExplanations, false);
+assert.equal(
+  context.state.prefs.deckSessionSettings["Deck A"].study
+    .studyShowExplanations,
+  false,
+);
+assert.equal(context.state.prefs.studyShowExplanations, true);
+assert.equal(context.state.prefs.quizShowExplanations, true);
+assert.equal(
+  context.getDeckSessionSetting("study", "studyShowExplanations", "Deck B"),
+  true,
+  "Study explanation visibility overrides must remain isolated by deck",
+);
 assert.equal(reviewRenderCount, 1);
 assert.equal(renderCount, 1);
 assert.equal(saveCount, 2);
+
+reviewSubject = "";
+const saveCountBeforeMissingDeck = saveCount;
+quizToggle.checked = true;
+assert.equal(
+  context.QuizRenderingCore.toggleQuizShowExplanations(quizToggle),
+  false,
+  "session settings should not be saved without an active deck",
+);
+assert.equal(context.state.prefs.quizShowExplanations, true);
+assert.equal(saveCount, saveCountBeforeMissingDeck);
+assert.equal(warningToastCount, 1);
 
 const html = fs.readFileSync("index.html", "utf8");
 assert.equal((html.match(/id="toggle-quiz-show-explanations"/g) || []).length, 1);

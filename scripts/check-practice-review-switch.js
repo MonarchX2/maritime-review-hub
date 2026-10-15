@@ -83,6 +83,14 @@ const context = {
   },
   renderCategoryProgress() {},
 };
+context.rootScope = {
+  getDeckSessionSetting(mode, key, subject) {
+    return (
+      context.state.prefs.deckSessionSettings?.[subject]?.[mode]?.[key] ??
+      context.state.prefs[key]
+    );
+  },
+};
 vm.createContext(context);
 vm.runInContext(
   `let currentAppMode = "review";\n${activityFunction[0]}\n${cachedStartFunction[0]}\n${modeToggleFunction[0]}\nglobalThis.getCurrentMode = () => currentAppMode;`,

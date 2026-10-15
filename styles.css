@@ -1245,6 +1245,17 @@ input {
   min-width: 0;
 }
 
+#deck-sort-menu > div,
+#deck-source-menu > div {
+  box-sizing: border-box;
+  width: min(11rem, calc(100vw - 2rem));
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 #deck-sort-trigger,
 #deck-source-trigger {
   width: auto;

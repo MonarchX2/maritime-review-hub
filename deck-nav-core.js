@@ -111,9 +111,6 @@
 
     viewElement.removeAttribute("inert");
     viewElement.classList.add("active");
-    if (viewId === "dashboard") {
-      globalScope.updateDeckProgressBarsByRow?.();
-    }
     if (
       leavingDeckReview &&
       typeof globalScope.refreshPendingDeckPayloads === "function"
@@ -246,7 +243,13 @@
     }
 
     // Define strict MCQ filter condition conditionally based on user preference
-    const isForcedMCQ = state.prefs.qTypeOverride === "mcq";
+    const qTypeOverride =
+      globalScope.getDeckSessionSetting?.(
+        "quiz",
+        "qTypeOverride",
+        subject,
+      ) || state.prefs.qTypeOverride;
+    const isForcedMCQ = qTypeOverride === "mcq";
     const customFilter = isForcedMCQ
       ? (q) =>
           q.ChoiceA &&
@@ -326,7 +329,10 @@
     if (mode === "continue") {
       pool = validQuestions.filter((q) => !completedSet.has(q.ID));
 
-      if (state.prefs.srsEnabled === true) {
+      const srsEnabled =
+        globalScope.getDeckSessionSetting?.("quiz", "srsEnabled", subject) ??
+        state.prefs.srsEnabled;
+      if (srsEnabled === true) {
         const now = Date.now();
         const duePool = pool.filter((q) => {
           const srs = state.stats.srsMap?.[q.ID];
@@ -344,7 +350,7 @@
       }
 
       if (pool.length === 0) {
-        if (state.prefs.srsEnabled === true) {
+        if (srsEnabled === true) {
           const queue = validQuestions.filter((q) => !completedSet.has(q.ID));
           if (queue.length > 0) {
             pool = queue;
@@ -402,7 +408,7 @@
     document.getElementById("session-setup")?.classList.add("hidden");
     document.getElementById("session-active")?.classList.remove("hidden");
 
-    pool = globalScope.prepareSessionPool(pool);
+    pool = globalScope.prepareSessionPool(pool, pool[0]?.Subject || "");
     if (!Array.isArray(pool) || pool.length === 0) return false;
 
     state.session = {

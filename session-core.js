@@ -88,9 +88,18 @@
     return globalScope.state || {};
   }
 
-  function getPrefs() {
+  function getPrefs(subject = "") {
     const state = getState();
-    return state.prefs || {};
+    const prefs = state.prefs || {};
+    const sessionSubject =
+      subject ||
+      (state.session?.active
+        ? state.session.questions?.[state.session.currentIndex]?.Subject
+        : "");
+    return {
+      ...prefs,
+      ...(globalScope.getDeckSessionSettings?.("quiz", sessionSubject) || {}),
+    };
   }
 
   function getStats() {
@@ -132,7 +141,7 @@
 
     if (
       typeof globalScope.setStoredJSON === "function" &&
-      !globalScope.setStoredJSON("prefs", getPrefs())
+      !globalScope.setStoredJSON("prefs", getState().prefs)
     ) {
       DebugUtils.warn("Unable to persist session activity preferences.");
     }
@@ -233,9 +242,9 @@
     }
   }
 
-  function prepareSessionPool(pool) {
+  function prepareSessionPool(pool, subject = "") {
     const sourcePool = Array.isArray(pool) ? pool.filter(Boolean) : [];
-    const prefs = getPrefs();
+    const prefs = getPrefs(subject || sourcePool[0]?.Subject || "");
     const stats = getStats();
     const mistakes = Array.isArray(stats.mistakes) ? stats.mistakes : [];
     let randomizedPool = [...sourcePool];
@@ -354,7 +363,10 @@
       return;
     }
 
-    const preparedPool = prepareSessionPool(pool);
+    const preparedPool = prepareSessionPool(
+      pool,
+      pool[0]?.Subject || "",
+    );
     if (preparedPool.length === 0) {
       if (typeof alert === "function")
         alert("No usable questions found for this filter.");
@@ -424,14 +436,6 @@
     const userAnswerKey = normalizeAnswer(userAnswer);
     const correctKey = normalizeAnswer(q.Answer);
     const currentCard = session.currentIndex + 1;
-
-    const progressText = getElement("session-progress-text");
-    const progressBar = getElement("session-progress");
-    if (progressText)
-      progressText.textContent = `Question ${currentCard} / ${totalCards}`;
-    if (progressBar) {
-      progressBar.style.width = `${(currentCard / totalCards) * 100}%`;
-    }
 
     const fullSubject = normalizeText(q.Subject) || "General";
     const parts = fullSubject.split("::");
@@ -748,11 +752,6 @@
     const btnReveal = getElement("btn-reveal");
     if (btnNext) btnNext.disabled = false;
     if (btnReveal) btnReveal.disabled = true;
-
-    const progressBar = getElement("session-progress");
-    if (progressBar) {
-      progressBar.style.width = `${((session.currentIndex + 1) / session.questions.length) * 100}%`;
-    }
 
     saveSessionProgress();
     scheduleAnswerScroll();
@@ -1285,12 +1284,11 @@
       if (!saveSucceeded) {
         DebugUtils.warn("Unable to persist session progress.");
       }
-      prefs.lastActivity = {
+      state.prefs.lastActivity = {
         mode: "quiz",
         subject: session.questions?.[session.currentIndex]?.Subject || null,
         updatedAt: new Date().toISOString(),
       };
-      state.prefs = prefs;
       persistSessionPreferences();
       sessionSaveRequested = false;
       return saveSucceeded;

@@ -2,9 +2,6 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 
-const text = { textContent: "" };
-const bar = { style: {} };
-const track = { setAttribute(name, value) { this[name] = value; } };
 const main = {
   scrollTop: 240,
   scrollHeight: 400,
@@ -12,6 +9,7 @@ const main = {
   style: { scrollBehavior: "smooth" },
   getBoundingClientRect: () => ({ top: 100, bottom: 500 }),
 };
+const questionRange = { textContent: "" };
 const documentScroller = {
   scrollTop: 240,
   scrollHeight: 1200,
@@ -99,11 +97,13 @@ const context = {
     scrollingElement: documentScroller,
     getElementById(id) {
       return {
-        "study-progress-text": text,
-        "study-progress": bar,
-        "study-progress-track": track,
         "deck-review-cards": container,
       }[id] || null;
+    },
+    querySelectorAll(selector) {
+      return selector === "[data-review-question-range]"
+        ? [questionRange]
+        : [];
     },
     querySelector(selector) {
       return selector === "main" ? main : null;
@@ -118,6 +118,11 @@ const context = {
 const marker = "  // ===================== MODULE EXPORT =====================";
 const source = fs.readFileSync("deck-review-core.js", "utf8");
 assert.ok(source.includes(marker));
+assert.match(
+  source,
+  /<span>of \$\{totalPages\}<\/span>[\s\S]*?<span data-review-question-range class="text-sm font-normal text-white"><\/span>/,
+  "the question range should appear below the page count as normal-weight white text",
+);
 const setup = `  currentReviewSubject = "Deck";\n  currentReviewQuestions = questions;\n  reviewMainElement = main;\n  reviewContainerElement = container;\n  derivedQuestionsCache = { questions, sortedQuestions: questions };\n  globalScope.setSortedQuestions = (sortedQuestions) => {\n    derivedQuestionsCache.sortedQuestions = sortedQuestions;\n  };\n  renderDeckReview = function () {
   const progress = state.prefs.studyProgress[currentReviewSubject];
   globalScope.setRenderedPageCards(
@@ -154,9 +159,7 @@ reviewCore.updateStudyProgressIndicator();
 assert.equal(progress.questionId, "q2");
 assert.equal(progress.index, 1, "the stable ID, not a stale DOM index, sets progress");
 assert.equal(progress.questionScrollOffsets.q2, -20);
-assert.equal(text.textContent, "Questions 1 - 2 / 3");
-assert.equal(Math.round(parseFloat(bar.style.width)), 67);
-assert.doesNotMatch(text.textContent, /at\s+\d+/i);
+assert.equal(questionRange.textContent, "Questions 1 - 2 / 3");
 
 cards[1].getBoundingClientRect = () => ({ top: 130, bottom: 400 });
 reviewCore.updateStudyProgressIndicator();
@@ -205,7 +208,7 @@ progress.questionId = "q2";
 setRenderedPageCards(1, "single", 1);
 reviewCore.updateStudyProgressIndicator();
 assert.equal(progress.index, 1);
-assert.equal(text.textContent, "Question 2 / 3");
+assert.equal(questionRange.textContent, "Question 2 / 3");
 
 reviewCore.changeStudyIndex(1);
 assert.equal(progress.questionId, "q3");
@@ -229,8 +232,6 @@ context.state.prefs.studyPageSize = "All";
 reviewCore.updateStudyProgressIndicator();
 assert.equal(progress.index, 0, "reordering keeps progress attached to its question ID");
 assert.equal(progress.questionId, "q2");
-assert.equal(text.textContent, "Questions 1 / 3");
-assert.equal(Math.round(parseFloat(bar.style.width)), 33);
 
 context.state.prefs.studyLayout = "single";
 context.setSortedQuestions([questions[0]]);

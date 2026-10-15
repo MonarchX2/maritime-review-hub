@@ -39,18 +39,18 @@ assert.ok(
 );
 assert.match(
   appCore,
-  /progressBarHTML = `\s*<div data-deck-progress-slot data-has-progress="\$\{completedCount > 0\}" hidden/,
-  "Quiz-mode progress bar slots should track whether each deck has progress.",
+  /<span class="text-sm font-black \$\{themeColorText\} transition-colors">\$\{totalQuestionsInDb\} cards<\/span>/,
+  "Deck cards should show only the total card count.",
+);
+assert.doesNotMatch(
+  appCore,
+  /data-deck-progress-slot|progressBarHTML|completedCount\} \/ \$\{totalQuestionsInDb\}/,
+  "Deck cards should not render progress bars or completed/total counts.",
 );
 assert.match(
-  appCore,
-  /layout\.querySelectorAll\(":scope > \.deck-card"\)[\s\S]*?getBoundingClientRect\(\)\.top[\s\S]*?rowHasProgress[\s\S]*?progressSlot\.hidden = !rowHasProgress/,
-  "All quiz-mode decks in a grid row should show a progress slot when any deck in that row has progress.",
-);
-assert.match(
-  appCore,
-  /rootScope\.addEventListener\(\s*"resize",\s*updateDeckProgressBarsByRow/,
-  "Progress slot alignment should update when responsive resizing changes grid rows.",
+  styles,
+  /#deck-sort-menu > div,[\s\S]*?#deck-source-menu > div\s*\{[^}]*width:\s*min\(11rem,\s*calc\(100vw - 2rem\)\);[^}]*max-height:\s*calc\(100dvh - 2rem\);[^}]*overflow-y:\s*auto;/,
+  "Sort and source filter menus should stay within small viewports and scroll when too tall.",
 );
 assert.match(
   appCore,

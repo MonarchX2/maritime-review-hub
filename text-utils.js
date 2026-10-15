@@ -46,6 +46,34 @@
     return String(value).replace(HTML_ESCAPE_RE, (c) => HTML_ENTITY_MAP[c]);
   }
 
+  function scrambleWords(value) {
+    let wordIndex = 0;
+    return String(value ?? "").replace(/[\p{L}]+/gu, (word) => {
+      const letters = Array.from(word);
+      if (letters.length < 2) return word;
+
+      let seed = 2166136261;
+      const seedText = `${wordIndex++}:${word.toLowerCase()}`;
+      for (const character of seedText) {
+        seed = Math.imul(seed ^ character.codePointAt(0), 16777619);
+      }
+
+      for (let index = letters.length - 1; index > 0; index--) {
+        seed = Math.imul(seed ^ (seed >>> 13), 0x5bd1e995);
+        const swapIndex = (seed >>> 0) % (index + 1);
+        [letters[index], letters[swapIndex]] = [
+          letters[swapIndex],
+          letters[index],
+        ];
+      }
+
+      const scrambled = letters.join("");
+      return scrambled === word
+        ? `${word.slice(1)}${word[0]}`
+        : scrambled;
+    });
+  }
+
   function renderMathExpression(rawExpression, displayMode) {
     const expr = String(rawExpression || "").trim();
     if (!expr) return "";
@@ -210,6 +238,7 @@
 
   const TextUtils = {
     escapeHTML,
+    scrambleWords,
     renderMathExpression,
     isSafeImageURL,
     stripQuestionNumberPrefix,

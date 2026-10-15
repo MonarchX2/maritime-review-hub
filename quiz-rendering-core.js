@@ -45,10 +45,24 @@
     return callSession("stopVisualTimer");
   }
 
+  function setScopedPreference(mode, key, value) {
+    if (globalScope.setDeckSessionSetting?.(mode, key, value) === true) {
+      return true;
+    }
+    if (typeof globalScope.showToast === "function") {
+      globalScope.showToast(
+        "Open a deck session before changing this setting.",
+        "warning",
+      );
+      return false;
+    }
+    throw new Error("Unable to save a session setting without an active deck.");
+  }
+
   function toggleHideABCD() {
     const toggle = getToggle("toggle-hide-abcd");
     if (!toggle || !globalScope.state) return false;
-    globalScope.state.prefs.hideABCD = toggle.checked;
+    if (!setScopedPreference("study", "hideABCD", toggle.checked)) return false;
     globalScope.saveState?.();
     globalScope.DeckReviewCore?.updateQuestionChoices();
     return true;
@@ -57,7 +71,8 @@
   function toggleQuizHideABCD() {
     const toggle = getToggle("toggle-quiz-hide-abcd");
     if (!toggle || toggle.disabled || !globalScope.state) return false;
-    globalScope.state.prefs.quizHideABCD = toggle.checked;
+    if (!setScopedPreference("quiz", "quizHideABCD", toggle.checked))
+      return false;
     globalScope.saveState?.();
     if (getElementCached("view-practice")?.classList.contains("active")) {
       renderQuestion();
@@ -68,7 +83,8 @@
   function toggleShowWrongChoices() {
     const toggle = getToggle("toggle-wrong-choices");
     if (!toggle || !globalScope.state) return false;
-    globalScope.state.prefs.showWrongChoices = toggle.checked;
+    if (!setScopedPreference("study", "showWrongChoices", toggle.checked))
+      return false;
     globalScope.saveState?.();
     globalScope.DeckReviewCore?.updateQuestionChoices();
     return true;
@@ -77,9 +93,11 @@
   function toggleQuizShowExplanations(source) {
     const toggle = source || getToggle("toggle-quiz-show-explanations");
     if (!globalScope.state) return false;
-    globalScope.state.prefs.quizShowExplanations = toggle
-      ? Boolean(toggle.checked)
-      : false;
+    if (!setScopedPreference(
+      "quiz",
+      "quizShowExplanations",
+      toggle ? Boolean(toggle.checked) : false,
+    )) return false;
     globalScope.saveState?.();
     if (globalScope.state.session?.active) renderQuestion();
     return true;
@@ -88,9 +106,11 @@
   function toggleStudyShowExplanations(source) {
     const toggle = source || getToggle("toggle-study-show-explanations");
     if (!globalScope.state) return false;
-    globalScope.state.prefs.studyShowExplanations = toggle
-      ? Boolean(toggle.checked)
-      : false;
+    if (!setScopedPreference(
+      "study",
+      "studyShowExplanations",
+      toggle ? Boolean(toggle.checked) : false,
+    )) return false;
     globalScope.saveState?.();
     if (getElementCached("view-deck-review")?.classList.contains("active")) {
       globalScope.reRenderDeckReview?.();
@@ -101,9 +121,11 @@
   function toggleClozeMode(source) {
     const toggle = source || getToggle("toggle-cloze-mode");
     if (!globalScope.state) return false;
-    globalScope.state.prefs.clozeEnabled = toggle
-      ? Boolean(toggle.checked)
-      : false;
+    if (!setScopedPreference(
+      "quiz",
+      "clozeEnabled",
+      toggle ? Boolean(toggle.checked) : false,
+    )) return false;
     globalScope.saveState?.();
     if (globalScope.state.session?.active) renderQuestion();
     return true;
@@ -112,9 +134,11 @@
   function toggleSrsMode(source) {
     const toggle = source || getToggle("toggle-srs-mode");
     if (!globalScope.state) return false;
-    globalScope.state.prefs.srsEnabled = toggle
-      ? Boolean(toggle.checked)
-      : false;
+    if (!setScopedPreference(
+      "quiz",
+      "srsEnabled",
+      toggle ? Boolean(toggle.checked) : false,
+    )) return false;
     globalScope.saveState?.();
     if (globalScope.state.session?.active) renderQuestion();
     return true;

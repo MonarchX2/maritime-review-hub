@@ -332,6 +332,7 @@
       state.prefs.studyLayout,
       state.prefs.studyPageSize,
       state.prefs.studyFilterMode,
+      JSON.stringify(state.prefs.deckSessionSettings || {}),
       studyProgressSignature,
       isInitialSyncComplete,
     ].join("\u001e");
