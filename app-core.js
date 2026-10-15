@@ -6052,29 +6052,87 @@
         });
         row.appendChild(button);
       } else {
-        const link = createResourcePortalElement(
-          "a",
-          "min-w-0 flex-1 truncate text-sm font-semibold text-gray-800 hover:text-brand-700 dark:text-gray-100 dark:hover:text-brand-300",
+        const previewButton = createResourcePortalElement(
+          "button",
+          "min-w-0 flex-1 truncate text-left text-sm font-semibold text-gray-800 hover:text-brand-700 dark:text-gray-100 dark:hover:text-brand-300",
           item.name,
         );
-        const resourceUrl = new URL(item.url);
+        previewButton.type = "button";
+        previewButton.addEventListener("click", () => {
+          previewResourceFile(item.id, item.name, item.mimeType);
+        });
+        row.appendChild(previewButton);
+
+        const driveUrl = new URL(item.url);
         if (
-          resourceUrl.protocol !== "https:" ||
+          driveUrl.protocol !== "https:" ||
           !["drive.google.com", "docs.google.com"].includes(
-            resourceUrl.hostname,
+            driveUrl.hostname,
           )
         ) {
           throw new Error("Drive returned an unsupported file link.");
         }
-        link.href = resourceUrl.href;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.setAttribute("aria-label", `Open ${item.name} in Google Drive`);
-        row.appendChild(link);
+        const openInDrive = createResourcePortalElement(
+          "a",
+          "shrink-0 rounded-md px-2 py-1 text-gray-500 hover:bg-gray-100 hover:text-brand-700 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-brand-300",
+        );
+        openInDrive.href = driveUrl.href;
+        openInDrive.target = "_blank";
+        openInDrive.rel = "noopener noreferrer";
+        openInDrive.setAttribute("aria-label", `Open ${item.name} in Google Drive`);
+        openInDrive.title = "Open in Google Drive";
+        const externalIcon = createResourcePortalElement(
+          "i",
+          "fa-solid fa-arrow-up-right-from-square",
+        );
+        externalIcon.setAttribute("aria-hidden", "true");
+        openInDrive.appendChild(externalIcon);
+        row.appendChild(openInDrive);
       }
 
       list.appendChild(row);
     });
+  }
+
+  function getResourcePreviewUrl(fileId, mimeType) {
+    const id = String(fileId || "").trim();
+    if (!/^[A-Za-z0-9_-]{10,200}$/.test(id)) {
+      throw new Error("Drive returned an invalid file ID.");
+    }
+
+    const googleFileTypes = {
+      "application/vnd.google-apps.document": "document",
+      "application/vnd.google-apps.spreadsheet": "spreadsheets",
+      "application/vnd.google-apps.presentation": "presentation",
+    };
+    const googleType = googleFileTypes[String(mimeType || "")];
+    if (googleType) {
+      return `https://docs.google.com/${googleType}/d/${encodeURIComponent(
+        id,
+      )}/preview`;
+    }
+    return `https://drive.google.com/file/d/${encodeURIComponent(id)}/preview`;
+  }
+
+  function previewResourceFile(fileId, fileName, mimeType) {
+    const preview = document.getElementById("resource-portal-preview");
+    const title = document.getElementById("resource-portal-preview-title");
+    const frame = document.getElementById("resource-portal-preview-frame");
+    if (!preview || !title || !frame) return false;
+
+    frame.src = getResourcePreviewUrl(fileId, mimeType);
+    title.textContent = String(fileName || "File preview");
+    frame.title = `Preview of ${title.textContent}`;
+    preview.hidden = false;
+    preview.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    return true;
+  }
+
+  function closeResourcePreview() {
+    const preview = document.getElementById("resource-portal-preview");
+    const frame = document.getElementById("resource-portal-preview-frame");
+    if (frame) frame.removeAttribute("src");
+    if (preview) preview.hidden = true;
   }
 
   async function loadResourcePortalFolder(folderId) {
@@ -6216,6 +6274,7 @@
     jumpToStudyPage,
     loadState,
     loadResourcePortalFolder,
+    closeResourcePreview,
     markLocalDownloadDeleted,
     nextQuestion,
     normalizeAccessFlag,

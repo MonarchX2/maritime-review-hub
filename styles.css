@@ -1377,6 +1377,13 @@ button:active:not(:disabled) {
   display: none !important;
 }
 
+.resource-portal-preview-frame {
+  width: 100%;
+  height: 70vh;
+  min-height: 20rem;
+  background: #fff;
+}
+
 [hidden] {
   display: none !important;
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 10.15.26-10 - 2026-10-15
+
+### Fixed
+- Allow the Resources portal's public Drive listing request through frontend backend-payload validation.
+- Preview public Drive files inside the Resources page.
+
 ## 10.15.26-8 - 2026-10-15
 
 ### Added

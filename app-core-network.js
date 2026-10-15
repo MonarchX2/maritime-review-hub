@@ -504,12 +504,17 @@
     },
     get_cache_version: { required: [], allowed: ["type", "appVersion"] },
     get_sync_status: { required: [], allowed: ["type", "appVersion"] },
+    list_public_resources: {
+      required: [],
+      allowed: ["type", "folderId", "appVersion"],
+    },
   });
 
   const STRING_FIELD_LIMITS = Object.freeze({
     type: 64,
     subject: 500,
     password: 500,
+    folderId: 200,
     appVersion: 128,
   });
   const MAX_BACKEND_PAYLOAD_BYTES = 500000;

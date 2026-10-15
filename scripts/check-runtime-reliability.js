@@ -320,6 +320,36 @@ async function checkBackendErrorHandling() {
     "every POST request must include the running app version",
   );
 
+  fetchCount = 0;
+  networkContext.fetch = async (_input, options) => {
+    fetchCount += 1;
+    lastPostBody = options.body;
+    return new Response(
+      JSON.stringify({
+        status: "success",
+        folder: { id: "public-root", name: "Shared Resources" },
+        breadcrumbs: [{ id: "public-root", name: "Shared Resources" }],
+        items: [],
+      }),
+      { status: 200 },
+    );
+  };
+  const resourcesResponse = await network.callBackend(
+    { type: "list_public_resources", folderId: "public-root" },
+    { maxRetries: 0 },
+  );
+  assert.equal(resourcesResponse.status, "success");
+  assert.equal(fetchCount, 1);
+  assert.deepEqual(
+    JSON.parse(lastPostBody),
+    {
+      type: "list_public_resources",
+      folderId: "public-root",
+      appVersion: networkContext.__MRH_APP__.version,
+    },
+    "public-resource listing requests should pass payload validation and include the folder ID",
+  );
+
   networkContext.fetch = async () =>
     new Response(
       JSON.stringify({

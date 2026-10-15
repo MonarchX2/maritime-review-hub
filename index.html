@@ -9,9 +9,9 @@
     <meta name="theme-color" content="#1e3a8a" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
+      content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src https://drive.google.com https://docs.google.com; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' https: data:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-release-10.15.26-9" />
+    <link rel="manifest" href="manifest.json?v=mrh-release-10.15.26-10" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,25 +253,25 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-release-10.15.26-9"
+      href="icon.svg?v=mrh-release-10.15.26-10"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-10.15.26-9" />
+    <link rel="apple-touch-icon" href="icon.svg?v=mrh-release-10.15.26-10" />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-release-10.15.26-9"
+      href="tailwind.generated.css?v=mrh-release-10.15.26-10"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-release-10.15.26-9"
+      href="styles.css?v=mrh-release-10.15.26-10"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-release-10.15.26-9"
+      href="tailwind.generated.css?v=mrh-release-10.15.26-10"
       media="print"
       onload="
         this.media = 'all';
@@ -280,7 +280,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-release-10.15.26-9"
+      href="styles.css?v=mrh-release-10.15.26-10"
       media="print"
       onload="
         this.media = 'all';
@@ -646,8 +646,39 @@
             </p>
             <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
               Reviewer folders are kept out of this public resource browser.
-              Files open through Google Drive.
+              Public Drive files can be previewed here or opened in Drive.
             </p>
+            <section
+              id="resource-portal-preview"
+              class="mb-4 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
+              aria-label="File preview"
+              hidden
+            >
+              <div
+                class="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900"
+              >
+                <h3
+                  id="resource-portal-preview-title"
+                  class="min-w-0 truncate text-sm font-semibold"
+                ></h3>
+                <button
+                  type="button"
+                  onclick="closeResourcePreview()"
+                  class="shrink-0 rounded-md px-2 py-1 text-sm font-semibold text-gray-600 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-700"
+                  aria-label="Close file preview"
+                >
+                  <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                </button>
+              </div>
+              <iframe
+                id="resource-portal-preview-frame"
+                class="resource-portal-preview-frame"
+                title="Google Drive file preview"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+                allowfullscreen
+              ></iframe>
+            </section>
             <ul
               id="resource-portal-items"
               class="divide-y divide-gray-200 dark:divide-gray-700"
@@ -2494,7 +2525,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 10.15.26-9</p>
+    <p id="site-version" class="site-version">Version 10.15.26-10</p>
 
     <div
       id="qr-transfer-modal"

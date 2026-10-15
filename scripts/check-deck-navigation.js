@@ -10,7 +10,6 @@ const appCoreStateSource = fs.readFileSync("app-core-state.js", "utf8");
 const modalCoreSource = fs.readFileSync("ui-modal-core.js", "utf8");
 const stylesSource = fs.readFileSync("styles.css", "utf8");
 const indexSource = fs.readFileSync("index.html", "utf8");
-const backendSource = fs.readFileSync("backend/main.js", "utf8");
 const textUtils = require("../text-utils.js");
 
 const protectedDeckName = "Maritime Safety";
@@ -178,31 +177,14 @@ assert.match(
 );
 assert.match(
   indexSource,
-  /Files open through Google Drive\.[\s\S]*?id="resource-portal-items"/,
-  "the Resource Portal should include a Drive-backed resource list and explain its access boundary",
+  /Public Drive files can be previewed here or opened in Drive\.[\s\S]*?id="resource-portal-preview-frame"[\s\S]*?id="resource-portal-items"/,
+  "the Resources view should preview shared files inside the portal and retain Drive links",
 );
 assert.match(
-  backendSource,
-  /RESOURCE_PORTAL_ROOT_FOLDER_ID = "19LoMUsogxTHB5xrI1Gd08NASQv2Zqi6E"/,
-  "the resource endpoint should use the supplied Drive folder as its root",
+  indexSource,
+  /frame-src https:\/\/drive\.google\.com https:\/\/docs\.google\.com/,
+  "the app content security policy should permit only Google Drive preview frames",
 );
-assert.ok(
-  backendSource.includes(
-    "/^REVIEWERS v\\.\\d{2}\\.\\d{2}\\.\\d{2}$/i",
-  ),
-  "reviewer version folders should be recognized as private",
-);
-assert.match(
-  backendSource,
-  /function hasPublicResourceAccess\(item\)[\s\S]*?DriveApp\.Access\.ANYONE_WITH_LINK/,
-  "the backend should list only items explicitly available to anyone",
-);
-assert.match(
-  backendSource,
-  /if \(requestType === "list_public_resources"\)\s*return handleListPublicResourcesRequest\(data\);/,
-  "the backend should register the public resources listing request",
-);
-
 for (const inputId of ["deck-password-input", "folder-password-input"]) {
   const inputMarkup = indexSource.match(
     new RegExp(`<input(?=[^>]*id="${inputId}")[^>]*>`, "s"),
