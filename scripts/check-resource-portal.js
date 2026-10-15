@@ -110,7 +110,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /isPdfResource = isSyllabus \|\| \/\\\.pdf\\b\/i\.test\(fileTitle\)[\s\S]*?isPdfResource \? "fa-file-pdf" : "fa-folder"/,
+  /isPdfResource =[\s\S]*?isPdfResource \? "fa-file-pdf" : "fa-folder"/,
   "resource links should show PDF icons for syllabuses and PDF filenames",
 );
 assert.match(

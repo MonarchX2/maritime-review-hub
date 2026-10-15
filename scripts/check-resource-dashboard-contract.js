@@ -239,7 +239,12 @@ assert.match(
 );
 assert.match(
   appCore,
-  /const isSyllabus = \["syllabus", "course syllabus"\]\.includes\([\s\S]*?isPdfResource = isSyllabus \|\|[\s\S]*?const linkLabel = isSyllabus\s*\?\s*"PDF"/,
+  /isModuleFolderFallback\s*=\s*resourceDashboardActiveTab === "MODULES" && !titleInParentheses[\s\S]*?isPdfResource\s*=\s*!isModuleFolderFallback[\s\S]*?isModuleFolderFallback\s*\?\s*"Folder"/,
+  "Module resources without a parenthesized title should use the Folder label and folder icon",
+);
+assert.match(
+  appCore,
+  /const isSyllabus = \["syllabus", "course syllabus"\]\.includes\([\s\S]*?isPdfResource =\s*!isModuleFolderFallback &&\s*\(isSyllabus \|\|[\s\S]*?const linkLabel = isSyllabus\s*\?\s*"PDF"/,
   "syllabus links should always show a PDF icon and the PDF label",
 );
 assert.match(
@@ -344,7 +349,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /isPdfResource = isSyllabus \|\| \/\\\.pdf\\b\/i\.test\(fileTitle\)[\s\S]*?isPdfResource \? "fa-file-pdf" : "fa-folder"/,
+  /isPdfResource =[\s\S]*?isPdfResource \? "fa-file-pdf" : "fa-folder"/,
   "resource links should show PDF icons for syllabuses and PDF filenames",
 );
 assert.match(

@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-8 - 2026-10-16
+
+### Changed
+- Show a folder icon and “Folder” for Module resources without a parenthesized title.
+
 ## 26.10.16-7 - 2026-10-16
 
 ### Changed

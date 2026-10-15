@@ -6381,13 +6381,19 @@
           const resourceTitle = String(
             titleInParentheses ? titleInParentheses[1] : fileTitle,
           ).trim();
+          const isModuleFolderFallback =
+            resourceDashboardActiveTab === "MODULES" && !titleInParentheses;
           const isSyllabus = ["syllabus", "course syllabus"].includes(
             columnName,
           );
-          const isPdfResource = isSyllabus || /\.pdf\b/i.test(fileTitle);
+          const isPdfResource =
+            !isModuleFolderFallback &&
+            (isSyllabus || /\.pdf\b/i.test(fileTitle));
           const linkLabel = isSyllabus
             ? "PDF"
-            : resourceTitle.replace(/\.pdf$/i, "") || "Open resource";
+            : isModuleFolderFallback
+              ? "Folder"
+              : resourceTitle.replace(/\.pdf$/i, "") || "Open resource";
           const icon = createResourceDashboardElement(
             "i",
             `fa-solid ${
