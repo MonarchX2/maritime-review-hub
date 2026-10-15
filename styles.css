@@ -1732,7 +1732,8 @@ button:active:not(:disabled) {
 }
 
 .resource-dashboard-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 0.75rem;
@@ -1741,7 +1742,8 @@ button:active:not(:disabled) {
 
 .resource-dashboard-table th,
 .resource-dashboard-table td {
-  min-width: 6.5rem;
+  width: max-content;
+  white-space: nowrap;
   border-bottom: 1px solid #e2e8f0;
   padding: 0.75rem 0.85rem;
   vertical-align: middle;
@@ -1791,11 +1793,41 @@ button:active:not(:disabled) {
   background: #f8fafc;
 }
 
-.resource-dashboard-table a {
+.resource-dashboard-link-button {
+  display: inline-flex;
+  max-width: 24rem;
+  min-height: 2rem;
+  align-items: center;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.4rem;
+  padding: 0.35rem 0.65rem;
+  overflow: hidden;
   color: #2563eb;
+  background: #eff6ff;
   font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
+  text-decoration: none;
+  text-overflow: ellipsis;
+}
+
+.resource-dashboard-link-button:hover,
+.resource-dashboard-link-button:focus-visible {
+  border-color: #60a5fa;
+  color: #1d4ed8;
+  background: #dbeafe;
+  outline: 0;
+}
+
+.dark .resource-dashboard-link-button {
+  border-color: #1e40af;
+  color: #bfdbfe;
+  background: #172554;
+}
+
+.dark .resource-dashboard-link-button:hover,
+.dark .resource-dashboard-link-button:focus-visible {
+  border-color: #3b82f6;
+  color: #dbeafe;
+  background: #1e3a8a;
 }
 
 .dark .resource-dashboard-refresh {
@@ -2074,10 +2106,6 @@ button:active:not(:disabled) {
 
   .resource-dashboard-browser .resource-portal-browser-header {
     align-items: flex-start;
-  }
-
-  .resource-dashboard-table {
-    min-width: 38rem;
   }
 
   .resource-portal-access-screen {

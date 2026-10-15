@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.15-11 - 2026-10-15
+
+### Changed
+- Size dashboard columns to their content and display spreadsheet resource links as labeled buttons.
+
 ## 26.10.15-10 - 2026-10-15
 
 ### Changed

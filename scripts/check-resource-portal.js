@@ -58,6 +58,21 @@ assert.match(
   "spreadsheet resource values should render as working links",
 );
 assert.match(
+  appCore,
+  /"resource-dashboard-link-button",\s*value \|\| "Open link"/,
+  "resource links should be styled buttons labeled with their spreadsheet text",
+);
+assert.match(
+  fs.readFileSync("styles.css", "utf8"),
+  /\.resource-dashboard-table\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*100%;/,
+  "dashboard table columns should size to their contents",
+);
+assert.doesNotMatch(
+  fs.readFileSync("styles.css", "utf8"),
+  /\.resource-dashboard-table\s*\{[^}]*min-width:\s*38rem/,
+  "the dashboard should not force fixed-width columns on mobile",
+);
+assert.match(
   backend,
   /getRichTextValues\(\)[\s\S]*?getFormulas\(\)[\s\S]*?links:\s*dataRows\.map/,
   "the backend should retain rich-text and formula hyperlink targets",

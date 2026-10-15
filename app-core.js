@@ -6166,8 +6166,8 @@
         if (isResourceDashboardLink(linkUrl)) {
           const link = createResourceDashboardElement(
             "a",
-            "",
-            isResourceDashboardLink(value) ? "Open link" : value,
+            "resource-dashboard-link-button",
+            value || "Open link",
           );
           link.href = linkUrl;
           cell.appendChild(link);

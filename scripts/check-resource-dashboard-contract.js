@@ -20,6 +20,11 @@ assert.match(
   "the dashboard should provide sortable column headings",
 );
 assert.match(
+  appCore,
+  /"resource-dashboard-link-button",\s*value \|\| "Open link"/,
+  "resource links should retain their visible spreadsheet label in button styling",
+);
+assert.match(
   network,
   /get_resource_dashboard:\s*\{\s*required:\s*\[\],\s*allowed:\s*\["type",\s*"appVersion"\]/,
   "the backend request validator should allow the dashboard action and app version",
