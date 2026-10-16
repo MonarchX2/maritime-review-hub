@@ -451,7 +451,7 @@ assert.equal(
 context.initializeMRHAccountsSpreadsheet();
 assert.deepEqual(
   Array.from(accountRows[0]),
-  ["Email", "Last Name", "First Name", "Middle Initial", "Active"],
+  ["Email", "Last Name", "First Name", "Middle Initial", "Active", "Date", "Time"],
   "account setup should remove the legacy device identity column",
 );
 assert.equal(
@@ -465,15 +465,32 @@ assert.deepEqual(Array.from(accountRows[1]), [
   "Rita",
   "A.",
   "TRUE",
+  "",
+  "",
 ]);
 assert.equal(accountRows[2][0], "second-reviewer@example.com");
 assert.equal(sheets.Accounts, undefined);
 assert.equal(sheets.MODULE, undefined);
 assert.equal(sheets.MODULES !== undefined, true);
 assert.deepEqual(
-  sheets.ACCOUNTS.getRange(1, 1, 1, 5).getDisplayValues()[0],
-  ["Email", "Last Name", "First Name", "Middle Initial", "Active"],
-  "the ACCOUNTS tab must remain free of date and time fields",
+  sheets.ACCOUNTS.getRange(1, 1, 1, 7).getDisplayValues()[0],
+  ["Email", "Last Name", "First Name", "Middle Initial", "Active", "Date", "Time"],
+  "the ACCOUNTS tab should include separate creation Date and Time fields",
+);
+accountRows[0] = [
+  "Email",
+  "Last Name",
+  "First Name",
+  "Middle Initial",
+  "Active",
+  "",
+  "",
+];
+context.findMRHAccount_("reviewer@example.com", true);
+assert.deepEqual(
+  Array.from(accountRows[0]),
+  ["Email", "Last Name", "First Name", "Middle Initial", "Active", "Date", "Time"],
+  "the backend should lazily add creation columns to an existing ACCOUNTS sheet",
 );
 assert.equal(spreadsheetTimeZone, "Asia/Manila");
 assert.deepEqual(Array.from(reviewerLogs[0]), currentLogHeaders);
@@ -750,6 +767,8 @@ assert.equal(
   false,
   "a mismatched name must not be saved for administrator review",
 );
+const reusableAccountRow = Array(7).fill("");
+accountRows.splice(2, 0, reusableAccountRow);
 const submission = post({
   type: "request_reviewer_enrollment",
   idToken: "new-user-token",
@@ -763,13 +782,20 @@ assert.deepEqual(
   ["success", "FALSE", false],
   "new enrollment must start pending and not grant access",
 );
-assert.deepEqual(Array.from(accountRows.at(-1)), [
+assert.deepEqual(Array.from(reusableAccountRow.slice(0, 5)), [
   "new-reviewer@example.com",
   "Reviewer",
   "New",
   "P.",
   "FALSE",
 ]);
+assert.match(reusableAccountRow[5], /^\d{4}-\d{2}-\d{2}$/);
+assert.match(reusableAccountRow[6], /^\d{2}:\d{2}:\d{2}$/);
+assert.equal(
+  accountRows.at(-1)[0],
+  "second-reviewer@example.com",
+  "a new account should reuse the first blank row instead of appending below existing accounts",
+);
 assert.equal(
   post({
     type: "log_module_access",
@@ -819,7 +845,7 @@ const duplicatePending = post({
 });
 assert.equal(duplicatePending.accountStatus, "FALSE");
 assert.deepEqual(
-  Array.from(accountRows.find((row) => row[0] === "new-reviewer@example.com")),
+  Array.from(accountRows.find((row) => row[0] === "new-reviewer@example.com").slice(0, 5)),
   ["new-reviewer@example.com", "Reviewer", "Changed", "P.", "FALSE"],
   "a pending user can edit their name while remaining unapproved",
 );
@@ -921,6 +947,8 @@ assert.deepEqual(Array.from(accountRows[newUserRow]), [
   "New",
   "P.",
   "FALSE",
+  reusableAccountRow[5],
+  reusableAccountRow[6],
 ]);
 assert.equal(
   post({
@@ -977,7 +1005,11 @@ assert.equal(
   "enrollment must recheck a cached account miss before appending a duplicate",
 );
 assert.deepEqual(
-  Array.from(accountRows.find((row) => row[0] === "admin-added@example.com")),
+  Array.from(
+    accountRows
+      .find((row) => row[0] === "admin-added@example.com")
+      .slice(0, 5),
+  ),
   ["admin-added@example.com", "Added", "Admin", "A.", "FALSE"],
   "a fresh account match must update the correct row and reset approval",
 );
@@ -1215,7 +1247,9 @@ const shiftedAccountEdit = post({
 });
 assert.equal(shiftedAccountEdit.accountStatus, "FALSE");
 assert.deepEqual(
-  Array.from(accountRows.find((row) => row[0] === "reviewer@example.com")),
+  Array.from(
+    accountRows.find((row) => row[0] === "reviewer@example.com").slice(0, 5),
+  ),
   ["reviewer@example.com", "Reviewer", "Correct", "C.", "FALSE"],
   "profile edits must use a fresh account row after sheet rows move",
 );

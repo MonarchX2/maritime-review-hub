@@ -7570,7 +7570,7 @@
     if (profileDetails) profileDetails.hidden = false;
     if (cancelButton) cancelButton.hidden = true;
     if (submitButton)
-      submitButton.textContent = "Submit for administrator review";
+      submitButton.textContent = "Submit";
     form.querySelectorAll("input").forEach((input) => {
       input.value = input.dataset.savedValue || "";
     });
@@ -8093,7 +8093,7 @@
             ? "Submit"
             : response.profileUpdated
               ? "Save changes for approval"
-              : "Submit for administrator review";
+              : "Submit";
       if (!preserveEnrollmentDraft) {
         if (accountStatus === "NOT_FOUND") {
           Object.values(inputs).forEach((input) => {

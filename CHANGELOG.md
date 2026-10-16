@@ -1,5 +1,13 @@
 # Changelog
 
+## 26.10.16-50 - 2026-10-16
+
+### Improved
+
+- Shorten the reviewer enrollment action to `Submit`.
+- Add Date and Time account-creation columns to `ACCOUNTS`, populate the first
+  available blank account row, and preserve creation times when profiles change.
+
 ## 26.10.16-49 - 2026-10-16
 
 ### Fixed

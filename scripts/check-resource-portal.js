@@ -143,6 +143,11 @@ assert.match(
   /class="resource-reviewer-form-actions"[\s\S]*?<button type="submit">[\s\S]*?id="resource-reviewer-enrollment-status"[^>]*role="status"/,
   "profile submission progress should appear beneath the enrollment action",
 );
+assert.match(
+  index,
+  /<button type="submit">\s*Submit\s*<\/button>/,
+  "the profile enrollment button should be labeled only Submit",
+);
 assert.ok(
   index.indexOf('id="resource-reviewer-enrollment-form"') >
     index.indexOf('id="resource-profile-account-details"'),
