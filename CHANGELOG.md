@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-28 - 2026-10-16
+
+### Fixed
+- Keep the Reviewer name-entry form and its First Name field within the Profile dialog on narrow screens.
+
 ## 26.10.16-27 - 2026-10-16
 
 ### Fixed

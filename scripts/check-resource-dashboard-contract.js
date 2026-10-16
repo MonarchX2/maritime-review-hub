@@ -162,8 +162,13 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-profile-card\s*\{[^}]*display:\s*grid;[^}]*gap:\s*1\.25rem;[\s\S]*?\.resource-reviewer-enrollment\s*\{[^}]*flex-direction:\s*column;[^}]*gap:\s*1rem;/,
-  "Profile form sections should have clear, consistent spacing",
+  /\.resource-profile-card\s*\{[^}]*display:\s*grid;[^}]*gap:\s*1\.25rem;[\s\S]*?\.resource-reviewer-enrollment\s*\{[^}]*display:\s*grid;[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*gap:\s*1rem;[\s\S]*?\.resource-reviewer-enrollment input\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;/,
+  "Reviewer name fields should stack in a full-width, overflow-safe grid",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-reviewer-enrollment button\s*\{[^}]*max-width:\s*100%;[\s\S]*?white-space:\s*normal;/,
+  "the enrollment submit button should wrap instead of overflowing narrow dialogs",
 );
 assert.match(
   resourceStyles,
