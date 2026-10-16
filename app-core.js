@@ -6014,6 +6014,7 @@
   const RESOURCE_DASHBOARD_CACHE_KEY = "resource_dashboard_cache_v1";
   let resourceDashboardSelectedYear = "3";
   let resourceDashboardSelectedSemester = "1";
+  let resourceDashboardSelectedCategory = "all";
 
   function hasExplicitReviewerSignOut() {
     const signOutCookie = String(globalScope.document?.cookie || "")
@@ -6254,6 +6255,12 @@
     const semesterFilterControl = document.getElementById(
       "resource-dashboard-filter-semester",
     );
+    const categoryFilterContainer = document.getElementById(
+      "resource-dashboard-category-filter",
+    );
+    const categoryFilterControl = document.getElementById(
+      "resource-dashboard-filter-category",
+    );
     const filterContainer = yearFilterControl?.closest(
       ".resource-dashboard-filters",
     );
@@ -6263,8 +6270,31 @@
     const semesterColumnIndex = tab.columns.findIndex(
       (column) => String(column).trim().toLocaleLowerCase() === "semester",
     );
+    const phaseColumnIndexes = tab.columns.reduce((indexes, column, index) => {
+      const phase = String(column).trim().toUpperCase();
+      if (["PRELIMS", "MIDTERMS", "FINALS"].includes(phase))
+        indexes[phase] = index;
+      return indexes;
+    }, {});
+    const showCategoryFilter = ["MODULES", "REVIEWERS"].includes(
+      resourceDashboardActiveTab,
+    );
+    if (categoryFilterContainer)
+      categoryFilterContainer.hidden = !showCategoryFilter;
+    if (categoryFilterControl)
+      categoryFilterControl.value = resourceDashboardSelectedCategory;
     const hasTermFilter = yearColumnIndex >= 0;
-    if (filterContainer) filterContainer.hidden = !hasTermFilter;
+    if (filterContainer)
+      filterContainer.hidden = !hasTermFilter && !showCategoryFilter;
+    const yearFilterContainer = yearFilterControl?.closest(
+      ".resource-dashboard-control",
+    );
+    const semesterFilterContainer = semesterFilterControl?.closest(
+      ".resource-dashboard-control",
+    );
+    if (yearFilterContainer) yearFilterContainer.hidden = !hasTermFilter;
+    if (semesterFilterContainer)
+      semesterFilterContainer.hidden = !hasTermFilter;
     const termValues = new Set();
     if (hasTermFilter) {
       tab.rows.forEach((values) => {
@@ -6372,9 +6402,35 @@
           return displayValue !== "" || isResourceDashboardLink(linkUrl);
         }),
       );
+    const selectedPhaseColumnIndex =
+      resourceDashboardSelectedCategory === "all"
+        ? -1
+        : phaseColumnIndexes[resourceDashboardSelectedCategory];
+    const visibleColumnIndices =
+      showCategoryFilter && resourceDashboardSelectedCategory !== "all"
+        ? populatedColumnIndices.filter(
+            (columnIndex) =>
+              !Object.values(phaseColumnIndexes).includes(columnIndex) ||
+              columnIndex === selectedPhaseColumnIndex,
+          )
+        : populatedColumnIndices;
     const visibleRows = nonEmptyRows
-      .filter(({ values }) => {
-        if (!hasTermFilter) return true;
+      .filter(({ values, rowIndex }) => {
+        if (
+          showCategoryFilter &&
+          resourceDashboardSelectedCategory !== "all"
+        ) {
+          if (selectedPhaseColumnIndex === undefined) return false;
+          const phaseValue = String(
+            values[selectedPhaseColumnIndex] ?? "",
+          ).trim();
+          const phaseLink = String(
+            tab.links?.[rowIndex]?.[selectedPhaseColumnIndex] || phaseValue,
+          );
+          if (!phaseValue && !isResourceDashboardLink(phaseLink)) return false;
+        }
+        if (!hasTermFilter || resourceDashboardSelectedYear === "all")
+          return true;
         const yearValue = String(values[yearColumnIndex] || "").trim();
         const combinedTerm = /^(\d+)\s*[./-]\s*(\d+)$/.exec(yearValue);
         const year = combinedTerm ? combinedTerm[1] : yearValue;
@@ -6383,7 +6439,6 @@
           : semesterColumnIndex >= 0
             ? String(values[semesterColumnIndex] || "").trim()
             : "";
-        if (resourceDashboardSelectedYear === "all") return true;
         return (
           year === resourceDashboardSelectedYear &&
           (resourceDashboardSelectedSemester === "all" ||
@@ -6394,7 +6449,7 @@
     tableHead.replaceChildren();
     tableBody.replaceChildren();
     const headerRow = document.createElement("tr");
-    populatedColumnIndices.forEach((columnIndex) => {
+    visibleColumnIndices.forEach((columnIndex) => {
       const column = tab.columns[columnIndex];
       const header = document.createElement("th");
       const columnName = String(column).trim().toLowerCase();
@@ -6516,6 +6571,9 @@
     const semesterFilterControl = document.getElementById(
       "resource-dashboard-filter-semester",
     );
+    const categoryFilterControl = document.getElementById(
+      "resource-dashboard-filter-category",
+    );
     if (yearFilterControl && !yearFilterControl.dataset.initialized) {
       yearFilterControl.addEventListener("change", () => {
         resourceDashboardSelectedYear = yearFilterControl.value;
@@ -6531,6 +6589,13 @@
         if (resourceDashboardData) renderResourceDashboardTab();
       });
       semesterFilterControl.dataset.initialized = "true";
+    }
+    if (categoryFilterControl && !categoryFilterControl.dataset.initialized) {
+      categoryFilterControl.addEventListener("change", () => {
+        resourceDashboardSelectedCategory = categoryFilterControl.value;
+        if (resourceDashboardData) renderResourceDashboardTab();
+      });
+      categoryFilterControl.dataset.initialized = "true";
     }
     const signoutButton = document.getElementById(
       "resource-reviewer-signout",

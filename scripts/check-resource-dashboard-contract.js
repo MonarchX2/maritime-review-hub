@@ -117,6 +117,31 @@ assert.match(
 );
 assert.match(
   appCore,
+  /resourceDashboardSelectedCategory = "all"[\s\S]*?showCategoryFilter = \["MODULES", "REVIEWERS"\]\.includes\(\s*resourceDashboardActiveTab,\s*\)[\s\S]*?categoryFilterControl\.value = resourceDashboardSelectedCategory/,
+  "Modules and Reviewers should share a category filter that defaults to All",
+);
+assert.match(
+  appCore,
+  /filterContainer\.hidden = !hasTermFilter && !showCategoryFilter[\s\S]*?yearFilterContainer\.hidden = !hasTermFilter[\s\S]*?semesterFilterContainer\.hidden = !hasTermFilter/,
+  "the category filter should remain available on Modules and Reviewers without year metadata",
+);
+assert.match(
+  appCore,
+  /const phaseColumnIndexes = tab\.columns\.reduce[\s\S]*?\["PRELIMS", "MIDTERMS", "FINALS"\]\.includes\(phase\)[\s\S]*?selectedPhaseColumnIndex[\s\S]*?phaseValue[\s\S]*?isResourceDashboardLink\(phaseLink\)/,
+  "the selected phase should retain only its column and rows with a resource for that phase",
+);
+assert.match(
+  appCore,
+  /categoryFilterControl\.addEventListener\("change"[\s\S]*?resourceDashboardSelectedCategory = categoryFilterControl\.value[\s\S]*?renderResourceDashboardTab\(\)/,
+  "changing the category should immediately rerender the dashboard",
+);
+assert.match(
+  indexHtml,
+  /id="resource-dashboard-filter-category"[\s\S]*?<option value="all">All<\/option>[\s\S]*?<option value="PRELIMS">PRELIMS<\/option>[\s\S]*?<option value="MIDTERMS">MIDTERMS<\/option>[\s\S]*?<option value="FINALS">FINALS<\/option>/,
+  "the category dropdown should offer All, PRELIMS, MIDTERMS, and FINALS",
+);
+assert.match(
+  appCore,
   /resourceDashboardSelectedYear = populateTermOptions\([\s\S]*?"3",\s*true,\s*\)/,
   "the year filter should support an all-levels selection",
 );
@@ -132,7 +157,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(resourceDashboardSelectedYear === "all"\) return true;[\s\S]*?year === resourceDashboardSelectedYear/,
+  /if \(!hasTermFilter \|\| resourceDashboardSelectedYear === "all"\)\s*return true;[\s\S]*?year === resourceDashboardSelectedYear/,
   "All Year Levels should include every row regardless of semester",
 );
 assert.match(
@@ -149,6 +174,11 @@ assert.match(
   resourceStyles,
   /\.resource-dashboard-control:first-child select\s*\{\s*width:\s*3\.5rem;\s*\}[\s\S]*?\.resource-dashboard-control:nth-child\(2\) select\s*\{\s*width:\s*3\.5rem;/,
   "year and semester dropdowns should use compact widths",
+);
+assert.match(
+  resourceStyles,
+  /#resource-dashboard-filter-category\s*\{\s*width:\s*8\.5rem;/,
+  "the category dropdown should be wide enough to display phase labels",
 );
 assert.match(
   resourceStyles,
@@ -368,7 +398,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(resourceDashboardSelectedYear === "all"\) return true;[\s\S]*?year === resourceDashboardSelectedYear &&\s*\(resourceDashboardSelectedSemester === "all" \|\|\s*semester === resourceDashboardSelectedSemester\)/,
+  /if \(!hasTermFilter \|\| resourceDashboardSelectedYear === "all"\)\s*return true;[\s\S]*?year === resourceDashboardSelectedYear &&\s*\(resourceDashboardSelectedSemester === "all" \|\|\s*semester === resourceDashboardSelectedSemester\)/,
   "All Year Levels should bypass year and semester filtering",
 );
 assert.match(
@@ -408,7 +438,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /const populatedColumnIndices = tab\.columns[\s\S]*?nonEmptyRows\.some\([\s\S]*?populatedColumnIndices\.forEach\(\(columnIndex\) => \{[\s\S]*?tableHead\.appendChild\(headerRow\)/,
+  /const populatedColumnIndices = tab\.columns[\s\S]*?nonEmptyRows\.some\([\s\S]*?const visibleColumnIndices =[\s\S]*?visibleColumnIndices\.forEach\(\(columnIndex\) => \{[\s\S]*?tableHead\.appendChild\(headerRow\)/,
   "dashboard headers should omit columns that are empty across the dataset",
 );
 assert.match(

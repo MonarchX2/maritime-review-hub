@@ -118,8 +118,33 @@ assert.doesNotMatch(
 );
 assert.match(
   index,
-  /<span>Year<\/span>[\s\S]*?resource-dashboard-filter-year[\s\S]*?<span>Semester<\/span>[\s\S]*?resource-dashboard-filter-semester/,
-  "the dashboard should expose only year and semester filters",
+  /<span>Year<\/span>[\s\S]*?resource-dashboard-filter-year[\s\S]*?<span>Semester<\/span>[\s\S]*?resource-dashboard-filter-semester[\s\S]*?<span>Category<\/span>[\s\S]*?resource-dashboard-filter-category/,
+  "the dashboard should expose year, semester, and resource-category filters",
+);
+assert.match(
+  index,
+  /id="resource-dashboard-filter-category"[\s\S]*?<option value="all">All<\/option>[\s\S]*?<option value="PRELIMS">PRELIMS<\/option>[\s\S]*?<option value="MIDTERMS">MIDTERMS<\/option>[\s\S]*?<option value="FINALS">FINALS<\/option>/,
+  "the category filter should provide All, PRELIMS, MIDTERMS, and FINALS",
+);
+assert.match(
+  appCore,
+  /resourceDashboardSelectedCategory = "all"/,
+  "the category filter should default to All",
+);
+assert.match(
+  appCore,
+  /showCategoryFilter = \["MODULES", "REVIEWERS"\]\.includes\(\s*resourceDashboardActiveTab,\s*\)/,
+  "the category filter should be available only for Modules and Reviewers",
+);
+assert.match(
+  appCore,
+  /const selectedPhaseColumnIndex =[\s\S]*?phaseColumnIndexes\[resourceDashboardSelectedCategory\]/,
+  "a selected phase should restrict visible columns and rows to resources in that category",
+);
+assert.match(
+  appCore,
+  /columnIndex === selectedPhaseColumnIndex[\s\S]*?if \(selectedPhaseColumnIndex === undefined\) return false;[\s\S]*?if \(!phaseValue && !isResourceDashboardLink\(phaseLink\)\) return false/,
+  "a selected phase should show only its column and rows containing that phase resource",
 );
 assert.doesNotMatch(
   index,
@@ -298,7 +323,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(resourceDashboardSelectedYear === "all"\) return true;[\s\S]*?year === resourceDashboardSelectedYear &&\s*\(resourceDashboardSelectedSemester === "all" \|\|\s*semester === resourceDashboardSelectedSemester\)/,
+  /if \(!hasTermFilter \|\| resourceDashboardSelectedYear === "all"\)\s*return true;[\s\S]*?year === resourceDashboardSelectedYear &&\s*\(resourceDashboardSelectedSemester === "all" \|\|\s*semester === resourceDashboardSelectedSemester\)/,
   "All Year Levels should show every row; specific years should filter by semester",
 );
 assert.match(
@@ -313,7 +338,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(!hasTermFilter\) return true;/,
+  /if \(!hasTermFilter \|\| resourceDashboardSelectedYear === "all"\)\s*return true;/,
   "tabs without year data should remain visible without term filtering",
 );
 assert.match(

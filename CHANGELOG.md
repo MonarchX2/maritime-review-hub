@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-30 - 2026-10-16
+
+### Added
+- Add a PRELIMS, MIDTERMS, FINALS, or All category filter to the Modules and Reviewers dashboards, defaulting to All.
+
 ## 26.10.16-29 - 2026-10-16
 
 ### Added

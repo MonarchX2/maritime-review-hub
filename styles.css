@@ -1837,6 +1837,10 @@ button:active:not(:disabled) {
   cursor: pointer;
 }
 
+#resource-dashboard-filter-category {
+  width: 8.5rem;
+}
+
 .resource-dashboard-control input,
 .resource-dashboard-control select {
   min-width: 0;
