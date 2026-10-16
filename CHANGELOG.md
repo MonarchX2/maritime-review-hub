@@ -1,5 +1,18 @@
 # Changelog
 
+## 26.10.17 - 2026-10-17
+
+### Improved
+
+- Add protected, in-site Reviewer PDF viewing with server-side authorization,
+  permanent per-page watermarks, and fail-closed delivery.
+- Clear Reviewer PDF previews when reviewer authorization changes and validate
+  PDF responses before rendering.
+
+### Maintenance
+
+- Deploy the Reviewer PDF backend and update all website version markers.
+
 ## 26.10.16-51 - 2026-10-16
 
 ### Improved
