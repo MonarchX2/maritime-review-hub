@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.10.16-37 - 2026-10-16
+
+### Improved
+- Center resource tables and show the syllabus link column as SYLLABUS.
+- Keep reviewer navigation in place while sign-in is being verified and reuse authorized reviewer data during the session.
+- Show progress indicators during dashboard data loads and reviewer sign-in checks.
+
 ## 26.10.16-36 - 2026-10-16
 
 ### Improved

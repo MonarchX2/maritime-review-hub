@@ -62,7 +62,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /async function loadReviewerDashboard\(\)[\s\S]*?if \(!status \|\| !tableHead \|\| !tableBody\) return false;\s*tableHead\.replaceChildren\(\);\s*tableBody\.replaceChildren\(\);[\s\S]*?filterContainer\.hidden = true;[\s\S]*?status\.textContent = "Loading reviewer resources…";[\s\S]*?await globalScope\.AppNetwork\.callBackend/,
+  /async function loadReviewerDashboard\(\)[\s\S]*?if \(!status \|\| !tableHead \|\| !tableBody\) \{[\s\S]*?tableHead\.replaceChildren\(\);[\s\S]*?filterContainer\.hidden = true;[\s\S]*?setResourceDashboardStatus\("Loading reviewer resources…", true\);[\s\S]*?backendRequest = globalScope\.AppNetwork\.callBackend\([\s\S]*?await backendRequest/,
   "loading Reviewer resources should clear the previous tab's rows and filters first",
 );
 assert.match(
@@ -92,8 +92,42 @@ assert.match(
 );
 assert.match(
   appCore,
-  /callback: \(credentialResponse\) => \{\s*const credential =[\s\S]*?if \(!credential\) \{\s*void completeReviewerSignIn\(""\);\s*return;\s*\}[\s\S]*?setExplicitReviewerSignOut\(false\)[\s\S]*?completeReviewerSignIn\(credential\)/,
+  /callback: \(credentialResponse\) => \{\s*const credential =[\s\S]*?reviewerAuthCheckPending = false[\s\S]*?if \(!credential\) \{[\s\S]*?void completeReviewerSignIn\(""\);[\s\S]*?setExplicitReviewerSignOut\(false\)[\s\S]*?completeReviewerSignIn\(credential\)/,
   "the Google callback should only clear saved sign-out state after receiving a credential",
+);
+assert.match(
+  appCore,
+  /if \(approved\) \{[\s\S]*?Reviewer access approved\. Preparing your resources[\s\S]*?void loadReviewerDashboard\(\)\.then\(\(loaded\) => \{/,
+  "approved reviewer data should be prefetched while the profile view is open",
+);
+assert.match(
+  appCore,
+  /function setReviewerNavigationBusy\(busy\)[\s\S]*?resource-dashboard-reviewers-nav[\s\S]*?setReviewerNavigationBusy\(true\);[\s\S]*?setReviewerNavigationBusy\(false\)/,
+  "reviewer authentication and background resource prefetch should expose a navigation loading state",
+);
+assert.match(
+  appCore,
+  /if \(!idToken\) \{\s*setReviewerNavigationBusy\(false\);[\s\S]*?Google sign-in did not return a credential\. Open Profile to sign in again\./,
+  "a credential-less Google callback should clear Reviewer loading states",
+);
+const reviewerPromptCallback = appCore.match(
+  /globalScope\.google\.accounts\.id\.prompt\(\(notification\) => \{[\s\S]*?\n          \}\);/,
+);
+assert.ok(reviewerPromptCallback, "the returning-user prompt callback should exist");
+assert.match(
+  reviewerPromptCallback[0],
+  /reviewerAuthCheckPending = false;\s*setReviewerNavigationBusy\(\s*Boolean\(reviewerPendingEnrollmentToken \|\| reviewerIdentityToken\),\s*\)/,
+  "a prompt completion notification should preserve the busy state when credential verification is already underway",
+);
+assert.doesNotMatch(
+  reviewerPromptCallback[0],
+  /openResourceDashboardTab\("PROFILE"\)/,
+  "a prompt completion notification must not redirect away from Reviewers before a credential callback settles",
+);
+assert.match(
+  appCore,
+  /if \(reviewerDashboardRequestPromise\) return true;[\s\S]*?reviewerDashboardRequestPromise = backendRequest/,
+  "reviewer data prefetch and tab clicks should share a single in-flight backend request",
 );
 assert.match(
   appCore,
@@ -262,8 +296,13 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-layout\s*\{[^}]*width:\s*100%;[\s\S]*?\.resource-portal-shell\s*\{[^}]*width:\s*100%;[\s\S]*?\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*fit-content;[^}]*margin-inline:\s*0;/,
-  "Resource Dashboard containers should fill the page while the table frame fits its content",
+  /\.resource-dashboard-layout\s*\{[^}]*width:\s*100%;[\s\S]*?\.resource-portal-shell\s*\{[^}]*width:\s*100%;[\s\S]*?\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*fit-content;[^}]*margin-inline:\s*auto;/,
+  "Resource Dashboard containers should fill the page while the table frame fits its content and centers",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-profile-status\[aria-busy="true"\]::before\s*\{[^}]*animation:\s*resource-dashboard-status-spin/,
+  "Google sign-in and profile submission should show an activity spinner",
 );
 assert.match(
   resourceStyles,
@@ -277,12 +316,12 @@ assert.match(
 );
 assert.match(
   appCore,
-  /tabName === "REVIEWERS" && !reviewerIdentityToken[\s\S]*?openResourceDashboardTab\("PROFILE"\)[\s\S]*?dashboardContent\.hidden = tabName === "PROFILE"[\s\S]*?profileScreen\.hidden = tabName !== "PROFILE"[\s\S]*?if \(tabName === "PROFILE"\) \{\s*void initializeReviewerAuth\(\)/,
-  "the Reviewers tab should direct signed-out users to the Profile screen",
+  /tabName === "REVIEWERS" &&\s*!reviewerIdentityToken &&\s*!reviewerPendingEnrollmentToken &&\s*!reviewerAuthCheckPending[\s\S]*?openResourceDashboardTab\("PROFILE"\)[\s\S]*?dashboardContent\.hidden = tabName === "PROFILE"[\s\S]*?profileScreen\.hidden = tabName !== "PROFILE"[\s\S]*?if \(tabName === "PROFILE"\) \{\s*void initializeReviewerAuth\(\)/,
+  "the Reviewers tab should wait for in-flight sign-in and route confirmed signed-out users to Profile",
 );
 assert.match(
   appCore,
-  /auto_select:\s*!hasExplicitReviewerSignOut\(\)[\s\S]*?button_auto_select:\s*!hasExplicitReviewerSignOut\(\)[\s\S]*?use_fedcm_for_prompt:\s*true[\s\S]*?use_fedcm_for_button:\s*true[\s\S]*?if \(!hasExplicitReviewerSignOut\(\)\)\s*globalScope\.google\.accounts\.id\.prompt\(\)/,
+  /auto_select:\s*!hasExplicitReviewerSignOut\(\)[\s\S]*?button_auto_select:\s*!hasExplicitReviewerSignOut\(\)[\s\S]*?use_fedcm_for_prompt:\s*true[\s\S]*?use_fedcm_for_button:\s*true[\s\S]*?globalScope\.google\.accounts\.id\.prompt\(\(notification\) =>/,
   "returning users should be automatically reauthenticated through Google prompt and button flows unless they explicitly signed out",
 );
 assert.match(
@@ -448,8 +487,23 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(!\["MODULES", "REVIEWERS", "SYLLABUS", "PROFILE"\]\.includes\(tabName\)\)[\s\S]*?tabName === "REVIEWERS" && !reviewerIdentityToken[\s\S]*?openResourceDashboardTab\("PROFILE"\)[\s\S]*?Sign in with Google to open reviewer resources/,
-  "the Reviewers tab should remain interactive and route unauthenticated users to Profile",
+  /tabName === "REVIEWERS" &&\s*!reviewerIdentityToken &&\s*!reviewerPendingEnrollmentToken &&\s*!reviewerAuthCheckPending[\s\S]*?openResourceDashboardTab\("PROFILE"\)[\s\S]*?Verifying your Google sign-in and reviewer approval/,
+  "the Reviewers tab should stay open while Google sign-in is being verified and route signed-out users to Profile",
+);
+assert.match(
+  appCore,
+  /reviewerDashboardLoadedForEmail === reviewerAuthorizedEmail[\s\S]*?renderResourceDashboardTab\(\)[\s\S]*?async function loadReviewerDashboard\(\)[\s\S]*?reviewerDashboardLoadedForEmail = reviewerAuthorizedEmail/,
+  "an already authorized reviewer tab should reuse in-memory data instead of waiting for another backend fetch",
+);
+assert.match(
+  appCore,
+  /function clearReviewerResourceRows\(\)[\s\S]*?reviewerDashboardLoadedForEmail = ""[\s\S]*?function populateReviewerProfile/,
+  "reviewer data should be cleared on account-state changes without forcing a tab redirect",
+);
+assert.match(
+  appCore,
+  /globalScope\.google\.accounts\.id\.prompt\(\(notification\) => \{[\s\S]*?isNotDisplayed\?\.\(\)[\s\S]*?isSkippedMoment\?\.\(\)[\s\S]*?reviewerAuthCheckPending = false/,
+  "the pending reviewer tab should resolve to Profile only after Google confirms no sign-in is available",
 );
 assert.match(
   appCore,
@@ -483,9 +537,18 @@ assert.match(
 );
 assert.match(
   appCore,
-  /const isSyllabus = \["syllabus", "course syllabus"\]\.includes\([\s\S]*?isPdfResource =\s*!isModuleFolderFallback &&\s*\(isSyllabus \|\|[\s\S]*?const linkLabel = isSyllabus\s*\?\s*"PDF"/,
+  /header\.textContent = getResourceDashboardColumnHeading\(column\)[\s\S]*?const isSyllabus = columnName\.includes\("syllabus"\)[\s\S]*?const linkLabel = isSyllabus\s*\?\s*"PDF"/,
   "syllabus links should always show a PDF icon and the PDF label",
 );
+const headingFunction = appCore.match(
+  /function getResourceDashboardColumnHeading\(column\) \{[\s\S]*?\n  \}/,
+);
+assert.ok(headingFunction, "the dashboard heading formatter should exist");
+const formatDashboardHeading = new Function(
+  `${headingFunction[0]}; return getResourceDashboardColumnHeading;`,
+)();
+assert.equal(formatDashboardHeading("COURSE SYLLABUS"), "SYLLABUS");
+assert.equal(formatDashboardHeading("Course"), "Course");
 assert.match(
   appCore,
   /tab\.linkTitles\?\.\[rowIndex\]\?\.\[index\]/,
@@ -580,6 +643,11 @@ assert.match(
   resourceStyles,
   /\.resource-dashboard-browser \.resource-portal-status\[aria-busy="true"\]::before\s*\{[^}]*animation:\s*resource-dashboard-status-spin/,
   "dashboard loading and update checks should show a subtle progress indicator",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-nav-item\[aria-busy="true"\]::after\s*\{[^}]*animation:\s*resource-dashboard-status-spin/,
+  "reviewer sign-in and background resource preparation should show progress on the Reviewer tab",
 );
 assert.match(
   resourceStyles,

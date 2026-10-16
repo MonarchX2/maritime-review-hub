@@ -1581,6 +1581,17 @@ button:active:not(:disabled) {
   background: transparent;
 }
 
+.resource-portal-nav-item[aria-busy="true"]::after {
+  width: 0.8rem;
+  height: 0.8rem;
+  flex: 0 0 auto;
+  border: 2px solid #cbd5e1;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  content: "";
+  animation: resource-dashboard-status-spin 0.8s linear infinite;
+}
+
 .resource-portal-nav-item:disabled {
   color: #94a3b8;
   cursor: not-allowed;
@@ -1649,6 +1660,24 @@ button:active:not(:disabled) {
 .resource-profile-status {
   margin: 0;
   text-align: center;
+}
+
+.resource-profile-status[aria-busy="true"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--resource-dashboard-space-wide);
+}
+
+.resource-profile-status[aria-busy="true"]::before {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: 0 0 auto;
+  border: 2px solid #cbd5e1;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  content: "";
+  animation: resource-dashboard-status-spin 0.8s linear infinite;
 }
 
 #resource-reviewer-signin-button {
@@ -1958,7 +1987,9 @@ button:active:not(:disabled) {
 
 @media (prefers-reduced-motion: reduce) {
   .resource-dashboard-browser
-    .resource-portal-status[aria-busy="true"]::before {
+    .resource-portal-status[aria-busy="true"]::before,
+  .resource-portal-nav-item[aria-busy="true"]::after,
+  .resource-profile-status[aria-busy="true"]::before {
     animation: none;
   }
 }
@@ -2160,7 +2191,7 @@ button:active:not(:disabled) {
   width: fit-content;
   max-width: 100%;
   max-height: min(68vh, 48rem);
-  margin-inline: 0;
+  margin-inline: auto;
   overflow: auto;
   border: 1px solid #e2e8f0;
   border-radius: 0.55rem;

@@ -259,8 +259,13 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*fit-content;[^}]*margin-inline:\s*0;/,
-  "the dashboard table wrapper should fit its content and align with the filters",
+  /\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*fit-content;[^}]*margin-inline:\s*auto;/,
+  "the dashboard table should fit its content and center within its section",
+);
+assert.match(
+  appCore,
+  /function getResourceDashboardColumnHeading\(column\)[\s\S]*?return String\(column\)\.trim\(\)\.toLowerCase\(\) === "course syllabus"\s*\?\s*"SYLLABUS"/,
+  "the dashboard should display the syllabus link column as SYLLABUS",
 );
 assert.doesNotMatch(
   resourceStyles.match(/\.resource-dashboard-table\s*\{[^}]*\}/)?.[0] || "",
