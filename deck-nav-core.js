@@ -147,9 +147,7 @@
       globalScope.updateNavigationUrl?.(state.currentPath || [], {
         replace: true,
       });
-    } else if (
-      ["view-settings", "view-resources"].includes(currentView?.id)
-    ) {
+    } else if (["view-settings", "view-resources"].includes(currentView?.id)) {
       globalScope.updateNavigationUrl?.(state.currentPath || []);
     }
     if (!returningToDashboard) globalScope.updateDashboard();
@@ -270,11 +268,8 @@
 
     // Define strict MCQ filter condition conditionally based on user preference
     const qTypeOverride =
-      globalScope.getDeckSessionSetting?.(
-        "quiz",
-        "qTypeOverride",
-        subject,
-      ) || state.prefs.qTypeOverride;
+      globalScope.getDeckSessionSetting?.("quiz", "qTypeOverride", subject) ||
+      state.prefs.qTypeOverride;
     const isForcedMCQ = qTypeOverride === "mcq";
     const customFilter = isForcedMCQ
       ? (q) =>
@@ -445,10 +440,7 @@
       mode: "quiz",
       revealedCloze: false,
     };
-    globalScope.updateSessionNavigationUrl?.(
-      pool[0]?.Subject,
-      "quiz",
-    );
+    globalScope.updateSessionNavigationUrl?.(pool[0]?.Subject, "quiz");
 
     if (typeof globalScope.renderQuestion === "function")
       globalScope.renderQuestion();
@@ -459,7 +451,10 @@
 
   async function resetCategory(subject) {
     subject = decodeHandlerValue(subject);
-    const deckName = String(subject || "").split("::").pop().trim();
+    const deckName = String(subject || "")
+      .split("::")
+      .pop()
+      .trim();
     if (
       await requestConfirmation(
         {

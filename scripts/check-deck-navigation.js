@@ -152,10 +152,7 @@ function checkSessionNavigationUrls() {
   });
 
   window.AppState.state.currentPath = ["Parent 1", "Parent 2"];
-  window.updateSessionNavigationUrl(
-    "Parent 1::Parent 2::Deck A",
-    "study",
-  );
+  window.updateSessionNavigationUrl("Parent 1::Parent 2::Deck A", "study");
   assert.equal(
     location.hash,
     "#/Parent+1/Parent+2/Deck+A/study",
@@ -276,7 +273,10 @@ for (const inputId of ["deck-password-input", "folder-password-input"]) {
     `${inputId} should preserve entered password casing on mobile`,
   );
 }
-for (const passwordModalId of ["deck-password-modal", "folder-password-modal"]) {
+for (const passwordModalId of [
+  "deck-password-modal",
+  "folder-password-modal",
+]) {
   const passwordModal = indexSource.match(
     new RegExp(`id="${passwordModalId}"[\\s\\S]*?</div>\\s*</div>`, "s"),
   )?.[0];
@@ -423,7 +423,7 @@ assert.match(
 );
 assert.match(
   appCoreSource,
-  /function setDeckPasswordTransitionLoading\(isLoading, statusText = "Loading\.\.\."\) \{[\s\S]*?sibling\.setAttribute\("inert", ""\)[\s\S]*?deckPasswordTransitionSnapshots\.forEach/,
+  /function setDeckPasswordTransitionLoading\(\s*isLoading,\s*statusText = "Loading\.\.\.",?\s*\) \{[\s\S]*?sibling\.setAttribute\("inert", ""\)[\s\S]*?deckPasswordTransitionSnapshots\.forEach/,
   "password transitions should block background interaction and restore previous state",
 );
 assert.match(
@@ -468,7 +468,10 @@ assert.match(
 const deckEntryLockFunction = appCoreSource.match(
   /  function setDeckEntryInteractionsLocked\(isLocked\) \{[\s\S]*?\n  \}/,
 )?.[0];
-assert.ok(deckEntryLockFunction, "deck entry should have a global interaction lock");
+assert.ok(
+  deckEntryLockFunction,
+  "deck entry should have a global interaction lock",
+);
 const entryLockElements = ["header", "main"].map(() => {
   const attributes = new Map();
   return {
@@ -507,7 +510,7 @@ assert.equal(entryLockElements[1].hasAttribute("inert"), true);
 assert.equal(entryLockElements[1].hasAttribute("aria-busy"), false);
 
 const passwordTransitionFunction = appCoreSource.match(
-  /  function setDeckPasswordTransitionLoading\(isLoading,[\s\S]*?\n  \}/,
+  /  function setDeckPasswordTransitionLoading\(\s*isLoading,[\s\S]*?\n  \}/,
 )?.[0];
 assert.ok(
   passwordTransitionFunction,
@@ -724,17 +727,17 @@ const context = {
 };
 context.globalScope = context;
 vm.createContext(context);
-vm.runInContext(
-  deckNavSource,
-  context,
-  { filename: "deck-nav-core.js" },
-);
+vm.runInContext(deckNavSource, context, { filename: "deck-nav-core.js" });
 
 async function checkConcurrentNavigation() {
   const firstNavigation = context.module.exports.navigate("practice");
   const secondNavigation = context.module.exports.navigate("settings");
   await Promise.all([firstNavigation, secondNavigation]);
-  assert.equal(timers.length, 0, "view navigation should not wait for animation timers");
+  assert.equal(
+    timers.length,
+    0,
+    "view navigation should not wait for animation timers",
+  );
 
   const activeViews = [...views.values()].filter((view) => view.isActive());
   assert.deepEqual(

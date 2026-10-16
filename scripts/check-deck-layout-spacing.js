@@ -58,7 +58,7 @@ assert.doesNotMatch(
   "Review-mode deck cards should not render a reset button based on study progress.",
 );
 assert.ok(
-  appCore.indexOf("const isQuiz = currentAppMode === \"quiz\";") <
+  appCore.indexOf('const isQuiz = currentAppMode === "quiz";') <
     appCore.indexOf("const cardCountLabel = isQuiz"),
   "Quiz mode must be initialized before it is used to render card labels.",
 );
@@ -84,7 +84,11 @@ for (const deckName of [
   "BSMT COMPETENCIES",
   "REVIEW NOTES FOR DECK OFFICERS (BOOK)",
 ]) {
-  assert.equal(isPopularDeckPath(deckName), true, `${deckName} should be Popular`);
+  assert.equal(
+    isPopularDeckPath(deckName),
+    true,
+    `${deckName} should be Popular`,
+  );
   assert.equal(
     isPopularDeckPath(`Parent Folder::${deckName.toLocaleLowerCase()}`),
     true,

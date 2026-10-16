@@ -1,5 +1,13 @@
 # Changelog
 
+## 26.10.16-45 - 2026-10-16
+
+### Maintenance
+
+- Synchronize deck-navigation formatting and update its multiline regression
+  check to match the current helper signature.
+- Redeploy the validated Reviewer backend with the current website release.
+
 ## 26.10.16-44 - 2026-10-16
 
 ### Improved
