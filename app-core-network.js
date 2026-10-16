@@ -531,6 +531,16 @@
       required: ["eventId"],
       allowed: ["type", "idToken", "sessionId", "eventId", "appVersion"],
     },
+    get_reviewer_pdf: {
+      required: ["sessionId", "eventId", "fileId"],
+      allowed: [
+        "type",
+        "sessionId",
+        "eventId",
+        "fileId",
+        "appVersion",
+      ],
+    },
     log_module_access: {
       required: ["eventId"],
       allowed: ["type", "idToken", "sessionId", "eventId", "appVersion"],
@@ -694,6 +704,7 @@
         "get_reviewer_account_status",
         "request_reviewer_enrollment",
         "get_reviewer_dashboard",
+        "get_reviewer_pdf",
         "log_module_access",
       ].includes(type) &&
       !String(payload.idToken || "").trim() &&

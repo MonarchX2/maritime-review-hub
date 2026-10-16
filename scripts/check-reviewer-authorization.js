@@ -532,7 +532,7 @@ assert.equal(
   "setup should create the OAuth scope-monitoring worksheet",
 );
 assert.ok(
-  sheets.SCOPES.getRange(2, 1, 6, 1)
+  sheets.SCOPES.getRange(2, 1, 7, 1)
     .getDisplayValues()
     .some(
       (row) => row[0] === "https://www.googleapis.com/auth/script.send_mail",

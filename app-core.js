@@ -7109,7 +7109,11 @@
         }
         const value = String(values[index] || "");
         const linkUrl = String(tab.links?.[rowIndex]?.[index] || value);
-        if (isResourceDashboardLink(linkUrl)) {
+        const reviewerPdfMatch =
+          resourceDashboardActiveTab === "REVIEWERS"
+            ? /^mrh-reviewer-pdf:([A-Za-z0-9_-]{10,200})$/.exec(linkUrl)
+            : null;
+        if (isResourceDashboardLink(linkUrl) || reviewerPdfMatch) {
           cell.classList.add("resource-dashboard-link-cell");
           const fileTitle = String(
             tab.linkTitles?.[rowIndex]?.[index] || "",
@@ -7123,8 +7127,9 @@
             (!titleInParentheses || !resourceTitle);
           const isSyllabus = columnName.includes("syllabus");
           const isPdfResource =
-            !isModuleFolderFallback &&
-            (isSyllabus || /\.pdf\b/i.test(fileTitle));
+            Boolean(reviewerPdfMatch) ||
+            (!isModuleFolderFallback &&
+              (isSyllabus || /\.pdf\b/i.test(fileTitle)));
           const linkLabel = isSyllabus
             ? "PDF"
             : isModuleFolderFallback
@@ -7141,7 +7146,7 @@
             "a",
             "resource-dashboard-link-button",
           );
-          link.href = linkUrl;
+          link.href = reviewerPdfMatch ? "#resource-portal-preview" : linkUrl;
           link.draggable = false;
           ["copy", "contextmenu", "dragstart"].forEach((eventName) => {
             link.addEventListener(eventName, (event) => {
@@ -7161,7 +7166,9 @@
             resourceDashboardActiveTab === "MODULES"
               ? "MODULES"
               : resourceDashboardActiveTab;
-          const fileId = getResourceDashboardFileId(linkUrl);
+          const fileId = reviewerPdfMatch
+            ? reviewerPdfMatch[1]
+            : getResourceDashboardFileId(linkUrl);
           if (fileId) {
             const fileName =
               resourceTitle ||
@@ -7197,6 +7204,12 @@
               resourceDashboardSelectedSemester;
             link.dataset.logCategory = resourceCategory;
             link.addEventListener("click", (event) => {
+              if (reviewerPdfMatch) {
+                event.preventDefault();
+                void previewResourceFile(fileId, fileName, {
+                  reviewer: true,
+                });
+              }
               const clickedLink = event.currentTarget;
               void logResourceFileClick(
                 clickedLink.dataset.logResourceArea,
@@ -7951,14 +7964,20 @@
   function updateStudentPortalWelcomeName() {
     const heading = document.getElementById("student-portal-welcome-name");
     if (!heading) return;
+    const container = document.querySelector(
+      ".student-portal-welcome-container",
+    );
     const fullName = heading.dataset.fullName || "Guest";
     const lastName = heading.dataset.lastName || fullName;
     const fullText = `Welcome, ${fullName}.`;
-    heading.textContent = fullText;
     heading.setAttribute("aria-label", fullText);
-    if (heading.scrollWidth > heading.clientWidth && lastName !== fullName) {
+    if (container?.classList.contains("is-stacked")) {
       heading.textContent = `Welcome, ${lastName}.`;
+      return;
     }
+    heading.textContent = fullText;
+    if (heading.scrollWidth > heading.clientWidth && lastName !== fullName)
+      heading.textContent = `Welcome, ${lastName}.`;
   }
 
   function updateStudentPortalWelcomeLayout() {
@@ -7967,7 +7986,11 @@
       ".student-portal-welcome-container",
     );
     const portal = document.querySelector(".student-portal-deck");
-    if (!welcome || !container || !portal || welcome.hidden) return;
+    if (!welcome || !container || !portal) return;
+    if (welcome.hidden) {
+      container.classList.add("is-stacked");
+      return;
+    }
     const welcomeRect = welcome.getBoundingClientRect();
     const portalRect = portal.getBoundingClientRect();
     const overlapsVertically =
@@ -7996,6 +8019,22 @@
       );
     }
     setStudentPortalWelcomeHidden(hidden);
+    const cachedProfile = getStoredReviewerProfile();
+    if (cachedProfile) {
+      const displayName = [
+        cachedProfile.firstName,
+        cachedProfile.middleInitial,
+        cachedProfile.lastName,
+      ]
+        .filter(Boolean)
+        .join(" ");
+      renderStudentPortalWelcome(
+        displayName || cachedProfile.email,
+        cachedProfile.email,
+        cachedProfile.picture,
+        cachedProfile.lastName,
+      );
+    }
     toggle.addEventListener("click", () => {
       setStudentPortalWelcomeHidden(
         !document.getElementById("student-portal-welcome")?.hidden,
@@ -9403,7 +9442,11 @@
     });
   }
 
-  async function previewResourceFile(fileId, fileName) {
+  async function previewResourceFile(
+    fileId,
+    fileName,
+    { reviewer = false } = {},
+  ) {
     const preview = document.getElementById("resource-portal-preview");
     const title = document.getElementById("resource-portal-preview-title");
     const frame = document.getElementById("resource-portal-preview-frame");
@@ -9442,8 +9485,17 @@
       status.hidden = false;
     }
     try {
+      if (reviewer && !reviewerSessionId)
+        throw new Error("Sign in to an approved Reviewer account to view this PDF.");
       const response = await globalScope.AppNetwork.callBackend(
-        { type: "get_resource_preview", fileId },
+        reviewer
+          ? {
+              type: "get_reviewer_pdf",
+              sessionId: reviewerSessionId,
+              eventId: createResourceEventId(),
+              fileId,
+            }
+          : { type: "get_resource_preview", fileId },
         { timeoutMs: 60000, maxRetries: 0 },
       );
       if (previewGeneration !== resourcePortalPreviewGeneration) return false;

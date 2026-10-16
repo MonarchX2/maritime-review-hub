@@ -1021,7 +1021,7 @@ body.title-mode-clip {
 }
 
 .student-portal-welcome-toggle {
-  display: inline-flex;
+  display: none;
   align-items: center;
   gap: 0.375rem;
   margin: 0 1rem 0.25rem;
@@ -1039,15 +1039,15 @@ body.title-mode-clip {
 
 .student-portal-welcome-avatar {
   display: grid;
-  width: 3rem;
-  height: 3rem;
+  width: 5rem;
+  height: 5rem;
   flex: 0 0 auto;
   place-items: center;
   overflow: hidden;
   border-radius: 50%;
   background: #f3f4f6;
   color: #6b7280;
-  font-size: 2rem;
+  font-size: 4rem;
 }
 
 .student-portal-welcome-avatar img {
@@ -1071,7 +1071,7 @@ body.title-mode-clip {
 }
 
 .student-portal-welcome-copy p {
-  margin: 0.25rem 0 0;
+  margin: 0.125rem 0 0;
   overflow-wrap: anywhere;
   color: #6b7280;
   font-size: 0.875rem;
@@ -1256,6 +1256,7 @@ body.title-mode-clip {
 }
 
 .student-portal-welcome-container.is-stacked .student-portal-welcome-toggle {
+  display: inline-flex;
   justify-self: center;
 }
 

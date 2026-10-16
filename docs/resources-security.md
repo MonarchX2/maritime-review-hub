@@ -76,17 +76,90 @@ cookies would also be subject to credentialed-CORS and browser third-party
 cookie restrictions. The current deployment therefore uses a server-managed
 opaque session ID in local storage as the compatible fallback; this is not
 equivalent to an `HttpOnly` cookie.
-For stronger XSS resistance, move the reviewer API behind a server-capable
-same-origin backend (for example, a GitHub Pages replacement with a proxy to
-Cloud Run or Cloud Functions). That backend can issue a host-only
+For stronger XSS resistance, a server-capable same-origin backend could issue
+a host-only
 `Secure; HttpOnly; SameSite=Lax; Path=/` cookie, hash session IDs server-side,
 enforce expiry/revocation, validate Origin, and apply CSRF protection. No
-Google ID token or refresh token should be persisted in browser storage.
+Google ID token or refresh token should be persisted in browser storage. A
+separately hosted backend may introduce hosting charges; that option is not
+part of the current zero-new-service-cost implementation.
 
-Google Drive permissions are not changed by the dashboard. Anyone who can open
-a linked file can copy or capture its contents. Ensure reviewer files are not
-shared as "Anyone" or "Anyone with the link", since those settings could let
-someone bypass app sign-in by opening a copied Drive URL.
+Google Drive permissions are not automatically changed by the dashboard.
+Anyone who can open a linked file can copy or capture its contents. The
+Reviewer PDF-only protection described below replaces direct Drive links for
+Reviewer PDFs; other Reviewer resource types and the Modules/Syllabus flows
+remain unchanged.
+
+## Reviewer PDF-only protected viewing
+
+Only PDF resources in the authorized `REVIEWERS` dashboard are routed through
+the protected viewer. The Modules and Syllabus tabs are intentionally not
+changed by this feature. Non-PDF Reviewer items also retain their prior
+behavior.
+
+Reviewer PDF dashboard responses replace original Drive URLs with opaque
+Reviewer-PDF IDs. The viewing request revalidates the application session and
+reads the `ACCOUNTS` status directly (bypassing the short account cache), then
+checks that the requested ID is still present in `reviewers_combined.json`,
+that Drive identifies it as a non-trashed PDF, and that its ancestor chain
+reaches the configured `ROOT_FOLDER_ID`. Invalid IDs, stale index entries,
+unsupported files, and files outside the configured root are denied.
+
+The original PDF remains in Drive and is read only by the existing Apps
+Script execution identity. The local proof-of-concept bundles `pdf-lib` 1.17.1
+(MIT licensed); its asynchronous helper watermarks the server-verified
+identity onto every page in memory and verifies every saved page stream. A
+real Apps Script run processed a private synthetic 20-page portrait/landscape
+PDF: 586,373-byte source, 609,664-byte derivative, 812,888 base64 characters,
+7,461 ms elapsed, and 20/20 pages verified. The source hash was unchanged,
+both temporary Drive files were private, and both were trashed. Apps Script
+memory was not observable. This did not use an actual Reviewer PDF or test
+processing at the code's provisional limits.
+
+The existing `/dev` web app was also tested with a Promise-return probe.
+Apps Script rejected it with “The script completed but the returned value is
+not a supported return type.” As a result, the local `get_reviewer_pdf` route
+fails closed with `PDF_RUNTIME_UNVERIFIED`; it does not return a derivative
+and never falls back to the original. The PDF helper and bundle are not
+installed in the remote project. No new deployment was created and version
+152 was not redeployed. No Cloud Run service, third-party processor, public
+temporary copy, or runtime CDN request is part of the local runtime path.
+
+The code currently rejects sources over 2 MiB, derivatives over 4 MiB, and
+files over 80 pages. These are implementation guards, not validated Apps
+Script service limits. A 4 MiB derivative expands to at most 5,592,408 base64
+characters (about 5.33 MiB) before JSON; maximum-size and actual
+`ContentService` response behavior remain untested. No production delivery
+claim is made. A supported web-app response path must be designed and
+runtime-validated before enabling Reviewer PDF delivery. MODULES, SYLLABUS,
+and non-PDF REVIEWERS flows remain unchanged.
+Browser POSTs use `cache: "no-store"`; personalized output is not placed in
+shared Apps Script or dashboard caches.
+
+The local bundle, MIT attribution, compatibility tests, and Apps Script proof
+are documented in [the Reviewer PDF setup and test guide](../reviewer-pdf-service/README.md).
+The temporary remote proof files and test scope were removed after testing;
+the remote Apps Script project is restored to its five original source files
+and manifest. Existing deployments were not updated. The separate Drive
+permission audit and revocation functions have not been run against live
+Drive. End-to-end Reviewer PDF delivery is not implemented or production
+ready.
+
+The Apps Script editor functions `auditReviewerPdfDrivePermissions()` and
+`applyReviewedReviewerPdfPermissionRevocations()` are separately invoked.
+The first reports permissions for indexed Reviewer PDFs and their ancestor
+folders only; it makes no changes. The apply function requires an explicit
+confirmation string and exact reviewed permission IDs, allows only direct
+permissions on indexed Reviewer PDF files, rejects inherited and
+ancestor-folder permissions (to avoid changing Modules/Syllabus access) and
+configured protected principals, and runs a fresh audit after changes. The
+audit and revocation functions have not been run against live Drive, and no
+permissions have been changed. If exposure is inherited from a shared
+ancestor, resolve it without broadening this scope (for example, by reviewing
+whether Reviewer PDFs should move to a separately restricted folder). Do not
+treat the Drive hierarchy as private until administrators review the actual
+ACL report, apply only approved revocations, and verify access with a revoked
+account.
 
 ## Configure accounts and access logs
 
@@ -221,7 +294,10 @@ token verification or outbound token checks cannot be supported by the
 deployment, do not enable reviewer access; move protected operations to a
 backend that can validate the identity instead.
 
-For stronger online-only viewing, replace whole-file preview responses with a
-server-side rendering service that emits view-only page/image responses and
-supports authenticated, non-cacheable delivery. This reduces exposure but
-cannot prevent screenshots, photography, or other capture of visible content.
+The Reviewer PDF watermark is leak deterrence and attribution, not a guarantee
+against screenshots, screen recording, browser developer tools, manual
+copying, or photographing a display. No live Drive ACL audit, Sheets
+authorization test, or real Reviewer-document processing test has been
+performed. The Apps Script PDF helper was exercised on a synthetic test file,
+but the protected web-app route remains disabled because its asynchronous
+result cannot be returned directly from `doPost`.

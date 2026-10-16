@@ -373,13 +373,38 @@ assert.match(
 );
 assert.match(
   appCoreSource,
-  /function updateStudentPortalWelcomeLayout\(\)[\s\S]*?getBoundingClientRect\(\)[\s\S]*?overlapsVertically[\s\S]*?container\.classList\.toggle\("is-stacked", !isSideBySide\)/,
+  /function updateStudentPortalWelcomeLayout\(\)[\s\S]*?if \(welcome\.hidden\)[\s\S]*?container\.classList\.add\("is-stacked"\)[\s\S]*?getBoundingClientRect\(\)[\s\S]*?overlapsVertically[\s\S]*?container\.classList\.toggle\("is-stacked", !isSideBySide\)/,
   "welcome centering should respond to whether the portal and banner actually share a row",
+);
+assert.match(
+  appCoreSource,
+  /function updateStudentPortalWelcomeName\(\)[\s\S]*?container\?\.classList\.contains\("is-stacked"\)[\s\S]*?heading\.textContent = `Welcome, \$\{lastName\}\.`[\s\S]*?heading\.textContent = fullText/,
+  "stacked banners should show only the last name while side-by-side banners retain the full name when it fits",
+);
+assert.match(
+  appCoreSource,
+  /function initializeStudentPortalWelcome\(\)[\s\S]*?const cachedProfile = getStoredReviewerProfile\(\)[\s\S]*?renderStudentPortalWelcome\([\s\S]*?cachedProfile\.email[\s\S]*?cachedProfile\.picture/,
+  "cached reviewer profile details should populate the welcome banner during startup",
 );
 assert.match(
   stylesSource,
   /\.student-portal-welcome-container\.is-stacked \.student-portal-welcome\s*\{[^}]*flex-direction:\s*column;[^}]*gap:\s*0\.5rem;[^}]*padding-bottom:\s*0;[^}]*text-align:\s*center;[\s\S]*?\.student-portal-welcome-container\.is-stacked \.student-portal-welcome-avatar\s*\{[^}]*width:\s*7rem;[^}]*height:\s*7rem;/,
   "a stacked welcome profile should be centered with reduced spacing before its visibility control",
+);
+assert.match(
+  stylesSource,
+  /\.student-portal-welcome-toggle\s*\{[^}]*display:\s*none;[\s\S]*?\.student-portal-welcome-container\.is-stacked \.student-portal-welcome-toggle\s*\{[^}]*display:\s*inline-flex;/,
+  "the welcome visibility toggle should only show when the banner is stacked",
+);
+assert.match(
+  stylesSource.match(/\.student-portal-welcome-avatar\s*\{([^}]*)\}/)?.[1] ?? "",
+  /width:\s*5rem;[^}]*height:\s*5rem;[^}]*font-size:\s*4rem;/,
+  "the side-by-side welcome avatar should be larger than the stacked layout avatar",
+);
+assert.match(
+  stylesSource,
+  /\.student-portal-welcome-copy p\s*\{[^}]*margin:\s*0\.125rem 0 0;/,
+  "the welcome email line should be tightly spaced below the greeting",
 );
 assert.match(
   appCoreSource,

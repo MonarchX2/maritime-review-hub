@@ -7,7 +7,9 @@
 - Add a responsive Student Portal welcome banner with profile details, adjustable
   visibility, and a saved show/hide preference.
 - Center the banner when it stacks above the portal card, shorten long names
-  when needed, and refine dashboard spacing.
+  when stacked, enlarge its side-by-side profile picture, tighten the greeting
+  and email spacing, show the visibility toggle only when stacked, and refine
+  dashboard spacing. Restore the cached profile immediately on page refresh.
 
 ## 26.10.16-50 - 2026-10-16
 

@@ -492,7 +492,7 @@ assert.doesNotMatch(
 );
 assert.match(
   appCore,
-  /link\.href = linkUrl/,
+  /link\.href = reviewerPdfMatch \? "[^"]+" : linkUrl/,
   "spreadsheet resource values should render as working links",
 );
 assert.match(
@@ -628,7 +628,7 @@ assert.match(
 );
 assert.match(
   backend,
-  /function handleGetReviewerDashboardRequest\(data\)[\s\S]*?mrh_reviewer_dashboard_latest_v1[\s\S]*?return jsonResponse\(\{[\s\S]*?tab: parsedLatestReviewerTab/,
+  /function handleGetReviewerDashboardRequest\(data\)[\s\S]*?mrh_reviewer_dashboard_latest_v2[\s\S]*?return jsonResponse\(\{[\s\S]*?tab: protectReviewerDashboardTab_\(parsedLatestReviewerTab\)/,
   "the reviewer endpoint should authorize each request before serving a cached payload",
 );
 assert.match(
@@ -638,7 +638,7 @@ assert.match(
 );
 assert.match(
   backend,
-  /reviewerCache\.put\(\s*reviewerCacheKey,\s*reviewerJson,\s*MRH_REVIEWER_DASHBOARD_VERSION_CACHE_TTL_SECONDS,\s*\)[\s\S]*?reviewerCache\.put\(\s*"mrh_reviewer_dashboard_latest_v1",\s*reviewerJson,\s*MRH_REVIEWER_DASHBOARD_CACHE_TTL_SECONDS,/,
+  /reviewerCache\.put\(\s*reviewerCacheKey,\s*reviewerJson,\s*MRH_REVIEWER_DASHBOARD_VERSION_CACHE_TTL_SECONDS,\s*\)[\s\S]*?reviewerCache\.put\(\s*"mrh_reviewer_dashboard_latest_v2",\s*reviewerJson,\s*MRH_REVIEWER_DASHBOARD_CACHE_TTL_SECONDS,/,
   "reviewer payload retention should not extend the short freshness window for the latest snapshot",
 );
 assert.match(
@@ -1024,6 +1024,100 @@ assert.equal(
   "a cached dashboard snapshot should avoid another Drive metadata lookup",
 );
 
+const reviewerPdfTestTab = {
+  columns: ["Year", "PRELIMS", "FINALS"],
+  rows: [
+    ["3.1", "Reviewer.pdf", "Original notes"],
+    ["4.1", "Other PDF", ""],
+  ],
+  links: [
+    [
+      "",
+      "https://drive.google.com/file/d/reviewerPdf_123456/view",
+      "https://drive.google.com/file/d/notesFile_123456/view",
+    ],
+    ["", "https://drive.google.com/file/d/otherPdf_123456/view", ""],
+  ],
+  linkTitles: [
+    ["", "Reviewer.pdf", "Original notes"],
+    ["", "Other PDF", ""],
+  ],
+  linkTypes: [
+    ["", "application/pdf", "text/plain"],
+    ["", "application/pdf", ""],
+  ],
+  truncated: false,
+};
+const protectedReviewerPdfTab = JSON.parse(
+  JSON.stringify(context.protectReviewerDashboardTab_(reviewerPdfTestTab)),
+);
+assert.equal(
+  protectedReviewerPdfTab.links[0][1],
+  "mrh-reviewer-pdf:reviewerPdf_123456",
+  "Reviewer PDF links should be replaced by protected IDs",
+);
+assert.equal(
+  protectedReviewerPdfTab.links[0][2],
+  reviewerPdfTestTab.links[0][2],
+  "non-PDF Reviewer resource links should retain their existing behavior",
+);
+assert.equal(
+  protectedReviewerPdfTab.links[1][1],
+  "mrh-reviewer-pdf:otherPdf_123456",
+  "all Reviewer PDF rows should use protected links",
+);
+assert.match(
+  reviewerPdfTestTab.links[0][1],
+  /^https:\/\/drive\.google\.com/,
+  "sanitizing the response must not mutate the original index object",
+);
+context.authorizeReviewerRequest_ = (_data, bypassAccountCache) => {
+  assert.equal(
+    bypassAccountCache,
+    true,
+    "protected PDF requests must bypass the account-status cache",
+  );
+  return {
+    error: context.errorResponse("Account is pending.", "ACCOUNT_PENDING"),
+  };
+};
+(async function runAsyncReviewerChecks() {
+  const pendingReviewerPdf = JSON.parse(
+    (
+    await context.handleGetReviewerPdfRequest({
+    eventId: "42345678-1234-4123-8123-123456789abc",
+    fileId: "reviewerPdf_123456",
+    sessionId: "a".repeat(96),
+    })
+    ).text,
+  );
+  assert.equal(
+    pendingReviewerPdf.code,
+    "ACCOUNT_PENDING",
+    "a pending account must be denied before Drive content is read",
+  );
+  context.authorizeReviewerRequest_ = () => ({
+    email: "reviewer@example.com",
+    account: { firstName: "Rita", middleInitial: "A.", lastName: "Reviewer" },
+  });
+  context.getReviewerPdfIndexEntries_ = () => [
+    { fileId: "reviewerPdf_123456", title: "Reviewer.pdf" },
+  ];
+  const alteredReviewerPdf = JSON.parse(
+    (
+    await context.handleGetReviewerPdfRequest({
+      eventId: "52345678-1234-4123-8123-123456789abc",
+      fileId: "alteredFile_123456",
+      sessionId: "a".repeat(96),
+    })
+    ).text,
+  );
+  assert.equal(
+    alteredReviewerPdf.code,
+    "RESOURCE_NOT_AUTHORIZED",
+    "altered IDs not present in the Reviewer index must be denied",
+  );
+
 const unchangedDashboard = JSON.parse(
   context.doPost({
     postData: {
@@ -1171,4 +1265,8 @@ const coldStartSync = JSON.parse(
 assert.equal(coldStartSync.isColdStart, true);
 assert.equal(rebuildTriggerCount, 1);
 
-console.log("Resource dashboard and disabled Drive portal checks passed.");
+  console.log("Resource dashboard and disabled Drive portal checks passed.");
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

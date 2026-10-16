@@ -31,7 +31,9 @@
     "check:app-update-flow": "node scripts/check-app-update-flow.js",
     "check:resource-portal": "node scripts/check-resource-portal.js",
     "check:resource-dashboard-contract": "node scripts/check-resource-dashboard-contract.js",
-    "check:reviewer-authorization": "node scripts/check-reviewer-authorization.js"
+    "check:reviewer-authorization": "node scripts/check-reviewer-authorization.js",
+    "check:reviewer-pdf-security": "node scripts/check-reviewer-pdf-security.js",
+    "vendor:reviewer-pdf-lib": "node scripts/vendor-reviewer-pdf-lib.js"
   },
   "devDependencies": {
     "@types/google-apps-script": "^2.0.12",

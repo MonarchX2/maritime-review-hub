@@ -1,0 +1,15 @@
+{
+  "name": "mrh-reviewer-pdf-gas-compatibility",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "pdf-lib": "1.17.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
