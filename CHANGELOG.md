@@ -1,5 +1,21 @@
 # Changelog
 
+## 26.10.23 - 2026-10-17
+
+### Fixed
+
+- Highlight individual resource cells whose names, links, or titles changed,
+  and expire the update indicator after seven days.
+- Invalidate shared account-status cache entries on ACCOUNTS edits so active
+  sessions receive approval changes promptly without repeated spreadsheet reads.
+- Match the Student Portal file-update notice to the backend's five-minute
+  safety synchronization interval.
+
+### Improved
+
+- Use Review Materials in visible portal labels and account-status messages.
+- Avoid acquiring the global script lock for unchanged account-status polls.
+
 ## 26.10.22 - 2026-10-17
 
 ### Fixed

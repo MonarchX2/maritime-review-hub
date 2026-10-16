@@ -6064,6 +6064,7 @@
   const REVIEWER_PROFILE_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
   const REVIEWER_DASHBOARD_CACHE_KEY = "mrh_reviewer_dashboard_session_v1";
   const REVIEWER_DASHBOARD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+  const RESOURCE_DASHBOARD_UPDATED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
   const REVIEWER_PDF_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
   const REVIEWER_PDF_MAX_SOURCE_BYTES = 2 * 1024 * 1024;
   const REVIEWER_PDF_MAX_BASE64_LENGTH =
@@ -6109,7 +6110,7 @@
       return /^[a-f0-9]{96}$/.test(sessionId) ? sessionId : "";
     } catch (error) {
       (globalScope.DebugUtils || console).error(
-        "Unable to read the saved reviewer session.",
+        "Unable to read the saved access session.",
         error,
       );
       return "";
@@ -6119,7 +6120,7 @@
   function saveReviewerSessionId(sessionId) {
     if (!/^[a-f0-9]{96}$/.test(String(sessionId || "")))
       throw new Error(
-        "The reviewer sign-in service returned an invalid session.",
+        "Google sign-in returned an invalid session.",
       );
     globalScope.localStorage.setItem(REVIEWER_SESSION_STORAGE_KEY, sessionId);
   }
@@ -6130,7 +6131,7 @@
       return true;
     } catch (error) {
       (globalScope.DebugUtils || console).error(
-        "Unable to clear the saved reviewer session.",
+        "Unable to clear the saved access session.",
         error,
       );
       return false;
@@ -7251,6 +7252,18 @@
             : null;
         if (isResourceDashboardLink(linkUrl) || reviewerPdfMatch) {
           cell.classList.add("resource-dashboard-link-cell");
+          const dashboardUpdateKey = JSON.stringify([
+            row.dataset.dashboardRowKey,
+            columnName,
+          ]);
+          const updatedAt = Number(
+            tab.recentlyUpdatedCells?.[dashboardUpdateKey] || 0,
+          );
+          const recentlyUpdated =
+            Number.isFinite(updatedAt) &&
+            updatedAt > 0 &&
+            updatedAt <= Date.now() &&
+            Date.now() - updatedAt <= RESOURCE_DASHBOARD_UPDATED_TTL_MS;
           const fileTitle = String(
             tab.linkTitles?.[rowIndex]?.[index] || "",
           ).trim();
@@ -7300,7 +7313,26 @@
               linkLabel,
             ),
           );
-          if (resourceTitle) link.title = isSyllabus ? "PDF" : resourceTitle;
+          if (recentlyUpdated) {
+            link.classList.add("is-recently-updated");
+            link.setAttribute(
+              "aria-label",
+              `${linkLabel}, recently updated`,
+            );
+            link.appendChild(
+              createResourceDashboardElement(
+                "span",
+                "resource-dashboard-updated-badge",
+                "Updated",
+              ),
+            );
+          }
+          if (resourceTitle)
+            link.title = recentlyUpdated
+              ? `Recently updated: ${resourceTitle}`
+              : isSyllabus
+                ? "PDF"
+                : resourceTitle;
           const resourceArea =
             resourceDashboardActiveTab === "MODULES"
               ? "MODULES"
@@ -7410,8 +7442,8 @@
           : `Year Level ${resourceDashboardSelectedYear}.${resourceDashboardSelectedSemester}`;
     if (resourceDashboardActiveTab === "REVIEWERS" && !visibleRows.length) {
       status.textContent = nonEmptyRows.length
-        ? "No reviewer resources match the selected filters."
-        : "No reviewer resources are currently available.";
+        ? "No review materials match the selected filters."
+        : "No review materials are currently available.";
     } else {
       if (hasTermFilter) {
         const summary = createResourceDashboardElement(
@@ -7806,7 +7838,7 @@
           typeof response.clientId !== "string"
         ) {
           throw new Error(
-            "The reviewer sign-in service returned invalid configuration.",
+            "Google sign-in returned invalid configuration.",
           );
         }
         reviewerAuthConfig = response;
@@ -7815,16 +7847,16 @@
           setReviewerNavigationBusy(false);
           if (authStatus)
             authStatus.textContent =
-              "Reviewer sign-in is not configured. Contact the site administrator.";
+              "Google sign-in for review materials is not configured. Contact the site administrator.";
           authStatus?.removeAttribute("aria-busy");
           if (resourceDashboardActiveTab === "REVIEWERS")
             setResourceDashboardStatus(
-              "Reviewer sign-in is not configured. Contact the site administrator.",
+              "Google sign-in for review materials is not configured. Contact the site administrator.",
             );
           return false;
         }
         if (!reviewerAuthConfig.clientId) {
-          throw new Error("The reviewer sign-in client ID is missing.");
+          throw new Error("The Google sign-in client ID is missing.");
         }
 
         if (!globalScope.google?.accounts?.id) {
@@ -7939,7 +7971,7 @@
             error?.message || error,
           )}`;
         (globalScope.DebugUtils || console).error(
-          "Unable to initialize reviewer sign-in.",
+          "Unable to initialize Google sign-in.",
           error,
         );
         if (resourceDashboardActiveTab === "REVIEWERS")
@@ -7999,7 +8031,7 @@
           signOutReviewer(false);
           if (authStatus)
             authStatus.textContent =
-              "Your saved reviewer session expired or was revoked. Sign in with Google again.";
+              "Your saved access session expired or was revoked. Sign in with Google again.";
           if (resourceDashboardActiveTab !== "PROFILE")
             openResourceDashboardTab("PROFILE");
         } else {
@@ -8009,7 +8041,7 @@
           if (signInButton) signInButton.hidden = false;
           if (authStatus)
             authStatus.textContent =
-              "Unable to verify your saved reviewer session right now. It has been kept; retry when online.";
+              "Unable to verify your saved access session right now. It has been kept; retry when online.";
           const retryButton = document.getElementById(
             "resource-reviewer-retry-verification",
           );
@@ -8017,7 +8049,7 @@
           if (resourceDashboardActiveTab === "REVIEWERS")
             setReviewerDashboardFiltersDisabled(false);
           (globalScope.DebugUtils || console).error(
-            "Unable to restore the saved reviewer session.",
+            "Unable to restore the saved access session.",
             error,
           );
         }
@@ -8055,12 +8087,12 @@
       if (enabled) reviewersNav.removeAttribute("aria-disabled");
       else reviewersNav.setAttribute("aria-disabled", "true");
       reviewersNav.title = enabled
-        ? "Open reviewer resources"
+        ? "Open review materials"
         : reviewerAccountStatus === "DENIED"
-          ? "Reviewer access denied"
+          ? "Review materials access denied"
           : reviewerAccountStatus === "FALSE"
-            ? "Reviewer access pending"
-            : "Reviewer access not granted";
+            ? "Review materials access pending"
+            : "Review materials access not granted";
     }
   }
 
@@ -8391,7 +8423,7 @@
       !["TRUE", "FALSE", "DENIED", "NOT_FOUND"].includes(response.accountStatus)
     ) {
       throw new Error(
-        "The reviewer approval service returned invalid account status.",
+        "The account approval service returned invalid status.",
       );
     }
     const accountStatus = response.accountStatus;
@@ -8540,8 +8572,8 @@
           signOutReviewer(false);
           if (authStatus)
             authStatus.textContent = retryCredential
-              ? "Your saved reviewer session expired. Retry verification of your new Google sign-in."
-              : "Your reviewer session expired. Sign in with Google again to check reviewer approval.";
+              ? "Your saved access session expired. Retry verification of your new Google sign-in."
+              : "Your access session expired. Sign in with Google again to check access.";
           if (retryCredential) {
             reviewerVerificationRetryToken = retryCredential;
             reviewerVerificationRetryAvailable = true;
@@ -8614,7 +8646,7 @@
       const sessionId = String(response?.sessionId || "");
       if (!/^[a-f0-9]{96}$/.test(sessionId))
         throw new Error(
-          "The reviewer sign-in service did not return a valid application session.",
+          "Google sign-in did not return a valid application session.",
         );
       saveReviewerSessionId(sessionId);
       if (reviewerVerificationRetryToken === idToken)
@@ -8797,7 +8829,7 @@
         signOutReviewer(false);
         if (authStatus)
           authStatus.textContent =
-            "Your reviewer session expired or was revoked. Sign in with Google again.";
+            "Your access session expired or was revoked. Sign in with Google again.";
         return false;
       }
       setReviewerEnrollmentStatus(
@@ -8839,7 +8871,7 @@
           status.textContent =
             "The server could not revoke this session. Try signing out again while online.";
         (globalScope.DebugUtils || console).error(
-          "Unable to revoke the reviewer session.",
+          "Unable to revoke the access session.",
           error,
         );
       });
@@ -8892,7 +8924,7 @@
     if (reviewersNav) {
       reviewersNav.disabled = false;
       reviewersNav.removeAttribute("aria-disabled");
-      reviewersNav.title = "Reviewer resources";
+      reviewersNav.title = "Review materials";
     }
     const signInButton = document.getElementById(
       "resource-reviewer-signin-button",
@@ -9046,12 +9078,18 @@
             "The reviewer dashboard returned invalid or unauthorized data.",
         );
       }
+      const reviewerDashboardTab = mergeResourceDashboardUpdates(
+        "REVIEWERS",
+        resourceDashboardData?.REVIEWERS ||
+          getStoredReviewerDashboard(reviewerAuthorizedEmail),
+        response.tab,
+      );
       resourceDashboardData = {
         ...(resourceDashboardData || {}),
-        REVIEWERS: response.tab,
+        REVIEWERS: reviewerDashboardTab,
       };
       reviewerDashboardLoadedForEmail = reviewerAuthorizedEmail;
-      cacheReviewerDashboard(reviewerAuthorizedEmail, response.tab);
+      cacheReviewerDashboard(reviewerAuthorizedEmail, reviewerDashboardTab);
       renderResourceDashboardTab();
       return true;
     } catch (error) {
@@ -9075,8 +9113,8 @@
             error.code === "SESSION_EXPIRED" ||
             error.code === "SESSION_INVALID" ||
             error.code === "SESSION_REVOKED"
-            ? "Your reviewer session expired or was revoked. Sign in with Google again to view reviewer resources."
-            : "This account is no longer authorized for reviewer resources.",
+            ? "Your access session expired or was revoked. Sign in with Google again to view review materials."
+            : "This account is no longer authorized to view review materials.",
         );
         if (
           error.code === "UNAUTHORIZED" ||
@@ -9096,14 +9134,14 @@
           tableHead.replaceChildren();
           tableBody.replaceChildren();
           setResourceDashboardStatus(
-            `Unable to load reviewer resources: ${String(
+            `Unable to load review materials: ${String(
               error?.message || error,
             )}`,
           );
         }
       }
       (globalScope.DebugUtils || console).error(
-        "Unable to load reviewer resources.",
+        "Unable to load review materials.",
         error,
       );
       return false;
@@ -9121,6 +9159,99 @@
         status.classList?.remove("resource-dashboard-status-stacked");
       }
     }
+  }
+
+  function getResourceDashboardRowKeys(tab, tabName) {
+    const getColumnIndex = (name) =>
+      tab.columns.findIndex(
+        (column) => String(column || "").trim().toLowerCase() === name,
+      );
+    const identityColumnIndices = [
+      getColumnIndex("year"),
+      getColumnIndex("semester"),
+      getColumnIndex("course"),
+    ].filter((index) => index >= 0);
+    const occurrences = new Map();
+    return tab.rows.map((values, rowIndex) => {
+      const identity = identityColumnIndices.length
+        ? identityColumnIndices.map((index) =>
+            String(values[index] ?? "").trim(),
+          )
+        : [rowIndex];
+      const identityKey = JSON.stringify(identity);
+      const occurrence = occurrences.get(identityKey) || 0;
+      occurrences.set(identityKey, occurrence + 1);
+      return JSON.stringify([tabName, identity, occurrence]);
+    });
+  }
+
+  function mergeResourceDashboardUpdates(tabName, previousTab, nextTab) {
+    const nextRowKeys = getResourceDashboardRowKeys(nextTab, tabName);
+    const previousTabIsValid =
+      Array.isArray(previousTab?.columns) &&
+      Array.isArray(previousTab?.rows) &&
+      previousTab.rows.every(Array.isArray);
+    const previousRowsByKey = new Map();
+    const previousColumnIndices = new Map();
+    if (previousTabIsValid) {
+      getResourceDashboardRowKeys(previousTab, tabName).forEach(
+        (rowKey, rowIndex) => previousRowsByKey.set(rowKey, rowIndex),
+      );
+      previousTab.columns.forEach((column, columnIndex) =>
+        previousColumnIndices.set(
+          String(column || "").trim().toLowerCase(),
+          columnIndex,
+        ),
+      );
+    }
+
+    const now = Date.now();
+    const recentlyUpdatedCells = {};
+    nextTab.rows.forEach((values, rowIndex) => {
+      const rowKey = nextRowKeys[rowIndex];
+      const previousRowIndex = previousRowsByKey.get(rowKey);
+      nextTab.columns.forEach((column, columnIndex) => {
+        const columnKey = String(column || "").trim().toLowerCase();
+        if (["year", "semester", "course"].includes(columnKey)) return;
+        const value = String(values[columnIndex] ?? "").trim();
+        const link = String(nextTab.links?.[rowIndex]?.[columnIndex] || "");
+        const title = String(
+          nextTab.linkTitles?.[rowIndex]?.[columnIndex] || "",
+        );
+        if (!value && !link && !title) return;
+
+        const markerKey = JSON.stringify([rowKey, columnKey]);
+        let updatedAt = Number(
+          previousTab?.recentlyUpdatedCells?.[markerKey] || 0,
+        );
+        const previousColumnIndex = previousColumnIndices.get(columnKey);
+        const changed =
+          previousTabIsValid &&
+          (previousRowIndex === undefined ||
+            previousColumnIndex === undefined ||
+            String(
+              previousTab.rows[previousRowIndex]?.[previousColumnIndex] ?? "",
+            ).trim() !== value ||
+            String(
+              previousTab.links?.[previousRowIndex]?.[previousColumnIndex] ||
+                "",
+            ) !== link ||
+            String(
+              previousTab.linkTitles?.[previousRowIndex]?.[
+                previousColumnIndex
+              ] || "",
+            ) !== title);
+        if (changed) updatedAt = now;
+        if (
+          Number.isFinite(updatedAt) &&
+          updatedAt > 0 &&
+          updatedAt <= now &&
+          now - updatedAt <= RESOURCE_DASHBOARD_UPDATED_TTL_MS
+        )
+          recentlyUpdatedCells[markerKey] = updatedAt;
+      });
+    });
+    return { ...nextTab, recentlyUpdatedCells };
   }
 
   function normalizeResourceDashboardTabs(tabs) {
@@ -9347,6 +9478,17 @@
           );
         }
         const normalizedTabs = normalizeResourceDashboardTabs(response.tabs);
+        const previousTabs = cachedDashboard?.tabs || resourceDashboardData;
+        normalizedTabs.MODULES = mergeResourceDashboardUpdates(
+          "MODULES",
+          previousTabs?.MODULES,
+          normalizedTabs.MODULES,
+        );
+        normalizedTabs.SYLLABUS = mergeResourceDashboardUpdates(
+          "SYLLABUS",
+          previousTabs?.SYLLABUS,
+          normalizedTabs.SYLLABUS,
+        );
         resourceDashboardData =
           retainAuthorizedReviewerDashboardTab(normalizedTabs);
         if (typeof storage?.setStoredJSON === "function" && appVersion) {
@@ -10004,7 +10146,7 @@
       if (reviewer && isDefinitivelyInvalidReviewerCredential(error)) {
         signOutReviewer(false);
         setReviewerAuthStatus(
-          "Your reviewer session expired or was revoked. Sign in with Google again.",
+          "Your access session expired or was revoked. Sign in with Google again.",
         );
         openResourceDashboardTab("PROFILE");
         return false;
@@ -10038,13 +10180,13 @@
           if (isDefinitivelyInvalidReviewerCredential(statusError)) {
             signOutReviewer(false);
             setReviewerAuthStatus(
-              "Your reviewer session expired or was revoked. Sign in with Google again.",
+              "Your access session expired or was revoked. Sign in with Google again.",
             );
             openResourceDashboardTab("PROFILE");
             return false;
           }
           (globalScope.DebugUtils || console).error(
-            "Unable to refresh Reviewer approval after PDF access was denied.",
+            "Unable to refresh account approval after PDF access was denied.",
             statusError,
           );
         }

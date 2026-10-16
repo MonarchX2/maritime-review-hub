@@ -548,6 +548,53 @@ assert.equal(
   spreadsheetOpensBeforeConfig,
   "fetching sign-in configuration should not open the account spreadsheet",
 );
+const installedEditTriggers = [];
+context.ScriptApp = {
+  getProjectTriggers: () => [],
+  newTrigger(handler) {
+    const trigger = { handler, spreadsheetId: "", schedule: "" };
+    return {
+      forSpreadsheet(id) {
+        trigger.spreadsheetId = id;
+        return this;
+      },
+      onEdit() {
+        trigger.schedule = "edit";
+        return this;
+      },
+      timeBased() {
+        trigger.schedule = "time";
+        return this;
+      },
+      everyMinutes(minutes) {
+        trigger.intervalMinutes = minutes;
+        return this;
+      },
+      create() {
+        installedEditTriggers.push(trigger);
+        return trigger;
+      },
+    };
+  },
+};
+assert.equal(context.setupTriggers().status, "success");
+assert.ok(
+  installedEditTriggers.some(
+    (trigger) =>
+      trigger.handler === "mrhAccountsEdited" &&
+      trigger.spreadsheetId === spreadsheetId &&
+      trigger.schedule === "edit",
+  ),
+  "backend setup should install the ACCOUNTS edit trigger that keeps cached statuses fresh",
+);
+assert.ok(
+  installedEditTriggers.some(
+    (trigger) =>
+      trigger.handler === "scheduledDatabaseSync" &&
+      trigger.intervalMinutes === 5,
+  ),
+  "account cache trigger setup should preserve the five-minute deck safety sync",
+);
 context.initializeMRHAccountsSpreadsheet();
 assert.deepEqual(
   Array.from(accountRows[0]),
@@ -948,13 +995,13 @@ assert.deepEqual(
   ],
   [
     "new-reviewer@example.com",
-    "Maritime Review Hub reviewer access pending",
+    "Maritime Review Hub resource access pending",
     "Maritime Review Hub",
   ],
 );
 assert.match(
   sentReviewerEmails[0]?.body || "",
-  /^Dear Reviewer,[\s\S]*pending administrator review[\s\S]*Sincerely,\nMaritime Review Hub$/,
+  /^Dear Maritime Review Hub user,[\s\S]*pending administrator review[\s\S]*Sincerely,\nMaritime Review Hub$/,
   "pending notifications should use a formal message and the Maritime Review Hub sender name",
 );
 const duplicatePending = post({
@@ -1022,14 +1069,14 @@ assert.deepEqual(
   [
     2,
     "new-reviewer@example.com",
-    "Maritime Review Hub reviewer access denied",
+    "Maritime Review Hub resource access denied",
     "Maritime Review Hub",
   ],
   "an administrator denial should email the verified account once",
 );
 assert.match(
   sentReviewerEmails[1]?.body || "",
-  /^Dear Reviewer,[\s\S]*unable to approve[\s\S]*Sincerely,\nMaritime Review Hub$/,
+  /^Dear Maritime Review Hub user,[\s\S]*unable to approve[\s\S]*Sincerely,\nMaritime Review Hub$/,
   "denial notifications should use formal language and a branded sender name",
 );
 cacheValues.clear();
@@ -1089,7 +1136,7 @@ assert.deepEqual(
   [
     3,
     "new-reviewer@example.com",
-    "Maritime Review Hub reviewer access pending",
+    "Maritime Review Hub resource access pending",
   ],
   "a corrected denied profile should email that access is pending again",
 );
@@ -1201,14 +1248,14 @@ assert.deepEqual(
   [
     6,
     "reviewer@example.com",
-    "Maritime Review Hub reviewer access granted",
+    "Maritime Review Hub resource access granted",
     "Maritime Review Hub",
   ],
   "an administrator grant should email the verified account",
 );
 assert.match(
   sentReviewerEmails.at(-1)?.body || "",
-  /^Dear Reviewer,[\s\S]*access request has been approved[\s\S]*Sincerely,\nMaritime Review Hub$/,
+  /^Dear Maritime Review Hub user,[\s\S]*access request has been approved[\s\S]*Sincerely,\nMaritime Review Hub$/,
   "approval notifications should use formal language and a branded sender name",
 );
 const reviewerDashboardRequest = () =>
@@ -1439,6 +1486,7 @@ const liveAccount = accountRows.find(
 tokenClaims = validClaims("reviewer@example.com");
 liveAccount[4] = "FALSE";
 cacheValues.clear();
+const spreadsheetOpensBeforeStatusPoll = spreadsheetOpenCount;
 assert.equal(
   post({
     type: "get_reviewer_account_status",
@@ -1446,14 +1494,49 @@ assert.equal(
   }).accountStatus,
   "FALSE",
 );
+const spreadsheetOpensAfterFirstStatusPoll = spreadsheetOpenCount;
+assert.equal(
+  post({
+    type: "get_reviewer_account_status",
+    idToken: "fresh-status-token",
+  }).accountStatus,
+  "FALSE",
+);
+assert.equal(
+  spreadsheetOpenCount,
+  spreadsheetOpensAfterFirstStatusPoll,
+  "repeated approval polls should use the shared account cache instead of reopening the spreadsheet",
+);
+assert.ok(spreadsheetOpensAfterFirstStatusPoll > spreadsheetOpensBeforeStatusPoll);
 liveAccount[4] = "TRUE";
+const generationBeforeAccountEdit = context.getMRHAccountCacheGeneration_();
+context.mrhAccountsEdited({
+  source: { getId: () => spreadsheetId },
+  range: {
+    getSheet: () => ({ getName: () => "ACCOUNTS" }),
+    getLastRow: () => 2,
+    getColumn: () => 5,
+    getLastColumn: () => 5,
+  },
+});
+assert.notEqual(
+  context.getMRHAccountCacheGeneration_(),
+  generationBeforeAccountEdit,
+  "an ACCOUNTS edit should invalidate all account-status snapshots",
+);
+const spreadsheetOpensBeforeInvalidatedStatusPoll = spreadsheetOpenCount;
 assert.equal(
   post({
     type: "get_reviewer_account_status",
     idToken: "fresh-status-token",
   }).accountStatus,
   "TRUE",
-  "status polling must bypass a cached account record after an administrator updates ACCOUNTS",
+  "status polling must immediately observe an administrator update after the ACCOUNTS edit trigger invalidates the cache",
+);
+assert.equal(
+  spreadsheetOpenCount,
+  spreadsheetOpensBeforeInvalidatedStatusPoll + 1,
+  "an ACCOUNTS edit should force exactly one fresh lookup for the next status poll",
 );
 
 console.log("Reviewer authorization and approval lifecycle checks passed.");

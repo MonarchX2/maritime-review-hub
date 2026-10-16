@@ -169,7 +169,8 @@ var MRH_RESOURCE_DASHBOARD_CACHE_TTL_SECONDS = 30;
 var MRH_REVIEWER_DASHBOARD_CACHE_TTL_SECONDS = 60;
 var MRH_RESOURCE_DASHBOARD_VERSION_CACHE_TTL_SECONDS = CACHE_TTL_SECONDS;
 var MRH_REVIEWER_DASHBOARD_VERSION_CACHE_TTL_SECONDS = CACHE_TTL_SECONDS;
-var MRH_ACCOUNT_CACHE_TTL_SECONDS = 3;
+var MRH_ACCOUNT_CACHE_TTL_SECONDS = 30;
+var MRH_ACCOUNT_CACHE_GENERATION_PROPERTY = "MRH_ACCOUNT_CACHE_GENERATION";
 var MRH_SPREADSHEET_TIME_ZONE = "Asia/Manila";
 var MRH_LOG_DEDUPE_TTL_SECONDS = 21600;
 
@@ -1240,6 +1241,8 @@ function findMRHAccount_(email, bypassCache) {
     throw new Error("Reviewer account authorization is not configured.");
   var cacheKey =
     "mrh_account_v2_" +
+    getMRHAccountCacheGeneration_() +
+    "_" +
     sha256Hex(config.spreadsheetId + ":" + normalizedEmail);
   var cache = null;
   if (!bypassCache) {
@@ -1330,6 +1333,8 @@ function invalidateMRHAccountCache_(spreadsheetId, email) {
   try {
     CacheService.getScriptCache().remove(
       "mrh_account_v2_" +
+        getMRHAccountCacheGeneration_() +
+        "_" +
         sha256Hex(
           String(spreadsheetId || "") +
             ":" +
@@ -1339,6 +1344,39 @@ function invalidateMRHAccountCache_(spreadsheetId, email) {
   } catch (cacheError) {
     Logger.log("[invalidateMRHAccountCache_] Account cache invalidation failed.");
   }
+}
+
+function getMRHAccountCacheGeneration_() {
+  return String(
+    getScriptProps().getProperty(MRH_ACCOUNT_CACHE_GENERATION_PROPERTY) || "0",
+  );
+}
+
+function invalidateMRHAccountCacheAll_() {
+  getScriptProps().setProperty(
+    MRH_ACCOUNT_CACHE_GENERATION_PROPERTY,
+    Utilities.getUuid(),
+  );
+}
+
+function mrhAccountsEdited(event) {
+  if (!event || !event.source || !event.range) return;
+  var config = getReviewerAuthorizationConfig_();
+  if (
+    !config.enabled ||
+    String(event.source.getId()) !== String(config.spreadsheetId)
+  )
+    return;
+  var sheet = event.range.getSheet();
+  if (
+    !sheet ||
+    sheet.getName() !== MRH_ACCOUNTS_SHEET_NAME ||
+    event.range.getLastRow() < 2 ||
+    event.range.getColumn() > MRH_ACCOUNTS_HEADERS.length ||
+    event.range.getLastColumn() < 1
+  )
+    return;
+  invalidateMRHAccountCacheAll_();
 }
 
 function getMRHLocalDateTime_() {
@@ -1608,7 +1646,7 @@ function getVerifiedGooglePicture_(value) {
 }
 
 function getReviewerAccountStatusResponse_(identity) {
-  var account = findMRHAccount_(identity.email, true);
+  var account = findMRHAccount_(identity.email, false);
   var accountStatus = account ? account.accountStatus : "NOT_FOUND";
   updateReviewerStatusNotification_(identity.email, accountStatus);
   return {
@@ -1655,17 +1693,17 @@ function updateReviewerStatusNotification_(
       accountStatus === "DENIED"
     ) {
       var subjectByStatus = {
-        TRUE: "Maritime Review Hub reviewer access granted",
-        FALSE: "Maritime Review Hub reviewer access pending",
-        DENIED: "Maritime Review Hub reviewer access denied",
+        TRUE: "Maritime Review Hub resource access granted",
+        FALSE: "Maritime Review Hub resource access pending",
+        DENIED: "Maritime Review Hub resource access denied",
       };
       var bodyByStatus = {
         TRUE:
-          "Dear Reviewer,\n\nYour Maritime Review Hub reviewer access request has been approved. Reviewer resources are now available. Please sign in to your profile to continue.\n\nSincerely,\nMaritime Review Hub",
+          "Dear Maritime Review Hub user,\n\nYour resource access request has been approved. The requested materials are now available. Please sign in to your profile to continue.\n\nSincerely,\nMaritime Review Hub",
         FALSE:
-          "Dear Reviewer,\n\nThis message confirms that your Maritime Review Hub reviewer access request has been received and is pending administrator review. We will notify you by email when a decision has been made.\n\nSincerely,\nMaritime Review Hub",
+          "Dear Maritime Review Hub user,\n\nThis message confirms that your resource access request has been received and is pending administrator review. We will notify you by email when a decision has been made.\n\nSincerely,\nMaritime Review Hub",
         DENIED:
-          "Dear Reviewer,\n\nAfter review, we are unable to approve your Maritime Review Hub reviewer access request at this time. If you believe your submitted name details need correction, please sign in to your profile, update them, and resubmit your request for review.\n\nSincerely,\nMaritime Review Hub",
+          "Dear Maritime Review Hub user,\n\nAfter review, we are unable to approve your resource access request at this time. If you believe your submitted name details need correction, please sign in to your profile, update them, and resubmit your request for review.\n\nSincerely,\nMaritime Review Hub",
       };
       MailApp.sendEmail({
         to: String(email || "").trim(),
@@ -1700,9 +1738,9 @@ function verifyReviewerRequestIdentity_(data) {
         providerUnavailable
           ? "Google sign-in verification is temporarily unavailable."
           : identity.code === "SESSION_EXPIRED"
-            ? "Your reviewer session has expired. Sign in with Google again."
+            ? "Your access session has expired. Sign in with Google again."
             : identity.code === "SESSION_INVALID"
-              ? "Your reviewer session is no longer valid. Sign in with Google again."
+              ? "Your access session is no longer valid. Sign in with Google again."
               : identity.code === "AUTH_PERMISSION_REQUIRED"
                 ? "The reviewer sign-in service needs Apps Script external-request permission. The script owner must run initializeMRHAccountsSpreadsheet() and approve the requested access."
                 : "A valid Google sign-in is required.",
@@ -1758,7 +1796,7 @@ function createReviewerSession_(identity) {
     if (activeSessions.length >= REVIEWER_SESSION_LIMIT)
       return {
         error: errorResponse(
-          "The reviewer session service is at capacity. Please try again later.",
+          "The access session service is at capacity. Please try again later.",
           "SESSION_CAPACITY",
         ),
       };
@@ -1879,7 +1917,7 @@ function handleRevokeReviewerSessionRequest(data) {
     }));
   if (!revokeReviewerSession_(sessionId))
     return errorResponse(
-      "The reviewer session could not be revoked right now. Try signing out again.",
+      "The access session could not be revoked right now. Try signing out again.",
       "SESSION_REVOKE_FAILED",
     );
   return jsonResponse({ status: "success" });
@@ -1901,7 +1939,7 @@ function authorizeReviewerRequest_(data, bypassAccountCache) {
   if (!account)
     return {
       error: errorResponse(
-        "Submit your profile details for administrator review before accessing reviewer resources.",
+        "Submit your profile details for administrator review before accessing these materials.",
         "ACCOUNT_PENDING",
       ),
     };
@@ -1915,7 +1953,7 @@ function authorizeReviewerRequest_(data, bypassAccountCache) {
   if (account.accountStatus !== "TRUE")
     return {
       error: errorResponse(
-        "Your profile is waiting for administrator approval. Reviewer access remains disabled until approval.",
+        "Your profile is waiting for administrator approval. Access remains disabled until approval.",
         "ACCOUNT_PENDING",
       ),
     };
@@ -2115,7 +2153,7 @@ function handleReviewerEnrollmentRequest(data) {
 }
 
 function handleGetReviewerDashboardRequest(data) {
-  var authorization = authorizeReviewerRequest_(data, true);
+  var authorization = authorizeReviewerRequest_(data, false);
   if (authorization.error) return authorization.error;
 
   var reviewerCache = null;
@@ -2791,7 +2829,7 @@ function permanentlyDeleteReviewerPdfOutput_(fileId) {
 function enqueueReviewerPdfRequest_(data) {
   if (!/^[a-f0-9]{96}$/i.test(String(data && data.sessionId || "")))
     return errorResponse(
-      "A valid reviewer session is required for PDF delivery.",
+      "A valid access session is required for PDF delivery.",
       "SESSION_INVALID",
     );
   var authorization = authorizeReviewerPdfRequest_(data);
@@ -2872,7 +2910,7 @@ function enqueueReviewerPdfRequest_(data) {
 function getReviewerPdfJobStatus_(data) {
   if (!/^[a-f0-9]{96}$/i.test(String(data && data.sessionId || "")))
     return errorResponse(
-      "A valid reviewer session is required for PDF delivery.",
+      "A valid access session is required for PDF delivery.",
       "SESSION_INVALID",
     );
   var authorization = authorizeReviewerPdfRequest_(data);
@@ -5942,12 +5980,14 @@ function setupTriggers() {
   if (!lock.tryLock(BUILDER_LOCK_TIMEOUT_MS))
     throw new Error("Could not acquire setup lock.");
   try {
+    var reviewerConfig = getReviewerAuthorizationConfig_();
     var triggers = ScriptApp.getProjectTriggers();
     for (var i = 0; i < triggers.length; i++) {
       var handler = triggers[i].getHandlerFunction();
       if (
         handler === "scheduledDatabaseSync" ||
         handler === "uuidSheetEdited" ||
+        handler === "mrhAccountsEdited" ||
         handler === "onEdit" ||
         handler === RESUME_TRIGGER_HANDLER
       ) {
@@ -5959,6 +5999,12 @@ function setupTriggers() {
       .forSpreadsheet(UUID_SHEET_ID)
       .onEdit()
       .create();
+    if (reviewerConfig.enabled) {
+      ScriptApp.newTrigger("mrhAccountsEdited")
+        .forSpreadsheet(reviewerConfig.spreadsheetId)
+        .onEdit()
+        .create();
+    }
     ScriptApp.newTrigger("scheduledDatabaseSync")
       .timeBased()
       .everyMinutes(5)
@@ -5967,7 +6013,7 @@ function setupTriggers() {
     return {
       status: "success",
       message:
-        "Database triggers installed: UUID edit trigger plus 5-minute safety sync.",
+        "Database triggers installed: UUID and account edit triggers plus 5-minute safety sync.",
     };
   } finally {
     lock.releaseLock();

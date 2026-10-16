@@ -72,12 +72,113 @@ assert.match(
 );
 assert.match(
   appCore,
+  /function mergeResourceDashboardUpdates\(tabName, previousTab, nextTab\)[\s\S]*?recentlyUpdatedCells[\s\S]*?RESOURCE_DASHBOARD_UPDATED_TTL_MS/,
+  "dashboard snapshots should retain and expire cell-level recent-update markers",
+);
+assert.match(
+  appCore,
+  /const reviewerDashboardTab = mergeResourceDashboardUpdates\(\s*"REVIEWERS"[\s\S]*?REVIEWERS: reviewerDashboardTab[\s\S]*?cacheReviewerDashboard\(reviewerAuthorizedEmail, reviewerDashboardTab\)/,
+  "authorized resource table changes should be detected and cached for the current account",
+);
+assert.match(
+  appCore,
+  /normalizedTabs\.MODULES = mergeResourceDashboardUpdates\(\s*"MODULES"[\s\S]*?normalizedTabs\.SYLLABUS = mergeResourceDashboardUpdates\(\s*"SYLLABUS"/,
+  "Modules and Syllabus cell changes should be detected before refreshing their dashboard cache",
+);
+assert.match(
+  appCore,
+  /if \(recentlyUpdated\) \{[\s\S]*?link\.classList\.add\("is-recently-updated"\)[\s\S]*?resource-dashboard-updated-badge/,
+  "changed resource cells should display an accessible Updated chip",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-link-button\.is-recently-updated\s*\{[^}]*background:\s*#fef3c7/ &&
+    /\.resource-dashboard-updated-badge\s*\{/,
+  "recently changed resource chips should have a distinct background and badge",
+);
+const rowKeyFunction = appCore.match(
+  /function getResourceDashboardRowKeys\(tab, tabName\) \{([\s\S]*?)\n  \}/,
+);
+const mergeUpdatesFunction = appCore.match(
+  /function mergeResourceDashboardUpdates\(tabName, previousTab, nextTab\) \{([\s\S]*?)\n  \}/,
+);
+assert.ok(rowKeyFunction, "resource dashboard row keys should be testable");
+assert.ok(mergeUpdatesFunction, "resource dashboard update comparison should be testable");
+let updateClock = 100000000;
+const getResourceDashboardRowKeys = new Function(
+  `return function getResourceDashboardRowKeys(tab, tabName) {${rowKeyFunction[1]}\n}`,
+)();
+const mergeResourceDashboardUpdates = new Function(
+  "getResourceDashboardRowKeys",
+  "RESOURCE_DASHBOARD_UPDATED_TTL_MS",
+  "Date",
+  `return function mergeResourceDashboardUpdates(tabName, previousTab, nextTab) {${mergeUpdatesFunction[1]}\n}`,
+)(
+  getResourceDashboardRowKeys,
+  7 * 24 * 60 * 60 * 1000,
+  { now: () => updateClock },
+);
+const dashboardTab = (title, link = "resource-file-id") => ({
+  columns: ["Year", "Course", "PRELIMS"],
+  rows: [["3.1", "NAV6", title]],
+  links: [["", "", link]],
+  linkTitles: [["", "", title]],
+});
+const initialModulesTab = dashboardTab("01 Safety (Prelims).pdf");
+const firstSeenModulesTab = mergeResourceDashboardUpdates(
+  "MODULES",
+  null,
+  initialModulesTab,
+);
+assert.deepEqual(
+  firstSeenModulesTab.recentlyUpdatedCells,
+  {},
+  "the first snapshot should establish a baseline without marking every cell as updated",
+);
+updateClock += 1000;
+const renamedModulesTab = mergeResourceDashboardUpdates(
+  "MODULES",
+  firstSeenModulesTab,
+  dashboardTab("02 Safety (Prelims).pdf"),
+);
+const changedCellKey = JSON.stringify([
+  JSON.stringify(["MODULES", ["3.1", "NAV6"], 0]),
+  "prelims",
+]);
+assert.equal(
+  renamedModulesTab.recentlyUpdatedCells[changedCellKey],
+  updateClock,
+  "renaming a resource should mark only that table cell as recently updated",
+);
+updateClock += 1000;
+const unchangedModulesTab = mergeResourceDashboardUpdates(
+  "MODULES",
+  renamedModulesTab,
+  dashboardTab("02 Safety (Prelims).pdf"),
+);
+assert.equal(
+  unchangedModulesTab.recentlyUpdatedCells[changedCellKey],
+  renamedModulesTab.recentlyUpdatedCells[changedCellKey],
+  "an unchanged cell should preserve its update indicator timestamp",
+);
+updateClock += 8 * 24 * 60 * 60 * 1000;
+assert.deepEqual(
+  mergeResourceDashboardUpdates(
+    "MODULES",
+    unchangedModulesTab,
+    dashboardTab("02 Safety (Prelims).pdf"),
+  ).recentlyUpdatedCells,
+  {},
+  "recent-update indicators should expire after seven days",
+);
+assert.match(
+  appCore,
   /resourceDashboardActiveTab === "REVIEWERS" &&\s*reviewerSessionId &&\s*reviewerDashboardLoadedForEmail\?\.toLowerCase\(\) !==\s*reviewerAuthorizedEmail\.toLowerCase\(\)[\s\S]*?showReviewerDashboardLoading\(true\);\s*return true;/,
   "Reviewer placeholder data should not render as zero rows while the authorized table request is pending",
 );
 assert.match(
   appCore,
-  /if \(resourceDashboardActiveTab === "REVIEWERS" && !visibleRows\.length\) \{\s*status\.textContent = nonEmptyRows\.length\s*\?\s*"No reviewer resources match the selected filters\."\s*:\s*"No reviewer resources are currently available\."/,
+  /if \(resourceDashboardActiveTab === "REVIEWERS" && !visibleRows\.length\) \{\s*status\.textContent = nonEmptyRows\.length\s*\?\s*"No review materials match the selected filters\."\s*:\s*"No review materials are currently available\."/,
   "loaded Reviewer tables without rows should use an explicit empty state instead of a zero-row count",
 );
 assert.doesNotMatch(
@@ -113,7 +214,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /cacheReviewerDashboard\(reviewerAuthorizedEmail, response\.tab\)/,
+  /cacheReviewerDashboard\(reviewerAuthorizedEmail, reviewerDashboardTab\)/,
   "fresh dashboard data should refresh the current-tab cache",
 );
 assert.match(
@@ -218,8 +319,18 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(resourceDashboardActiveTab === "REVIEWERS" && !visibleRows\.length\) \{\s*status\.textContent = nonEmptyRows\.length\s*\?\s*"No reviewer resources match the selected filters\."\s*:\s*"No reviewer resources are currently available\."/,
+  /if \(resourceDashboardActiveTab === "REVIEWERS" && !visibleRows\.length\) \{\s*status\.textContent = nonEmptyRows\.length\s*\?\s*"No review materials match the selected filters\."\s*:\s*"No review materials are currently available\."/,
   "a successfully loaded empty Reviewer table should show an explicit empty state instead of a zero-row count",
+);
+assert.match(
+  indexHtml,
+  /student-portal-deck-description[\s\S]*?Syllabus, Modules, and Review Materials/,
+  "the Student Portal entry should use the requested non-Reviewer label",
+);
+assert.match(
+  indexHtml,
+  /id="resource-dashboard-reviewers-nav"[\s\S]*?aria-label="Review Materials"[\s\S]*?title="Review materials"[\s\S]*?Review Materials/,
+  "the portal navigation label and accessible name should not expose the old terminology",
 );
 assert.match(
   appCore,
@@ -731,7 +842,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function setReviewerAccessEnabled\(enabled\)[\s\S]*?reviewersNav\.disabled = !enabled[\s\S]*?reviewersNav\.title = enabled[\s\S]*?setReviewerAccessEnabled\(accountStatus === "TRUE"\)[\s\S]*?function signOutReviewer[\s\S]*?reviewersNav\.disabled = false[\s\S]*?reviewersNav\.title = "Reviewer resources"/,
+  /function setReviewerAccessEnabled\(enabled\)[\s\S]*?reviewersNav\.disabled = !enabled[\s\S]*?reviewersNav\.title = enabled[\s\S]*?setReviewerAccessEnabled\(accountStatus === "TRUE"\)[\s\S]*?function signOutReviewer[\s\S]*?reviewersNav\.disabled = false[\s\S]*?reviewersNav\.title = "Review materials"/,
   "approved status should unlock Reviewer navigation and sign-out should restore the signed-out navigation state",
 );
 assert.match(
@@ -1329,7 +1440,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /async function restoreReviewerSession\([\s\S]*?type: "restore_reviewer_session", sessionId[\s\S]*?applyReviewerAccountStatus\(response, sessionId\)[\s\S]*?if \(isDefinitivelyInvalidReviewerCredential\(error\)\) \{\s*signOutReviewer\(false\);[\s\S]*?Your saved reviewer session expired or was revoked[\s\S]*?Unable to verify your saved reviewer session right now\. It has been kept/,
+  /async function restoreReviewerSession\([\s\S]*?type: "restore_reviewer_session", sessionId[\s\S]*?applyReviewerAccountStatus\(response, sessionId\)[\s\S]*?if \(isDefinitivelyInvalidReviewerCredential\(error\)\) \{\s*signOutReviewer\(false\);[\s\S]*?Your saved access session expired or was revoked[\s\S]*?Unable to verify your saved access session right now\. It has been kept/,
   "startup should restore sessions from the backend and retain them after temporary failures",
 );
 assert.match(

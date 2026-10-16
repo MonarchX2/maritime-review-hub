@@ -49,13 +49,13 @@ assert.match(
 
 assert.match(
   index,
-  /id="resource-dashboard-syllabus-nav"[\s\S]*?Syllabus[\s\S]*?id="resource-dashboard-modules-nav"[\s\S]*?Modules[\s\S]*?id="resource-dashboard-reviewers-nav"[\s\S]*?Reviewers/,
-  "the dashboard should show Syllabus before Modules and Reviewers",
+  /id="resource-dashboard-syllabus-nav"[\s\S]*?Syllabus[\s\S]*?id="resource-dashboard-modules-nav"[\s\S]*?Modules[\s\S]*?id="resource-dashboard-reviewers-nav"[\s\S]*?Review Materials/,
+  "the dashboard should show Syllabus before Modules and Review Materials",
 );
 assert.match(
   index,
-  /id="resource-dashboard-reviewers-nav"[^>]*onclick="openResourceDashboardTab\('REVIEWERS'\)"[^>]*aria-label="Reviewers"[\s\S]*?Reviewers\s*<\/button>[\s\S]*?id="resource-reviewers-locked-panel"[\s\S]*?fa-lock resource-reviewers-locked-icon[\s\S]*?Locked[\s\S]*?Use Google to sign in and request access/,
-  "the locked Reviewer panel should show a red lock, concise label, and Google sign-in prompt",
+  /id="resource-dashboard-reviewers-nav"[^>]*onclick="openResourceDashboardTab\('REVIEWERS'\)"[^>]*aria-label="Review Materials"[\s\S]*?Review Materials\s*<\/button>[\s\S]*?id="resource-reviewers-locked-panel"[\s\S]*?fa-lock resource-reviewers-locked-icon[\s\S]*?Locked[\s\S]*?Use Google to sign in and request access/,
+  "the locked review-materials panel should show a red lock, concise label, and Google sign-in prompt",
 );
 const lockedReviewerPanel =
   index.match(
@@ -65,7 +65,7 @@ assert.equal(
   [...lockedReviewerPanel.matchAll(/Use Google to sign in and request access/g)]
     .length,
   1,
-  "the locked Reviewer panel should show only the approved Google sign-in prompt",
+  "the locked review-materials panel should show only the approved Google sign-in prompt",
 );
 assert.match(
   resourceStyles,
@@ -382,7 +382,7 @@ assert.match(
 );
 assert.match(
   index,
-  /resource-dashboard-table-scroll[\s\S]*?class="resource-dashboard-update-note">\s*File updates may take up to 3 minutes\.\s*<\/p>/,
+  /resource-dashboard-table-scroll[\s\S]*?class="resource-dashboard-update-note">\s*File updates may take up to 5 minutes\.\s*<\/p>/,
   "the dashboard should show a concise note about file update delays",
 );
 assert.match(
