@@ -163,7 +163,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /reviewersNav\.setAttribute\("aria-disabled", "false"\)[\s\S]*?reviewersLock\.hidden = true[\s\S]*?function signOutReviewer[\s\S]*?reviewersNav\.setAttribute\("aria-disabled", "true"\)[\s\S]*?reviewersLock\.hidden = false/,
+  /reviewersNav\.removeAttribute\("aria-disabled"\)[\s\S]*?reviewersLock\.hidden = true[\s\S]*?function signOutReviewer[\s\S]*?reviewersNav\.removeAttribute\("aria-disabled"\)[\s\S]*?reviewersLock\.hidden = false/,
   "sign-in should unlock reviewer resources and sign-out should restore the lock state",
 );
 assert.match(

@@ -6667,7 +6667,7 @@
         "resource-dashboard-reviewers-nav",
       );
       if (reviewersNav) {
-        reviewersNav.setAttribute("aria-disabled", "false");
+        reviewersNav.removeAttribute("aria-disabled");
         reviewersNav.setAttribute("aria-label", "Reviewers");
         reviewersNav.title = "Open reviewer resources";
       }
@@ -6898,7 +6898,7 @@
       "resource-dashboard-reviewers-nav",
     );
     if (reviewersNav) {
-      reviewersNav.setAttribute("aria-disabled", "true");
+      reviewersNav.removeAttribute("aria-disabled");
       reviewersNav.setAttribute(
         "aria-label",
         "Reviewers — sign in with Google",

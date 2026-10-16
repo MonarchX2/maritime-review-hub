@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-20 - 2026-10-16
+
+### Fixed
+- Keep the signed-out Reviewers tab accessible and clickable by removing disabled ARIA semantics.
+
 ## 26.10.16-19 - 2026-10-16
 
 ### Fixed
