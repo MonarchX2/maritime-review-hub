@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-27 - 2026-10-16
+
+### Fixed
+- Keep the Modules and Syllabus table frame sized to its content while aligning it with the dashboard filters.
+
 ## 26.10.16-26 - 2026-10-16
 
 ### Fixed

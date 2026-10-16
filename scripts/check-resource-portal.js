@@ -214,8 +214,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*100%;[^}]*margin-inline:\s*0;/,
-  "the dashboard table wrapper should use the available content width",
+  /\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*fit-content;[^}]*margin-inline:\s*0;/,
+  "the dashboard table wrapper should fit its content and align with the filters",
 );
 assert.doesNotMatch(
   resourceStyles.match(/\.resource-dashboard-table\s*\{[^}]*\}/)?.[0] || "",

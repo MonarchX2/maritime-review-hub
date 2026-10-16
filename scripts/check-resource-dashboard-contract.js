@@ -167,8 +167,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-layout\s*\{[^}]*width:\s*100%;[\s\S]*?\.resource-portal-shell\s*\{[^}]*width:\s*100%;[\s\S]*?\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*100%;/,
-  "Resource Dashboard layout, tab shell, and table should use the available content width",
+  /\.resource-dashboard-layout\s*\{[^}]*width:\s*100%;[\s\S]*?\.resource-portal-shell\s*\{[^}]*width:\s*100%;[\s\S]*?\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*fit-content;[^}]*margin-inline:\s*0;/,
+  "Resource Dashboard containers should fill the page while the table frame fits its content",
 );
 assert.match(
   resourceStyles,

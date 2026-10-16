@@ -2102,7 +2102,7 @@ button:active:not(:disabled) {
 }
 
 .resource-dashboard-table-scroll {
-  width: 100%;
+  width: fit-content;
   max-width: 100%;
   max-height: min(68vh, 48rem);
   margin-inline: 0;
