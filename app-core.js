@@ -6366,24 +6366,16 @@
       }
       if (lockedPanel) lockedPanel.hidden = true;
       if (
-        reviewerDashboardLoadedForEmail === reviewerAuthorizedEmail &&
+        reviewerDashboardLoadedForEmail?.toLowerCase() ===
+          reviewerAuthorizedEmail.toLowerCase() &&
         resourceDashboardData?.REVIEWERS
       ) {
         setReviewerNavigationBusy(false);
         renderResourceDashboardTab();
+        void loadReviewerDashboard({ refresh: true });
         return true;
       }
       if (reviewerDashboardRequestPromise) {
-        document
-          .getElementById("resource-dashboard-table-head")
-          ?.replaceChildren();
-        document
-          .getElementById("resource-dashboard-table-body")
-          ?.replaceChildren();
-        const filters = document
-          .getElementById("resource-dashboard-filter-year")
-          ?.closest(".resource-dashboard-filters");
-        if (filters) filters.hidden = true;
         setResourceDashboardStatus("Loading reviewer resources…", true);
         return true;
       }
@@ -8105,7 +8097,7 @@
     return true;
   }
 
-  async function loadReviewerDashboard() {
+  async function loadReviewerDashboard({ refresh = false } = {}) {
     if (!reviewerSessionId) {
       if (
         reviewerPendingEnrollmentSessionId ||
@@ -8127,7 +8119,9 @@
       return false;
     }
     if (
-      reviewerDashboardLoadedForEmail === reviewerAuthorizedEmail &&
+      !refresh &&
+      reviewerDashboardLoadedForEmail?.toLowerCase() ===
+        reviewerAuthorizedEmail.toLowerCase() &&
       resourceDashboardData?.REVIEWERS
     ) {
       setReviewerNavigationBusy(false);
@@ -8149,14 +8143,26 @@
       setReviewerNavigationBusy(false);
       return false;
     }
+    const hasExistingReviewerRows =
+      reviewerDashboardLoadedForEmail?.toLowerCase() ===
+        reviewerAuthorizedEmail.toLowerCase() &&
+      Array.isArray(resourceDashboardData?.REVIEWERS?.columns) &&
+      Array.isArray(resourceDashboardData?.REVIEWERS?.rows);
     if (resourceDashboardActiveTab === "REVIEWERS") {
-      tableHead.replaceChildren();
-      tableBody.replaceChildren();
+      if (!hasExistingReviewerRows) {
+        tableHead.replaceChildren();
+        tableBody.replaceChildren();
+      }
       const filterContainer = document
         .getElementById("resource-dashboard-filter-year")
         ?.closest(".resource-dashboard-filters");
       if (filterContainer) filterContainer.hidden = true;
-      setResourceDashboardStatus("Loading reviewer resources…", true);
+      setResourceDashboardStatus(
+        hasExistingReviewerRows
+          ? "Refreshing reviewer resources…"
+          : "Loading reviewer resources…",
+        true,
+      );
     }
     let backendRequest = null;
     try {
@@ -8201,17 +8207,6 @@
         requestSessionId !== reviewerSessionId
       )
         return false;
-      if (resourceDashboardData) {
-        resourceDashboardData.REVIEWERS = {
-          columns: [],
-          rows: [],
-          links: [],
-          linkTitles: [],
-          linkTypes: [],
-          truncated: false,
-        };
-      }
-      reviewerDashboardLoadedForEmail = "";
       if (
         [
           "UNAUTHORIZED",
@@ -8238,7 +8233,19 @@
         )
           promptReviewerReauthentication();
       } else {
-        if (resourceDashboardActiveTab === "REVIEWERS") {
+        if (hasExistingReviewerRows) {
+          setResourceDashboardStatus(
+            `Unable to refresh reviewer resources. Previously loaded data is still shown: ${String(
+              error?.message || error,
+            )}`,
+          );
+        } else {
+          reviewerDashboardLoadedForEmail = "";
+        }
+        if (
+          resourceDashboardActiveTab === "REVIEWERS" &&
+          !hasExistingReviewerRows
+        ) {
           tableHead.replaceChildren();
           tableBody.replaceChildren();
           setResourceDashboardStatus(
@@ -8354,6 +8361,26 @@
     return normalized;
   }
 
+  function retainAuthorizedReviewerDashboardTab(tabs) {
+    const reviewerTab = resourceDashboardData?.REVIEWERS;
+    const hasValidReviewerTab =
+      Array.isArray(reviewerTab?.columns) &&
+      Array.isArray(reviewerTab?.rows) &&
+      reviewerTab.rows.every(Array.isArray);
+    const isCurrentAuthorizedReviewerTab =
+      reviewerSessionId &&
+      reviewerDashboardLoadedForEmail &&
+      reviewerAuthorizedEmail &&
+      reviewerDashboardLoadedForEmail.toLowerCase() ===
+        reviewerAuthorizedEmail.toLowerCase() &&
+      hasValidReviewerTab;
+    if (isCurrentAuthorizedReviewerTab)
+      return { ...tabs, REVIEWERS: reviewerTab };
+    if (reviewerDashboardLoadedForEmail)
+      reviewerDashboardLoadedForEmail = "";
+    return tabs;
+  }
+
   async function loadResourceDashboard({ silent = false } = {}) {
     const status = document.getElementById("resource-portal-status");
     const tableHead = document.getElementById(
@@ -8410,7 +8437,8 @@
           typeof stored.version === "string"
         ) {
           cachedDashboard = { ...stored, tabs: sanitizedTabs };
-          resourceDashboardData = sanitizedTabs;
+          resourceDashboardData =
+            retainAuthorizedReviewerDashboardTab(sanitizedTabs);
           renderResourceDashboardTab();
         }
       }
@@ -8450,7 +8478,7 @@
             reviewerSessionId &&
             resourceDashboardActiveTab === "REVIEWERS"
           )
-            return loadReviewerDashboard();
+            return loadReviewerDashboard({ refresh: true });
           return true;
         }
         if (response?.notModified === true) {
@@ -8470,13 +8498,15 @@
             response?.message || "The dashboard service returned invalid data.",
           );
         }
-        resourceDashboardData = normalizeResourceDashboardTabs(response.tabs);
+        const normalizedTabs = normalizeResourceDashboardTabs(response.tabs);
+        resourceDashboardData =
+          retainAuthorizedReviewerDashboardTab(normalizedTabs);
         if (typeof storage?.setStoredJSON === "function" && appVersion) {
           const saved = storage.setStoredJSON(RESOURCE_DASHBOARD_CACHE_KEY, {
             appVersion: appVersion,
             version:
               typeof response.version === "string" ? response.version : "",
-            tabs: resourceDashboardData,
+            tabs: normalizedTabs,
           });
           if (!saved) {
             (globalScope.DebugUtils || console).warn(
@@ -8489,7 +8519,7 @@
           reviewerSessionId &&
           resourceDashboardActiveTab === "REVIEWERS"
         )
-          return loadReviewerDashboard();
+          return loadReviewerDashboard({ refresh: true });
         return true;
       } catch (error) {
         if (!silent)

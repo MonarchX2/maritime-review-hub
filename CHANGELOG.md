@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.10.16-39 - 2026-10-16
+
+### Fixed
+- Keep authorized Reviewer resources visible when public dashboard refreshes return the intentionally empty protected-tab placeholder.
+- Preserve the last loaded Reviewer rows during temporary refresh failures and refresh them when returning to the Reviewer tab.
+- Match reviewer account email addresses without case sensitivity when retaining loaded Reviewer data.
+
 ## 26.10.16-38 - 2026-10-16
 
 - Persist reviewer sign-in across browser restarts with server-validated application sessions and cross-tab sign-out synchronization.

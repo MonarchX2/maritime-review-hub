@@ -62,8 +62,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /async function loadReviewerDashboard\(\)[\s\S]*?if \(!status \|\| !tableHead \|\| !tableBody\) \{[\s\S]*?tableHead\.replaceChildren\(\);[\s\S]*?filterContainer\.hidden = true;[\s\S]*?setResourceDashboardStatus\("Loading reviewer resources…", true\);[\s\S]*?backendRequest = globalScope\.AppNetwork\.callBackend\([\s\S]*?await backendRequest/,
-  "loading Reviewer resources should clear the previous tab's rows and filters first",
+  /async function loadReviewerDashboard\(\{ refresh = false \} = \{\}\)[\s\S]*?if \(!status \|\| !tableHead \|\| !tableBody\) \{[\s\S]*?if \(!hasExistingReviewerRows\) \{[\s\S]*?tableHead\.replaceChildren\(\);[\s\S]*?filterContainer\.hidden = true;[\s\S]*?Loading reviewer resources…[\s\S]*?backendRequest = globalScope\.AppNetwork\.callBackend\([\s\S]*?await backendRequest/,
+  "loading Reviewer resources should retain valid visible rows while refreshing and show a loading state on first load",
 );
 assert.match(
   appCore,
@@ -151,8 +151,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /getStoredJSON\(\s*RESOURCE_DASHBOARD_CACHE_KEY[\s\S]*?normalizeResourceDashboardTabs\(stored\.tabs\)[\s\S]*?stored\.appVersion === appVersion[\s\S]*?resourceDashboardData = sanitizedTabs/,
-  "the dashboard should sanitize cached reviewer data before restoring data for the current website version",
+  /getStoredJSON\(\s*RESOURCE_DASHBOARD_CACHE_KEY[\s\S]*?normalizeResourceDashboardTabs\(stored\.tabs\)[\s\S]*?stored\.appVersion === appVersion[\s\S]*?resourceDashboardData =\s*retainAuthorizedReviewerDashboardTab\(sanitizedTabs\)/,
+  "the dashboard should sanitize browser-cached rows while restoring valid reviewer data from the current authorized session",
 );
 assert.match(
   appCore,
@@ -589,8 +589,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /resourceDashboardData = normalizeResourceDashboardTabs\(response\.tabs\)/,
-  "the dashboard should normalize backend tabs before rendering or caching them",
+  /const normalizedTabs = normalizeResourceDashboardTabs\(response\.tabs\)[\s\S]*?resourceDashboardData =\s*retainAuthorizedReviewerDashboardTab\(normalizedTabs\)[\s\S]*?tabs:\s*normalizedTabs/,
+  "public dashboard refreshes should retain authorized reviewer rows in memory while caching only sanitized tabs",
 );
 const normalizerStart = appCore.indexOf(
   "  function normalizeResourceDashboardTabs(tabs) {",
@@ -648,6 +648,61 @@ const lockedTabs = normalizeDashboardTabs({
   SYLLABUS: { columns: ["Year", "Course", "SYLLABUS"], rows: [] },
 });
 assert.deepEqual(lockedTabs.REVIEWERS.rows, []);
+const reviewerTabRetentionFunction = appCore.match(
+  /function retainAuthorizedReviewerDashboardTab\(tabs\) \{[\s\S]*?\n  \}/,
+);
+assert.ok(
+  reviewerTabRetentionFunction,
+  "the dashboard should preserve its authorized reviewer tab across public refreshes",
+);
+const createReviewerTabRetention = new Function(
+  "resourceDashboardData",
+  "reviewerSessionId",
+  "reviewerDashboardLoadedForEmail",
+  "reviewerAuthorizedEmail",
+  `${reviewerTabRetentionFunction[0]}; return retainAuthorizedReviewerDashboardTab;`,
+);
+const populatedReviewerTab = {
+  columns: ["Course", "PRELIMS"],
+  rows: [["SHIP'S AUDIT", "Review.pdf"]],
+  links: [],
+  linkTitles: [],
+  linkTypes: [],
+  truncated: false,
+};
+const emptyPublicReviewerTab = {
+  ...lockedTabs,
+  REVIEWERS: {
+    columns: [],
+    rows: [],
+    links: [],
+    linkTitles: [],
+    linkTypes: [],
+    truncated: false,
+  },
+};
+const retainReviewerRows = createReviewerTabRetention(
+  { REVIEWERS: populatedReviewerTab },
+  "valid-session",
+  "Reviewer@Example.com",
+  "reviewer@example.com",
+);
+assert.equal(
+  retainReviewerRows(emptyPublicReviewerTab).REVIEWERS,
+  populatedReviewerTab,
+  "refreshing public dashboard data should not replace the signed-in user's reviewer rows with the intentionally empty public placeholder",
+);
+const doNotRetainReviewerRows = createReviewerTabRetention(
+  { REVIEWERS: populatedReviewerTab },
+  "",
+  "reviewer@example.com",
+  "reviewer@example.com",
+);
+assert.deepEqual(
+  doNotRetainReviewerRows(emptyPublicReviewerTab).REVIEWERS,
+  emptyPublicReviewerTab.REVIEWERS,
+  "reviewer rows must not be retained without a currently authorized session",
+);
 assert.match(
   appCore,
   /normalized\.REVIEWERS = \{\s*columns: \[\],\s*rows: \[\],\s*links: \[\],/,
@@ -675,8 +730,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /reviewerDashboardLoadedForEmail === reviewerAuthorizedEmail[\s\S]*?renderResourceDashboardTab\(\)[\s\S]*?async function loadReviewerDashboard\(\)[\s\S]*?reviewerDashboardLoadedForEmail = reviewerAuthorizedEmail/,
-  "an already authorized reviewer tab should reuse in-memory data instead of waiting for another backend fetch",
+  /reviewerDashboardLoadedForEmail\?\.toLowerCase\(\) ===\s*reviewerAuthorizedEmail\.toLowerCase\(\)[\s\S]*?renderResourceDashboardTab\(\)[\s\S]*?loadReviewerDashboard\(\{ refresh: true \}\)[\s\S]*?async function loadReviewerDashboard\(\{ refresh = false \} = \{\}\)[\s\S]*?reviewerDashboardLoadedForEmail\?\.toLowerCase\(\) ===\s*reviewerAuthorizedEmail\.toLowerCase\(\)[\s\S]*?reviewerDashboardLoadedForEmail = reviewerAuthorizedEmail/,
+  "an already authorized reviewer tab should remain visible and refresh from the backend on entry",
+);
+assert.match(
+  appCore,
+  /const hasExistingReviewerRows =[\s\S]*?if \(resourceDashboardActiveTab === "REVIEWERS"\) \{\s*if \(!hasExistingReviewerRows\) \{[\s\S]*?tableHead\.replaceChildren\(\)[\s\S]*?Refreshing reviewer resources…[\s\S]*?Previously loaded data is still shown/,
+  "reviewer refreshes and temporary network failures should preserve already-loaded rows",
 );
 assert.match(
   appCore,
