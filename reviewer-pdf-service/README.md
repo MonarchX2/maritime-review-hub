@@ -52,7 +52,9 @@ polls `get_reviewer_pdf_job`; that request rechecks approval, session
 ownership, source membership, and source version. It permanently deletes the
 private derivative before returning its bytes. Sign-out and page-exit cleanup
 permanently delete any remaining outputs for the session; job expiry after ten
-minutes is a cleanup fallback. The active queue is capped at three.
+minutes is a cleanup fallback. The active queue is capped at three. If a
+queued job's worker trigger is overdue by more than one minute, polling
+replaces the stale trigger instead of leaving the job pending indefinitely.
 
 Each physical page watermark contains only the verified account's full name
 and email on two separate lines, repeated in a compact two-column by

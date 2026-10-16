@@ -1474,21 +1474,66 @@ context.Session = {
   getEffectiveUser: () => ({ getEmail: () => "owner@example.com" }),
 };
 const scheduledPdfWorkerDelays = [];
+const scheduledPdfWorkerTriggers = [
+  {
+    getHandlerFunction: () => "processReviewerPdfQueue",
+    getUniqueId: () => "stale-trigger",
+  },
+];
+const deletedPdfWorkerTriggers = [];
 context.ScriptApp = {
-  getProjectTriggers: () => [],
-  newTrigger: () => ({
-    timeBased() {
-      return this;
-    },
-    after(delayMs) {
-      scheduledPdfWorkerDelays.push(delayMs);
-      return this;
-    },
-    create() {
-      return {};
-    },
-  }),
+  getProjectTriggers: () => scheduledPdfWorkerTriggers.slice(),
+  deleteTrigger(trigger) {
+    deletedPdfWorkerTriggers.push(trigger.getUniqueId());
+    const index = scheduledPdfWorkerTriggers.indexOf(trigger);
+    if (index >= 0) scheduledPdfWorkerTriggers.splice(index, 1);
+  },
+  newTrigger(handler) {
+    return {
+      handler,
+      timeBased() {
+        return this;
+      },
+      after(delayMs) {
+        scheduledPdfWorkerDelays.push(delayMs);
+        return this;
+      },
+      create() {
+        const trigger = {
+          getHandlerFunction: () => this.handler,
+          getUniqueId: () => `scheduled-${scheduledPdfWorkerTriggers.length}`,
+        };
+        scheduledPdfWorkerTriggers.push(trigger);
+        return trigger;
+      },
+    };
+  },
 };
+pdfJobPropertyStore.setProperty(
+  "MRH_REVIEWER_PDF_WORKER_SCHEDULED_AT",
+  String(Date.now() - 2 * 60 * 1000),
+);
+context.scheduleReviewerPdfWorkerLocked_();
+assert.deepEqual(deletedPdfWorkerTriggers, ["stale-trigger"]);
+assert.equal(scheduledPdfWorkerDelays.length, 1);
+assert.ok(
+  Number(pdfJobPropertyStore.getProperty(
+    "MRH_REVIEWER_PDF_WORKER_SCHEDULED_AT",
+  )) > Date.now(),
+  "an overdue trigger must be replaced rather than left pending indefinitely",
+);
+const replacementTriggerCount = scheduledPdfWorkerTriggers.length;
+context.scheduleReviewerPdfWorkerLocked_();
+assert.equal(
+  scheduledPdfWorkerTriggers.length,
+  replacementTriggerCount,
+  "a recently scheduled worker must not be duplicated by subsequent polls",
+);
+scheduledPdfWorkerTriggers.splice(0, scheduledPdfWorkerTriggers.length);
+pdfJobPropertyStore.deleteProperty(
+  "MRH_REVIEWER_PDF_WORKER_SCHEDULED_AT",
+);
+scheduledPdfWorkerDelays.length = 0;
 await context.processReviewerPdfQueue();
 const completedPdfJob = JSON.parse(
   pdfJobProperties.get(pdfJobPrefix + workerJobId),

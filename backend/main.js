@@ -2575,8 +2575,9 @@ function scheduleReviewerPdfWorkerLocked_(delayMs) {
     return trigger.getHandlerFunction() === REVIEWER_PDF_WORKER_HANDLER;
   });
   if (
-    (triggers.length || scheduledAt > now) &&
-    (!scheduledAt || scheduledAt <= desiredAt + 5000)
+    triggers.length &&
+    scheduledAt > now - 60 * 1000 &&
+    scheduledAt <= desiredAt + 5000
   )
     return true;
   triggers.forEach(function (trigger) {

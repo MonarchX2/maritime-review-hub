@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src blob: https://accounts.google.com; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com; img-src 'self' https: data: blob:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net https://accounts.google.com; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-26.10.20" />
+    <link rel="manifest" href="manifest.json?v=mrh-26.10.21" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,28 +253,28 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-26.10.20"
+      href="icon.svg?v=mrh-26.10.21"
       type="image/svg+xml"
     />
     <link
       rel="apple-touch-icon"
-      href="icon.svg?v=mrh-26.10.20"
+      href="icon.svg?v=mrh-26.10.21"
     />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-26.10.20"
+      href="tailwind.generated.css?v=mrh-26.10.21"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-26.10.20"
+      href="styles.css?v=mrh-26.10.21"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-26.10.20"
+      href="tailwind.generated.css?v=mrh-26.10.21"
       media="print"
       onload="
         this.media = 'all';
@@ -283,7 +283,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-26.10.20"
+      href="styles.css?v=mrh-26.10.21"
       media="print"
       onload="
         this.media = 'all';
@@ -2301,6 +2301,15 @@
             <div id="about-changelog-entries" class="mt-3">
               <!-- ABOUT CHANGELOG START -->
                 <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.21
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Replace overdue Reviewer PDF worker triggers when queued downloads are still pending, instead of leaving the preparation job stuck indefinitely.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 26.10.20
                 </h5>
                 <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
@@ -2334,6 +2343,7 @@
                   <li>Preview protected PDFs without generating a server-side copy; overlay the verified full name and email in the viewer and generate watermarked PDFs only after an explicit download.</li>
                   <li>Permanently remove private download derivatives after delivery or session cleanup, and reduce PDF output size with object streams.</li>
                 </ul>
+                <div id="about-changelog-older" class="hidden">
                 <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 26.10.17
                 </h5>
@@ -2350,7 +2360,6 @@
                 <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
                   <li>Deploy the Reviewer PDF backend and update all website version markers.</li>
                 </ul>
-                <div id="about-changelog-older" class="hidden">
                 <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 26.10.16-51
                 </h5>
@@ -3718,7 +3727,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 26.10.20</p>
+    <p id="site-version" class="site-version">Version 26.10.21</p>
 
     <div
       id="qr-transfer-modal"

@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.10.21 - 2026-10-17
+
+### Fixed
+
+- Replace overdue Reviewer PDF worker triggers when queued downloads are still
+  pending, instead of leaving the preparation job stuck indefinitely.
+
 ## 26.10.20 - 2026-10-17
 
 ### Fixed
