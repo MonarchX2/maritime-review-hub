@@ -312,9 +312,7 @@
   }
 
   function dismissDeckNotFound() {
-    document
-      .getElementById("deck-not-found-notice")
-      ?.classList.add("hidden");
+    document.getElementById("deck-not-found-notice")?.classList.add("hidden");
   }
 
   function setFormError(inputId, message) {
@@ -390,9 +388,7 @@
   }
 
   function isDeckFetchCurrent(generation) {
-    return (
-      !appDataClearInProgress && generation === appDataClearGeneration
-    );
+    return !appDataClearInProgress && generation === appDataClearGeneration;
   }
 
   function getDeckFetchGeneration(subject) {
@@ -418,8 +414,7 @@
 
   function isDeckFetchCurrentForSubject(subject, generation) {
     return (
-      canFetchDeck(subject) &&
-      getDeckFetchGeneration(subject) === generation
+      canFetchDeck(subject) && getDeckFetchGeneration(subject) === generation
     );
   }
 
@@ -1197,11 +1192,7 @@
     });
     previousDecks.forEach((deck) => {
       const subject = String(deck?.Subject || "").trim();
-      if (
-        subject &&
-        !nextSubjects.has(subject) &&
-        downloaded.has(subject)
-      ) {
+      if (subject && !nextSubjects.has(subject) && downloaded.has(subject)) {
         changedSubjects.add(subject);
       }
     });
@@ -1250,9 +1241,7 @@
     ).forEach((subject) => {
       pendingDeckPayloadRefreshes.add(subject);
     });
-    state.prefs.pendingDeckPayloadRefreshes = [
-      ...pendingDeckPayloadRefreshes,
-    ];
+    state.prefs.pendingDeckPayloadRefreshes = [...pendingDeckPayloadRefreshes];
 
     state.categorySummary = summaryData;
     syncConnected = true;
@@ -1311,9 +1300,7 @@
   function isReviewViewActive() {
     return Boolean(
       typeof document !== "undefined" &&
-        document
-          .getElementById("view-deck-review")
-          ?.classList.contains("active"),
+      document.getElementById("view-deck-review")?.classList.contains("active"),
     );
   }
 
@@ -1324,10 +1311,7 @@
     deckPayloadRefreshPromise = (async () => {
       for (const subject of [...pendingDeckPayloadRefreshes]) {
         if (state.session?.active) break;
-        if (
-          isReviewViewActive() &&
-          getCurrentReviewSubject() === subject
-        ) {
+        if (isReviewViewActive() && getCurrentReviewSubject() === subject) {
           continue;
         }
         const summaryEntry = (state.categorySummary || []).find(
@@ -1336,8 +1320,7 @@
         if (!summaryEntry) {
           const previousDatabase = state.db;
           state.db = (state.db || []).filter(
-            (question) =>
-              String(question?.Subject || "").trim() !== subject,
+            (question) => String(question?.Subject || "").trim() !== subject,
           );
           rebuildQuestionIndex();
           invalidateCategoryProgressRenderSignature();
@@ -1364,8 +1347,7 @@
         if (expectedQuestionCount === 0) {
           const previousDatabase = state.db;
           state.db = (state.db || []).filter(
-            (question) =>
-              String(question?.Subject || "").trim() !== subject,
+            (question) => String(question?.Subject || "").trim() !== subject,
           );
           rebuildQuestionIndex();
           invalidateCategoryProgressRenderSignature();
@@ -1853,13 +1835,15 @@
       html += `<div data-deck-list-layout class="${layoutClass}">`;
       const sortBy = state.prefs.deckSortBy || "letters";
       const sortDirection = state.prefs.deckSortDirection === "desc" ? -1 : 1;
-      const popularDeckPaths = new Set([
-        "BSMT 3.1 - ALPHA (Finals)",
-        "Mock Exams",
-        "GENERAL KNOWLEDGE",
-        "BSMT COMPETENCIES",
-        "REVIEW NOTES FOR DECK OFFICERS (BOOK)",
-      ].map((path) => path.toLocaleLowerCase()));
+      const popularDeckPaths = new Set(
+        [
+          "BSMT 3.1 - ALPHA (Finals)",
+          "Mock Exams",
+          "GENERAL KNOWLEDGE",
+          "BSMT COMPETENCIES",
+          "REVIEW NOTES FOR DECK OFFICERS (BOOK)",
+        ].map((path) => path.toLocaleLowerCase()),
+      );
       const isPopularDeckPath = (path) =>
         popularDeckPaths.has(
           String(path || "")
@@ -2240,12 +2224,13 @@
                 ? renderDeckBadge("Popular", "fa-fire")
                 : "";
               const deckTypeBadge = getFolderDeckTypeBadgeLabel(item);
-              const explanationsAvailableBadge =
-                (isGroup
+              const explanationsAvailableBadge = (
+                isGroup
                   ? folderHasOnlyExplainedDecks(item)
-                  : deckHasExplanations(item._data))
-                  ? renderDeckBadge("Explanations Available", "fa-lightbulb")
-                  : "";
+                  : deckHasExplanations(item._data)
+              )
+                ? renderDeckBadge("Explanations Available", "fa-lightbulb")
+                : "";
               const action = isGroup
                 ? `toggleTreeNode('${encodeHandlerValue(folderSubject)}')`
                 : `handleDeckClick('${encodeHandlerValue(item._data?.Subject || folderSubject)}')`;
@@ -2384,10 +2369,9 @@
         );
         const loaderId = getDeckLoaderId(subj);
         const deckTypeBadge = getDeckTypeBadgeLabel(cat);
-        const explanationsAvailableBadge =
-          deckHasExplanations(cat)
-            ? renderDeckBadge("Explanations Available", "fa-lightbulb")
-            : "";
+        const explanationsAvailableBadge = deckHasExplanations(cat)
+          ? renderDeckBadge("Explanations Available", "fa-lightbulb")
+          : "";
         const popularBadge = isPopularDeckPath(subj)
           ? renderDeckBadge("Popular", "fa-fire")
           : "";
@@ -2557,10 +2541,9 @@
               ? renderDeckBadge("Popular", "fa-fire")
               : "";
             const deckTypeBadge = getFolderDeckTypeBadgeLabel(item);
-            const explanationsAvailableBadge =
-              folderHasOnlyExplainedDecks(item)
-                ? renderDeckBadge("Explanations Available", "fa-lightbulb")
-                : "";
+            const explanationsAvailableBadge = folderHasOnlyExplainedDecks(item)
+              ? renderDeckBadge("Explanations Available", "fa-lightbulb")
+              : "";
             const isLocked =
               isDeckLocked(folderSubject) || Boolean(item?._data?.Locked);
 
@@ -2752,7 +2735,11 @@
   }
 
   async function fetchAndStartCategory(subject, mode, pass = null) {
-    const started = await DeckNavCore.fetchAndStartCategory(subject, mode, pass);
+    const started = await DeckNavCore.fetchAndStartCategory(
+      subject,
+      mode,
+      pass,
+    );
     if (started && state.session?.active) {
       await markQuizActivity(subject);
     }
@@ -2810,107 +2797,134 @@
       deckMutationsInProgress.add(String(subject || "").trim());
 
       try {
-      // Clear any pending sync timers - deletion is a local operation
-      lifecycle.clearTimeout(syncRetryTimer);
-      lifecycle.clearInterval(syncCountdownTimer);
+        // Clear any pending sync timers - deletion is a local operation
+        lifecycle.clearTimeout(syncRetryTimer);
+        lifecycle.clearInterval(syncCountdownTimer);
 
-      // Reset sync state after local deletion succeeds
-      // (deletion doesn't depend on backend connectivity)
-      syncAttempt = 0;
-      syncConnected = true;
-      setGlobalLoadingState(false);
+        // Reset sync state after local deletion succeeds
+        // (deletion doesn't depend on backend connectivity)
+        syncAttempt = 0;
+        syncConnected = true;
+        setGlobalLoadingState(false);
 
-      const beforeSummary = (state.categorySummary || []).find(
-        (deck) => deck && deck.Subject === subject,
-      );
-
-      state.db = state.db.filter((q) => q.Subject !== subject);
-      rebuildQuestionIndex();
-      markLocalDownloadDeleted(subject);
-      invalidateCategoryProgressRenderSignature();
-
-      if (beforeSummary) {
-        beforeSummary.Downloaded = false;
-        beforeSummary.IsDownloaded = false;
-        beforeSummary.LocalQuestionCount = 0;
-        beforeSummary.QuestionCount = Math.max(
-          0,
-          Number(beforeSummary.QuestionCount || 0),
+        const beforeSummary = (state.categorySummary || []).find(
+          (deck) => deck && deck.Subject === subject,
         );
-      }
 
-      state.prefs.favoriteDecks = (state.prefs.favoriteDecks || []).filter(
-        (deck) => deck !== subject,
-      );
-      state.prefs.recentDecks = (state.prefs.recentDecks || []).filter(
-        (deck) => deck !== subject,
-      );
-      if (state.prefs.lastActivity?.subject === subject) {
-        state.prefs.lastActivity = null;
-      }
+        state.db = state.db.filter((q) => q.Subject !== subject);
+        rebuildQuestionIndex();
+        markLocalDownloadDeleted(subject);
+        invalidateCategoryProgressRenderSignature();
 
-      state.prefs.deletedDecks = Array.from(
-        new Set((state.prefs.deletedDecks || []).filter(Boolean)),
-      ).filter((deck) => deck !== subject);
+        if (beforeSummary) {
+          beforeSummary.Downloaded = false;
+          beforeSummary.IsDownloaded = false;
+          beforeSummary.LocalQuestionCount = 0;
+          beforeSummary.QuestionCount = Math.max(
+            0,
+            Number(beforeSummary.QuestionCount || 0),
+          );
+        }
 
-      saveState();
-      await Promise.allSettled([...inFlightDeckDatabaseWrites]);
-      if (!isDeckFetchCurrent(clearGeneration)) return;
-      await safeIdbSet("mrh_db", state.db);
-      if (!isDeckFetchCurrent(clearGeneration)) return;
-      renderCategoryProgress();
+        state.prefs.favoriteDecks = (state.prefs.favoriteDecks || []).filter(
+          (deck) => deck !== subject,
+        );
+        state.prefs.recentDecks = (state.prefs.recentDecks || []).filter(
+          (deck) => deck !== subject,
+        );
+        if (state.prefs.lastActivity?.subject === subject) {
+          state.prefs.lastActivity = null;
+        }
 
-      const saved = getStoredItem("saved_session");
-      if (saved) {
-        try {
-          const sessionObj = JSON.parse(saved);
-          const hasDeletedQuestions = Array.isArray(sessionObj.questions)
-            ? sessionObj.questions.some((q) => q.Subject === subject)
-            : false;
+        state.prefs.deletedDecks = Array.from(
+          new Set((state.prefs.deletedDecks || []).filter(Boolean)),
+        ).filter((deck) => deck !== subject);
 
-          if (hasDeletedQuestions) {
-            let newQuestions = [];
-            let newUserAnswers = {};
-            let newIdentificationRatings = {};
-            let newIdentificationSrsSnapshots = {};
-            let keptBeforeCurrent = 0;
+        saveState();
+        await Promise.allSettled([...inFlightDeckDatabaseWrites]);
+        if (!isDeckFetchCurrent(clearGeneration)) return;
+        await safeIdbSet("mrh_db", state.db);
+        if (!isDeckFetchCurrent(clearGeneration)) return;
+        renderCategoryProgress();
 
-            let newIdx = 0;
-            for (let i = 0; i < sessionObj.questions.length; i++) {
-              if (sessionObj.questions[i].Subject !== subject) {
-                newQuestions.push(sessionObj.questions[i]);
+        const saved = getStoredItem("saved_session");
+        if (saved) {
+          try {
+            const sessionObj = JSON.parse(saved);
+            const hasDeletedQuestions = Array.isArray(sessionObj.questions)
+              ? sessionObj.questions.some((q) => q.Subject === subject)
+              : false;
 
-                if (sessionObj.userAnswers && sessionObj.userAnswers[i]) {
-                  newUserAnswers[newIdx] = sessionObj.userAnswers[i];
+            if (hasDeletedQuestions) {
+              let newQuestions = [];
+              let newUserAnswers = {};
+              let newIdentificationRatings = {};
+              let newIdentificationSrsSnapshots = {};
+              let keptBeforeCurrent = 0;
+
+              let newIdx = 0;
+              for (let i = 0; i < sessionObj.questions.length; i++) {
+                if (sessionObj.questions[i].Subject !== subject) {
+                  newQuestions.push(sessionObj.questions[i]);
+
+                  if (sessionObj.userAnswers && sessionObj.userAnswers[i]) {
+                    newUserAnswers[newIdx] = sessionObj.userAnswers[i];
+                  }
+                  if (
+                    Object.prototype.hasOwnProperty.call(
+                      sessionObj.identificationRatings || {},
+                      i,
+                    )
+                  ) {
+                    newIdentificationRatings[newIdx] =
+                      sessionObj.identificationRatings[i];
+                  }
+                  if (
+                    Object.prototype.hasOwnProperty.call(
+                      sessionObj.identificationSrsSnapshots || {},
+                      i,
+                    )
+                  ) {
+                    newIdentificationSrsSnapshots[newIdx] =
+                      sessionObj.identificationSrsSnapshots[i];
+                  }
+
+                  if (i < sessionObj.currentIndex) {
+                    keptBeforeCurrent++;
+                  }
+
+                  newIdx++;
                 }
-                if (
-                  Object.prototype.hasOwnProperty.call(
-                    sessionObj.identificationRatings || {},
-                    i,
-                  )
-                ) {
-                  newIdentificationRatings[newIdx] =
-                    sessionObj.identificationRatings[i];
-                }
-                if (
-                  Object.prototype.hasOwnProperty.call(
-                    sessionObj.identificationSrsSnapshots || {},
-                    i,
-                  )
-                ) {
-                  newIdentificationSrsSnapshots[newIdx] =
-                    sessionObj.identificationSrsSnapshots[i];
-                }
-
-                if (i < sessionObj.currentIndex) {
-                  keptBeforeCurrent++;
-                }
-
-                newIdx++;
               }
-            }
 
-            if (newQuestions.length === 0) {
+              if (newQuestions.length === 0) {
+                clearSessionProgress();
+                state.session = {
+                  active: false,
+                  questions: [],
+                  currentIndex: 0,
+                  userAnswers: {},
+                };
+              } else {
+                sessionObj.questions = newQuestions;
+                sessionObj.userAnswers = newUserAnswers;
+                sessionObj.identificationRatings = newIdentificationRatings;
+                sessionObj.identificationSrsSnapshots =
+                  newIdentificationSrsSnapshots;
+                sessionObj.currentIndex = Math.min(
+                  keptBeforeCurrent,
+                  newQuestions.length - 1,
+                );
+                setStoredJSON("saved_session", sessionObj);
+
+                if (state.session.active) {
+                  state.session = { ...sessionObj };
+                }
+              }
+            } else if (
+              state.session?.questions?.some((q) => q.Subject === subject) ||
+              state.prefs.lastActivity?.subject === subject
+            ) {
               clearSessionProgress();
               state.session = {
                 active: false,
@@ -2918,53 +2932,26 @@
                 currentIndex: 0,
                 userAnswers: {},
               };
-            } else {
-              sessionObj.questions = newQuestions;
-              sessionObj.userAnswers = newUserAnswers;
-              sessionObj.identificationRatings = newIdentificationRatings;
-              sessionObj.identificationSrsSnapshots =
-                newIdentificationSrsSnapshots;
-              sessionObj.currentIndex = Math.min(
-                keptBeforeCurrent,
-                newQuestions.length - 1,
-              );
-              setStoredJSON("saved_session", sessionObj);
-
-              if (state.session.active) {
-                state.session = { ...sessionObj };
-              }
             }
-          } else if (
-            state.session?.questions?.some((q) => q.Subject === subject) ||
-            state.prefs.lastActivity?.subject === subject
-          ) {
-            clearSessionProgress();
-            state.session = {
-              active: false,
-              questions: [],
-              currentIndex: 0,
-              userAnswers: {},
-            };
+          } catch (e) {
+            appLogger.error("Error parsing saved session during deletion.", e);
           }
-        } catch (e) {
-          appLogger.error("Error parsing saved session during deletion.", e);
         }
-      }
 
-      if (
-        state.session?.questions?.some((q) => q.Subject === subject) ||
-        state.prefs.lastActivity?.subject === subject
-      ) {
-        clearSessionProgress();
-        state.session = {
-          active: false,
-          questions: [],
-          currentIndex: 0,
-          userAnswers: {},
-        };
-      }
+        if (
+          state.session?.questions?.some((q) => q.Subject === subject) ||
+          state.prefs.lastActivity?.subject === subject
+        ) {
+          clearSessionProgress();
+          state.session = {
+            active: false,
+            questions: [],
+            currentIndex: 0,
+            userAnswers: {},
+          };
+        }
 
-      updateDashboard();
+        updateDashboard();
       } finally {
         deckMutationsInProgress.delete(String(subject || "").trim());
         inFlightDeckMutations.delete(mutation);
@@ -3102,8 +3089,7 @@
         const normalizedSubject = String(subject || "").trim();
         if (pendingDeckPayloadRefreshes.has(normalizedSubject)) {
           const summaryEntry = (state.categorySummary || []).find(
-            (deck) =>
-              String(deck?.Subject || "").trim() === normalizedSubject,
+            (deck) => String(deck?.Subject || "").trim() === normalizedSubject,
           );
           const expectedPayloadVersion = String(
             summaryEntry?.PayloadVersion || "",
@@ -3114,7 +3100,9 @@
             );
           }
           if (typeof AppNetwork.getPayloadFingerprint !== "function") {
-            throw new Error("Backend payload fingerprint verification is unavailable.");
+            throw new Error(
+              "Backend payload fingerprint verification is unavailable.",
+            );
           }
           const receivedPayloadVersion =
             await AppNetwork.getPayloadFingerprint(newQuestions);
@@ -3249,8 +3237,7 @@
         if (
           suppressRender &&
           (state.session?.active ||
-            (isReviewViewActive() &&
-              getCurrentReviewSubject() === subject))
+            (isReviewViewActive() && getCurrentReviewSubject() === subject))
         ) {
           return [];
         }
@@ -3312,10 +3299,7 @@
           throw err;
         }
         if (!suppressRender) {
-          showToast(
-            getDeckFetchFailureMessage(subject, err),
-            "error",
-          );
+          showToast(getDeckFetchFailureMessage(subject, err), "error");
         }
         return [];
       } finally {
@@ -3783,7 +3767,8 @@
         "WARNING: Are you sure you want to clear the locally saved database? You will need an active internet connection to sync the questions again. The app will reload to apply changes.",
         "Clear Local Database",
       );
-      if (!confirmed || clearAppDataInProgress || appDataClearInProgress) return;
+      if (!confirmed || clearAppDataInProgress || appDataClearInProgress)
+        return;
       await Promise.allSettled([...inFlightDeckMutations]);
       appDataClearInProgress = true;
       appDataClearGeneration += 1;
@@ -4030,7 +4015,10 @@
           ? JSON.parse(storedSession)
           : storedSession;
     } catch (error) {
-      appLogger.error("Unable to check saved quiz progress for refresh.", error);
+      appLogger.error(
+        "Unable to check saved quiz progress for refresh.",
+        error,
+      );
       return false;
     }
 
@@ -4050,8 +4038,7 @@
       answers &&
       typeof answers === "object" &&
       Object.values(answers).some(
-        (answer) =>
-          answer !== null && answer !== undefined && answer !== "",
+        (answer) => answer !== null && answer !== undefined && answer !== "",
       );
 
     return (
@@ -4292,15 +4279,10 @@
   }
 
   function setActiveDeckSessionPreference(mode, key, value, subject) {
-    if (
-      rootScope.setDeckSessionSetting?.(mode, key, value, subject) === true
-    ) {
+    if (rootScope.setDeckSessionSetting?.(mode, key, value, subject) === true) {
       return true;
     }
-    showToast(
-      "Open a deck session before changing this setting.",
-      "warning",
-    );
+    showToast("Open a deck session before changing this setting.", "warning");
     return false;
   }
 
@@ -4358,8 +4340,7 @@
     const session = state.session;
     if (!session?.active || !Array.isArray(session.questions)) return false;
 
-    const subject =
-      session.questions[session.currentIndex]?.Subject || "";
+    const subject = session.questions[session.currentIndex]?.Subject || "";
     if (!subject) {
       showToast("Unable to determine the current quiz deck.", "error");
       return false;
@@ -4569,7 +4550,9 @@
       }
       try {
         if ((await saveState("prefs")) !== false) return true;
-        appLogger.error("Unable to save study progress before switching modes.");
+        appLogger.error(
+          "Unable to save study progress before switching modes.",
+        );
       } catch (error) {
         appLogger.error(
           "Unable to save study progress before switching modes.",
@@ -4767,9 +4750,7 @@
     if (!normalizedSubject || typeof document === "undefined") return;
 
     document
-      .querySelectorAll(
-        "[data-deck-key], [data-tree-key], [data-folder-key]",
-      )
+      .querySelectorAll("[data-deck-key], [data-tree-key], [data-folder-key]")
       .forEach((element) => {
         const key =
           element.dataset.deckKey ||
@@ -4806,43 +4787,46 @@
   }
 
   function setDeckEntryInteractionsLocked(isLocked) {
-      if (typeof document === "undefined") return;
+    if (typeof document === "undefined") return;
 
-      if (isLocked) {
-        if (deckEntryInteractionSnapshots) return;
-        deckEntryInteractionSnapshots = Array.from(
-          document.querySelectorAll("body"),
-        ).map((element) => ({
-          element,
-          wasInert: element.hasAttribute("inert"),
-          previousAriaBusy: element.getAttribute("aria-busy"),
-        }));
-        deckEntryInteractionSnapshots.forEach(({ element }) => {
-          element.setAttribute("inert", "");
-          element.setAttribute("aria-busy", "true");
-        });
-        return;
-      }
+    if (isLocked) {
+      if (deckEntryInteractionSnapshots) return;
+      deckEntryInteractionSnapshots = Array.from(
+        document.querySelectorAll("body"),
+      ).map((element) => ({
+        element,
+        wasInert: element.hasAttribute("inert"),
+        previousAriaBusy: element.getAttribute("aria-busy"),
+      }));
+      deckEntryInteractionSnapshots.forEach(({ element }) => {
+        element.setAttribute("inert", "");
+        element.setAttribute("aria-busy", "true");
+      });
+      return;
+    }
 
-      if (!deckEntryInteractionSnapshots) return;
-      deckEntryInteractionSnapshots.forEach(
-        ({ element, wasInert, previousAriaBusy }) => {
-          if (!wasInert) element.removeAttribute("inert");
-          if (previousAriaBusy === null) {
-            element.removeAttribute("aria-busy");
-          } else {
-            element.setAttribute("aria-busy", previousAriaBusy);
-          }
-        },
-      );
-      deckEntryInteractionSnapshots = null;
+    if (!deckEntryInteractionSnapshots) return;
+    deckEntryInteractionSnapshots.forEach(
+      ({ element, wasInert, previousAriaBusy }) => {
+        if (!wasInert) element.removeAttribute("inert");
+        if (previousAriaBusy === null) {
+          element.removeAttribute("aria-busy");
+        } else {
+          element.setAttribute("aria-busy", previousAriaBusy);
+        }
+      },
+    );
+    deckEntryInteractionSnapshots = null;
   }
 
   let deckPasswordTransitionSnapshots = null;
   let deckPasswordControlSnapshots = null;
   let deckPasswordPreviousAriaBusy = null;
 
-  function setDeckPasswordTransitionLoading(isLoading, statusText = "Loading...") {
+  function setDeckPasswordTransitionLoading(
+    isLoading,
+    statusText = "Loading...",
+  ) {
     const modal = document.getElementById("deck-password-modal");
     if (!modal) return;
 
@@ -4878,8 +4862,7 @@
         )
           .filter(
             (control) =>
-              control.id !== "btn-submit-deck-password" &&
-              !control.disabled,
+              control.id !== "btn-submit-deck-password" && !control.disabled,
           )
           .map((control) => {
             control.disabled = true;
@@ -5025,9 +5008,7 @@
     const element =
       source || document.getElementById("toggle-shuffle-questions");
     const isChecked = element ? element.checked : true;
-    if (
-      !setActiveDeckSessionPreference("quiz", "shuffleQuestions", isChecked)
-    )
+    if (!setActiveDeckSessionPreference("quiz", "shuffleQuestions", isChecked))
       return;
     saveState();
     syncPreferenceControls();
@@ -5127,10 +5108,7 @@
                 await resumeSession(pass, { allowResume: true });
               } else if (pendingDeckAction === "resume-review") {
                 if (pendingPracticeReviewSwitch) {
-                  await continuePracticeReviewSwitch(
-                    pendingDeckSubject,
-                    pass,
-                  );
+                  await continuePracticeReviewSwitch(pendingDeckSubject, pass);
                 } else {
                   await reviewDeck(pendingDeckSubject, pass);
                 }
@@ -5145,7 +5123,10 @@
               }
               if (input?.value === pass) closeDeckPasswordModal();
             } catch (error) {
-              appLogger.error("Unable to continue after password verification.", error);
+              appLogger.error(
+                "Unable to continue after password verification.",
+                error,
+              );
               if (
                 /incorrect password/i.test(String(error?.message || "")) ||
                 String(error?.code || "").toUpperCase() === "PASSWORD_REQUIRED"
@@ -5270,10 +5251,8 @@
     let currentState = state.prefs.qToggles[qId];
     if (currentState === undefined) {
       currentState =
-        rootScope.getDeckSessionSetting?.(
-          "study",
-          "showWrongChoices",
-        ) !== false;
+        rootScope.getDeckSessionSetting?.("study", "showWrongChoices") !==
+        false;
     }
 
     state.prefs.qToggles[qId] = !currentState;
@@ -5380,10 +5359,9 @@
 
   async function changeQuestionTypeMode(mode) {
     const normalizedMode = String(mode || "auto").toLowerCase();
-    const subject =
-      state.session?.active
-        ? state.session.questions?.[state.session.currentIndex]?.Subject
-        : "";
+    const subject = state.session?.active
+      ? state.session.questions?.[state.session.currentIndex]?.Subject
+      : "";
     const currentOverride =
       rootScope.getDeckSessionSetting?.("quiz", "qTypeOverride", subject) ||
       state.prefs.qTypeOverride;
@@ -5492,11 +5470,7 @@
         );
         return;
       }
-      await syncDatabase(
-        true,
-        true,
-        String(status.syncTimestamp || "").trim(),
-      );
+      await syncDatabase(true, true, String(status.syncTimestamp || "").trim());
     } catch (error) {
       appLogger.warn(
         "[CACHE] Unable to synchronize the notified backend payload update.",
@@ -5921,17 +5895,16 @@
               if (sessionRoute.mode === "study" && sessionRoute.subject) {
                 currentAppMode = "review";
                 syncPreferenceControls();
-                restored = await reviewDeck(
-                  sessionRoute.subject,
-                  null,
-                  true,
-                );
+                restored = await reviewDeck(sessionRoute.subject, null, true);
               } else if (sessionRoute.mode === "quiz") {
                 restored = await resumeSession(null, { allowResume: true });
               }
             } catch (error) {
               restoreFailedWithError = true;
-              appLogger.error("Unable to restore the session from its URL.", error);
+              appLogger.error(
+                "Unable to restore the session from its URL.",
+                error,
+              );
               showToast(
                 "This session could not be restored. Return to the deck and start a new session.",
                 "warning",
@@ -5942,10 +5915,9 @@
 
           const passwordPending =
             shouldRestore &&
-            ((sessionRoute.mode === "quiz" &&
-              pendingDeckAction === "resume") ||
-            (sessionRoute.mode === "study" &&
-              pendingDeckAction === "resume-review"));
+            ((sessionRoute.mode === "quiz" && pendingDeckAction === "resume") ||
+              (sessionRoute.mode === "study" &&
+                pendingDeckAction === "resume-review"));
           if (!restored && !passwordPending) {
             globalScope.updateNavigationUrl?.(state.currentPath || [], {
               replace: true,
@@ -6034,8 +6006,7 @@
   let reviewerSignOutStorageListenerInstalled = false;
   const REVIEWER_STATUS_POLL_INTERVAL_MS = 5000;
   const REVIEWER_EXPLICIT_SIGNOUT_KEY = "mrh_reviewer_explicit_signout_v1";
-  const REVIEWER_EXPLICIT_SIGNOUT_COOKIE =
-    "mrh_reviewer_explicit_signout_v1";
+  const REVIEWER_EXPLICIT_SIGNOUT_COOKIE = "mrh_reviewer_explicit_signout_v1";
   const REVIEWER_SESSION_STORAGE_KEY = "mrh_reviewer_session_v1";
   const REVIEWER_PROFILE_CACHE_KEY = "mrh_reviewer_profile_v1";
   const REVIEWER_PROFILE_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -6077,10 +6048,7 @@
       throw new Error(
         "The reviewer sign-in service returned an invalid session.",
       );
-    globalScope.localStorage.setItem(
-      REVIEWER_SESSION_STORAGE_KEY,
-      sessionId,
-    );
+    globalScope.localStorage.setItem(REVIEWER_SESSION_STORAGE_KEY, sessionId);
   }
 
   function clearStoredReviewerSession() {
@@ -6130,6 +6098,11 @@
         middleInitial: String(cached.middleInitial || "").slice(0, 10),
         lastName: String(cached.lastName || "").slice(0, 100),
         picture: getReviewerProfilePictureUrl(cached.picture),
+        accountStatus: ["TRUE", "FALSE", "DENIED", "NOT_FOUND"].includes(
+          cached.accountStatus,
+        )
+          ? cached.accountStatus
+          : "",
       };
     } catch {
       return null;
@@ -6148,6 +6121,11 @@
           middleInitial: String(response.middleInitial || "").slice(0, 10),
           lastName: String(response.lastName || "").slice(0, 100),
           picture: getReviewerProfilePictureUrl(response.picture),
+          accountStatus: ["TRUE", "FALSE", "DENIED", "NOT_FOUND"].includes(
+            response.accountStatus,
+          )
+            ? response.accountStatus
+            : "",
           cachedAt: Date.now(),
         }),
       );
@@ -6229,11 +6207,8 @@
     )
       return;
     signOutReviewer(false);
-    const authStatus = document.getElementById(
-      "resource-reviewer-auth-status",
-    );
-    if (authStatus)
-      authStatus.textContent = "Signed out in another tab.";
+    const authStatus = document.getElementById("resource-reviewer-auth-status");
+    if (authStatus) authStatus.textContent = "Signed out in another tab.";
   }
 
   function installReviewerSignOutStorageListener() {
@@ -6242,10 +6217,7 @@
       typeof globalScope.addEventListener !== "function"
     )
       return;
-    globalScope.addEventListener(
-      "storage",
-      handleReviewerSignOutStorageChange,
-    );
+    globalScope.addEventListener("storage", handleReviewerSignOutStorageChange);
     reviewerSignOutStorageListenerInstalled = true;
   }
 
@@ -6273,10 +6245,7 @@
     let persisted = false;
     try {
       if (signedOut)
-        globalScope.localStorage.setItem(
-          REVIEWER_EXPLICIT_SIGNOUT_KEY,
-          "true",
-        );
+        globalScope.localStorage.setItem(REVIEWER_EXPLICIT_SIGNOUT_KEY, "true");
       else globalScope.localStorage.removeItem(REVIEWER_EXPLICIT_SIGNOUT_KEY);
       persisted = true;
     } catch (error) {
@@ -6367,13 +6336,35 @@
   }
 
   function setReviewerNavigationBusy() {
-    const button = document.getElementById(
-      "resource-dashboard-reviewers-nav",
-    );
+    const button = document.getElementById("resource-dashboard-reviewers-nav");
     button?.removeAttribute("aria-busy");
   }
 
+  function setReviewerDashboardFiltersDisabled(disabled) {
+    document
+      .querySelectorAll(
+        ".resource-dashboard-filters [data-filter-value], .resource-dashboard-filters [data-category]",
+      )
+      .forEach((button) => {
+        if (disabled) {
+          if (!("reviewerLoadingDisabled" in button.dataset))
+            button.dataset.reviewerLoadingDisabled = String(button.disabled);
+          button.disabled = true;
+        } else if ("reviewerLoadingDisabled" in button.dataset) {
+          button.disabled = button.dataset.reviewerLoadingDisabled === "true";
+          delete button.dataset.reviewerLoadingDisabled;
+        }
+        button.setAttribute("aria-disabled", String(button.disabled));
+      });
+  }
+
   function showReviewerDashboardLoading(clearRows = false) {
+    const yearControl = document.getElementById(
+      "resource-dashboard-filter-year",
+    );
+    const semesterControl = document.getElementById(
+      "resource-dashboard-filter-semester",
+    );
     const filters = document
       .getElementById("resource-dashboard-filter-year")
       ?.closest(".resource-dashboard-filters");
@@ -6382,6 +6373,27 @@
     );
     if (filters) filters.hidden = false;
     if (categoryFilter) categoryFilter.hidden = false;
+    const addLoadingOptions = (control, values, selectedValue) => {
+      if (!control || control.querySelector("button")) return;
+      control.replaceChildren(
+        ...values.map((value) => {
+          const button = createResourceDashboardElement(
+            "button",
+            value === selectedValue ? "is-active" : "",
+            value === "all" ? "All" : value,
+          );
+          button.type = "button";
+          button.dataset.filterValue = value;
+          button.disabled = true;
+          button.setAttribute("aria-disabled", "true");
+          button.setAttribute("aria-pressed", String(value === selectedValue));
+          return button;
+        }),
+      );
+    };
+    addLoadingOptions(yearControl, ["all", "1", "2", "3"], "3");
+    addLoadingOptions(semesterControl, ["all", "1", "2"], "2");
+    setReviewerDashboardFiltersDisabled(true);
     if (clearRows) {
       document
         .getElementById("resource-dashboard-table-head")
@@ -6445,9 +6457,7 @@
     const dashboardContent = document.getElementById(
       "resource-dashboard-content",
     );
-    const profileScreen = document.getElementById(
-      "resource-dashboard-profile",
-    );
+    const profileScreen = document.getElementById("resource-dashboard-profile");
     const lockedPanel = document.getElementById(
       "resource-reviewers-locked-panel",
     );
@@ -6562,8 +6572,7 @@
         fileName,
         fileId,
       };
-      if (reviewerSessionId)
-        payload.sessionId = reviewerSessionId;
+      if (reviewerSessionId) payload.sessionId = reviewerSessionId;
       await globalScope.AppNetwork.callBackend(payload, {
         timeoutMs: 15000,
         maxRetries: 0,
@@ -6583,12 +6592,8 @@
   function renderResourceDashboardTab() {
     const tab = resourceDashboardData?.[resourceDashboardActiveTab];
     const status = document.getElementById("resource-portal-status");
-    const tableHead = document.getElementById(
-      "resource-dashboard-table-head",
-    );
-    const tableBody = document.getElementById(
-      "resource-dashboard-table-body",
-    );
+    const tableHead = document.getElementById("resource-dashboard-table-head");
+    const tableBody = document.getElementById("resource-dashboard-table-body");
     if (!status || !tableHead || !tableBody) return false;
     const lockedPanel = document.getElementById(
       "resource-reviewers-locked-panel",
@@ -6596,10 +6601,13 @@
     const updateNote = document.querySelector(
       ".resource-dashboard-update-note",
     );
-    if (
-      resourceDashboardActiveTab === "REVIEWERS" &&
-      !reviewerSessionId
-    ) {
+    if (resourceDashboardActiveTab === "REVIEWERS" && !reviewerSessionId) {
+      if (reviewerSessionRestorePending) {
+        if (lockedPanel) lockedPanel.hidden = true;
+        if (updateNote) updateNote.hidden = true;
+        showReviewerDashboardLoading(true);
+        return true;
+      }
       if (lockedPanel) lockedPanel.hidden = false;
       if (updateNote) updateNote.hidden = true;
       const filters = document
@@ -6612,6 +6620,7 @@
       return true;
     }
     if (!tab) return false;
+    setReviewerDashboardFiltersDisabled(false);
     if (lockedPanel) lockedPanel.hidden = true;
     if (updateNote)
       updateNote.hidden =
@@ -6653,8 +6662,7 @@
               name: String(column).trim().toLocaleLowerCase(),
             }))
             .filter(
-              ({ name }) =>
-                !["year", "semester", "course"].includes(name),
+              ({ name }) => !["year", "semester", "course"].includes(name),
             )
             .map(({ index }) => index);
     const hasCellValue = (values, rowIndex, columnIndex) => {
@@ -6700,10 +6708,9 @@
             button.dataset.category === "all" ||
             availableCategories.has(button.dataset.category);
           button.disabled = !hasCategoryFilter || !categoryAvailable;
-          button.setAttribute(
-            "aria-disabled",
-            String(button.disabled),
-          );
+          if (button.dataset.reviewerLoadingDisabled !== undefined)
+            button.dataset.reviewerLoadingDisabled = String(button.disabled);
+          button.setAttribute("aria-disabled", String(button.disabled));
           const selected =
             button.dataset.category === resourceDashboardSelectedCategory;
           button.setAttribute("aria-pressed", String(selected));
@@ -6735,8 +6742,7 @@
     if (semesterFilterContainer)
       semesterFilterContainer.hidden = !hasTermFilter && !showCategoryFilter;
     if (filterContainer)
-      filterContainer.hidden =
-        !showCategoryFilter && !hasTermFilter;
+      filterContainer.hidden = !showCategoryFilter && !hasTermFilter;
     const populateTermOptions = (
       control,
       values,
@@ -6747,8 +6753,9 @@
       fixedValues = [],
     ) => {
       if (!control) return selectedValue;
-      const sortedValues = [...new Set([...fixedValues, ...values])].sort((left, right) =>
-        left.localeCompare(right, undefined, { numeric: true }),
+      const sortedValues = [...new Set([...fixedValues, ...values])].sort(
+        (left, right) =>
+          left.localeCompare(right, undefined, { numeric: true }),
       );
       const validSelection =
         selectedValue === "all" && includeAll
@@ -6774,8 +6781,7 @@
         button.type = "button";
         button.dataset.filterValue = value;
         button.setAttribute("aria-pressed", String(value === validSelection));
-        button.disabled =
-          disabled || (value !== "all" && !values.has(value));
+        button.disabled = disabled || (value !== "all" && !values.has(value));
         return button;
       });
       control.replaceChildren(...buttons);
@@ -6798,7 +6804,16 @@
         (year === preferredYear && semester <= preferredSemester)
       );
     });
+    const nextAvailableTerm = orderedTerms.find((term) => {
+      const [year, semester] = term.split(".").map(Number);
+      return (
+        year > preferredYear ||
+        (year === preferredYear && semester > preferredSemester)
+      );
+    });
     const defaultTerm =
+      (termValues.has(preferredTerm) ? preferredTerm : "") ||
+      nextAvailableTerm ||
       availablePreviousTerms[availablePreviousTerms.length - 1] ||
       orderedTerms[0] ||
       "";
@@ -6841,8 +6856,8 @@
           )
           .map((term) => term.split(".")[1]),
       );
-      const orderedSemesters = [...semesters].sort((left, right) =>
-        Number(left) - Number(right),
+      const orderedSemesters = [...semesters].sort(
+        (left, right) => Number(left) - Number(right),
       );
       const previousSemesters = orderedSemesters.filter(
         (semester) => Number(semester) <= preferredSemester,
@@ -6866,37 +6881,33 @@
       !hasCategoryFilter || resourceDashboardSelectedCategory === "all"
         ? -1
         : phaseColumnIndexes[resourceDashboardSelectedCategory];
-    const visibleRows = nonEmptyRows
-      .filter(({ values, rowIndex }) => {
-        if (
-          hasCategoryFilter &&
-          resourceDashboardSelectedCategory !== "all"
-        ) {
-          if (selectedPhaseColumnIndex === undefined) return false;
-          const phaseValue = String(
-            values[selectedPhaseColumnIndex] ?? "",
-          ).trim();
-          const phaseLink = String(
-            tab.links?.[rowIndex]?.[selectedPhaseColumnIndex] || phaseValue,
-          );
-          if (!phaseValue && !isResourceDashboardLink(phaseLink)) return false;
-        }
-        if (!hasTermFilter || resourceDashboardSelectedYear === "all")
-          return true;
-        const yearValue = String(values[yearColumnIndex] || "").trim();
-        const combinedTerm = /^(\d+)\s*[./-]\s*(\d+)$/.exec(yearValue);
-        const year = combinedTerm ? combinedTerm[1] : yearValue;
-        const semester = combinedTerm
-          ? combinedTerm[2]
-          : semesterColumnIndex >= 0
-            ? String(values[semesterColumnIndex] || "").trim()
-            : "";
-        return (
-          year === resourceDashboardSelectedYear &&
-          (resourceDashboardSelectedSemester === "all" ||
-            semester === resourceDashboardSelectedSemester)
+    const visibleRows = nonEmptyRows.filter(({ values, rowIndex }) => {
+      if (hasCategoryFilter && resourceDashboardSelectedCategory !== "all") {
+        if (selectedPhaseColumnIndex === undefined) return false;
+        const phaseValue = String(
+          values[selectedPhaseColumnIndex] ?? "",
+        ).trim();
+        const phaseLink = String(
+          tab.links?.[rowIndex]?.[selectedPhaseColumnIndex] || phaseValue,
         );
-      });
+        if (!phaseValue && !isResourceDashboardLink(phaseLink)) return false;
+      }
+      if (!hasTermFilter || resourceDashboardSelectedYear === "all")
+        return true;
+      const yearValue = String(values[yearColumnIndex] || "").trim();
+      const combinedTerm = /^(\d+)\s*[./-]\s*(\d+)$/.exec(yearValue);
+      const year = combinedTerm ? combinedTerm[1] : yearValue;
+      const semester = combinedTerm
+        ? combinedTerm[2]
+        : semesterColumnIndex >= 0
+          ? String(values[semesterColumnIndex] || "").trim()
+          : "";
+      return (
+        year === resourceDashboardSelectedYear &&
+        (resourceDashboardSelectedSemester === "all" ||
+          semester === resourceDashboardSelectedSemester)
+      );
+    });
     const populatedColumnIndices = tab.columns
       .map((_, columnIndex) => columnIndex)
       .filter((columnIndex) =>
@@ -7023,9 +7034,9 @@
     });
 
     const selectedYearName = {
-      "1": "First",
-      "2": "Second",
-      "3": "Third",
+      1: "First",
+      2: "Second",
+      3: "Third",
     }[resourceDashboardSelectedYear];
     const selectedTerm =
       resourceDashboardSelectedYear === "all"
@@ -7035,16 +7046,15 @@
             ? `${selectedYearName} Year`
             : `Year Level ${resourceDashboardSelectedYear} (all semesters)`
           : `Year Level ${resourceDashboardSelectedYear}.${resourceDashboardSelectedSemester}`;
-    status.textContent =
-      hasTermFilter
-        ? `Showing ${visibleRows.length} of ${nonEmptyRows.length} rows for ${selectedTerm}.${
-            tab.truncated ? " (first 2,000 loaded)" : ""
-          }`
-        : `${nonEmptyRows.length} ${
-            nonEmptyRows.length === 1 ? "row" : "rows"
-          }${tab.truncated ? " (showing the first 2,000)" : ""}`;
+    status.textContent = hasTermFilter
+      ? `Showing ${visibleRows.length} of ${nonEmptyRows.length} rows for ${selectedTerm}.${
+          tab.truncated ? " (first 2,000 loaded)" : ""
+        }`
+      : `${nonEmptyRows.length} ${
+          nonEmptyRows.length === 1 ? "row" : "rows"
+        }${tab.truncated ? " (showing the first 2,000)" : ""}`;
     status.removeAttribute("aria-busy");
-      status.classList?.remove("resource-dashboard-status-stacked");
+    status.classList?.remove("resource-dashboard-status-stacked");
     return true;
   }
 
@@ -7086,10 +7096,7 @@
       "visibilitychange",
       refreshResourceDashboardIfNeeded,
     );
-    globalScope.addEventListener(
-      "pageshow",
-      refreshResourceDashboardIfNeeded,
-    );
+    globalScope.addEventListener("pageshow", refreshResourceDashboardIfNeeded);
     globalScope.addEventListener("focus", refreshResourceDashboardIfNeeded);
     resourceDashboardAutoRefreshEventsInstalled = true;
   }
@@ -7142,9 +7149,7 @@
         });
       categoryFilterControl.dataset.initialized = "true";
     }
-    const signoutButton = document.getElementById(
-      "resource-reviewer-signout",
-    );
+    const signoutButton = document.getElementById("resource-reviewer-signout");
     if (signoutButton && !signoutButton.dataset.initialized) {
       signoutButton.addEventListener("click", signOutReviewer);
       signoutButton.dataset.initialized = "true";
@@ -7163,6 +7168,78 @@
       cancelEditButton.addEventListener("click", closeReviewerProfileEditor);
       cancelEditButton.dataset.initialized = "true";
     }
+    [
+      document.getElementById("resource-reviewer-last-name"),
+      document.getElementById("resource-reviewer-first-name"),
+    ].forEach((input) => {
+      if (!input || input.dataset.nameCapitalizationInitialized) return;
+      input.addEventListener("input", () => normalizeReviewerNameInput(input));
+      input.dataset.nameCapitalizationInitialized = "true";
+    });
+    const middleInitialInput = document.getElementById(
+      "resource-reviewer-middle-initial",
+    );
+    if (
+      middleInitialInput &&
+      !middleInitialInput.dataset.middleInitialInitialized
+    ) {
+      middleInitialInput.addEventListener("input", (event) =>
+        normalizeReviewerMiddleInitialInput(middleInitialInput, event),
+      );
+      middleInitialInput.dataset.middleInitialInitialized = "true";
+    }
+  }
+
+  function capitalizeReviewerName(value) {
+    return String(value || "")
+      .toLocaleLowerCase()
+      .replace(
+        /(^|[\s'’\-])(\p{L})/gu,
+        (_, separator, letter) => `${separator}${letter.toLocaleUpperCase()}`,
+      );
+  }
+
+  function normalizeReviewerIdentityText(value) {
+    return String(value || "")
+      .normalize("NFKD")
+      .replace(/\p{M}/gu, "")
+      .toLocaleLowerCase()
+      .replace(/[^\p{L}\p{N}]/gu, "");
+  }
+
+  function reviewerEmailMatchesName(email, firstName, middleInitial, lastName) {
+    const localPart = normalizeReviewerIdentityText(
+      String(email || "").split("@")[0],
+    );
+    const nameParts = [firstName, middleInitial, lastName]
+      .map(normalizeReviewerIdentityText)
+      .filter((part) => part.length >= 3);
+    if (nameParts.some((part) => localPart.includes(part))) return true;
+    const initials = [firstName, middleInitial, lastName]
+      .map(normalizeReviewerIdentityText)
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join("");
+    return initials.length >= 2 && localPart.includes(initials);
+  }
+
+  function normalizeReviewerNameInput(input) {
+    const selectionStart = input.selectionStart;
+    const selectionEnd = input.selectionEnd;
+    const normalized = capitalizeReviewerName(input.value);
+    if (normalized === input.value) return;
+    input.value = normalized;
+    if (typeof selectionStart === "number" && typeof selectionEnd === "number")
+      input.setSelectionRange(selectionStart, selectionEnd);
+  }
+
+  function normalizeReviewerMiddleInitialInput(input, event) {
+    const normalized = input.value.toLocaleUpperCase().replace(/[^A-Z.]/g, "");
+    const letters = normalized.replace(/\./g, "");
+    input.value =
+      letters.length === 1 && !event?.inputType?.startsWith("delete")
+        ? `${letters}.`
+        : normalized;
   }
 
   function openReviewerProfileEditor() {
@@ -7174,6 +7251,10 @@
     if (!form) return;
     reviewerProfileEditing = true;
     form.hidden = false;
+    const profileDetails = document.getElementById(
+      "resource-profile-account-details",
+    );
+    if (profileDetails) profileDetails.hidden = true;
     if (cancelButton) cancelButton.hidden = false;
     if (submitButton) submitButton.textContent = "Save changes for approval";
     document.getElementById("resource-reviewer-first-name")?.focus();
@@ -7188,8 +7269,13 @@
     if (!form) return;
     reviewerProfileEditing = false;
     form.hidden = true;
+    const profileDetails = document.getElementById(
+      "resource-profile-account-details",
+    );
+    if (profileDetails) profileDetails.hidden = false;
     if (cancelButton) cancelButton.hidden = true;
-    if (submitButton) submitButton.textContent = "Submit for administrator review";
+    if (submitButton)
+      submitButton.textContent = "Submit for administrator review";
     form.querySelectorAll("input").forEach((input) => {
       input.value = input.dataset.savedValue || "";
     });
@@ -7352,8 +7438,9 @@
           );
           if (typeof globalScope.ResizeObserver === "function") {
             reviewerSignInButtonResizeObserver?.disconnect();
-            reviewerSignInButtonResizeObserver =
-              new globalScope.ResizeObserver(renderResponsiveSignInButton);
+            reviewerSignInButtonResizeObserver = new globalScope.ResizeObserver(
+              renderResponsiveSignInButton,
+            );
             reviewerSignInButtonResizeObserver.observe(signInButton);
           }
         }
@@ -7363,8 +7450,7 @@
           !reviewerSessionId &&
           !reviewerPendingEnrollmentSessionId
         )
-          authStatus.textContent =
-            "Use Google to sign in and request Reviewer access.";
+          authStatus.textContent = "Use Google to sign in and request access";
         reviewerAuthCheckPending =
           !hasExplicitReviewerSignOut() && !getStoredReviewerSessionId();
         if (reviewerAuthCheckPending) {
@@ -7380,8 +7466,8 @@
             setReviewerNavigationBusy(
               Boolean(
                 reviewerPendingEnrollmentSessionId ||
-                  reviewerSessionId ||
-                  reviewerSessionRestorePending,
+                reviewerSessionId ||
+                reviewerSessionRestorePending,
               ),
             );
             authStatus?.removeAttribute("aria-busy");
@@ -7389,14 +7475,8 @@
               !reviewerSessionId &&
               !reviewerPendingEnrollmentSessionId &&
               resourceDashboardActiveTab === "REVIEWERS"
-            ) {
-              if (authStatus)
-                authStatus.textContent =
-                  "Google sign-in was not completed. Open Profile to sign in.";
-              setResourceDashboardStatus(
-                "",
-              );
-            }
+            )
+              setResourceDashboardStatus("");
           });
         } else {
           setReviewerNavigationBusy(
@@ -7420,9 +7500,7 @@
           error,
         );
         if (resourceDashboardActiveTab === "REVIEWERS")
-          setResourceDashboardStatus(
-            `Google sign-in is unavailable: ${String(error?.message || error)}`,
-          );
+          renderResourceDashboardTab();
         return false;
       }
     })();
@@ -7439,8 +7517,7 @@
   async function restoreReviewerSession(requestedSessionId = "") {
     if (reviewerSessionRestorePromise) return reviewerSessionRestorePromise;
     if (hasExplicitReviewerSignOut()) return false;
-    const sessionId =
-      requestedSessionId || getStoredReviewerSessionId();
+    const sessionId = requestedSessionId || getStoredReviewerSessionId();
     if (!sessionId) return false;
     if (reviewerSessionId === sessionId) return true;
 
@@ -7453,9 +7530,7 @@
       "resource-reviewer-signin-button",
     );
     if (signInButton) signInButton.hidden = true;
-    const authStatus = document.getElementById(
-      "resource-reviewer-auth-status",
-    );
+    const authStatus = document.getElementById("resource-reviewer-auth-status");
     authStatus?.removeAttribute("aria-busy");
     if (resourceDashboardActiveTab === "REVIEWERS")
       showReviewerDashboardLoading(true);
@@ -7497,9 +7572,7 @@
           );
           if (retryButton) retryButton.hidden = false;
           if (resourceDashboardActiveTab === "REVIEWERS")
-            setResourceDashboardStatus(
-              "Unable to verify your saved reviewer session. Open Profile to retry.",
-            );
+            setReviewerDashboardFiltersDisabled(false);
           (globalScope.DebugUtils || console).error(
             "Unable to restore the saved reviewer session.",
             error,
@@ -7513,6 +7586,11 @@
             Boolean(reviewerSessionId || reviewerPendingEnrollmentSessionId),
           );
           authStatus?.removeAttribute("aria-busy");
+          if (
+            !reviewerSessionId &&
+            resourceDashboardActiveTab === "REVIEWERS"
+          )
+            renderResourceDashboardTab();
         }
       }
     })();
@@ -7534,7 +7612,7 @@
       reviewersNav.setAttribute("aria-label", "Reviewers");
       reviewersNav.title = enabled
         ? "Open reviewer resources"
-        : "Sign in to request Reviewer access";
+        : "Sign in to request access";
     }
   }
 
@@ -7590,7 +7668,10 @@
       .join(" ");
     if (profileName) profileName.textContent = displayName || email;
     if (profileEmail) profileEmail.textContent = email;
-    if (profileDetails) profileDetails.hidden = false;
+    if (profileDetails)
+      profileDetails.hidden =
+        reviewerProfileEditing || response.accountStatus === "NOT_FOUND";
+    renderReviewerProfileAccessStatus(response.accountStatus);
     const pictureUrl = getReviewerProfilePictureUrl(response.picture);
     reviewerProfilePictureUrl = pictureUrl;
     [profilePicture, headerProfilePicture].forEach((image) => {
@@ -7612,6 +7693,42 @@
     if (headerProfileIcon) headerProfileIcon.hidden = Boolean(pictureUrl);
   }
 
+  function renderReviewerProfileAccessStatus(accountStatus) {
+    const status = document.getElementById("resource-profile-access-status");
+    if (!status) return;
+    const statusPresentation = {
+      TRUE: {
+        label: "ACCESS GRANTED",
+        className: "is-granted",
+        icon: "fa-check",
+      },
+      FALSE: {
+        label: "ACCESS PENDING",
+        className: "is-pending",
+        icon: "fa-triangle-exclamation",
+      },
+      DENIED: {
+        label: "ACCESS DENIED",
+        className: "is-denied",
+        icon: "fa-xmark",
+      },
+    }[accountStatus];
+    status.className =
+      `resource-profile-access-status ${statusPresentation?.className || ""}`.trim();
+    status.replaceChildren();
+    if (!statusPresentation) {
+      status.hidden = true;
+      return;
+    }
+    const icon = document.createElement("i");
+    icon.className = `fa-solid ${statusPresentation.icon}`;
+    icon.setAttribute("aria-hidden", "true");
+    const label = document.createElement("span");
+    label.textContent = statusPresentation.label;
+    status.append(icon, label);
+    status.hidden = false;
+  }
+
   function applyReviewerAccountStatus(
     response,
     sessionId,
@@ -7621,9 +7738,7 @@
       response?.status !== "success" ||
       typeof response.email !== "string" ||
       !response.email.trim() ||
-      !["TRUE", "FALSE", "DENIED", "NOT_FOUND"].includes(
-        response.accountStatus,
-      )
+      !["TRUE", "FALSE", "DENIED", "NOT_FOUND"].includes(response.accountStatus)
     ) {
       throw new Error(
         "The reviewer approval service returned invalid account status.",
@@ -7634,6 +7749,9 @@
     const authStatus = document.getElementById("resource-reviewer-auth-status");
     authStatus?.removeAttribute("aria-busy");
     const form = document.getElementById("resource-reviewer-enrollment-form");
+    const profileDetails = document.getElementById(
+      "resource-profile-account-details",
+    );
     const formButton = form?.querySelector('button[type="submit"]');
     const editProfileButton = document.getElementById(
       "resource-reviewer-edit-profile",
@@ -7647,16 +7765,26 @@
     const retryButton = document.getElementById(
       "resource-reviewer-retry-verification",
     );
-    const signoutButton = document.getElementById(
-      "resource-reviewer-signout",
-    );
+    const signoutButton = document.getElementById("resource-reviewer-signout");
     const inputs = {
       lastName: document.getElementById("resource-reviewer-last-name"),
       firstName: document.getElementById("resource-reviewer-first-name"),
-      middleInitial: document.getElementById("resource-reviewer-middle-initial"),
+      middleInitial: document.getElementById(
+        "resource-reviewer-middle-initial",
+      ),
     };
     const keepProfileEditorOpen =
       preserveProfileEditor && reviewerProfileEditing;
+    const preserveEnrollmentDraft =
+      keepProfileEditorOpen ||
+      (form &&
+        !form.hidden &&
+        Object.values(inputs).some(
+          (input) =>
+            input &&
+            input.dataset.savedValue !== undefined &&
+            input.value !== input.dataset.savedValue,
+        ));
     reviewerAuthorizedEmail = response.email;
     if (!reviewerVerificationRetryToken)
       reviewerVerificationRetryAvailable = false;
@@ -7678,16 +7806,17 @@
     if (signoutButton) signoutButton.hidden = false;
     if (keepProfileEditorOpen) {
       if (form) form.hidden = false;
+      if (profileDetails) profileDetails.hidden = true;
       if (cancelEditButton) cancelEditButton.hidden = false;
       if (formButton) formButton.textContent = "Save changes for approval";
     } else {
       reviewerProfileEditing = false;
+      if (profileDetails) profileDetails.hidden = accountStatus === "NOT_FOUND";
       if (form)
         form.hidden = !(
           accountStatus === "NOT_FOUND" || accountStatus === "DENIED"
         );
-      if (editProfileButton)
-        editProfileButton.hidden = !["TRUE", "FALSE"].includes(accountStatus);
+      if (editProfileButton) editProfileButton.hidden = accountStatus !== "FALSE";
       if (cancelEditButton) cancelEditButton.hidden = true;
       if (formButton)
         formButton.textContent =
@@ -7696,34 +7825,25 @@
             : response.profileUpdated
               ? "Save changes for approval"
               : "Submit for administrator review";
-      if (accountStatus === "NOT_FOUND") {
+      if (!preserveEnrollmentDraft) {
+        if (accountStatus === "NOT_FOUND") {
+          Object.values(inputs).forEach((input) => {
+            if (input) input.value = "";
+          });
+        } else {
+          if (inputs.lastName) inputs.lastName.value = response.lastName || "";
+          if (inputs.firstName)
+            inputs.firstName.value = response.firstName || "";
+          if (inputs.middleInitial)
+            inputs.middleInitial.value = response.middleInitial || "";
+        }
         Object.values(inputs).forEach((input) => {
-          if (input) input.value = "";
+          if (input) input.dataset.savedValue = input.value;
         });
-      } else {
-        if (inputs.lastName) inputs.lastName.value = response.lastName || "";
-        if (inputs.firstName) inputs.firstName.value = response.firstName || "";
-        if (inputs.middleInitial)
-          inputs.middleInitial.value = response.middleInitial || "";
       }
-      Object.values(inputs).forEach((input) => {
-        if (input) input.dataset.savedValue = input.value;
-      });
     }
-    const messages = {
-      TRUE: "",
-      FALSE: "Awaiting administrator approval.",
-      DENIED: "Invalid credentials. Correct your name, then resubmit.",
-      NOT_FOUND: "Enter your name to request Reviewer access.",
-    };
-    if (authStatus) authStatus.textContent = messages[accountStatus];
-    if (response.profileUpdated && authStatus)
-      authStatus.textContent =
-        "Name updated. Reviewer access is locked until approval.";
-    if (
-      accountStatus !== "TRUE" &&
-      resourceDashboardActiveTab === "REVIEWERS"
-    )
+    if (authStatus) authStatus.textContent = "";
+    if (accountStatus !== "TRUE" && resourceDashboardActiveTab === "REVIEWERS")
       openResourceDashboardTab("PROFILE");
     return accountStatus === "TRUE";
   }
@@ -7738,7 +7858,8 @@
         authGeneration !== reviewerAuthGeneration ||
         (sessionId !== reviewerPendingEnrollmentSessionId &&
           sessionId !== reviewerSessionId)
-      ) return;
+      )
+        return;
       if (reviewerStatusPollInFlight) {
         scheduleReviewerStatusPolling(sessionId);
         return;
@@ -7758,18 +7879,18 @@
         applyReviewerAccountStatus(response, sessionId, true);
       } catch (error) {
         if (authGeneration !== reviewerAuthGeneration) return;
-        const authStatus = document.getElementById("resource-reviewer-auth-status");
+        const authStatus = document.getElementById(
+          "resource-reviewer-auth-status",
+        );
         if (isDefinitivelyInvalidReviewerCredential(error)) {
-          const retryCredential =
-            reviewerVerificationRetryToken
-              ? reviewerVerificationRetryToken
-              : "";
+          const retryCredential = reviewerVerificationRetryToken
+            ? reviewerVerificationRetryToken
+            : "";
           signOutReviewer(false);
           if (authStatus)
-            authStatus.textContent =
-              retryCredential
-                ? "Your saved reviewer session expired. Retry verification of your new Google sign-in."
-                : "Your reviewer session expired. Sign in with Google again to check reviewer approval.";
+            authStatus.textContent = retryCredential
+              ? "Your saved reviewer session expired. Retry verification of your new Google sign-in."
+              : "Your reviewer session expired. Sign in with Google again to check reviewer approval.";
           if (retryCredential) {
             reviewerVerificationRetryToken = retryCredential;
             reviewerVerificationRetryAvailable = true;
@@ -7799,19 +7920,12 @@
   }
 
   async function completeReviewerSignIn(idToken) {
-    const authStatus = document.getElementById(
-      "resource-reviewer-auth-status",
-    );
+    const authStatus = document.getElementById("resource-reviewer-auth-status");
     if (!idToken) {
       setReviewerNavigationBusy(false);
       authStatus?.removeAttribute("aria-busy");
       if (authStatus)
-        authStatus.textContent =
-          "Google sign-in did not return a credential.";
-      if (resourceDashboardActiveTab === "REVIEWERS")
-        setResourceDashboardStatus(
-          "Google sign-in did not return a credential. Open Profile to sign in again.",
-        );
+        authStatus.textContent = "Use Google to sign in and request access.";
       return false;
     }
     if (reviewerVerificationInFlightToken === idToken) return false;
@@ -7833,7 +7947,11 @@
     }
     try {
       const response = await globalScope.AppNetwork.callBackend(
-        { type: "verify_reviewer_access", idToken, eventId: createResourceEventId() },
+        {
+          type: "verify_reviewer_access",
+          idToken,
+          eventId: createResourceEventId(),
+        },
         { timeoutMs: 30000, maxRetries: 0 },
       );
       if (
@@ -7878,12 +7996,6 @@
               "Google sign-in expired or is no longer valid. Sign in with Google again.";
           promptReviewerReauthentication();
         }
-        if (resourceDashboardActiveTab === "REVIEWERS")
-          setResourceDashboardStatus(
-            previousSessionId
-              ? "The new Google sign-in could not be verified. Your existing sign-in remains active."
-              : "Google sign-in expired or is no longer valid. Open Profile to sign in again.",
-          );
       } else {
         reviewerVerificationInFlightToken = "";
         reviewerVerificationRetryToken = idToken;
@@ -7898,17 +8010,9 @@
             "Google sign-in could not be verified right now. " +
             (previousSessionId ? "Your existing sign-in is retained; " : "") +
             "retry verification or use Google sign-in again.";
-        if (resourceDashboardActiveTab === "REVIEWERS")
-          setResourceDashboardStatus(
-            previousSessionId
-              ? "Google sign-in could not be verified right now. Your existing sign-in is retained; retry from Profile."
-              : "Google sign-in could not be verified right now. Retry from Profile.",
-          );
-        if (previousSessionId)
-          scheduleReviewerStatusPolling(previousSessionId);
+        if (previousSessionId) scheduleReviewerStatusPolling(previousSessionId);
       }
-      if (authStatus)
-        authStatus.removeAttribute("aria-busy");
+      if (authStatus) authStatus.removeAttribute("aria-busy");
       (globalScope.DebugUtils || console).error(
         "Unable to verify reviewer account approval.",
         error,
@@ -7930,9 +8034,7 @@
   async function requestReviewerEnrollment(event) {
     event.preventDefault();
     const form = event.currentTarget;
-    const authStatus = document.getElementById(
-      "resource-reviewer-auth-status",
-    );
+    const authStatus = document.getElementById("resource-reviewer-auth-status");
     const submitButton = form.querySelector('button[type="submit"]');
     const enrollmentSessionId =
       reviewerPendingEnrollmentSessionId || reviewerSessionId;
@@ -7942,13 +8044,48 @@
           "Sign in with Google before submitting your profile.";
       return false;
     }
-    const formData = new FormData(form);
-    const lastName = String(formData.get("lastName") || "").trim();
-    const firstName = String(formData.get("firstName") || "").trim();
-    const middleInitial = String(formData.get("middleInitial") || "").trim();
-    if (!lastName || !firstName) {
+    const lastNameInput = document.getElementById(
+      "resource-reviewer-last-name",
+    );
+    const firstNameInput = document.getElementById(
+      "resource-reviewer-first-name",
+    );
+    const middleInitialInput = document.getElementById(
+      "resource-reviewer-middle-initial",
+    );
+    if (lastNameInput)
+      lastNameInput.value = capitalizeReviewerName(lastNameInput.value).trim();
+    if (firstNameInput)
+      firstNameInput.value = capitalizeReviewerName(
+        firstNameInput.value,
+      ).trim();
+    if (middleInitialInput)
+      normalizeReviewerMiddleInitialInput(middleInitialInput);
+    const lastName = String(lastNameInput?.value || "").trim();
+    const firstName = String(firstNameInput?.value || "").trim();
+    const middleInitial = String(middleInitialInput?.value || "").trim();
+    if (!lastName || !firstName || !/^[A-Z]\.$/.test(middleInitial)) {
       if (authStatus)
-        authStatus.textContent = "Enter your last name and first name.";
+        authStatus.textContent =
+          !lastName || !firstName
+            ? "Enter your last name and first name."
+            : "Middle Initial must be one letter followed by a period, for example K.";
+      if (!lastName) lastNameInput?.focus();
+      else if (!firstName) firstNameInput?.focus();
+      else middleInitialInput?.focus();
+      return false;
+    }
+    if (
+      !reviewerEmailMatchesName(
+        reviewerAuthorizedEmail,
+        firstName,
+        middleInitial,
+        lastName,
+      )
+    ) {
+      if (authStatus)
+        authStatus.textContent =
+          "The signed-in Google email does not appear to match this name. Use an email containing part of your first or last name, or matching initials.";
       return false;
     }
     const authGeneration = ++reviewerAuthGeneration;
@@ -7982,8 +8119,7 @@
         !["FALSE", "TRUE"].includes(response.accountStatus)
       )
         throw new Error(
-          response?.message ||
-            "The profile request was not saved as pending.",
+          response?.message || "The profile request was not saved as pending.",
         );
       applyReviewerAccountStatus(
         {
@@ -8064,9 +8200,7 @@
         { type: "sign_out_reviewer", sessionId },
         { timeoutMs: 15000, maxRetries: 0 },
       ).catch((error) => {
-        const status = document.getElementById(
-          "resource-reviewer-auth-status",
-        );
+        const status = document.getElementById("resource-reviewer-auth-status");
         if (status)
           status.textContent =
             "Signed out in this browser, but the server could not revoke the session. Try signing out again while online.";
@@ -8129,9 +8263,7 @@
     const signInButton = document.getElementById(
       "resource-reviewer-signin-button",
     );
-    const signoutButton = document.getElementById(
-      "resource-reviewer-signout",
-    );
+    const signoutButton = document.getElementById("resource-reviewer-signout");
     const retryButton = document.getElementById(
       "resource-reviewer-retry-verification",
     );
@@ -8169,9 +8301,7 @@
       headerProfilePicture.removeAttribute("src");
     }
     if (headerProfileIcon) headerProfileIcon.hidden = false;
-    const authStatus = document.getElementById(
-      "resource-reviewer-auth-status",
-    );
+    const authStatus = document.getElementById("resource-reviewer-auth-status");
     if (authStatus)
       authStatus.textContent = signOutPreferenceSaved
         ? "Signed out. Reviewer data has been cleared from this page."
@@ -8219,12 +8349,8 @@
     const requestSessionId = reviewerSessionId;
     setReviewerNavigationBusy(true);
     const status = document.getElementById("resource-portal-status");
-    const tableHead = document.getElementById(
-      "resource-dashboard-table-head",
-    );
-    const tableBody = document.getElementById(
-      "resource-dashboard-table-body",
-    );
+    const tableHead = document.getElementById("resource-dashboard-table-head");
+    const tableBody = document.getElementById("resource-dashboard-table-body");
     if (!status || !tableHead || !tableBody) {
       setReviewerNavigationBusy(false);
       return false;
@@ -8259,7 +8385,8 @@
       if (
         response?.status !== "success" ||
         typeof response.email !== "string" ||
-        response.email.toLowerCase() !== reviewerAuthorizedEmail.toLowerCase() ||
+        response.email.toLowerCase() !==
+          reviewerAuthorizedEmail.toLowerCase() ||
         !Array.isArray(response.tab?.columns) ||
         !Array.isArray(response.tab?.rows) ||
         !response.tab.rows.every(Array.isArray)
@@ -8294,9 +8421,9 @@
         signOutReviewer(false);
         setResourceDashboardStatus(
           error.code === "UNAUTHORIZED" ||
-          error.code === "SESSION_EXPIRED" ||
-          error.code === "SESSION_INVALID" ||
-          error.code === "SESSION_REVOKED"
+            error.code === "SESSION_EXPIRED" ||
+            error.code === "SESSION_INVALID" ||
+            error.code === "SESSION_REVOKED"
             ? "Your reviewer session expired or was revoked. Sign in with Google again to view reviewer resources."
             : "This account is no longer authorized for reviewer resources.",
         );
@@ -8338,6 +8465,7 @@
         requestGeneration === reviewerDashboardRequestGeneration &&
         resourceDashboardActiveTab === "REVIEWERS"
       ) {
+        setReviewerDashboardFiltersDisabled(false);
         status.removeAttribute("aria-busy");
         status.classList?.remove("resource-dashboard-status-stacked");
       }
@@ -8360,7 +8488,9 @@
     const syllabusColumnIndex = reviewerTab
       ? reviewerTab.columns.findIndex((column) =>
           ["syllabus", "course syllabus"].includes(
-            String(column || "").trim().toLowerCase(),
+            String(column || "")
+              .trim()
+              .toLowerCase(),
           ),
         )
       : -1;
@@ -8371,10 +8501,16 @@
         );
       }
       const yearColumnIndex = reviewerTab.columns.findIndex(
-        (column) => String(column || "").trim().toLowerCase() === "year",
+        (column) =>
+          String(column || "")
+            .trim()
+            .toLowerCase() === "year",
       );
       const courseColumnIndex = reviewerTab.columns.findIndex(
-        (column) => String(column || "").trim().toLowerCase() === "course",
+        (column) =>
+          String(column || "")
+            .trim()
+            .toLowerCase() === "course",
       );
       if (syllabusColumnIndex >= 0) {
         const syllabusRowIndexes = reviewerTab.rows
@@ -8385,7 +8521,9 @@
         const selectRows = (rows, indexes, columns) =>
           indexes
             .filter((index) => Array.isArray(rows[index]))
-            .map((index) => columns.map((columnIndex) => rows[index][columnIndex] || ""));
+            .map((index) =>
+              columns.map((columnIndex) => rows[index][columnIndex] || ""),
+            );
         normalized.SYLLABUS = {
           columns: ["Year", "Course", "COURSE SYLLABUS"],
           rows: selectRows(reviewerTab.rows, syllabusRowIndexes, [
@@ -8447,19 +8585,14 @@
       hasValidReviewerTab;
     if (isCurrentAuthorizedReviewerTab)
       return { ...tabs, REVIEWERS: reviewerTab };
-    if (reviewerDashboardLoadedForEmail)
-      reviewerDashboardLoadedForEmail = "";
+    if (reviewerDashboardLoadedForEmail) reviewerDashboardLoadedForEmail = "";
     return tabs;
   }
 
   async function loadResourceDashboard({ silent = false } = {}) {
     const status = document.getElementById("resource-portal-status");
-    const tableHead = document.getElementById(
-      "resource-dashboard-table-head",
-    );
-    const tableBody = document.getElementById(
-      "resource-dashboard-table-body",
-    );
+    const tableHead = document.getElementById("resource-dashboard-table-head");
+    const tableBody = document.getElementById("resource-dashboard-table-body");
     if (!status || !tableHead || !tableBody) return false;
     if (resourceDashboardLoadingPromise) return resourceDashboardLoadingPromise;
     resourceDashboardLastRefreshAt = Date.now();
@@ -8471,10 +8604,7 @@
     const keepReviewerStatus = resourceDashboardActiveTab === "REVIEWERS";
     let cachedDashboard = null;
     if (typeof storage?.getStoredJSON === "function") {
-      const stored = storage.getStoredJSON(
-        RESOURCE_DASHBOARD_CACHE_KEY,
-        null,
-      );
+      const stored = storage.getStoredJSON(RESOURCE_DASHBOARD_CACHE_KEY, null);
       const hasValidCachedTab = (tab) =>
         Array.isArray(tab?.columns) &&
         Array.isArray(tab?.rows) &&
@@ -8499,7 +8629,9 @@
             if (!removed) {
               (globalScope.DebugUtils || console).error(
                 "Unable to remove reviewer data from the cached dashboard.",
-                new Error("The browser dashboard cache could not be sanitized."),
+                new Error(
+                  "The browser dashboard cache could not be sanitized.",
+                ),
               );
             }
           }
@@ -8532,9 +8664,7 @@
           {
             type: "get_resource_dashboard",
             eventId: createResourceEventId(),
-            ...(reviewerSessionId
-              ? { sessionId: reviewerSessionId }
-              : {}),
+            ...(reviewerSessionId ? { sessionId: reviewerSessionId } : {}),
             ...(cachedDashboard ? { version: cachedDashboard.version } : {}),
           },
           { timeoutMs: 30000, maxRetries: 0 },
@@ -8546,10 +8676,7 @@
             );
           }
           renderResourceDashboardTab();
-          if (
-            reviewerSessionId &&
-            resourceDashboardActiveTab === "REVIEWERS"
-          )
+          if (reviewerSessionId && resourceDashboardActiveTab === "REVIEWERS")
             return loadReviewerDashboard({ refresh: true });
           return true;
         }
@@ -8558,9 +8685,7 @@
             {
               type: "get_resource_dashboard",
               eventId: createResourceEventId(),
-              ...(reviewerSessionId
-                ? { sessionId: reviewerSessionId }
-                : {}),
+              ...(reviewerSessionId ? { sessionId: reviewerSessionId } : {}),
             },
             { timeoutMs: 30000, maxRetries: 0 },
           );
@@ -8587,10 +8712,7 @@
           }
         }
         renderResourceDashboardTab();
-        if (
-          reviewerSessionId &&
-          resourceDashboardActiveTab === "REVIEWERS"
-        )
+        if (reviewerSessionId && resourceDashboardActiveTab === "REVIEWERS")
           return loadReviewerDashboard({ refresh: true });
         return true;
       } catch (error) {
@@ -8604,8 +8726,7 @@
         );
         return false;
       } finally {
-        if (!silent && !keepReviewerStatus)
-          status.removeAttribute("aria-busy");
+        if (!silent && !keepReviewerStatus) status.removeAttribute("aria-busy");
         resourceDashboardLoadingPromise = null;
       }
     })();
@@ -8614,9 +8735,7 @@
 
   function removeCachedResourcePortalListings() {
     const storage = globalScope.StorageUtils;
-    if (
-      typeof storage?.removeSessionStoredItemsByPrefix !== "function"
-    ) {
+    if (typeof storage?.removeSessionStoredItemsByPrefix !== "function") {
       throw new Error("Resource listing cleanup is unavailable.");
     }
     storage.removeSessionStoredItemsByPrefix("resource_portal_listing_");
@@ -8689,7 +8808,9 @@
     const status = document.getElementById("resource-portal-status");
     if (!list || !status) return 0;
 
-    const normalizedQuery = String(query || "").trim().toLocaleLowerCase();
+    const normalizedQuery = String(query || "")
+      .trim()
+      .toLocaleLowerCase();
     let visibleCount = 0;
     list.querySelectorAll(".resource-portal-row").forEach((row) => {
       const matches =
@@ -8716,20 +8837,14 @@
   }
 
   function renderResourcePortalBreadcrumbs(breadcrumbs) {
-    const navigation = document.getElementById(
-      "resource-portal-breadcrumbs",
-    );
+    const navigation = document.getElementById("resource-portal-breadcrumbs");
     if (!navigation) return;
 
     navigation.replaceChildren();
     breadcrumbs.forEach((crumb, index) => {
       if (index > 0) {
         navigation.appendChild(
-          createResourcePortalElement(
-            "span",
-            "text-gray-400",
-            "/",
-          ),
+          createResourcePortalElement("span", "text-gray-400", "/"),
         );
       }
 
@@ -8764,10 +8879,7 @@
 
     list.replaceChildren();
     items.forEach((item) => {
-      const row = createResourcePortalElement(
-        "li",
-        "resource-portal-row",
-      );
+      const row = createResourcePortalElement("li", "resource-portal-row");
       row.dataset.search = String(item.name || "").toLocaleLowerCase();
       const icon = createResourcePortalElement(
         "i",
@@ -8806,10 +8918,7 @@
         );
         previewButton.type = "button";
         previewButton.addEventListener("click", () => {
-          void previewResourceFile(
-            item.id,
-            item.name,
-          );
+          void previewResourceFile(item.id, item.name);
         });
 
         nameCell.appendChild(previewButton);
@@ -8829,7 +8938,11 @@
                 : mimeType === "application/vnd.google-apps.presentation"
                   ? "Google Slides"
                   : String(item.name || "").includes(".")
-                    ? String(item.name).split(".").pop().slice(0, 8).toUpperCase()
+                    ? String(item.name)
+                        .split(".")
+                        .pop()
+                        .slice(0, 8)
+                        .toUpperCase()
                     : "File";
       row.appendChild(
         createResourcePortalElement(
@@ -8868,9 +8981,7 @@
     const preview = document.getElementById("resource-portal-preview");
     const title = document.getElementById("resource-portal-preview-title");
     const frame = document.getElementById("resource-portal-preview-frame");
-    const status = document.getElementById(
-      "resource-portal-preview-status",
-    );
+    const status = document.getElementById("resource-portal-preview-status");
     if (!preview || !title || !frame) return false;
 
     preview.classList.remove("is-expanded");
@@ -8881,10 +8992,12 @@
       expandButton.setAttribute("aria-pressed", "false");
       expandButton.setAttribute("aria-label", "Expand online viewer");
       expandButton.title = "Expand viewer";
-      expandButton.querySelector("i")?.classList.replace(
-        "fa-compress",
-        "fa-up-right-and-down-left-from-center",
-      );
+      expandButton
+        .querySelector("i")
+        ?.classList.replace(
+          "fa-compress",
+          "fa-up-right-and-down-left-from-center",
+        );
     }
     const previewGeneration = ++resourcePortalPreviewGeneration;
     if (resourcePortalPreviewObjectUrl) {
@@ -8914,7 +9027,8 @@
         !/^[A-Za-z0-9+/]*={0,2}$/.test(response.data)
       ) {
         throw new Error(
-          response?.message || "The preview service returned invalid file data.",
+          response?.message ||
+            "The preview service returned invalid file data.",
         );
       }
 
@@ -9006,9 +9120,7 @@
     resourcePortalPreviewGeneration += 1;
     const preview = document.getElementById("resource-portal-preview");
     const frame = document.getElementById("resource-portal-preview-frame");
-    const status = document.getElementById(
-      "resource-portal-preview-status",
-    );
+    const status = document.getElementById("resource-portal-preview-status");
     if (frame) frame.removeAttribute("src");
     if (resourcePortalPreviewObjectUrl) {
       URL.revokeObjectURL(resourcePortalPreviewObjectUrl);

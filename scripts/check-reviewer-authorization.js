@@ -22,7 +22,7 @@ const accountRows = [
     "Middle Initial",
     "Active",
   ],
-  ["reviewer@example.com", oldDeviceId, "Reviewer", "Rita", "A", "TRUE"],
+  ["reviewer@example.com", oldDeviceId, "Reviewer", "Rita", "A.", "TRUE"],
 ];
 const legacyAccountRows = [
   [
@@ -38,7 +38,7 @@ const legacyAccountRows = [
     oldDeviceId.toUpperCase(),
     "Reviewer",
     "Rita",
-    "A",
+    "A.",
     "TRUE",
   ],
   [
@@ -75,7 +75,7 @@ const reviewerLogs = [
     oldDeviceId,
     "Reviewer",
     "Rita",
-    "A",
+    "A.",
     "SIGN_IN:TRUE",
   ],
   [
@@ -94,6 +94,7 @@ const appendedRows = {
   REVIEWERS: [],
   "SIGN-IN": [],
 };
+const sentReviewerEmails = [];
 
 function createSheet(rows) {
   return {
@@ -199,6 +200,12 @@ const context = {
   Math,
   Date,
   Logger: { log() {} },
+  MailApp: {
+    getRemainingDailyQuota: () => 100,
+    sendEmail(message) {
+      sentReviewerEmails.push(message);
+    },
+  },
   PropertiesService: {
     getScriptProperties: () => ({
       getProperty: (key) => properties.get(key) || "",
@@ -333,11 +340,25 @@ vm.createContext(context);
 vm.runInContext(fs.readFileSync("backend/main.js", "utf8"), context, {
   filename: "backend/main.js",
 });
+assert.equal(
+  context.authorizeMRHReviewerStatusEmails(),
+  100,
+  "the owner should be able to authorize the send-mail permission explicitly",
+);
 
 const clientId = "1234567890-example.apps.googleusercontent.com";
 const appVersion = JSON.parse(
   fs.readFileSync("version.json", "utf8"),
 ).buildVersion;
+const appsScriptManifest = JSON.parse(
+  fs.readFileSync("backend/appsscript.json", "utf8"),
+);
+assert.ok(
+  appsScriptManifest.oauthScopes.includes(
+    "https://www.googleapis.com/auth/script.send_mail",
+  ),
+  "reviewer status notification email requires the explicit Apps Script mail scope",
+);
 const validClaims = (email) => ({
   aud: clientId,
   iss: "https://accounts.google.com",
@@ -404,7 +425,7 @@ assert.deepEqual(Array.from(accountRows[1]), [
   "reviewer@example.com",
   "Reviewer",
   "Rita",
-  "A",
+  "A.",
   "TRUE",
 ]);
 assert.equal(accountRows[2][0], "second-reviewer@example.com");
@@ -436,13 +457,21 @@ assert.equal(
   true,
   "setup should create the OAuth scope-monitoring worksheet",
 );
+assert.ok(
+  sheets.SCOPES.getRange(2, 1, 6, 1)
+    .getDisplayValues()
+    .some(
+      (row) => row[0] === "https://www.googleapis.com/auth/script.send_mail",
+    ),
+  "the OAuth scope worksheet should document reviewer notification email",
+);
 const accountRowsBeforeConflict = accountRows.map((row) => Array.from(row));
 const reviewerLogsBeforeConflict = reviewerLogs.map((row) => Array.from(row));
 accountRows.push([
   "reviewer@example.com",
   "Conflicting",
   "Rita",
-  "A",
+  "A.",
   "TRUE",
 ]);
 assert.throws(
@@ -480,7 +509,7 @@ assert.deepEqual(
     accountStatus: "TRUE",
     email: "reviewer@example.com",
     firstName: "Rita",
-    middleInitial: "A",
+    middleInitial: "A.",
     lastName: "Reviewer",
   },
 );
@@ -505,6 +534,11 @@ assert.equal(
   }).email,
   "reviewer@example.com",
   "account status polling should validate an application session",
+);
+assert.equal(
+  sentReviewerEmails.length,
+  0,
+  "the first observed status should establish a baseline without sending email",
 );
 assert.equal(appendedRows["SIGN-IN"][1][5], "SIGN_IN:TRUE");
 assert.equal(appendedRows["SIGN-IN"][1].length, 6);
@@ -627,13 +661,44 @@ const notFound = post(
   authRequest("verify_reviewer_access", "new-user-token", eventId("2")),
 );
 assert.equal(notFound.accountStatus, "NOT_FOUND");
-const submission = post({
+const invalidMiddleInitial = post({
   type: "request_reviewer_enrollment",
   idToken: "new-user-token",
   eventId: eventId("3"),
+  lastName: "Reviewer",
+  firstName: "New",
+  middleInitial: "PP",
+});
+assert.equal(
+  invalidMiddleInitial.code,
+  "BAD_REQUEST",
+  "the backend must reject a middle initial that is not one letter and a period",
+);
+const mismatchedNameSubmission = post({
+  type: "request_reviewer_enrollment",
+  idToken: "new-user-token",
+  eventId: eventId("4"),
   lastName: "Dela Cruz",
   firstName: "Maria",
-  middleInitial: "P",
+  middleInitial: "P.",
+});
+assert.equal(
+  mismatchedNameSubmission.code,
+  "EMAIL_NAME_MISMATCH",
+  "a substantially mismatched name and verified email should be rejected",
+);
+assert.equal(
+  accountRows.some((row) => row[0] === "new-reviewer@example.com"),
+  false,
+  "a mismatched name must not be saved for administrator review",
+);
+const submission = post({
+  type: "request_reviewer_enrollment",
+  idToken: "new-user-token",
+  eventId: eventId("5"),
+  lastName: "Reviewer",
+  firstName: "New",
+  middleInitial: "p.",
 });
 assert.deepEqual(
   [submission.status, submission.accountStatus, submission.active],
@@ -642,16 +707,16 @@ assert.deepEqual(
 );
 assert.deepEqual(Array.from(accountRows.at(-1)), [
   "new-reviewer@example.com",
-  "Dela Cruz",
-  "Maria",
-  "P",
+  "Reviewer",
+  "New",
+  "P.",
   "FALSE",
 ]);
 assert.equal(
   post({
     type: "log_module_access",
     idToken: "new-user-token",
-    eventId: eventId("4"),
+    eventId: eventId("5"),
   }).code,
   "ACCOUNT_PENDING",
   "pending users must not access protected modules",
@@ -664,17 +729,30 @@ assert.equal(
   "FALSE",
   "pending status should be visible to polling",
 );
+assert.equal(
+  sentReviewerEmails.length,
+  1,
+  "a new enrollment should email the verified address that access is pending",
+);
+assert.deepEqual(
+  [sentReviewerEmails[0]?.to, sentReviewerEmails[0]?.subject],
+  [
+    "new-reviewer@example.com",
+    "Maritime Review Hub reviewer access pending",
+  ],
+);
 const duplicatePending = post({
   type: "request_reviewer_enrollment",
   idToken: "new-user-token",
-  eventId: eventId("5"),
-  lastName: "Changed",
-  firstName: "Name",
+  eventId: eventId("6"),
+  lastName: "Reviewer",
+  firstName: "Changed",
+  middleInitial: "P.",
 });
 assert.equal(duplicatePending.accountStatus, "FALSE");
 assert.deepEqual(
   Array.from(accountRows.find((row) => row[0] === "new-reviewer@example.com")),
-  ["new-reviewer@example.com", "Changed", "Name", "", "FALSE"],
+  ["new-reviewer@example.com", "Reviewer", "Changed", "P.", "FALSE"],
   "a pending user can edit their name while remaining unapproved",
 );
 assert.equal(
@@ -686,9 +764,9 @@ const pendingProfileEdit = post({
   type: "request_reviewer_enrollment",
   idToken: "new-user-token",
   eventId: eventId("a"),
-  lastName: "Dela Cruz",
-  firstName: "Maria",
-  middleInitial: "Q",
+  lastName: "Reviewer",
+  firstName: "New",
+  middleInitial: "Q.",
 });
 assert.equal(
   pendingProfileEdit.status,
@@ -701,7 +779,7 @@ assert.deepEqual(
     pendingProfileEdit.profileUpdated,
     accountRows.find((row) => row[0] === "new-reviewer@example.com")[3],
   ],
-  ["FALSE", true, "Q"],
+  ["FALSE", true, "Q."],
   "a pending user may edit their saved name without gaining access",
 );
 
@@ -718,6 +796,32 @@ assert.equal(
   "DENIED",
   "polling should observe administrator denial without stale account caching",
 );
+assert.deepEqual(
+  [
+    sentReviewerEmails.length,
+    sentReviewerEmails[1]?.to,
+    sentReviewerEmails[1]?.subject,
+  ],
+  [
+    2,
+    "new-reviewer@example.com",
+    "Maritime Review Hub reviewer access denied",
+  ],
+  "an administrator denial should email the verified account once",
+);
+cacheValues.clear();
+assert.equal(
+  post({
+    type: "get_reviewer_account_status",
+    idToken: "new-user-token",
+  }).accountStatus,
+  "DENIED",
+);
+assert.equal(
+  sentReviewerEmails.length,
+  2,
+  "repeated status polling must not resend a denial email",
+);
 assert.equal(
   post({
     type: "get_reviewer_dashboard",
@@ -731,16 +835,16 @@ const deniedSubmission = post({
   type: "request_reviewer_enrollment",
   idToken: "new-user-token",
   eventId: eventId("7"),
-  lastName: "Dela Cruz",
-  firstName: "Maria",
-  middleInitial: "",
+  lastName: "Reviewer",
+  firstName: "New",
+  middleInitial: "P.",
 });
 assert.equal(deniedSubmission.accountStatus, "FALSE");
 assert.deepEqual(Array.from(accountRows[newUserRow]), [
   "new-reviewer@example.com",
-  "Dela Cruz",
-  "Maria",
-  "",
+  "Reviewer",
+  "New",
+  "P.",
   "FALSE",
 ]);
 assert.equal(
@@ -750,6 +854,19 @@ assert.equal(
   }).accountStatus,
   "FALSE",
   "a corrected denied profile must return to pending review",
+);
+assert.deepEqual(
+  [
+    sentReviewerEmails.length,
+    sentReviewerEmails[2]?.to,
+    sentReviewerEmails[2]?.subject,
+  ],
+  [
+    3,
+    "new-reviewer@example.com",
+    "Maritime Review Hub reviewer access pending",
+  ],
+  "a corrected denied profile should email that access is pending again",
 );
 
 tokenClaims = validClaims("admin-added@example.com");
@@ -774,8 +891,9 @@ const cachedNotFoundSubmission = post({
   type: "request_reviewer_enrollment",
   idToken: "admin-added-token",
   eventId: eventId("b"),
-  lastName: "Updated",
-  firstName: "Account",
+  lastName: "Added",
+  firstName: "Admin",
+  middleInitial: "A.",
 });
 assert.equal(cachedNotFoundSubmission.accountStatus, "FALSE");
 assert.equal(
@@ -785,7 +903,7 @@ assert.equal(
 );
 assert.deepEqual(
   Array.from(accountRows.find((row) => row[0] === "admin-added@example.com")),
-  ["admin-added@example.com", "Updated", "Account", "", "FALSE"],
+  ["admin-added@example.com", "Added", "Admin", "A.", "FALSE"],
   "a fresh account match must update the correct row and reset approval",
 );
 
@@ -800,7 +918,7 @@ const unchangedApprovedProfile = post({
   eventId: eventId("b"),
   lastName: "Reviewer",
   firstName: "Rita",
-  middleInitial: "A",
+  middleInitial: "A.",
 });
 assert.equal(
   unchangedApprovedProfile.accountStatus,
@@ -811,15 +929,15 @@ const approvedProfileEdit = post({
   type: "request_reviewer_enrollment",
   idToken: "approved-token",
   eventId: eventId("c"),
-  lastName: "Updated",
-  firstName: "Rita",
-  middleInitial: "A",
+  lastName: "Reviewer",
+  firstName: "Updated",
+  middleInitial: "A.",
 });
 assert.deepEqual(
   [
     approvedProfileEdit.accountStatus,
     approvedProfileEdit.profileUpdated,
-    accountRows[existingReviewerRow][1],
+    accountRows[existingReviewerRow][2],
     accountRows[existingReviewerRow][4],
   ],
   ["FALSE", true, "Updated", "FALSE"],
@@ -843,6 +961,19 @@ assert.equal(
   }).accountStatus,
   "TRUE",
   "administrator approval should restore access after an edited profile is confirmed",
+);
+assert.deepEqual(
+  [
+    sentReviewerEmails.length,
+    sentReviewerEmails.at(-1)?.to,
+    sentReviewerEmails.at(-1)?.subject,
+  ],
+  [
+    6,
+    "reviewer@example.com",
+    "Maritime Review Hub reviewer access granted",
+  ],
+  "an administrator grant should email the verified account",
 );
 const reviewerDashboardRequest = () =>
   post({
@@ -914,13 +1045,14 @@ const shiftedAccountEdit = post({
   type: "request_reviewer_enrollment",
   idToken: "approved-token",
   eventId: eventId("c"),
-  lastName: "Correct",
-  firstName: "Row",
+  lastName: "Reviewer",
+  firstName: "Correct",
+  middleInitial: "C.",
 });
 assert.equal(shiftedAccountEdit.accountStatus, "FALSE");
 assert.deepEqual(
   Array.from(accountRows.find((row) => row[0] === "reviewer@example.com")),
-  ["reviewer@example.com", "Correct", "Row", "", "FALSE"],
+  ["reviewer@example.com", "Reviewer", "Correct", "C.", "FALSE"],
   "profile edits must use a fresh account row after sheet rows move",
 );
 assert.deepEqual(

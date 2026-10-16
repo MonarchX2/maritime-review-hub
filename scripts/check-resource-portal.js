@@ -54,18 +54,38 @@ assert.match(
 );
 assert.match(
   index,
-  /id="resource-dashboard-reviewers-nav"[^>]*onclick="openResourceDashboardTab\('REVIEWERS'\)"[^>]*aria-label="Reviewers"[\s\S]*?Reviewers\s*<\/button>[\s\S]*?id="resource-reviewers-locked-panel"[\s\S]*?fa-lock resource-reviewers-locked-icon[\s\S]*?Locked[\s\S]*?Sign in with Google to request Reviewer access/,
+  /id="resource-dashboard-reviewers-nav"[^>]*onclick="openResourceDashboardTab\('REVIEWERS'\)"[^>]*aria-label="Reviewers"[\s\S]*?Reviewers\s*<\/button>[\s\S]*?id="resource-reviewers-locked-panel"[\s\S]*?fa-lock resource-reviewers-locked-icon[\s\S]*?Locked[\s\S]*?Use Google to sign in and request access/,
   "the locked Reviewer panel should show a red lock, concise label, and Google sign-in prompt",
+);
+const lockedReviewerPanel =
+  index.match(
+    /<section[^>]*id="resource-reviewers-locked-panel"[^>]*>([\s\S]*?)<\/section>/,
+  )?.[1] || "";
+assert.equal(
+  [...lockedReviewerPanel.matchAll(/Use Google to sign in and request access/g)]
+    .length,
+  1,
+  "the locked Reviewer panel should show only the approved Google sign-in prompt",
 );
 assert.match(
   resourceStyles,
   /\.resource-reviewers-locked-icon\s*\{[^}]*color:\s*#dc2626;/,
   "the Reviewer lock icon should be red",
 );
+assert.match(
+  resourceStyles,
+  /\.resource-reviewers-locked-panel\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;/,
+  "the locked prompt background should span the dashboard content width",
+);
 assert.doesNotMatch(
   index,
   /or create a reviewer profile|to these resources\./,
   "the locked Reviewer prompt should not include the removed phrase or resource wording",
+);
+assert.doesNotMatch(
+  appCore,
+  /Sign in to request Reviewer access|Use Google to sign in and request Reviewer access|Google sign-in did not return a credential/,
+  "Reviewer sign-in guidance should not repeat the Reviewer label",
 );
 assert.match(
   index,
@@ -95,7 +115,10 @@ assert.match(
 assert.doesNotMatch(
   index.slice(
     index.indexOf('<aside class="resource-portal-sidebar"'),
-    index.indexOf("</aside>", index.indexOf('<aside class="resource-portal-sidebar"')),
+    index.indexOf(
+      "</aside>",
+      index.indexOf('<aside class="resource-portal-sidebar"'),
+    ),
   ),
   /resource-reviewer-signin-button|resource-reviewer-enrollment-form|resource-reviewer-signout/,
   "profile sign-in and settings controls should live in the Profile screen, not the tab header",
@@ -117,28 +140,115 @@ assert.match(
 );
 assert.match(
   index,
-  /Middle Initial \(optional\)/,
-  "profile should make the middle initial optional",
+  /resource-reviewer-form-warning[\s\S]*?False information will strictly not be entertained[\s\S]*?ignored and deleted[\s\S]*?verified Google email[\s\S]*?share at least one name part or matching initials/,
+  "the name form should warn against false details and require the matching Google identity",
 );
-assert.doesNotMatch(
-  index.match(/id="resource-reviewer-middle-initial"[\s\S]*?\/>/)?.[0] || "",
-  /\brequired\b/,
-  "the middle initial input must not be required",
+assert.match(
+  index,
+  /Middle Initial[\s\S]*?name="middleInitial"[\s\S]*?maxlength="2"[\s\S]*?pattern="\[A-Za-z\]\\\."[\s\S]*?required/,
+  "profile should require a middle initial consisting of one letter and a period",
+);
+const middleInitialNormalizer =
+  appCore.match(
+    /function normalizeReviewerMiddleInitialInput\(input, event\)[\s\S]*?(?=\n  function openReviewerProfileEditor)/,
+  )?.[0] || "";
+assert.ok(
+  middleInitialNormalizer.includes(
+    'input.value.toLocaleUpperCase().replace(/[^A-Z.]/g, "")',
+  ) &&
+    middleInitialNormalizer.includes(
+      'letters.length === 1 && !event?.inputType?.startsWith("delete")',
+    ) &&
+    middleInitialNormalizer.includes("`${letters}.`") &&
+    middleInitialNormalizer.includes(": normalized"),
+  "middle initials should uppercase and add their period while still allowing deletion",
+);
+assert.match(
+  appCore,
+  /function capitalizeReviewerName\(value\)[\s\S]*?toLocaleLowerCase\(\)[\s\S]*?function normalizeReviewerNameInput\(input\)[\s\S]*?capitalizeReviewerName\(input\.value\)/,
+  "first and last names should autocapitalize as the user types",
+);
+assert.match(
+  appCore,
+  /function reviewerEmailMatchesName\(email, firstName, middleInitial, lastName\)[\s\S]*?part\.length >= 3[\s\S]*?localPart\.includes\(part\)[\s\S]*?initials\.length >= 2 && localPart\.includes\(initials\)/,
+  "email/name matching should accept a meaningful name part or matching initials",
+);
+assert.match(
+  appCore,
+  /const preserveEnrollmentDraft =\s*keepProfileEditorOpen \|\|\s*\(form &&\s*!form\.hidden &&\s*Object\.values\(inputs\)\.some\([\s\S]*?input\.dataset\.savedValue !== undefined &&\s*input\.value !== input\.dataset\.savedValue[\s\S]*?if \(!preserveEnrollmentDraft\) \{[\s\S]*?accountStatus === "NOT_FOUND"/,
+  "account status refreshes should preserve edited enrollment fields while the form is open",
+);
+assert.match(
+  appCore,
+  /if \(!lastName \|\| !firstName \|\| !\/\^\[A-Z\]\\\.\$\/\.test\(middleInitial\)\)/,
+  "profile submission should reject a middle initial that is not one letter and a period",
+);
+const enrollmentHandler =
+  appCore.match(
+    /async function requestReviewerEnrollment\(event\)[\s\S]*?(?=\n  async function )/,
+  )?.[0] || "";
+assert.ok(
+  enrollmentHandler.includes(
+    'if (!lastName || !firstName || !/^[A-Z]\\.$/.test(middleInitial))',
+  ) &&
+    enrollmentHandler.indexOf(
+      'if (!lastName || !firstName || !/^[A-Z]\\.$/.test(middleInitial))',
+    ) < enrollmentHandler.indexOf("globalScope.AppNetwork.callBackend"),
+  "the frontend should reject invalid name formats before calling the backend",
+);
+assert.match(
+  appCore,
+  /if \(reviewerSessionRestorePending\) \{\s*if \(lockedPanel\) lockedPanel\.hidden = true;[\s\S]*?showReviewerDashboardLoading\(true\)/,
+  "session restoration should never display the Locked panel alongside Loading",
+);
+assert.match(
+  appCore,
+  /const preferredTerm = "3\.2"[\s\S]*?const nextAvailableTerm = orderedTerms\.find[\s\S]*?year > preferredYear[\s\S]*?semester > preferredSemester[\s\S]*?nextAvailableTerm/,
+  "the dashboard should default to 3.2, falling forward to the next available term",
+);
+assert.match(
+  index,
+  /id="resource-profile-access-status"[^>]*role="status"/,
+  "the profile should provide a live access-status badge below the email",
+);
+assert.ok(
+  [
+    "function renderReviewerProfileAccessStatus(accountStatus)",
+    'label: "ACCESS GRANTED"',
+    'label: "ACCESS PENDING"',
+    'label: "ACCESS DENIED"',
+    'icon: "fa-check"',
+    'icon: "fa-triangle-exclamation"',
+    'icon: "fa-xmark"',
+  ].every((marker) => appCore.includes(marker)),
+  "profile access states should show Granted, Pending, and Denied with their icons",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-reviewer-enrollment label > span\s*\{[^}]*font-weight:\s*700;/,
+  "Last Name, First Name, and Middle Initial labels should be bold",
 );
 assert.doesNotMatch(
   index,
   /Reviewer access requires administrator approval/,
   "the Profile screen should not display the reviewer access approval notice",
 );
-assert.match(
-  index,
-  /resource-profile-form-note[\s\S]*?correct capitalization[\s\S]*?Maria[\s\S]*?Dela Cruz/,
-  "profile should explain correct capitalization with a concise example",
+assert.doesNotMatch(
+  index.match(
+    /<form\s+id="resource-reviewer-enrollment-form"[\s\S]*?<\/form>/,
+  )?.[0] || "",
+  /resource-profile-form-note|correct capitalization|Dela Cruz/,
+  "the redundant form capitalization note should be removed",
 );
 assert.match(
   index,
-  /class="resource-profile-actions"[\s\S]*?id="resource-reviewer-edit-profile"[^>]*class="[^"]*resource-profile-edit-button"[^>]*hidden[\s\S]*?Edit\s*<\/button>[\s\S]*?id="resource-reviewer-signout"[^>]*class="[^"]*resource-profile-signout-button"[\s\S]*?Sign out/,
-  "Edit and Sign out should sit side by side as distinct profile actions",
+  /id="resource-profile-access-status"[^>]*hidden[\s\S]*?id="resource-reviewer-signout"[^>]*class="resource-profile-signout-button"[\s\S]*?Sign out[\s\S]*?class="resource-profile-actions"[\s\S]*?id="resource-reviewer-edit-profile"[^>]*class="[^"]*resource-profile-edit-button"/,
+  "Sign out should be centered below access status and separate from Edit",
+);
+assert.match(
+  appCore,
+  /editProfileButton\.hidden = accountStatus !== "FALSE"/,
+  "approved profiles should not show the Edit button",
 );
 assert.match(
   index,
@@ -157,11 +267,28 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-profile-actions\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*center;[\s\S]*?\.resource-profile-edit-button\s*\{[^}]*background:\s*#16a34a;[\s\S]*?\.resource-profile-signout-button\s*\{[^}]*background:\s*#dc2626;/,
-  "profile actions should be side by side with green Edit and red Sign out buttons",
+  /\.resource-profile-actions\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*center;[\s\S]*?\.resource-profile-edit-button\s*\{[^}]*background:\s*#16a34a;[\s\S]*?\.resource-profile-signout-button\s*\{[^}]*border:\s*0;[^}]*color:\s*#dc2626;[^}]*background:\s*transparent;/,
+  "Edit should remain a button while Sign out is red text without a background box",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-profile-avatar\s*\{[^}]*width:\s*7rem;[^}]*height:\s*7rem;/,
+  "the Profile picture should be larger",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-profile-account-details\s*\{[^}]*gap:\s*0;/,
+  "the full name and email should have no added vertical gap",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-profile-access-status\.is-granted\s*\{[^}]*background:\s*#dcfce7;[\s\S]*?\.resource-profile-access-status\.is-pending\s*\{[^}]*background:\s*#fef3c7;[\s\S]*?\.resource-profile-access-status\.is-denied\s*\{[^}]*background:\s*#fee2e2;/,
+  "each access status should have its matching colored badge background",
 );
 assert.doesNotMatch(
-  resourceStyles.match(/\.resource-profile-account-details\s*\{([^}]+)\}/)?.[1] || "",
+  resourceStyles.match(
+    /\.resource-profile-account-details\s*\{([^}]+)\}/,
+  )?.[1] || "",
   /border-top|padding-top/,
   "the redundant separator above cached account details should be removed",
 );
@@ -351,7 +478,9 @@ assert.match(
   "the dashboard table should grow with its rows and remain horizontally scrollable",
 );
 assert.doesNotMatch(
-  resourceStyles.match(/\.resource-dashboard-table-scroll\s*\{([^}]+)\}/)?.[1] || "",
+  resourceStyles.match(
+    /\.resource-dashboard-table-scroll\s*\{([^}]+)\}/,
+  )?.[1] || "",
   /\b(?:height|min-height|max-height)\s*:/,
   "the dashboard table must not impose a fixed or bounded height",
 );
@@ -517,7 +646,8 @@ assert.match(
 assert.doesNotMatch(
   fs
     .readFileSync("app-core.js", "utf8")
-    .match(/async function loadResourceDashboard\(\)[\s\S]*?\n  \}\n/)?.[0] || "",
+    .match(/async function loadResourceDashboard\(\)[\s\S]*?\n  \}\n/)?.[0] ||
+    "",
   /list_public_resources|get_resource_preview/,
   "dashboard loading should not call the previous Drive listing or preview APIs",
 );
@@ -534,7 +664,7 @@ const dashboardIndexes = {
   "modules_combined.json": {
     b: "https://drive.google.com/open?id=",
     d: {
-      "3.1": {
+      3.1: {
         PRELIMS: {
           "SHIP'S AUDIT": [
             "01 SHIP'S AUDIT (Prelims module)",
@@ -543,7 +673,7 @@ const dashboardIndexes = {
           ],
         },
       },
-      "4.1": {
+      4.1: {
         PRELIMS: {
           SAFETY: {
             i: "linkedModule_123456",
@@ -561,7 +691,7 @@ const dashboardIndexes = {
           },
         },
       },
-      "4.2": {
+      4.2: {
         FINALS: {
           "SEARCH AND RESCUE": {
             i: "finalModule_123456",
@@ -576,7 +706,7 @@ const dashboardIndexes = {
   "reviewers_combined.json": {
     b: "https://drive.google.com/open?id=",
     d: {
-      "3.1": {
+      3.1: {
         PRELIMS: {
           NAV6: [
             "01 NAV6 REVIEWER (Reviewer One).pdf",
@@ -586,7 +716,7 @@ const dashboardIndexes = {
           ],
         },
       },
-      "4.2": {
+      4.2: {
         SYLLABUS: {
           "SHIP'S AUDIT": {
             i: "reviewerSyllabus_123456",
@@ -687,11 +817,7 @@ const context = {
 vm.createContext(context);
 vm.runInContext(backend, context, { filename: "backend/main.js" });
 
-const dashboard = JSON.parse(
-  context
-    .handleGetResourceDashboardRequest()
-    .text,
-);
+const dashboard = JSON.parse(context.handleGetResourceDashboardRequest().text);
 assert.deepEqual(
   JSON.parse(JSON.stringify(dashboard)),
   {
@@ -702,13 +828,7 @@ assert.deepEqual(
       MODULES: {
         columns: ["Year", "Course", "PRELIMS", "MIDTERMS", "FINALS"],
         rows: [
-          [
-            "3.1",
-            "SHIP'S AUDIT",
-            "01 SHIP'S AUDIT (Prelims module)",
-            "",
-            "",
-          ],
+          ["3.1", "SHIP'S AUDIT", "01 SHIP'S AUDIT (Prelims module)", "", ""],
           [
             "4.1",
             "SAFETY",
@@ -716,18 +836,30 @@ assert.deepEqual(
             "02 SAFETY (Exam guide)",
             "",
           ],
-          [
-            "4.2",
-            "SEARCH AND RESCUE",
-            "",
-            "",
-            "03 SEARCH AND RESCUE",
-          ],
+          ["4.2", "SEARCH AND RESCUE", "", "", "03 SEARCH AND RESCUE"],
         ],
         links: [
-          ["", "", "https://drive.google.com/open?id=modulePrelims_123456", "", ""],
-          ["", "", "https://drive.google.com/open?id=linkedModule_123456", "https://drive.google.com/open?id=midtermModule_123456", ""],
-          ["", "", "", "", "https://drive.google.com/open?id=finalModule_123456"],
+          [
+            "",
+            "",
+            "https://drive.google.com/open?id=modulePrelims_123456",
+            "",
+            "",
+          ],
+          [
+            "",
+            "",
+            "https://drive.google.com/open?id=linkedModule_123456",
+            "https://drive.google.com/open?id=midtermModule_123456",
+            "",
+          ],
+          [
+            "",
+            "",
+            "",
+            "",
+            "https://drive.google.com/open?id=finalModule_123456",
+          ],
         ],
         linkTitles: [
           ["", "", "01 SHIP'S AUDIT (Prelims module)", "", ""],
@@ -735,14 +867,14 @@ assert.deepEqual(
           ["", "", "", "", "03 SEARCH AND RESCUE"],
         ],
         linkTypes: [
+          ["", "", "application/vnd.google-apps.folder", "", ""],
           [
             "",
             "",
             "application/vnd.google-apps.folder",
-            "",
+            "application/vnd.google-apps.folder",
             "",
           ],
-          ["", "", "application/vnd.google-apps.folder", "application/vnd.google-apps.folder", ""],
           ["", "", "", "", "application/vnd.google-apps.folder"],
         ],
         truncated: false,
@@ -761,12 +893,8 @@ assert.deepEqual(
         links: [
           ["", "", "https://drive.google.com/open?id=reviewerSyllabus_123456"],
         ],
-        linkTitles: [
-          ["", "", "SHIP'S AUDIT COURSE SYLLABUS"],
-        ],
-        linkTypes: [
-          ["", "", "application/vnd.google-apps.document"],
-        ],
+        linkTitles: [["", "", "SHIP'S AUDIT COURSE SYLLABUS"]],
+        linkTypes: [["", "", "application/vnd.google-apps.document"]],
         truncated: false,
       },
     },
@@ -792,17 +920,15 @@ assert.equal(
 );
 
 const routedDashboard = JSON.parse(
-  context
-    .doPost({
-      postData: {
-        contents: JSON.stringify({
-          type: "get_resource_dashboard",
-          eventId: "12345678-1234-4123-8123-123456789abc",
-          appVersion,
-        }),
-      },
-    })
-    .text,
+  context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        type: "get_resource_dashboard",
+        eventId: "12345678-1234-4123-8123-123456789abc",
+        appVersion,
+      }),
+    },
+  }).text,
 );
 assert.equal(
   routedDashboard.status,
@@ -821,18 +947,16 @@ assert.equal(
 );
 
 const unchangedDashboard = JSON.parse(
-  context
-    .doPost({
-      postData: {
-        contents: JSON.stringify({
-          type: "get_resource_dashboard",
-          eventId: "22345678-1234-4123-8123-123456789abc",
-          version: routedDashboard.version,
-          appVersion,
-        }),
-      },
-    })
-    .text,
+  context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        type: "get_resource_dashboard",
+        eventId: "22345678-1234-4123-8123-123456789abc",
+        version: routedDashboard.version,
+        appVersion,
+      }),
+    },
+  }).text,
 );
 assert.equal(unchangedDashboard.notModified, true);
 assert.equal(
@@ -865,18 +989,16 @@ assert.equal(
 dashboardIndexModifiedTimes["reviewers_combined.json"] += 1;
 dashboardCacheClock += 61000;
 const updatedDashboard = JSON.parse(
-  context
-    .doPost({
-      postData: {
-        contents: JSON.stringify({
-          type: "get_resource_dashboard",
-          eventId: "32345678-1234-4123-8123-123456789abc",
-          version: routedDashboard.version,
-          appVersion,
-        }),
-      },
-    })
-    .text,
+  context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        type: "get_resource_dashboard",
+        eventId: "32345678-1234-4123-8123-123456789abc",
+        version: routedDashboard.version,
+        appVersion,
+      }),
+    },
+  }).text,
 );
 assert.equal(updatedDashboard.status, "success");
 assert.ok(updatedDashboard.version !== routedDashboard.version);
@@ -892,16 +1014,14 @@ assert.equal(
 );
 
 const disabledListing = JSON.parse(
-  context
-    .doPost({
-      postData: {
-        contents: JSON.stringify({
-          type: "list_public_resources",
-          appVersion,
-        }),
-      },
-    })
-    .text,
+  context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        type: "list_public_resources",
+        appVersion,
+      }),
+    },
+  }).text,
 );
 assert.equal(
   disabledListing.code,
@@ -909,16 +1029,14 @@ assert.equal(
   "the former Drive listing API should be explicitly disabled",
 );
 const disabledPreview = JSON.parse(
-  context
-    .doPost({
-      postData: {
-        contents: JSON.stringify({
-          type: "get_resource_preview",
-          appVersion,
-        }),
-      },
-    })
-    .text,
+  context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        type: "get_resource_preview",
+        appVersion,
+      }),
+    },
+  }).text,
 );
 assert.equal(
   disabledPreview.code,
@@ -948,17 +1066,14 @@ context.generateCacheKey = (key) => key;
 context.cacheGetChunked = () => JSON.stringify([{ Subject: "COLREGS" }]);
 context.filterSummaryDataByAccess = (summary) => summary;
 const unchangedSync = JSON.parse(
-  context
-    .handleDeckSyncSnapshot_("2026-10-15T00:00:00.000Z")
-    .text,
+  context.handleDeckSyncSnapshot_("2026-10-15T00:00:00.000Z").text,
 );
 assert.equal(unchangedSync.notModified, true);
 
 const changedSync = JSON.parse(context.handleDeckSyncSnapshot_("").text);
-assert.deepEqual(
-  JSON.parse(JSON.stringify(changedSync.summary)),
-  [{ Subject: "COLREGS" }],
-);
+assert.deepEqual(JSON.parse(JSON.stringify(changedSync.summary)), [
+  { Subject: "COLREGS" },
+]);
 assert.equal(changedSync.payloadSchemaVersion, 2);
 
 let cacheVersionReads = 0;

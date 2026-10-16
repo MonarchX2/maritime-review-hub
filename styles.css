@@ -465,7 +465,10 @@ body.text-align-justify .user-text-content {
 
 .deck-tree-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 2.5rem 4rem 4rem 4rem minmax(2.5rem, max-content);
+  grid-template-columns: minmax(0, 1fr) 2.5rem 4rem 4rem 4rem minmax(
+      2.5rem,
+      max-content
+    );
   width: 100%;
   min-width: 0;
 }
@@ -794,7 +797,10 @@ body.text-align-justify .user-text-content {
   }
 
   .deck-tree-grid {
-    grid-template-columns: minmax(0, 1fr) 2.25rem 2.75rem 2rem 2rem minmax(1.75rem, max-content);
+    grid-template-columns: minmax(0, 1fr) 2.25rem 2.75rem 2rem 2rem minmax(
+        1.75rem,
+        max-content
+      );
   }
 
   .tree-stat-label-text {
@@ -1256,9 +1262,7 @@ input {
   color: #9333ea;
 }
 
-.dark
-  #view-dashboard:has(#globalModeToggle:checked)
-  .dashboard-subject-icon {
+.dark #view-dashboard:has(#globalModeToggle:checked) .dashboard-subject-icon {
   color: #c084fc;
 }
 
@@ -1766,8 +1770,8 @@ button:active:not(:disabled) {
   display: grid;
   justify-items: center;
   gap: 0.5rem;
-  width: fit-content;
-  max-width: min(100%, 38rem);
+  width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
   margin-inline: auto;
   border: 1px solid #dbe3ed;
@@ -1782,8 +1786,7 @@ button:active:not(:disabled) {
   display: none;
 }
 
-#resource-reviewers-locked-panel:not([hidden])
-  ~ .resource-portal-toolbar {
+#resource-reviewers-locked-panel:not([hidden]) ~ .resource-portal-toolbar {
   display: none;
 }
 
@@ -1871,7 +1874,7 @@ button:active:not(:disabled) {
 .resource-profile-account-details {
   display: grid;
   justify-items: center;
-  gap: var(--resource-dashboard-space);
+  gap: 0;
   text-align: center;
 }
 
@@ -1881,13 +1884,7 @@ button:active:not(:disabled) {
   justify-content: center;
   gap: var(--resource-dashboard-space);
   width: 100%;
-}
-
-.resource-profile-actions .resource-reviewer-signout {
-  min-width: 6rem;
-  border-radius: 0.375rem;
-  color: #fff;
-  font-weight: 700;
+  margin-top: 0.25rem;
 }
 
 .resource-profile-edit-button {
@@ -1896,16 +1893,22 @@ button:active:not(:disabled) {
 }
 
 .resource-profile-signout-button {
-  border-color: #b91c1c;
-  background: #dc2626;
+  min-height: 2rem;
+  border: 0;
+  padding: 0.25rem 0.5rem;
+  color: #dc2626;
+  background: transparent;
+  font-size: var(--resource-dashboard-font-small);
+  font-weight: 700;
 }
 
 .resource-profile-actions .resource-profile-edit-button:hover {
   background: #15803d;
 }
 
-.resource-profile-actions .resource-profile-signout-button:hover {
-  background: #b91c1c;
+.resource-profile-signout-button:hover {
+  color: #b91c1c;
+  background: transparent;
 }
 
 .resource-profile-account-details[hidden] {
@@ -1920,15 +1923,16 @@ button:active:not(:disabled) {
 
 .resource-profile-avatar {
   display: grid;
-  width: 5rem;
-  height: 5rem;
+  width: 7rem;
+  height: 7rem;
   place-items: center;
   overflow: hidden;
   border: 1px solid #dbe3ed;
   border-radius: 50%;
+  margin-bottom: 0.5rem;
   color: #64748b;
   background: #f1f5f9;
-  font-size: 4.5rem;
+  font-size: 6rem;
 }
 
 .resource-profile-avatar i {
@@ -1951,16 +1955,39 @@ button:active:not(:disabled) {
   font-size: var(--resource-dashboard-font);
 }
 
-.resource-profile-form-note {
-  margin: 0;
-  border-left: 3px solid #1e40af;
-  border-radius: 0.25rem;
-  padding: 0.85rem 1rem;
-  color: #475569;
-  background: #eff6ff;
+.resource-profile-access-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  margin: 0.5rem 0 0.15rem;
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  padding: 0.3rem 0.7rem;
   font-size: var(--resource-dashboard-font-small);
-  line-height: 1.5;
-  overflow-wrap: anywhere;
+  font-weight: 800;
+}
+
+.resource-profile-access-status.is-granted {
+  border-color: #86efac;
+  color: #15803d;
+  background: #dcfce7;
+}
+
+.resource-profile-access-status.is-pending {
+  border-color: #fcd34d;
+  color: #b45309;
+  background: #fef3c7;
+}
+
+.resource-profile-access-status.is-denied {
+  border-color: #fca5a5;
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.resource-profile-access-status[hidden] {
+  display: none;
 }
 
 .resource-portal-browser-header {
@@ -2000,6 +2027,17 @@ button:active:not(:disabled) {
   gap: 1rem;
 }
 
+.resource-reviewer-form-warning {
+  margin: 0;
+  border: 1px solid #fca5a5;
+  border-radius: 0.375rem;
+  padding: 0.65rem 0.75rem;
+  color: #991b1b;
+  background: #fef2f2;
+  font-size: var(--resource-dashboard-font-small);
+  font-weight: 600;
+}
+
 .resource-reviewer-enrollment[hidden] {
   display: none;
 }
@@ -2011,6 +2049,10 @@ button:active:not(:disabled) {
   gap: var(--resource-dashboard-space);
   color: #64748b;
   font-size: var(--resource-dashboard-font-small);
+}
+
+.resource-reviewer-enrollment label > span {
+  font-weight: 700;
 }
 
 .resource-reviewer-enrollment input {
@@ -2136,7 +2178,8 @@ button:active:not(:disabled) {
   display: none;
 }
 
-.resource-dashboard-segmented-control button:hover:not(.is-active):not(:disabled) {
+.resource-dashboard-segmented-control
+  button:hover:not(.is-active):not(:disabled) {
   background: rgb(255 255 255 / 0.65);
 }
 
@@ -2262,8 +2305,7 @@ button:active:not(:disabled) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .resource-dashboard-browser
-    .resource-portal-status[aria-busy="true"]::before,
+  .resource-dashboard-browser .resource-portal-status[aria-busy="true"]::before,
   .resource-profile-status[aria-busy="true"]::before {
     animation: none;
   }
@@ -2833,10 +2875,22 @@ button:active:not(:disabled) {
   background: #1e293b;
 }
 
-.dark .resource-profile-form-note {
-  border-left-color: #60a5fa;
-  color: #cbd5e1;
-  background: #172554;
+.dark .resource-profile-access-status.is-granted {
+  border-color: #166534;
+  color: #4ade80;
+  background: #14532d;
+}
+
+.dark .resource-profile-access-status.is-pending {
+  border-color: #92400e;
+  color: #fbbf24;
+  background: #78350f;
+}
+
+.dark .resource-profile-access-status.is-denied {
+  border-color: #991b1b;
+  color: #f87171;
+  background: #7f1d1d;
 }
 
 .dark .resource-reviewer-signout {
@@ -2851,10 +2905,16 @@ button:active:not(:disabled) {
   background: #15803d;
 }
 
-.dark .resource-profile-actions .resource-profile-signout-button {
-  border-color: #991b1b;
-  color: #fff;
-  background: #b91c1c;
+.dark .resource-profile-signout-button,
+.dark .resource-profile-signout-button:hover {
+  color: #f87171;
+  background: transparent;
+}
+
+.dark .resource-reviewer-form-warning {
+  border-color: #7f1d1d;
+  color: #fecaca;
+  background: #450a0a;
 }
 
 .dark .resource-portal-browser-header h2,
@@ -2935,7 +2995,11 @@ button:active:not(:disabled) {
   justify-content: center;
   padding: clamp(1.5rem, 4vw, 3.5rem);
   background:
-    radial-gradient(ellipse at 12% 18%, rgb(13 148 136 / 0.38), transparent 52%),
+    radial-gradient(
+      ellipse at 12% 18%,
+      rgb(13 148 136 / 0.38),
+      transparent 52%
+    ),
     linear-gradient(150deg, #101c36, #111827 75%);
 }
 
@@ -3020,7 +3084,11 @@ button:active:not(:disabled) {
   border: 1px solid rgb(34 211 238 / 0.7);
   border-radius: 40% 40% 48% 48%;
   color: #67e8f9;
-  background: linear-gradient(145deg, rgb(14 116 144 / 0.55), rgb(30 64 175 / 0.24));
+  background: linear-gradient(
+    145deg,
+    rgb(14 116 144 / 0.55),
+    rgb(30 64 175 / 0.24)
+  );
   box-shadow:
     0 0 35px rgb(34 211 238 / 0.42),
     inset 0 0 32px rgb(34 211 238 / 0.22);

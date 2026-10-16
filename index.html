@@ -256,7 +256,10 @@
       href="icon.svg?v=mrh-26.10.16-42-b679804bd02e"
       type="image/svg+xml"
     />
-    <link rel="apple-touch-icon" href="icon.svg?v=mrh-26.10.16-42-b679804bd02e" />
+    <link
+      rel="apple-touch-icon"
+      href="icon.svg?v=mrh-26.10.16-42-b679804bd02e"
+    />
     <link
       rel="preload"
       href="tailwind.generated.css?v=mrh-26.10.16-42-b679804bd02e"
@@ -384,7 +387,9 @@
           role="alert"
           aria-live="assertive"
         >
-          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div
+            class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+          >
             <div>
               <h2 class="text-lg font-bold">404 — Deck not found</h2>
               <p class="mt-1 text-sm">
@@ -716,9 +721,7 @@
                     ></i>
                     Locked
                   </h2>
-                  <p>
-                    Sign in with Google to request Reviewer access.
-                  </p>
+                  <p>Use Google to sign in and request access.</p>
                   <button
                     type="button"
                     onclick="openResourceDashboardTab('PROFILE')"
@@ -728,7 +731,9 @@
                 </section>
                 <div class="resource-portal-toolbar">
                   <div class="resource-dashboard-filters">
-                    <label class="resource-dashboard-control resource-dashboard-term-control">
+                    <label
+                      class="resource-dashboard-control resource-dashboard-term-control"
+                    >
                       <span>Year</span>
                       <span
                         id="resource-dashboard-filter-year"
@@ -737,7 +742,9 @@
                         aria-label="Year"
                       ></span>
                     </label>
-                    <label class="resource-dashboard-control resource-dashboard-term-control">
+                    <label
+                      class="resource-dashboard-control resource-dashboard-term-control"
+                    >
                       <span>Semester</span>
                       <span
                         id="resource-dashboard-filter-semester"
@@ -820,7 +827,7 @@
                     role="status"
                     aria-live="polite"
                   >
-                    Sign in with Google to request Reviewer access.
+                    Use Google to sign in and request access.
                   </p>
                   <div id="resource-reviewer-signin-button"></div>
                   <button
@@ -836,9 +843,11 @@
                     class="resource-reviewer-enrollment"
                     hidden
                   >
-                    <p class="resource-profile-form-note">
-                      Enter your name with correct capitalization. Example:
-                      First Name: Maria; Last Name: Dela Cruz.
+                    <p class="resource-reviewer-form-warning">
+                      False information will strictly not be entertained; it
+                      will be ignored and deleted. The verified Google email
+                      must share at least one name part or matching initials
+                      with the name entered here.
                     </p>
                     <label>
                       <span>Last Name</span>
@@ -863,17 +872,22 @@
                       />
                     </label>
                     <label>
-                      <span>Middle Initial (optional)</span>
+                      <span>Middle Initial</span>
                       <input
                         id="resource-reviewer-middle-initial"
                         name="middleInitial"
                         autocomplete="additional-name"
                         autocapitalize="characters"
-                        maxlength="10"
+                        maxlength="2"
+                        pattern="[A-Za-z]\."
+                        title="Enter one letter followed by a period, for example K."
+                        required
                       />
                     </label>
                     <div class="resource-reviewer-form-actions">
-                      <button type="submit">Submit for administrator review</button>
+                      <button type="submit">
+                        Submit for administrator review
+                      </button>
                       <button
                         type="button"
                         id="resource-reviewer-cancel-edit"
@@ -902,8 +916,28 @@
                         hidden
                       />
                     </div>
-                    <p id="resource-profile-name" class="resource-profile-name"></p>
-                    <p id="resource-profile-email" class="resource-profile-email"></p>
+                    <p
+                      id="resource-profile-name"
+                      class="resource-profile-name"
+                    ></p>
+                    <p
+                      id="resource-profile-email"
+                      class="resource-profile-email"
+                    ></p>
+                    <div
+                      id="resource-profile-access-status"
+                      class="resource-profile-access-status"
+                      role="status"
+                      aria-live="polite"
+                      hidden
+                    ></div>
+                    <button
+                      type="button"
+                      id="resource-reviewer-signout"
+                      class="resource-profile-signout-button"
+                    >
+                      Sign out
+                    </button>
                     <div class="resource-profile-actions">
                       <button
                         type="button"
@@ -912,13 +946,6 @@
                         hidden
                       >
                         Edit
-                      </button>
-                      <button
-                        type="button"
-                        id="resource-reviewer-signout"
-                        class="resource-reviewer-signout resource-profile-signout-button"
-                      >
-                        Sign out
                       </button>
                     </div>
                   </div>
@@ -1024,7 +1051,9 @@
               </button>
             </div>
             <div class="mb-4">
-              <div class="mb-2 flex items-center justify-between text-sm font-semibold text-gray-600 dark:text-gray-300">
+              <div
+                class="mb-2 flex items-center justify-between text-sm font-semibold text-gray-600 dark:text-gray-300"
+              >
                 <span>Progress</span>
                 <span id="quiz-question-count" aria-live="polite"
                   >Question 1 / 1</span
@@ -1084,11 +1113,13 @@
                 >
                   <i class="fa-solid fa-star"></i>
                 </button>
-
               </div>
             </div>
 
-            <h3 class="user-text-content text-xl font-medium mb-4 transition-colors" id="q-text">
+            <h3
+              class="user-text-content text-xl font-medium mb-4 transition-colors"
+              id="q-text"
+            >
               Loading question...
             </h3>
 
@@ -1117,10 +1148,14 @@
                     class="fa-regular fa-lightbulb text-gray-600 dark:text-gray-300 text-xl"
                   ></i>
                 </div>
-                <p class="user-text-content text-gray-700 dark:text-gray-300 font-medium">
+                <p
+                  class="user-text-content text-gray-700 dark:text-gray-300 font-medium"
+                >
                   Think of the answer first to do active recall
                 </p>
-                <p class="user-text-content mt-2 text-xs text-gray-500 dark:text-gray-400">
+                <p
+                  class="user-text-content mt-2 text-xs text-gray-500 dark:text-gray-400"
+                >
                   You can disable this in Settings.
                 </p>
               </div>
@@ -1314,7 +1349,9 @@
               >
                 Review Deck
               </h3>
-              <p class="user-text-content text-gray-500 dark:text-gray-400 text-sm">
+              <p
+                class="user-text-content text-gray-500 dark:text-gray-400 text-sm"
+              >
                 Read through all questions, correct answers, choices, and
                 explanations at your own pace without scoring.
               </p>
@@ -1345,7 +1382,9 @@
               >
                 Take Quiz
               </h3>
-              <p class="user-text-content text-gray-500 dark:text-gray-400 text-sm">
+              <p
+                class="user-text-content text-gray-500 dark:text-gray-400 text-sm"
+              >
                 Test your knowledge with interactive quiz sessions, track your
                 scores, and practice challenging items.
               </p>
@@ -1400,7 +1439,10 @@
                 aria-label="Switch to Quiz Mode"
                 title="Switch to Quiz Mode"
               >
-                <i class="fa-solid fa-clipboard-question text-brand-600 dark:text-brand-400" aria-hidden="true"></i>
+                <i
+                  class="fa-solid fa-clipboard-question text-brand-600 dark:text-brand-400"
+                  aria-hidden="true"
+                ></i>
                 <span class="hidden sm:inline">Quiz</span>
               </button>
               <button
@@ -1421,7 +1463,9 @@
                 aria-label="Study settings"
                 type="button"
               >
-                <i class="fa-solid fa-gear group-hover:rotate-90 transition-transform"></i>
+                <i
+                  class="fa-solid fa-gear group-hover:rotate-90 transition-transform"
+                ></i>
               </button>
             </div>
           </div>
@@ -1475,7 +1519,9 @@
                     id="settings-progress-transfer-title"
                     class="font-bold text-gray-800 dark:text-gray-100"
                   >
-                    <i class="fa-solid fa-file-arrow-right text-brand-500 mr-2"></i>
+                    <i
+                      class="fa-solid fa-file-arrow-right text-brand-500 mr-2"
+                    ></i>
                     Transfer progress
                   </h3>
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -1519,7 +1565,9 @@
                       class="text-sm font-medium text-gray-700 dark:text-gray-300"
                       >Shuffle Choices</span
                     >
-                    <span class="text-[11px] text-gray-500 mt-1">Default to ON</span>
+                    <span class="text-[11px] text-gray-500 mt-1"
+                      >Default to ON</span
+                    >
                   </div>
                   <div class="flex items-center gap-2">
                     <input
@@ -1542,7 +1590,9 @@
                       class="text-sm font-medium text-gray-700 dark:text-gray-300"
                       >Shuffle Questions</span
                     >
-                    <span class="text-[11px] text-gray-500 mt-1">Default to ON</span>
+                    <span class="text-[11px] text-gray-500 mt-1"
+                      >Default to ON</span
+                    >
                   </div>
                   <div class="flex items-center gap-2">
                     <input
@@ -1568,298 +1618,317 @@
               </div>
             </section>
 
-        <div class="hidden mb-5 rounded-xl bg-white dark:bg-gray-800 p-4 shadow-sm">
-          <label
-            for="text-alignment-select"
-            class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-          >Text Alignment</label>
-          <p
-            id="text-alignment-help"
-            class="mb-2 text-xs text-gray-500 dark:text-gray-400"
-          >
-            Affects question and explanation text, deck-review content, and selected help, warning, and status messages. It does not affect answer choices, buttons, navigation, or setting controls.
-          </p>
-          <select
-            id="text-alignment-select"
-            onchange="setTextAlignment(this.value)"
-            aria-describedby="text-alignment-help"
-            class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-brand-500"
-          >
-            <option value="left">Left</option>
-            <option value="center">Center</option>
-            <option value="right">Right</option>
-            <option value="justify">Justify</option>
-          </select>
-          <p class="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
-            Default to LEFT
-          </p>
-        </div>
-
-        <div
-          class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800"
-        >
-          <div class="mb-2">
-            <h3>
-              <button
-                type="button"
-                onclick="
-                  togglePanel('deck-navigation-panel', 'deck-navigation-chevron', this)
-                "
-                class="w-full cursor-pointer list-none font-bold text-gray-800 dark:text-gray-100 flex items-center justify-between gap-3 text-left"
-                aria-expanded="false"
-                aria-controls="deck-navigation-panel"
-              >
-                <span>
-                  <i class="fa-solid fa-compass-drafting text-brand-500 mr-2"></i>
-                  Deck Navigation Buttons
-                </span>
-                <i
-                  id="deck-navigation-chevron"
-                  class="fa-solid fa-chevron-down text-xs text-gray-500 transition-transform"
-                ></i>
-              </button>
-            </h3>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Choose where navigation controls appear in each study mode.
-            </p>
-          </div>
-
-          <div
-            id="deck-navigation-panel"
-            class="hidden space-y-2"
-            aria-hidden="true"
-          >
-            <div class="space-y-2">
-              <div class="flex items-center justify-between gap-4">
-                <div>
-                  <div>
-                    <span
-                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                      >Quiz Mode</span
-                    >
-                    <div class="text-[11px] text-gray-500 mt-1">
-                      Default to TOP
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  id="toggle-main-navigation-quiz"
-                  onclick="cycleNavigationModeButton('quiz', this)"
-                  class="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
-                >
-                  on TOP
-                </button>
-              </div>
-              <div class="flex items-center justify-between gap-4">
-                <div>
-                  <div>
-                    <span
-                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                      >Study Mode (Single Flashcard)</span
-                    >
-                    <div class="text-[11px] text-gray-500 mt-1">
-                      Default to TOP
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  id="toggle-main-navigation-single"
-                  onclick="cycleNavigationModeButton('single', this)"
-                  class="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
-                >
-                  on TOP
-                </button>
-              </div>
-              <div class="flex items-center justify-between gap-4">
-                <div>
-                  <div>
-                    <span
-                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                      >Study Mode (Scroll List)</span
-                    >
-                    <div class="text-[11px] text-gray-500 mt-1">
-                      Default to TOP + BOTTOM
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  id="main-navigation-scroll-button"
-                  onclick="cycleNavigationModeButton('scroll', this)"
-                  class="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
-                >
-                  TOP + BOTTOM
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="hidden mt-3 pt-3">
-          <div class="mb-4">
-            <button
-              type="button"
-              onclick="
-                togglePanel(
-                  'advanced-settings-panel',
-                  'advanced-settings-chevron',
-                  this,
-                )
-              "
-              class="w-full cursor-pointer list-none font-bold text-gray-800 dark:text-gray-100 flex items-center justify-between gap-3 text-left"
-              aria-expanded="false"
-              aria-controls="advanced-settings-panel"
+            <div
+              class="hidden mb-5 rounded-xl bg-white dark:bg-gray-800 p-4 shadow-sm"
             >
-              <span>
-                <i class="fa-solid fa-sliders text-brand-500 mr-2"></i>
-                Advanced Settings
-              </span>
-              <i
-                id="advanced-settings-chevron"
-                class="fa-solid fa-chevron-down text-xs text-gray-500 transition-transform"
-              ></i>
-            </button>
-          </div>
-
-          <div
-            id="advanced-settings-panel"
-            class="hidden space-y-3"
-            aria-hidden="true"
-          >
-            <div>
               <label
-                class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                for="text-alignment-select"
+                class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >Text Alignment</label
               >
-                Deck Name Display
-              </label>
+              <p
+                id="text-alignment-help"
+                class="mb-2 text-xs text-gray-500 dark:text-gray-400"
+              >
+                Affects question and explanation text, deck-review content, and
+                selected help, warning, and status messages. It does not affect
+                answer choices, buttons, navigation, or setting controls.
+              </p>
               <select
-                id="deck-name-mode"
-                aria-label="Deck name display"
-                onchange="changeDeckNameMode(this.value)"
-                class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2 text-sm w-full"
+                id="text-alignment-select"
+                onchange="setTextAlignment(this.value)"
+                aria-describedby="text-alignment-help"
+                class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-brand-500"
               >
-                <option value="wrap">Wrap</option>
-                <option value="clip">Clip</option>
+                <option value="left">Left</option>
+                <option value="center">Center</option>
+                <option value="right">Right</option>
+                <option value="justify">Justify</option>
               </select>
-              <p class="text-xs text-gray-500 mt-1">Default to WRAP</p>
+              <p class="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                Default to LEFT
+              </p>
             </div>
-            <label
-              class="flex items-center justify-between cursor-pointer mb-3"
-            >
-              <div>
-                <span
-                  class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >Dynamic Cloze Deletion</span
-                >
-                <div class="text-[11px] text-gray-500">Default to OFF</div>
-              </div>
-              <input
-                type="checkbox"
-                id="toggle-main-cloze-mode"
-                class="sr-only peer"
-                onchange="toggleClozeMode(this)"
-              />
-              <div
-                class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
-              ></div>
-            </label>
-            <label
-              class="flex items-center justify-between cursor-pointer mb-2"
-            >
-              <div>
-                <span
-                  class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >Spaced Repetition System</span
-                >
-                <div class="text-[11px] text-gray-500">Default to OFF</div>
-              </div>
-              <input
-                type="checkbox"
-                id="toggle-main-srs-mode"
-                class="sr-only peer"
-                onchange="toggleSrsMode(this)"
-              />
-              <div
-                class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
-              ></div>
-            </label>
 
-          </div>
-        </div>
+            <div
+              class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+            >
+              <div class="mb-2">
+                <h3>
+                  <button
+                    type="button"
+                    onclick="
+                      togglePanel(
+                        'deck-navigation-panel',
+                        'deck-navigation-chevron',
+                        this,
+                      )
+                    "
+                    class="w-full cursor-pointer list-none font-bold text-gray-800 dark:text-gray-100 flex items-center justify-between gap-3 text-left"
+                    aria-expanded="false"
+                    aria-controls="deck-navigation-panel"
+                  >
+                    <span>
+                      <i
+                        class="fa-solid fa-compass-drafting text-brand-500 mr-2"
+                      ></i>
+                      Deck Navigation Buttons
+                    </span>
+                    <i
+                      id="deck-navigation-chevron"
+                      class="fa-solid fa-chevron-down text-xs text-gray-500 transition-transform"
+                    ></i>
+                  </button>
+                </h3>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Choose where navigation controls appear in each study mode.
+                </p>
+              </div>
+
+              <div
+                id="deck-navigation-panel"
+                class="hidden space-y-2"
+                aria-hidden="true"
+              >
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between gap-4">
+                    <div>
+                      <div>
+                        <span
+                          class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                          >Quiz Mode</span
+                        >
+                        <div class="text-[11px] text-gray-500 mt-1">
+                          Default to TOP
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      id="toggle-main-navigation-quiz"
+                      onclick="cycleNavigationModeButton('quiz', this)"
+                      class="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                    >
+                      on TOP
+                    </button>
+                  </div>
+                  <div class="flex items-center justify-between gap-4">
+                    <div>
+                      <div>
+                        <span
+                          class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                          >Study Mode (Single Flashcard)</span
+                        >
+                        <div class="text-[11px] text-gray-500 mt-1">
+                          Default to TOP
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      id="toggle-main-navigation-single"
+                      onclick="cycleNavigationModeButton('single', this)"
+                      class="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                    >
+                      on TOP
+                    </button>
+                  </div>
+                  <div class="flex items-center justify-between gap-4">
+                    <div>
+                      <div>
+                        <span
+                          class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                          >Study Mode (Scroll List)</span
+                        >
+                        <div class="text-[11px] text-gray-500 mt-1">
+                          Default to TOP + BOTTOM
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      id="main-navigation-scroll-button"
+                      onclick="cycleNavigationModeButton('scroll', this)"
+                      class="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                    >
+                      TOP + BOTTOM
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="hidden mt-3 pt-3">
+              <div class="mb-4">
+                <button
+                  type="button"
+                  onclick="
+                    togglePanel(
+                      'advanced-settings-panel',
+                      'advanced-settings-chevron',
+                      this,
+                    )
+                  "
+                  class="w-full cursor-pointer list-none font-bold text-gray-800 dark:text-gray-100 flex items-center justify-between gap-3 text-left"
+                  aria-expanded="false"
+                  aria-controls="advanced-settings-panel"
+                >
+                  <span>
+                    <i class="fa-solid fa-sliders text-brand-500 mr-2"></i>
+                    Advanced Settings
+                  </span>
+                  <i
+                    id="advanced-settings-chevron"
+                    class="fa-solid fa-chevron-down text-xs text-gray-500 transition-transform"
+                  ></i>
+                </button>
+              </div>
+
+              <div
+                id="advanced-settings-panel"
+                class="hidden space-y-3"
+                aria-hidden="true"
+              >
+                <div>
+                  <label
+                    class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                  >
+                    Deck Name Display
+                  </label>
+                  <select
+                    id="deck-name-mode"
+                    aria-label="Deck name display"
+                    onchange="changeDeckNameMode(this.value)"
+                    class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2 text-sm w-full"
+                  >
+                    <option value="wrap">Wrap</option>
+                    <option value="clip">Clip</option>
+                  </select>
+                  <p class="text-xs text-gray-500 mt-1">Default to WRAP</p>
+                </div>
+                <label
+                  class="flex items-center justify-between cursor-pointer mb-3"
+                >
+                  <div>
+                    <span
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >Dynamic Cloze Deletion</span
+                    >
+                    <div class="text-[11px] text-gray-500">Default to OFF</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="toggle-main-cloze-mode"
+                    class="sr-only peer"
+                    onchange="toggleClozeMode(this)"
+                  />
+                  <div
+                    class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
+                  ></div>
+                </label>
+                <label
+                  class="flex items-center justify-between cursor-pointer mb-2"
+                >
+                  <div>
+                    <span
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >Spaced Repetition System</span
+                    >
+                    <div class="text-[11px] text-gray-500">Default to OFF</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="toggle-main-srs-mode"
+                    class="sr-only peer"
+                    onchange="toggleSrsMode(this)"
+                  />
+                  <div
+                    class="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600"
+                  ></div>
+                </label>
+              </div>
+            </div>
 
             <div
               class="rounded-xl border border-red-200 bg-red-50/60 p-4 shadow-sm dark:border-red-900/70 dark:bg-red-950/20"
             >
-          <div class="mb-2">
-            <h3>
-              <button
-                type="button"
-                onclick="togglePanel('danger-zone-panel', 'danger-zone-chevron', this)"
-                class="w-full cursor-pointer list-none font-bold text-red-600 dark:text-red-400 flex items-center justify-between gap-3 text-left"
-                aria-expanded="false"
-                aria-controls="danger-zone-panel"
-              >
-                <span>
-                  <i class="fa-solid fa-triangle-exclamation mr-2"></i>
-                  Danger Zone
-                </span>
-                <i
-                  id="danger-zone-chevron"
-                  class="fa-solid fa-chevron-down text-xs text-red-400 transition-transform"
-                ></i>
-              </button>
-            </h3>
-            <p class="mt-1 text-xs text-red-700 dark:text-red-300">
-              These actions permanently remove saved progress or app data.
-            </p>
-          </div>
+              <div class="mb-2">
+                <h3>
+                  <button
+                    type="button"
+                    onclick="
+                      togglePanel(
+                        'danger-zone-panel',
+                        'danger-zone-chevron',
+                        this,
+                      )
+                    "
+                    class="w-full cursor-pointer list-none font-bold text-red-600 dark:text-red-400 flex items-center justify-between gap-3 text-left"
+                    aria-expanded="false"
+                    aria-controls="danger-zone-panel"
+                  >
+                    <span>
+                      <i class="fa-solid fa-triangle-exclamation mr-2"></i>
+                      Danger Zone
+                    </span>
+                    <i
+                      id="danger-zone-chevron"
+                      class="fa-solid fa-chevron-down text-xs text-red-400 transition-transform"
+                    ></i>
+                  </button>
+                </h3>
+                <p class="mt-1 text-xs text-red-700 dark:text-red-300">
+                  These actions permanently remove saved progress or app data.
+                </p>
+              </div>
 
-          <div
-            id="danger-zone-panel"
-            class="hidden space-y-3"
-            aria-hidden="true"
-          >
-            <div class="space-y-3">
-              <div class="flex items-center justify-between gap-4">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >Clear Statistics</span
-                >
-                <button
-                  onclick="resetProgress()"
-                  class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300"
-                  type="button"
-                >
-                  Reset Progress
-                </button>
+              <div
+                id="danger-zone-panel"
+                class="hidden space-y-3"
+                aria-hidden="true"
+              >
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between gap-4">
+                    <span
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >Clear Statistics</span
+                    >
+                    <button
+                      onclick="resetProgress()"
+                      class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300"
+                      type="button"
+                    >
+                      Reset Progress
+                    </button>
+                  </div>
+                  <div class="flex items-center justify-between gap-4">
+                    <span
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >Clear Local Database</span
+                    >
+                    <button
+                      onclick="clearDatabase()"
+                      class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300"
+                      type="button"
+                    >
+                      Clear Database
+                    </button>
+                  </div>
+                  <div class="flex items-center justify-between gap-4">
+                    <span
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >Clear App Data</span
+                    >
+                    <button
+                      onclick="clearAppData()"
+                      class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300"
+                      type="button"
+                    >
+                      Clear App Data
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div class="flex items-center justify-between gap-4">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >Clear Local Database</span
-                >
-                <button
-                  onclick="clearDatabase()"
-                  class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300"
-                  type="button"
-                >
-                  Clear Database
-                </button>
-              </div>
-              <div class="flex items-center justify-between gap-4">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >Clear App Data</span
-                >
-                <button
-                  onclick="clearAppData()"
-                  class="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 hover:shadow active:scale-95 transition-all duration-300"
-                  type="button"
-                >
-                  Clear App Data
-                </button>
-              </div>
-            </div>
-          </div>
             </div>
           </div>
 
@@ -1945,7 +2014,8 @@
             <!-- Quiz Explanation Visibility -->
             <div class="flex justify-between items-center">
               <div class="pr-4">
-                <span class="block text-sm font-bold text-gray-800 dark:text-gray-200"
+                <span
+                  class="block text-sm font-bold text-gray-800 dark:text-gray-200"
                   >Show Explanations</span
                 >
                 <span class="text-xs text-gray-500 block mt-1"
@@ -2104,7 +2174,9 @@
           <p class="user-text-content text-sm text-gray-600 dark:text-gray-300">
             Maritime Review Hub
           </p>
-          <p class="user-text-content mt-2 text-xs text-gray-500 dark:text-gray-400">
+          <p
+            class="user-text-content mt-2 text-xs text-gray-500 dark:text-gray-400"
+          >
             <span id="about-version"></span>
           </p>
           <section
@@ -2119,226 +2191,419 @@
               Changelog
             </h4>
             <div id="about-changelog-entries" class="mt-3">
-              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+              <h5
+                class="text-sm font-semibold text-gray-700 dark:text-gray-200"
+              >
                 Version 10.15.26-6
               </h5>
               <ul
                 class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
               >
-                <li>When the backend retires an app version, clear that app's saved browser data and offline files before showing the update-required page.</li>
+                <li>
+                  When the backend retires an app version, clear that app's
+                  saved browser data and offline files before showing the
+                  update-required page.
+                </li>
               </ul>
-              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+              <h5
+                class="text-sm font-semibold text-gray-700 dark:text-gray-200"
+              >
                 Version 10.15.26-5
               </h5>
               <ul
                 class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
               >
-                <li>Block unsupported app versions at the backend and require a current app version on every API request.</li>
+                <li>
+                  Block unsupported app versions at the backend and require a
+                  current app version on every API request.
+                </li>
               </ul>
-              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+              <h5
+                class="text-sm font-semibold text-gray-700 dark:text-gray-200"
+              >
                 Version 10.15.26-4
               </h5>
               <ul
                 class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
               >
-                <li>Restored Quiz-only progress bars and question/card counts; deck progress bars appear only when a deck has saved Quiz progress.</li>
-                <li>Added per-deck Show Answers settings to Review mode and removed Reset buttons from Review deck cards.</li>
+                <li>
+                  Restored Quiz-only progress bars and question/card counts;
+                  deck progress bars appear only when a deck has saved Quiz
+                  progress.
+                </li>
+                <li>
+                  Added per-deck Show Answers settings to Review mode and
+                  removed Reset buttons from Review deck cards.
+                </li>
                 <li>Fixed deck-card rendering so decks open reliably.</li>
-                <li>Added no-redirect cleanup for cached service workers and assets from the retired Pages path.</li>
+                <li>
+                  Added no-redirect cleanup for cached service workers and
+                  assets from the retired Pages path.
+                </li>
               </ul>
               <div id="about-changelog-older" class="hidden">
-              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 10.15.26-3
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Scoped Quiz and Study preferences, including navigation position, to the active deck.</li>
-                <li>Removed progress bars and completed/total counters while retaining the Study question range below pagination.</li>
-                <li>Scrambled protected deck and folder names before blurring, removed redundant lock icons, and kept sort/filter menus within small screens.</li>
-                <li>Restored the previous question type when its confirmation is canceled.</li>
-              </ul>
-              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 10.15.26-2
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Increased spacing above dashboard navigation and below session progress controls.</li>
-                <li>Adjusted review title and action spacing for small and large screens.</li>
-                <li>Changed the dashboard heading to “SUBJECTS” and shortened the deck filter to “All”.</li>
-              </ul>
-              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 10.15.26
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Refined review headers and compacted dashboard controls and navigation spacing.</li>
-                <li>Kept locked-deck mode switches within the already-authorized session and blurred protected deck names in reset confirmations.</li>
-                <li>Fixed dashboard progress indicators briefly appearing on unrelated decks after returning from a session.</li>
-              </ul>
-              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 14.15.0
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Moved locked decks and folders below unlocked items and made deck/session navigation immediate.</li>
-                <li>Showed incorrect deck passwords directly in the unlock dialog and standardized its button spacing.</li>
-                <li>Disabled session resume and the automatic landscape action; rotate devices manually when needed.</li>
-              </ul>
-              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 14.14.1
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Prevented browser password autofill prompts in locked deck and folder dialogs.</li>
-              </ul>
-              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 14.13.0
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Reduced the header height on desktop and mobile.</li>
-                <li>Improved update checks when mobile browsers return to the app.</li>
-              </ul>
-              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 14.12.0
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Kept password dialogs visible with progress feedback while protected decks load or switch modes.</li>
-                <li>Blocked other website interactions during password-protected transitions.</li>
-                <li>Improved locked-deck privacy and password entry, including blurred names and reduced autofill prompts.</li>
-                <li>Preserved literal UUID-sheet passwords and made password verification consistent.</li>
-              </ul>
-              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 14.11.0
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Stopped review pagination from shaking while restoring the expected previous-page position.</li>
-                <li>Blocked app interactions while a deck is opening and restored controls safely when loading completes.</li>
-              </ul>
-              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 14.10.0
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Preserved GitHub Pages deep links and added clear notices for missing decks.</li>
-                <li>Added fingerprint-verified backend payload updates with safer background sync and study-session preservation.</li>
-                <li>Reduced motion when entering app views and improved study/quiz progress handling.</li>
-              </ul>
-              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 14.9.1
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Hardened Pages deployments with safe, targeted asset minification and release verification.</li>
-                <li>Removed vulnerable CSS build dependencies while retaining Tailwind v3 browser support.</li>
-              </ul>
-              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 14.9.0
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Added automatic semantic versioning for feature, fix, and breaking changes.</li>
-                <li>Improved deployment updates with content-hashed assets and safe progress-preserving reloads.</li>
-              </ul>
-              <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 14.8
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Moved progress transfer into Settings and temporarily limited transfers to files.</li>
-              </ul>
-              <h5 class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 14.7
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Preserved QR libraries for mobile browsers and cached app versions.</li>
-                <li>Kept the About dialog within the screen and made older changelogs expandable.</li>
-              </ul>
-              <h5 class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 14.6
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Fixed QR tools failing to load after deployment minification.</li>
-              </ul>
-              <h5 class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 14.5
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Kept the About dialog within the screen and made older changelogs expandable.</li>
-              </ul>
-              <h5 class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 14.4
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Added direct, serverless progress transfer between devices on the same local network.</li>
-                <li>Improved spacing in the transfer dialog and bundled QR tools for offline use.</li>
-              </ul>
-              <h5 class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 14.3
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Added offline-capable transfer files for large progress exports; improved QR scanning reliability.</li>
-              </ul>
-              <h5 class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Version 14.2
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>Improved QR scanning efficiency, rapid navigation, and release asset verification.</li>
-              </ul>
-                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                <h5
+                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 10.15.26-3
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>
+                    Scoped Quiz and Study preferences, including navigation
+                    position, to the active deck.
+                  </li>
+                  <li>
+                    Removed progress bars and completed/total counters while
+                    retaining the Study question range below pagination.
+                  </li>
+                  <li>
+                    Scrambled protected deck and folder names before blurring,
+                    removed redundant lock icons, and kept sort/filter menus
+                    within small screens.
+                  </li>
+                  <li>
+                    Restored the previous question type when its confirmation is
+                    canceled.
+                  </li>
+                </ul>
+                <h5
+                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 10.15.26-2
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>
+                    Increased spacing above dashboard navigation and below
+                    session progress controls.
+                  </li>
+                  <li>
+                    Adjusted review title and action spacing for small and large
+                    screens.
+                  </li>
+                  <li>
+                    Changed the dashboard heading to “SUBJECTS” and shortened
+                    the deck filter to “All”.
+                  </li>
+                </ul>
+                <h5
+                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 10.15.26
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>
+                    Refined review headers and compacted dashboard controls and
+                    navigation spacing.
+                  </li>
+                  <li>
+                    Kept locked-deck mode switches within the already-authorized
+                    session and blurred protected deck names in reset
+                    confirmations.
+                  </li>
+                  <li>
+                    Fixed dashboard progress indicators briefly appearing on
+                    unrelated decks after returning from a session.
+                  </li>
+                </ul>
+                <h5
+                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 14.15.0
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>
+                    Moved locked decks and folders below unlocked items and made
+                    deck/session navigation immediate.
+                  </li>
+                  <li>
+                    Showed incorrect deck passwords directly in the unlock
+                    dialog and standardized its button spacing.
+                  </li>
+                  <li>
+                    Disabled session resume and the automatic landscape action;
+                    rotate devices manually when needed.
+                  </li>
+                </ul>
+                <h5
+                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 14.14.1
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>
+                    Prevented browser password autofill prompts in locked deck
+                    and folder dialogs.
+                  </li>
+                </ul>
+                <h5
+                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 14.13.0
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>Reduced the header height on desktop and mobile.</li>
+                  <li>
+                    Improved update checks when mobile browsers return to the
+                    app.
+                  </li>
+                </ul>
+                <h5
+                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 14.12.0
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>
+                    Kept password dialogs visible with progress feedback while
+                    protected decks load or switch modes.
+                  </li>
+                  <li>
+                    Blocked other website interactions during password-protected
+                    transitions.
+                  </li>
+                  <li>
+                    Improved locked-deck privacy and password entry, including
+                    blurred names and reduced autofill prompts.
+                  </li>
+                  <li>
+                    Preserved literal UUID-sheet passwords and made password
+                    verification consistent.
+                  </li>
+                </ul>
+                <h5
+                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 14.11.0
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>
+                    Stopped review pagination from shaking while restoring the
+                    expected previous-page position.
+                  </li>
+                  <li>
+                    Blocked app interactions while a deck is opening and
+                    restored controls safely when loading completes.
+                  </li>
+                </ul>
+                <h5
+                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 14.10.0
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>
+                    Preserved GitHub Pages deep links and added clear notices
+                    for missing decks.
+                  </li>
+                  <li>
+                    Added fingerprint-verified backend payload updates with
+                    safer background sync and study-session preservation.
+                  </li>
+                  <li>
+                    Reduced motion when entering app views and improved
+                    study/quiz progress handling.
+                  </li>
+                </ul>
+                <h5
+                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 14.9.1
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>
+                    Hardened Pages deployments with safe, targeted asset
+                    minification and release verification.
+                  </li>
+                  <li>
+                    Removed vulnerable CSS build dependencies while retaining
+                    Tailwind v3 browser support.
+                  </li>
+                </ul>
+                <h5
+                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 14.9.0
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>
+                    Added automatic semantic versioning for feature, fix, and
+                    breaking changes.
+                  </li>
+                  <li>
+                    Improved deployment updates with content-hashed assets and
+                    safe progress-preserving reloads.
+                  </li>
+                </ul>
+                <h5
+                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 14.8
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>
+                    Moved progress transfer into Settings and temporarily
+                    limited transfers to files.
+                  </li>
+                </ul>
+                <h5
+                  class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 14.7
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>
+                    Preserved QR libraries for mobile browsers and cached app
+                    versions.
+                  </li>
+                  <li>
+                    Kept the About dialog within the screen and made older
+                    changelogs expandable.
+                  </li>
+                </ul>
+                <h5
+                  class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 14.6
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>
+                    Fixed QR tools failing to load after deployment
+                    minification.
+                  </li>
+                </ul>
+                <h5
+                  class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 14.5
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>
+                    Kept the About dialog within the screen and made older
+                    changelogs expandable.
+                  </li>
+                </ul>
+                <h5
+                  class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 14.4
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>
+                    Added direct, serverless progress transfer between devices
+                    on the same local network.
+                  </li>
+                  <li>
+                    Improved spacing in the transfer dialog and bundled QR tools
+                    for offline use.
+                  </li>
+                </ul>
+                <h5
+                  class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 14.3
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>
+                    Added offline-capable transfer files for large progress
+                    exports; improved QR scanning reliability.
+                  </li>
+                </ul>
+                <h5
+                  class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Version 14.2
+                </h5>
+                <ul
+                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
+                >
+                  <li>
+                    Improved QR scanning efficiency, rapid navigation, and
+                    release asset verification.
+                  </li>
+                </ul>
+                <h5
+                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
                   Version 14.1
                 </h5>
                 <ul
                   class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
                 >
-                  <li>Removed unnecessary empty space in the progress-transfer dialog and improved QR transfer reliability.</li>
+                  <li>
+                    Removed unnecessary empty space in the progress-transfer
+                    dialog and improved QR transfer reliability.
+                  </li>
                 </ul>
-                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                <h5
+                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
                   Version 14.0
                 </h5>
                 <ul
                   class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
                 >
-                  <li>Added QR-code transfer for saved progress between devices.</li>
-                  <li>Added an explicit choice to keep or replace saved settings during import.</li>
+                  <li>
+                    Added QR-code transfer for saved progress between devices.
+                  </li>
+                  <li>
+                    Added an explicit choice to keep or replace saved settings
+                    during import.
+                  </li>
                 </ul>
-                <h5 class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200">
+                <h5
+                  class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
                   Version 13.9
                 </h5>
                 <ul
                   class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
                 >
-                  <li>Prevented text selection across the app while preserving editable fields.</li>
-                  <li>Centered the Settings footer and refreshed its hierarchy.</li>
+                  <li>
+                    Prevented text selection across the app while preserving
+                    editable fields.
+                  </li>
+                  <li>
+                    Centered the Settings footer and refreshed its hierarchy.
+                  </li>
                   <li>Moved release notes into About MRH.</li>
                 </ul>
-                <h5 class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200">
+                <h5
+                  class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
                   Version 13.8
                 </h5>
                 <ul
@@ -2440,7 +2705,8 @@
                   >Show Answers</span
                 >
                 <span class="text-xs text-gray-500 block mt-1"
-                  >Default to ON. Show correct answers in the review cards.</span
+                  >Default to ON. Show correct answers in the review
+                  cards.</span
                 >
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
@@ -2549,7 +2815,9 @@
                 <option value="scroll">Scroll List</option>
                 <option value="single">Single Flashcard</option>
               </select>
-              <p class="user-text-content text-xs text-gray-500 dark:text-gray-400">
+              <p
+                class="user-text-content text-xs text-gray-500 dark:text-gray-400"
+              >
                 Default to SCROLL LIST.
               </p>
             </div>
@@ -2569,7 +2837,9 @@
                 onchange="changeStudyPageSize(this.value)"
                 class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg p-2.5 text-sm text-gray-700 dark:text-gray-200 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors"
               />
-              <p class="user-text-content text-xs text-gray-500 dark:text-gray-400">
+              <p
+                class="user-text-content text-xs text-gray-500 dark:text-gray-400"
+              >
                 Default to 10.
                 <span class="ml-2 whitespace-nowrap">
                   Total pages: <span id="review-page-count">-</span>
@@ -2776,17 +3046,22 @@
       aria-modal="true"
       aria-labelledby="qr-transfer-title"
       aria-describedby="qr-transfer-status"
-      onclick="if (event.target === this) QRTransfer.close()"
+      onclick="if (event.target === this) QRTransfer.close();"
     >
       <div
         class="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-gray-700 dark:bg-gray-800 sm:p-6"
       >
-        <div class="flex justify-between items-center mb-4 border-b border-gray-100 dark:border-gray-700 pb-3">
+        <div
+          class="flex justify-between items-center mb-4 border-b border-gray-100 dark:border-gray-700 pb-3"
+        >
           <h2
             id="qr-transfer-title"
             class="text-xl font-bold text-gray-800 dark:text-gray-100"
           >
-            <i class="fa-solid fa-qrcode text-brand-500 mr-2" aria-hidden="true"></i>
+            <i
+              class="fa-solid fa-qrcode text-brand-500 mr-2"
+              aria-hidden="true"
+            ></i>
             Transfer Progress
           </h2>
           <button
@@ -2808,21 +3083,29 @@
 
         <div id="qr-transfer-home" class="space-y-2.5">
           <p class="user-text-content text-sm text-gray-600 dark:text-gray-300">
-            Direct device and QR transfers are temporarily unavailable. You can still move saved progress with a transfer file.
+            Direct device and QR transfers are temporarily unavailable. You can
+            still move saved progress with a transfer file.
           </p>
-          <div class="space-y-2.5 border-t border-gray-200 pt-3 dark:border-gray-700">
+          <div
+            class="space-y-2.5 border-t border-gray-200 pt-3 dark:border-gray-700"
+          >
             <button
               id="qr-transfer-file-export-button"
               type="button"
               onclick="QRTransfer.exportFile()"
               class="w-full rounded-lg bg-brand-600 px-4 py-3 font-bold text-white hover:bg-brand-700"
             >
-              <i class="fa-solid fa-file-arrow-down mr-2" aria-hidden="true"></i>
+              <i
+                class="fa-solid fa-file-arrow-down mr-2"
+                aria-hidden="true"
+              ></i>
               Save transfer file
             </button>
             <button
               type="button"
-              onclick="document.getElementById('qr-transfer-file-input').click()"
+              onclick="
+                document.getElementById('qr-transfer-file-input').click()
+              "
               class="w-full rounded-lg bg-gray-100 px-4 py-3 font-bold text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
             >
               <i class="fa-solid fa-file-arrow-up mr-2" aria-hidden="true"></i>
@@ -2836,8 +3119,11 @@
               onchange="QRTransfer.importFile(this)"
               aria-label="Choose a progress transfer file"
             />
-            <p class="user-text-content text-xs text-gray-500 dark:text-gray-400">
-              Transfer files contain private progress data. Only share them with devices you trust, and delete them when finished.
+            <p
+              class="user-text-content text-xs text-gray-500 dark:text-gray-400"
+            >
+              Transfer files contain private progress data. Only share them with
+              devices you trust, and delete them when finished.
             </p>
           </div>
         </div>
@@ -2912,8 +3198,13 @@
             class="mx-auto mb-3 aspect-square w-full max-w-[340px] rounded-lg bg-white p-2"
             alt="Progress transfer QR code"
           />
-          <p id="qr-transfer-frame-count" class="mb-4 text-xs font-semibold text-gray-500 dark:text-gray-400"></p>
-          <p class="user-text-content mb-4 text-sm text-gray-600 dark:text-gray-300">
+          <p
+            id="qr-transfer-frame-count"
+            class="mb-4 text-xs font-semibold text-gray-500 dark:text-gray-400"
+          ></p>
+          <p
+            class="user-text-content mb-4 text-sm text-gray-600 dark:text-gray-300"
+          >
             Keep this screen open while the other device scans every frame.
           </p>
           <button
@@ -2969,7 +3260,9 @@
 
         <div id="qr-transfer-import" class="hidden space-y-3">
           <p class="user-text-content text-sm text-gray-600 dark:text-gray-300">
-            Importing replaces the saved learning progress on this device. Study position and question-level progress are included. Choose whether its settings should also be replaced.
+            Importing replaces the saved learning progress on this device. Study
+            position and question-level progress are included. Choose whether
+            its settings should also be replaced.
           </p>
           <button
             type="button"
@@ -2995,7 +3288,9 @@
         </div>
 
         <div id="qr-transfer-done" class="hidden text-center">
-          <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-300">
+          <div
+            class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-300"
+          >
             <i class="fa-solid fa-check text-2xl" aria-hidden="true"></i>
           </div>
           <button
@@ -3070,7 +3365,7 @@
       aria-modal="true"
       aria-labelledby="practice-completion-title"
       aria-describedby="practice-completion-message"
-      onclick="if (event.target === this) closePracticeCompletionModal()"
+      onclick="if (event.target === this) closePracticeCompletionModal();"
     >
       <div
         class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-8 text-center transform scale-95 transition-all duration-300 border border-gray-200 dark:border-gray-700"

@@ -66,7 +66,8 @@ assert.match(
   "Reviewer initial loads should show Loading while background refreshes preserve existing rows and status",
 );
 assert.doesNotMatch(
-  appCore.match(/async function loadReviewerDashboard\([\s\S]*?\n  \}/)?.[0] || "",
+  appCore.match(/async function loadReviewerDashboard\([\s\S]*?\n  \}/)?.[0] ||
+    "",
   /filterContainer\.hidden = true|Refreshing reviewer resources…|Loading reviewer resources…/,
   "Reviewer loading should not hide filters or replace the Showing status during refresh",
 );
@@ -147,13 +148,26 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(!idToken\) \{\s*setReviewerNavigationBusy\(false\);[\s\S]*?Google sign-in did not return a credential\. Open Profile to sign in again\./,
-  "a credential-less Google callback should clear Reviewer loading states",
+  /function setReviewerDashboardFiltersDisabled\(disabled\)[\s\S]*?button\.disabled = true[\s\S]*?button\.setAttribute\("aria-disabled", String\(button\.disabled\)\)/,
+  "all Year, Semester, and Category choices should disable during Reviewer loading",
+);
+assert.match(
+  appCore,
+  /reviewerSessionRestorePending\) \{\s*if \(lockedPanel\) lockedPanel\.hidden = true;[\s\S]*?showReviewerDashboardLoading\(true\);\s*return true;/,
+  "a saved session being restored should show only Loading and never the Locked panel",
+);
+assert.match(
+  appCore,
+  /if \(!idToken\) \{\s*setReviewerNavigationBusy\(false\);[\s\S]*?authStatus\?\.removeAttribute\("aria-busy"\);[\s\S]*?Use Google to sign in and request access/,
+  "a credential-less Google callback should clear Reviewer loading states and retain only the approved prompt",
 );
 const reviewerPromptCallback = appCore.match(
   /globalScope\.google\.accounts\.id\.prompt\(\(notification\) => \{[\s\S]*?\n          \}\);/,
 );
-assert.ok(reviewerPromptCallback, "the returning-user prompt callback should exist");
+assert.ok(
+  reviewerPromptCallback,
+  "the returning-user prompt callback should exist",
+);
 assert.match(
   reviewerPromptCallback[0],
   /reviewerAuthCheckPending = false;\s*setReviewerNavigationBusy\(\s*Boolean\(\s*reviewerPendingEnrollmentSessionId \|\|\s*reviewerSessionId \|\|\s*reviewerSessionRestorePending,\s*\),\s*\)/,
@@ -316,7 +330,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /const selectedYearName = \{\s*"1": "First",\s*"2": "Second",\s*"3": "Third",\s*\}\[resourceDashboardSelectedYear\][\s\S]*?\?\s*`\$\{selectedYearName\} Year`/,
+  /const selectedYearName = \{\s*1: "First",\s*2: "Second",\s*3: "Third",\s*\}\[resourceDashboardSelectedYear\][\s\S]*?\?\s*`\$\{selectedYearName\} Year`/,
   "all-semester status should use First, Second, or Third Year labels",
 );
 assert.match(
@@ -361,8 +375,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /const preferredTerm = "3\.2"[\s\S]*?availablePreviousTerms = orderedTerms\.filter[\s\S]*?year < preferredYear \|\|\s*\(year === preferredYear && semester <= preferredSemester\)[\s\S]*?const defaultTerm =\s*availablePreviousTerms\[availablePreviousTerms\.length - 1\][\s\S]*?!termValues\.has\(preferredTerm\)[\s\S]*?resourceDashboardSelectedYear = defaultYear;[\s\S]*?resourceDashboardSelectedSemester = defaultTerm\.split\("\."\)\[1\]/,
-  "default filters should prefer year 3 semester 2 and fall back to the nearest earlier available term",
+  /const preferredTerm = "3\.2"[\s\S]*?availablePreviousTerms = orderedTerms\.filter[\s\S]*?year < preferredYear \|\|\s*\(year === preferredYear && semester <= preferredSemester\)[\s\S]*?const nextAvailableTerm = orderedTerms\.find[\s\S]*?semester > preferredSemester[\s\S]*?const defaultTerm =[\s\S]*?termValues\.has\(preferredTerm\) \? preferredTerm : ""[\s\S]*?nextAvailableTerm[\s\S]*?availablePreviousTerms\[availablePreviousTerms\.length - 1\][\s\S]*?resourceDashboardSelectedYear = defaultYear;[\s\S]*?resourceDashboardSelectedSemester = defaultTerm\.split\("\."\)\[1\]/,
+  "default filters should prefer 3.2, then the next available term, then the nearest earlier term",
 );
 assert.match(
   appCore,
@@ -421,8 +435,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-reviewers-locked-panel\s*\{[^}]*width:\s*fit-content;[^}]*max-width:\s*min\(100%,\s*38rem\);[^}]*margin-inline:\s*auto;/,
-  "the locked message should remain centered within its content width",
+  /\.resource-reviewers-locked-panel\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;/,
+  "the locked prompt background should fill the dashboard width",
 );
 assert.match(
   appCore,
@@ -436,7 +450,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /new globalScope\.ResizeObserver\(renderResponsiveSignInButton\)/,
+  /new globalScope\.ResizeObserver\(\s*renderResponsiveSignInButton,\s*\)/,
   "Google sign-in width changes should also be tracked when the container resizes without a window event",
 );
 assert.match(
@@ -594,13 +608,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /profileUpdated && authStatus[\s\S]*?Name updated\. Reviewer access is locked until approval\./,
-  "a saved name edit should clearly indicate that Reviewer access needs approval again",
-);
-assert.match(
-  appCore,
-  /DENIED:\s*"Invalid credentials\. Correct your name, then resubmit\."/,
-  "denied users should see the requested invalid-credentials message",
+  /function renderReviewerProfileAccessStatus\(accountStatus\)[\s\S]*?TRUE:\s*\{\s*label:\s*"ACCESS GRANTED"[\s\S]*?FALSE:\s*\{\s*label:\s*"ACCESS PENDING"[\s\S]*?DENIED:\s*\{\s*label:\s*"ACCESS DENIED"/,
+  "the profile should show explicit Granted, Pending, and Denied access states",
 );
 assert.match(
   indexHtml,
@@ -645,7 +654,11 @@ assert.match(
 const normalizerStart = appCore.indexOf(
   "  function normalizeResourceDashboardTabs(tabs) {",
 );
-assert.notEqual(normalizerStart, -1, "the dashboard tab normalizer should exist");
+assert.notEqual(
+  normalizerStart,
+  -1,
+  "the dashboard tab normalizer should exist",
+);
 const functionStart = appCore.indexOf("{", normalizerStart);
 let functionDepth = 0;
 let functionEnd = -1;
@@ -657,7 +670,11 @@ for (let index = functionStart; index < appCore.length; index += 1) {
     break;
   }
 }
-assert.notEqual(functionEnd, -1, "the dashboard tab normalizer should be complete");
+assert.notEqual(
+  functionEnd,
+  -1,
+  "the dashboard tab normalizer should be complete",
+);
 const normalizeDashboardTabs = new Function(
   `${appCore.slice(normalizerStart, functionEnd)}; return normalizeResourceDashboardTabs;`,
 )();
@@ -791,7 +808,10 @@ assert.match(
 const reviewerDashboardLoader = appCore.match(
   /async function loadReviewerDashboard\(\{ refresh = false \} = \{\}\)[\s\S]*?\n  \}/,
 );
-assert.ok(reviewerDashboardLoader, "the reviewer dashboard loader should exist");
+assert.ok(
+  reviewerDashboardLoader,
+  "the reviewer dashboard loader should exist",
+);
 assert.doesNotMatch(
   reviewerDashboardLoader[0],
   /Unable to refresh reviewer resources/,
@@ -977,7 +997,9 @@ assert.match(
   "the dashboard table should expand with its rows and allow horizontal scrolling",
 );
 assert.doesNotMatch(
-  resourceStyles.match(/\.resource-dashboard-table-scroll\s*\{([^}]+)\}/)?.[1] || "",
+  resourceStyles.match(
+    /\.resource-dashboard-table-scroll\s*\{([^}]+)\}/,
+  )?.[1] || "",
   /\b(?:height|min-height|max-height)\s*:/,
   "the dashboard table should not have a fixed or bounded height",
 );

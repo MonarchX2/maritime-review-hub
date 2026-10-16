@@ -19,9 +19,15 @@ expiry, and verified email at sign-in, then validates the issued application
 session and requires the matching email and `Active=TRUE` for each protected
 reviewer request.
 Missing or invalid configuration fails closed.
-The profile form requires last and first names; middle initial is optional.
-Users are asked to check spelling and capitalization before saving (for
-example, `Dela Cruz`, `Maria`, `P.`). A user may edit a saved name; if any
+The profile form requires last name, first name, and a middle initial formatted
+as one letter followed by a period (for example, `K.`); the browser validates
+this format before sending the request, and the backend validates it again.
+Users are warned that false information will not be entertained and will be
+ignored and deleted, and that their verified Google email must share at least one
+meaningful name part or matching initials with the name they submit. This
+similarity check is a safeguard against major discrepancies, not proof of
+legal identity. Users receive an email when their profile becomes pending or
+an administrator grants or denies access. A user may edit a saved name; if any
 name field changes, the backend saves it and resets `Active` to `FALSE` until
 an administrator confirms the edited profile. Submitting the same name does
 not remove existing approval.
@@ -104,10 +110,9 @@ To initialize sign-in and access logging:
    `MRH_ACCOUNTS_SPREADSHEET_ID` to the spreadsheet ID.
 4. After updating the Apps Script source, run
    `initializeMRHAccountsSpreadsheet()` once and approve the requested Sheets
-   and external-request permissions. It
-   creates the `ACCOUNTS`, `SYLLABUS`, `MODULE`, `REVIEWERS`, `SIGN-IN`, and
-   `SCOPES` tabs
-   and headers. It renames the existing `Accounts` tab to `ACCOUNTS`; if both
+   and external-request permissions. It creates the `ACCOUNTS`, `SYLLABUS`,
+   `MODULE`, `REVIEWERS`, `SIGN-IN`, and `SCOPES` tabs and headers. It renames
+   the existing `Accounts` tab to `ACCOUNTS`; if both
    account tabs exist, it consolidates duplicate emails only when the names
    and approval states agree. Conflicting account rows stop setup and must be
    resolved manually. Setup removes legacy device-identity columns and values
@@ -118,7 +123,10 @@ To initialize sign-in and access logging:
    The `SCOPES` tab lists required Apps Script OAuth scopes and their purposes;
    it is refreshed when the initializer runs. Keep the spreadsheet
    private to administrators.
-5. On first sign-in, a user submits `Last Name`, `First Name`, and optional
+5. Run `authorizeMRHReviewerStatusEmails()` from the Apps Script editor once
+   and approve the send-mail permission. This authorization step is required
+   before the web app can send reviewer decision emails.
+6. On first sign-in, a user submits `Last Name`, `First Name`, and
    `Middle Initial`. The backend verifies the Google identity and saves one
    account row per verified email with `Active=FALSE`. Reviewer resources stay
    locked until an administrator changes `Active` to `TRUE`. Set `Active` to
@@ -126,7 +134,7 @@ To initialize sign-in and access logging:
    correct their name, and resubmit it for review, which returns the account
    to `FALSE`. The exact account columns are `Email`, `Last Name`,
    `First Name`, `Middle Initial`, and `Active`.
-6. Enable the Apps Script Advanced Google service **Google Sheets API v4**
+7. Enable the Apps Script Advanced Google service **Google Sheets API v4**
    (the project manifest declares this service; enable the Google Sheets API
    in the linked Cloud project if prompted), and deploy a new web-app version.
    The repository's `backend/` directory is excluded by `.gitignore` and is

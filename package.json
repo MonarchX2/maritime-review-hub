@@ -1,5 +1,5 @@
 {
-  "version": "26.10.16-42",
+  "version": "26.10.16-43",
   "scripts": {
     "sync:version": "node scripts/sync-package-version.js",
     "build:css": "node scripts/build-css.js",
