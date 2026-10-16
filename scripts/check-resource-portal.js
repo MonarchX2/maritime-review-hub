@@ -1254,7 +1254,10 @@ context.generateCacheKey = (key) => key;
 context.cacheGetChunked = () => JSON.stringify([{ Subject: "COLREGS" }]);
 context.filterSummaryDataByAccess = (summary) => summary;
 const unchangedSync = JSON.parse(
-  context.handleDeckSyncSnapshot_("2026-10-15T00:00:00.000Z").text,
+  context.handleDeckSyncSnapshot_(
+    "2026-10-15T00:00:00.000Z",
+    "cache-v1",
+  ).text,
 );
 assert.equal(unchangedSync.notModified, true);
 
@@ -1323,11 +1326,15 @@ pdfJobProperties.set(
     outputFileId: "expired-output",
   }),
 );
-const trashedExpiredOutputs = [];
+const deletedTemporaryOutputs = [];
 context.getScriptProps = () => pdfJobPropertyStore;
-context.DriveApp.getFileById = (fileId) => ({
-  setTrashed: (trashed) => trashedExpiredOutputs.push([fileId, trashed]),
-});
+context.Drive = {
+  Files: {
+    delete(fileId, options) {
+      deletedTemporaryOutputs.push([fileId, options]);
+    },
+  },
+};
 assert.deepEqual(
   JSON.parse(
     JSON.stringify(
@@ -1347,7 +1354,10 @@ assert.equal(
   "a live worker claim must not be requeued",
 );
 assert.equal(pdfJobProperties.has(pdfJobPrefix + "expired"), false);
-assert.deepEqual(trashedExpiredOutputs, [["expired-output", true]]);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(deletedTemporaryOutputs)),
+  [["expired-output", { supportsAllDrives: true }]],
+);
 
 context.reviewerPdfQueueConfigured_ = () => true;
 context.reviewerPdfQueueConfigured_ = () => false;
@@ -1486,7 +1496,7 @@ const completedPdfJob = JSON.parse(
 assert.equal(completedPdfJob.status, "complete", JSON.stringify(completedPdfJob));
 assert.equal(completedPdfJob.outputFileId, "private-derivative-id");
 assert.equal(derivativeFile.blob.mimeType, "application/pdf");
-assert.equal(derivativeFile.blob.name, `MRH Reviewer PDF ${workerJobId}.pdf`);
+assert.equal(derivativeFile.blob.name, `MRH PDF ${workerJobId}.pdf`);
 assert.equal(
   scheduledPdfWorkerDelays.length,
   1,
@@ -1511,6 +1521,67 @@ context.DriveApp.getFileById = (fileId) => {
     getBlob: () => ({ getBytes: () => workerPdfBytes }),
   };
 };
+function addCompletedPdfJob(jobId) {
+  pdfJobProperties.set(
+    pdfJobPrefix + jobId,
+    JSON.stringify({
+      jobId,
+      sessionId: workerSessionId,
+      fileId: "reviewerPdf_123456",
+      sourceVersion: "test-source-version",
+      status: "complete",
+      outputFileId: "private-derivative-id",
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    }),
+  );
+}
+assert.equal(
+  JSON.parse(
+    context.getReviewerPdfJobStatus_({
+      jobId: workerJobId,
+      sessionId: "d".repeat(96),
+    }).text,
+  ).code,
+  "PDF_JOB_NOT_FOUND",
+  "a different authenticated reviewer cannot read another session's job",
+);
+const staleSourceJobId = "f".repeat(96);
+addCompletedPdfJob(staleSourceJobId);
+context.getReviewerPdfSource_ = () => ({
+  error: { code: "RESOURCE_NOT_AUTHORIZED", message: "Stale index." },
+});
+assert.equal(
+  JSON.parse(
+    context.getReviewerPdfJobStatus_({
+      jobId: staleSourceJobId,
+      sessionId: workerSessionId,
+    }).text,
+  ).code,
+  "PDF_SOURCE_CHANGED",
+  "polling must deny a completed derivative after its source leaves the authoritative index",
+);
+const changedSourceJobId = "a".repeat(96);
+addCompletedPdfJob(changedSourceJobId);
+context.getReviewerPdfSource_ = () => ({
+  entry: { fileId: "reviewerPdf_123456", title: "Reviewer.pdf" },
+  driveFile: { id: "reviewerPdf_123456" },
+  sourceVersion: "different-source-version",
+});
+assert.equal(
+  JSON.parse(
+    context.getReviewerPdfJobStatus_({
+      jobId: changedSourceJobId,
+      sessionId: workerSessionId,
+    }).text,
+  ).code,
+  "PDF_SOURCE_CHANGED",
+  "polling must not deliver a derivative for a changed source version",
+);
+context.getReviewerPdfSource_ = () => ({
+  entry: { fileId: "reviewerPdf_123456", title: "Reviewer.pdf" },
+  driveFile: { id: "reviewerPdf_123456" },
+  sourceVersion: "test-source-version",
+});
 const deliveredPdfJob = JSON.parse(
   context.getReviewerPdfJobStatus_({
     jobId: workerJobId,
@@ -1525,48 +1596,10 @@ assert.equal(
   "job polling must return the stored derivative bytes",
 );
 assert.equal(
-  JSON.parse(
-    context.getReviewerPdfJobStatus_({
-      jobId: workerJobId,
-      sessionId: "d".repeat(96),
-    }).text,
-  ).code,
-  "PDF_JOB_NOT_FOUND",
-  "a different authenticated reviewer cannot read another session's job",
+  deletedTemporaryOutputs.some(([fileId]) => fileId === "private-derivative-id"),
+  true,
+  "the delivered derivative must be permanently deleted before returning bytes",
 );
-context.getReviewerPdfSource_ = () => ({
-  error: { code: "RESOURCE_NOT_AUTHORIZED", message: "Stale index." },
-});
-assert.equal(
-  JSON.parse(
-    context.getReviewerPdfJobStatus_({
-      jobId: workerJobId,
-      sessionId: workerSessionId,
-    }).text,
-  ).code,
-  "PDF_SOURCE_CHANGED",
-  "polling must deny a completed derivative after its source leaves the authoritative index",
-);
-context.getReviewerPdfSource_ = () => ({
-  entry: { fileId: "reviewerPdf_123456", title: "Reviewer.pdf" },
-  driveFile: { id: "reviewerPdf_123456" },
-  sourceVersion: "different-source-version",
-});
-assert.equal(
-  JSON.parse(
-    context.getReviewerPdfJobStatus_({
-      jobId: workerJobId,
-      sessionId: workerSessionId,
-    }).text,
-  ).code,
-  "PDF_SOURCE_CHANGED",
-  "polling must not deliver a derivative for a changed source version",
-);
-context.getReviewerPdfSource_ = () => ({
-  entry: { fileId: "reviewerPdf_123456", title: "Reviewer.pdf" },
-  driveFile: { id: "reviewerPdf_123456" },
-  sourceVersion: "test-source-version",
-});
 
 const nonPrivateJobId = "e".repeat(96);
 pdfJobProperties.set(
@@ -1595,10 +1628,9 @@ const rejectedPdfJob = JSON.parse(
 );
 assert.equal(rejectedPdfJob.status, "failed");
 assert.equal(rejectedPdfJob.code, "PDF_OUTPUT_NOT_PRIVATE");
-assert.equal(
-  derivativeFile.trashed,
-  true,
-  "a derivative that is not private must be trashed and never delivered",
+assert.ok(
+  deletedTemporaryOutputs.some(([fileId]) => fileId === "private-derivative-id"),
+  "a derivative that is not private must be permanently deleted and never delivered",
 );
 
 let aclDeleteCount = 0;

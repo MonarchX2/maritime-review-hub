@@ -16,7 +16,8 @@
    * @property {(value: boolean) => void} setColdStart
    * @property {(summary: unknown) => unknown} normalizeSummaryData
    * @property {() => string} readStoredSyncStatusTimestamp
-   * @property {(timestamp: string) => void} persistSyncStatusTimestamp
+   * @property {() => string} [readStoredSyncStatusCacheVersion]
+   * @property {(timestamp: string, cacheVersion?: string) => void} persistSyncStatusTimestamp
    * @property {(summary: Array, knownChanged?: boolean) => boolean} applySummaryData
    * @property {(summary: Array) => void} setAccessMetadata
    * @property {() => void} sanitizeDeletedDeckReferences
@@ -172,6 +173,7 @@
     let initialSuccessShown = false;
     let pendingSummaryData = null;
     let pendingSyncTimestamp = "";
+    let pendingSyncCacheVersion = "";
     let connected = false;
     let coldStart = false;
     let inFlightPromise = null;
@@ -301,11 +303,14 @@
         if (!options.isLeader()) return;
         try {
           const storedTimestamp = options.readStoredSyncStatusTimestamp();
+          const storedCacheVersion =
+            options.readStoredSyncStatusCacheVersion?.() || "";
           const hasSnapshotApi =
             typeof options.network?.getDeckSyncSnapshot === "function";
           const status = hasSnapshotApi
             ? await options.network.getDeckSyncSnapshot({
                 since: isCached() ? storedTimestamp : "",
+                sinceCacheVersion: isCached() ? storedCacheVersion : "",
                 timeoutMs: 20000,
                 maxRetries: 0,
               })
@@ -354,6 +359,7 @@
           }
           clearScheduledRetry();
           const timestamp = String(status.syncTimestamp || "").trim();
+          const cacheVersion = String(status.cacheVersion || "").trim();
           const timestampMs = Date.parse(timestamp);
           const storedTimestampMs = Date.parse(storedTimestamp);
           if (
@@ -361,7 +367,8 @@
             timestamp &&
             Number.isFinite(timestampMs) &&
             Number.isFinite(storedTimestampMs) &&
-            timestampMs < storedTimestampMs
+            timestampMs < storedTimestampMs &&
+            (!cacheVersion || cacheVersion === storedCacheVersion)
           ) {
             options.logger.warn(
               "[SYNC] Ignoring an older backend sync timestamp.",
@@ -373,14 +380,22 @@
             schedulePoll();
             return;
           }
-          if (storedTimestamp && storedTimestamp === timestamp) {
+          if (
+            storedTimestamp &&
+            storedTimestamp === timestamp &&
+            (!cacheVersion || storedCacheVersion === cacheVersion)
+          ) {
             setConnected(true);
             setIsColdStart(false);
             await options.refreshPendingPayloads?.();
             schedulePoll();
             return;
           }
-          if (timestamp && pendingSyncTimestamp === timestamp) {
+          if (
+            timestamp &&
+            pendingSyncTimestamp === timestamp &&
+            pendingSyncCacheVersion === cacheVersion
+          ) {
             if (options.hasActiveSession()) {
               setConnected(true);
               setIsColdStart(false);
@@ -396,8 +411,10 @@
             hasSnapshotSummary ? status : null,
           );
           if (timestamp && synchronized) {
-            if (pendingSummaryData) pendingSyncTimestamp = timestamp;
-            else options.persistSyncStatusTimestamp(timestamp);
+            if (pendingSummaryData) {
+              pendingSyncTimestamp = timestamp;
+              pendingSyncCacheVersion = cacheVersion;
+            } else options.persistSyncStatusTimestamp(timestamp, cacheVersion);
           }
         } catch (error) {
           options.logger.error(
@@ -478,6 +495,9 @@
             syncSnapshot = await options.network.getDeckSyncSnapshot({
               since: isCached()
                 ? options.readStoredSyncStatusTimestamp()
+                : "",
+              sinceCacheVersion: isCached()
+                ? options.readStoredSyncStatusCacheVersion?.() || ""
                 : "",
               timeoutMs: requestTimeoutMs,
               signal: requestController.signal,
@@ -681,8 +701,12 @@
         if (!pendingSummaryData) return false;
         pendingSummaryData = null;
         if (pendingSyncTimestamp) {
-          options.persistSyncStatusTimestamp(pendingSyncTimestamp);
+          options.persistSyncStatusTimestamp(
+            pendingSyncTimestamp,
+            pendingSyncCacheVersion,
+          );
           pendingSyncTimestamp = "";
+          pendingSyncCacheVersion = "";
         }
         return true;
       },

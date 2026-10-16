@@ -1608,7 +1608,7 @@ function getVerifiedGooglePicture_(value) {
 }
 
 function getReviewerAccountStatusResponse_(identity) {
-  var account = findMRHAccount_(identity.email);
+  var account = findMRHAccount_(identity.email, true);
   var accountStatus = account ? account.accountStatus : "NOT_FOUND";
   updateReviewerStatusNotification_(identity.email, accountStatus);
   return {
@@ -1862,6 +1862,20 @@ function handleRestoreReviewerSessionRequest(data) {
 
 function handleRevokeReviewerSessionRequest(data) {
   var sessionId = String(data && data.sessionId || "").trim();
+  var cleanup = null;
+  try {
+    cleanup = cleanupReviewerPdfJobsForSession_(sessionId);
+  } catch (cleanupError) {
+    Logger.log(JSON.stringify({
+      event: "reviewer_pdf_signout_cleanup_failed",
+      reasonCode: "PDF_CLEANUP_FAILED",
+    }));
+  }
+  if (!cleanup || cleanup.status !== "success")
+    Logger.log(JSON.stringify({
+      event: "reviewer_pdf_signout_cleanup_pending",
+      reasonCode: "PDF_CLEANUP_PENDING",
+    }));
   if (!revokeReviewerSession_(sessionId))
     return errorResponse(
       "The reviewer session could not be revoked right now. Try signing out again.",
@@ -1919,7 +1933,7 @@ function authorizeReviewerPdfRequest_(data) {
   )
     return {
       error: authorization.error || errorResponse(
-        "Reviewer PDF access requires an account explicitly approved as TRUE.",
+        "PDF access requires an account explicitly approved as TRUE.",
         "ACCOUNT_PENDING",
       ),
     };
@@ -2100,7 +2114,7 @@ function handleReviewerEnrollmentRequest(data) {
 }
 
 function handleGetReviewerDashboardRequest(data) {
-  var authorization = authorizeReviewerRequest_(data);
+  var authorization = authorizeReviewerRequest_(data, true);
   if (authorization.error) return authorization.error;
 
   var reviewerCache = null;
@@ -2204,6 +2218,9 @@ function protectReviewerDashboardTab_(tab) {
           protectedTab.linkTypes[rowIndex] &&
           protectedTab.linkTypes[rowIndex][columnIndex] || "",
       ).toLowerCase();
+      var protectedFileId = /^mrh-reviewer-pdf:([A-Za-z0-9_-]{10,200})$/.exec(
+        String(url || ""),
+      );
       var linkTitle = String(
         protectedTab.linkTitles &&
           protectedTab.linkTitles[rowIndex] &&
@@ -2211,6 +2228,7 @@ function protectReviewerDashboardTab_(tab) {
       );
       if (linkType !== "application/pdf" && !/\.pdf$/i.test(linkTitle))
         return;
+      if (protectedFileId) return;
       var fileId = getResourceDashboardFileId(url);
       if (!fileId)
         throw new Error(
@@ -2376,7 +2394,7 @@ async function runReviewerPdfWatermarkProofOfConcept() {
     var derivative = await watermarkReviewerPdfBytes_(sourceBytes, identity);
     var verification = await verifyReviewerPdfWatermarks_(
       derivative.bytes,
-      email,
+      identity,
     );
     if (
       verification.pageCount !== 20 ||
@@ -2451,8 +2469,16 @@ function getReviewerPdfDriveHierarchy_(fileId) {
     };
     var path = current.path.concat([resource]);
     resources.push(resource);
-    if (String(file.id) === ROOT_FOLDER_ID)
-      return { insideRoot: true, path: path };
+    if (String(file.id) === RESOURCE_PORTAL_ROOT_FOLDER_ID)
+      return {
+        insideRoot: path.some(function (item) {
+          return (
+            item.mimeType === "application/vnd.google-apps.folder" &&
+            isPrivateResourceFolderName(item.name)
+          );
+        }),
+        path: path,
+      };
     (file.parents || []).forEach(function (parentId) {
       if (!visited[parentId])
         queue.push({ id: String(parentId), path: path });
@@ -2477,7 +2503,7 @@ function getReviewerPdfSource_(fileId) {
     return {
       error: {
         code: "RESOURCE_NOT_AUTHORIZED",
-        message: "This Reviewer PDF is outside the protected resource hierarchy.",
+        message: "This PDF is outside the protected resource hierarchy.",
       },
     };
   var driveFile = hierarchy.path[0];
@@ -2587,6 +2613,95 @@ function setupReviewerPdfDelivery() {
   }
 }
 
+function handleGetReviewerPdfPreviewRequest_(data) {
+  var startedAt = Date.now();
+  var authorization = authorizeReviewerPdfRequest_(data);
+  if (authorization.error) return authorization.error;
+  var fileId = String(data && data.fileId || "").trim();
+  if (!/^[A-Za-z0-9_-]{10,200}$/.test(fileId))
+    return reviewerPdfFailure_(
+      data,
+      startedAt,
+      "BAD_REQUEST",
+      "A valid PDF ID is required.",
+    );
+  var source = getReviewerPdfSource_(fileId);
+  if (source.error)
+    return reviewerPdfFailure_(
+      data,
+      startedAt,
+      source.error.code,
+      source.error.message,
+    );
+  var sourceBytes = DriveApp.getFileById(fileId).getBlob().getBytes();
+  if (
+    !sourceBytes.length ||
+    sourceBytes.length > MRH_REVIEWER_PDF_MAX_BYTES ||
+    !sourceBytes.slice(0, 1024).some(function (byte, index, bytes) {
+      return String.fromCharCode(byte) === "%" &&
+        String.fromCharCode(bytes[index + 1] || 0) === "P" &&
+        String.fromCharCode(bytes[index + 2] || 0) === "D" &&
+        String.fromCharCode(bytes[index + 3] || 0) === "F" &&
+        String.fromCharCode(bytes[index + 4] || 0) === "-";
+    })
+  )
+    return reviewerPdfFailure_(
+      data,
+      startedAt,
+      "INVALID_PDF",
+      "The source PDF is invalid or too large.",
+    );
+  var latestSource = getReviewerPdfSource_(fileId);
+  if (
+    latestSource.error ||
+    latestSource.sourceVersion !== source.sourceVersion
+  )
+    return reviewerPdfFailure_(
+      data,
+      startedAt,
+      "PDF_SOURCE_CHANGED",
+      "The PDF changed while the preview was being loaded. Try again.",
+    );
+  var identity;
+  try {
+    identity = reviewerPdfWatermarkIdentity_(
+      authorization.account,
+      authorization.email,
+    );
+  } catch (error) {
+    return reviewerPdfFailure_(
+      data,
+      startedAt,
+      String(error && error.code || "BAD_REQUEST"),
+      String(error && error.message || "Verified account details are required."),
+    );
+  }
+  appendMRHAccessLog_(
+    "REVIEWERS",
+    authorization.account,
+    String(data.eventId || ""),
+    {
+      event: "PROTECTED_PDF_PREVIEW",
+      category: "REVIEWERS",
+      resource: source.entry.title + " | " + fileId,
+    },
+  );
+  Logger.log(JSON.stringify({
+    event: "reviewer_pdf_preview_delivered",
+    correlationId: String(data.eventId || ""),
+    durationMs: Date.now() - startedAt,
+    sourceBytes: sourceBytes.length,
+  }));
+  return jsonResponse({
+    status: "success",
+    mimeType: "application/pdf",
+    sourceVersion: source.sourceVersion,
+    fullName: identity.fullName,
+    email: identity.email,
+    data: Utilities.base64Encode(sourceBytes),
+  });
+}
+
 function cleanReviewerPdfJobs_(properties, now) {
   var allProperties = properties.getProperties();
   var queuedById = Object.create(null);
@@ -2614,7 +2729,7 @@ function cleanReviewerPdfJobs_(properties, now) {
     if (!job || !Number.isFinite(Number(job.expiresAt)) || job.expiresAt <= now) {
       if (job && job.outputFileId) {
         try {
-          DriveApp.getFileById(job.outputFileId).setTrashed(true);
+          permanentlyDeleteReviewerPdfOutput_(job.outputFileId);
         } catch (error) {
           Logger.log("[cleanReviewerPdfJobs_] Expired output cleanup failed.");
           return;
@@ -2651,6 +2766,19 @@ function cleanReviewerPdfJobs_(properties, now) {
   return retainedQueue;
 }
 
+function permanentlyDeleteReviewerPdfOutput_(fileId) {
+  var normalizedId = String(fileId || "").trim();
+  if (!/^[A-Za-z0-9_-]{10,200}$/.test(normalizedId))
+    throw new Error("The temporary PDF output ID is invalid.");
+  if (
+    typeof Drive === "undefined" ||
+    !Drive.Files ||
+    typeof Drive.Files.delete !== "function"
+  )
+    throw new Error("Permanent deletion is unavailable for temporary PDFs.");
+  Drive.Files.delete(normalizedId, { supportsAllDrives: true });
+}
+
 function enqueueReviewerPdfRequest_(data) {
   if (!/^[a-f0-9]{96}$/i.test(String(data && data.sessionId || "")))
     return errorResponse(
@@ -2661,13 +2789,13 @@ function enqueueReviewerPdfRequest_(data) {
   if (authorization.error) return authorization.error;
   if (!reviewerPdfQueueConfigured_())
     return errorResponse(
-      "Reviewer PDF delivery is not configured. The script administrator must install the background processor.",
+      "PDF downloads are not configured. The script administrator must install the background processor.",
       "PDF_PROCESSOR_NOT_CONFIGURED",
     );
 
   var fileId = String(data && data.fileId || "").trim();
   if (!/^[A-Za-z0-9_-]{10,200}$/.test(fileId))
-    return errorResponse("A valid Reviewer PDF ID is required.", "BAD_REQUEST");
+    return errorResponse("A valid PDF ID is required.", "BAD_REQUEST");
   var source = getReviewerPdfSource_(fileId);
   if (source.error)
     return errorResponse(source.error.message, source.error.code);
@@ -2675,7 +2803,7 @@ function enqueueReviewerPdfRequest_(data) {
   var now = Date.now();
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000))
-    return errorResponse("Reviewer PDF delivery is busy. Please try again.", "PDF_QUEUE_BUSY");
+    return errorResponse("PDF preparation is busy. Please try again.", "PDF_QUEUE_BUSY");
   try {
     var properties = getScriptProps();
     var queue = cleanReviewerPdfJobs_(properties, now);
@@ -2692,7 +2820,7 @@ function enqueueReviewerPdfRequest_(data) {
     }).length;
     if (activeCount >= REVIEWER_PDF_QUEUE_LIMIT)
       return errorResponse(
-        "Reviewer PDF processing is at capacity. Please try again shortly.",
+        "PDF preparation is at capacity. Please try again shortly.",
         "PDF_QUEUE_FULL",
       );
 
@@ -2722,7 +2850,7 @@ function enqueueReviewerPdfRequest_(data) {
       properties.setProperty(REVIEWER_PDF_QUEUE_PROPERTY, JSON.stringify(queue));
       Logger.log("[enqueueReviewerPdfRequest_] Could not schedule the PDF worker.");
       return errorResponse(
-        "Reviewer PDF processing could not be scheduled. Please try again.",
+        "PDF preparation could not be scheduled. Please try again.",
         "PDF_PROCESSOR_UNAVAILABLE",
       );
     }
@@ -2742,12 +2870,12 @@ function getReviewerPdfJobStatus_(data) {
   if (authorization.error) return authorization.error;
   var jobId = String(data && data.jobId || "").trim();
   if (!/^[a-f0-9]{96}$/.test(jobId))
-    return errorResponse("A valid Reviewer PDF job ID is required.", "BAD_REQUEST");
+    return errorResponse("A valid PDF job ID is required.", "BAD_REQUEST");
 
   var job = null;
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000))
-    return errorResponse("Reviewer PDF delivery is busy. Please retry.", "PDF_QUEUE_BUSY");
+    return errorResponse("PDF delivery is busy. Please retry.", "PDF_QUEUE_BUSY");
   try {
     var properties = getScriptProps();
     cleanReviewerPdfJobs_(properties, Date.now());
@@ -2766,7 +2894,7 @@ function getReviewerPdfJobStatus_(data) {
       !Number.isFinite(Number(job.expiresAt)) ||
       job.expiresAt <= Date.now()
     )
-      return errorResponse("Reviewer PDF job was not found or has expired.", "PDF_JOB_NOT_FOUND");
+      return errorResponse("PDF job was not found or has expired.", "PDF_JOB_NOT_FOUND");
   } finally {
     lock.releaseLock();
   }
@@ -2777,7 +2905,7 @@ function getReviewerPdfJobStatus_(data) {
     currentSource.sourceVersion !== job.sourceVersion
   )
     return errorResponse(
-      "The Reviewer PDF source changed or is no longer authorized. Request it again.",
+      "The PDF source changed or is no longer authorized. Request it again.",
       "PDF_SOURCE_CHANGED",
     );
 
@@ -2793,7 +2921,7 @@ function getReviewerPdfJobStatus_(data) {
         } catch (error) {
           Logger.log("[getReviewerPdfJobStatus_] Could not reschedule PDF worker.");
           return errorResponse(
-            "Reviewer PDF processing could not be rescheduled. Please try again.",
+            "PDF processing could not be rescheduled. Please try again.",
             "PDF_PROCESSOR_UNAVAILABLE",
           );
         } finally {
@@ -2809,7 +2937,7 @@ function getReviewerPdfJobStatus_(data) {
       job.code || "PDF_PROCESSING_FAILED",
     );
   if (job.status !== "complete" || !job.outputFileId)
-    return errorResponse("Reviewer PDF job has an invalid state.", "PDF_JOB_INVALID");
+    return errorResponse("PDF job has an invalid state.", "PDF_JOB_INVALID");
 
   var outputFile;
   try {
@@ -2827,10 +2955,30 @@ function getReviewerPdfJobStatus_(data) {
       String.fromCharCode.apply(null, outputBytes.slice(0, 5)) !== "%PDF-"
     )
       throw new Error("The prepared PDF is invalid.");
+    var encodedOutput = Utilities.base64Encode(outputBytes);
+    var cleanupLock = LockService.getScriptLock();
+    if (!cleanupLock.tryLock(10000))
+      throw new Error("The downloaded PDF cleanup is busy.");
+    try {
+      var currentJobRaw = getScriptProps().getProperty(
+        reviewerPdfJobPropertyKey_(job.jobId),
+      );
+      var currentJob = currentJobRaw ? JSON.parse(currentJobRaw) : null;
+      if (
+        !currentJob ||
+        currentJob.sessionId !== String(data.sessionId || "") ||
+        currentJob.outputFileId !== job.outputFileId
+      )
+        throw new Error("The PDF download session ended before delivery.");
+      permanentlyDeleteReviewerPdfOutput_(job.outputFileId);
+      getScriptProps().deleteProperty(reviewerPdfJobPropertyKey_(job.jobId));
+    } finally {
+      cleanupLock.releaseLock();
+    }
     return jsonResponse({
       status: "success",
       mimeType: "application/pdf",
-      data: Utilities.base64Encode(outputBytes),
+      data: encodedOutput,
     });
   } catch (error) {
     Logger.log("[getReviewerPdfJobStatus_] Output delivery failed: " + String(
@@ -2841,6 +2989,87 @@ function getReviewerPdfJobStatus_(data) {
       "PDF_DELIVERY_FAILED",
     );
   }
+}
+
+function cleanupReviewerPdfJobsForSession_(sessionId) {
+  var normalizedSessionId = String(sessionId || "").trim();
+  if (!/^[a-f0-9]{96}$/i.test(normalizedSessionId))
+    return { status: "error", cleaned: 0 };
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000))
+    return { status: "error", cleaned: 0 };
+  var properties = getScriptProps();
+  var removedJobIds = [];
+  var cleanupFailed = false;
+  try {
+    var allProperties = properties.getProperties();
+    var queue;
+    try {
+      queue = JSON.parse(
+        allProperties[REVIEWER_PDF_QUEUE_PROPERTY] || "[]",
+      );
+    } catch (error) {
+      throw new Error("Reviewer PDF job queue is invalid.");
+    }
+    if (!Array.isArray(queue))
+      throw new Error("Reviewer PDF job queue is invalid.");
+    Object.keys(allProperties).forEach(function (key) {
+      if (key.indexOf(REVIEWER_PDF_JOB_PROPERTY_PREFIX) !== 0) return;
+      var job;
+      try {
+        job = JSON.parse(allProperties[key]);
+      } catch (error) {
+        return;
+      }
+      if (!job || job.sessionId !== normalizedSessionId) return;
+      if (job.outputFileId) {
+        try {
+          permanentlyDeleteReviewerPdfOutput_(job.outputFileId);
+        } catch (error) {
+          cleanupFailed = true;
+          Logger.log(JSON.stringify({
+            event: "reviewer_pdf_session_cleanup_failed",
+            reasonCode: "DRIVE_TRASH_FAILED",
+          }));
+          return;
+        }
+      }
+      if (job.status === "processing") {
+        job.status = "cancelled";
+        delete job.processingAt;
+        properties.setProperty(key, JSON.stringify(job));
+      } else {
+        properties.deleteProperty(key);
+      }
+      removedJobIds.push(String(job.jobId || ""));
+    });
+    properties.setProperty(
+      REVIEWER_PDF_QUEUE_PROPERTY,
+      JSON.stringify(
+        queue.filter(function (jobId) {
+          return removedJobIds.indexOf(String(jobId)) < 0;
+        }),
+      ),
+    );
+  } finally {
+    lock.releaseLock();
+  }
+  return {
+    status: cleanupFailed ? "partial" : "success",
+    cleaned: removedJobIds.length,
+  };
+}
+
+function cleanupReviewerPdfJobsRequest_(data) {
+  var authorization = authorizeReviewerPdfRequest_(data);
+  if (authorization.error) return authorization.error;
+  var result = cleanupReviewerPdfJobsForSession_(data.sessionId);
+  if (result.status === "error")
+    return errorResponse(
+      "Temporary PDF cleanup could not finish. It will be retried automatically.",
+      "PDF_CLEANUP_PENDING",
+    );
+  return jsonResponse(result);
 }
 
 async function processReviewerPdfQueue(event) {
@@ -2908,6 +3137,15 @@ async function processReviewerPdfQueue(event) {
           response && response.message || "The PDF could not be prepared safely.",
           response && response.code || "PDF_PROCESSING_FAILED",
         );
+      var latestAuthorization = authorizeReviewerPdfRequest_({
+        sessionId: job.sessionId,
+        eventId: job.eventId,
+      });
+      if (latestAuthorization.error)
+        throw reviewerPdfError_(
+          "The active session ended before the PDF download completed.",
+          "SESSION_INVALID",
+        );
       var outputBytes = Utilities.base64Decode(response.data);
       if (
         !outputBytes.length ||
@@ -2917,7 +3155,7 @@ async function processReviewerPdfQueue(event) {
         throw reviewerPdfError_("The PDF processor returned invalid output.", "PDF_PROCESSING_FAILED");
 
       outputFile = DriveApp.createFile(
-        Utilities.newBlob(outputBytes, "application/pdf", "MRH Reviewer PDF " + job.jobId + ".pdf"),
+        Utilities.newBlob(outputBytes, "application/pdf", "MRH PDF " + job.jobId + ".pdf"),
       );
       var outputPermissions = listReviewerPdfPermissions_(outputFile.getId());
       var outputOwner = String(Session.getEffectiveUser().getEmail() || "").toLowerCase();
@@ -2932,34 +3170,81 @@ async function processReviewerPdfQueue(event) {
       )
         throw reviewerPdfError_("The temporary derivative is not private.", "PDF_OUTPUT_NOT_PRIVATE");
 
-      var updatedJob = JSON.parse(
-        getScriptProps().getProperty(reviewerPdfJobPropertyKey_(job.jobId)),
-      );
-      updatedJob.status = "complete";
-      delete updatedJob.processingAt;
-      updatedJob.outputFileId = outputFile.getId();
-      updatedJob.pageCount = Number(response.pageCount || 0);
-      getScriptProps().setProperty(
-        reviewerPdfJobPropertyKey_(job.jobId),
-        JSON.stringify(updatedJob),
-      );
+      var completionLock = LockService.getScriptLock();
+      if (!completionLock.tryLock(10000))
+        throw new Error("The PDF job completion lock is busy.");
+      var completed = false;
+      var cancelled = false;
+      try {
+        var updatedJobRaw = getScriptProps().getProperty(
+          reviewerPdfJobPropertyKey_(job.jobId),
+        );
+        var updatedJob = updatedJobRaw ? JSON.parse(updatedJobRaw) : null;
+        if (
+          updatedJob &&
+          updatedJob.status === "processing" &&
+          updatedJob.sessionId === job.sessionId
+        ) {
+          updatedJob.status = "complete";
+          delete updatedJob.processingAt;
+          updatedJob.outputFileId = outputFile.getId();
+          updatedJob.pageCount = Number(response.pageCount || 0);
+          getScriptProps().setProperty(
+            reviewerPdfJobPropertyKey_(job.jobId),
+            JSON.stringify(updatedJob),
+          );
+          completed = true;
+        } else {
+          cancelled = Boolean(updatedJob && updatedJob.status === "cancelled");
+          if (cancelled)
+            getScriptProps().deleteProperty(
+              reviewerPdfJobPropertyKey_(job.jobId),
+            );
+        }
+      } finally {
+        completionLock.releaseLock();
+      }
+      if (!completed) {
+        permanentlyDeleteReviewerPdfOutput_(outputFile.getId());
+        outputFile = null;
+        if (!cancelled)
+          Logger.log(JSON.stringify({
+            event: "reviewer_pdf_job_cancelled",
+            correlationId: job.eventId,
+          }));
+        continue;
+      }
       outputFile = null;
     } catch (error) {
       if (outputFile) {
         try {
-          outputFile.setTrashed(true);
+          permanentlyDeleteReviewerPdfOutput_(outputFile.getId());
           outputFile = null;
         } catch (cleanupError) {
           Logger.log("[processReviewerPdfQueue] Failed derivative cleanup failed.");
         }
       }
       var failedJob = job;
+      var currentJobRaw = getScriptProps().getProperty(
+        reviewerPdfJobPropertyKey_(job.jobId),
+      );
+      if (!currentJobRaw) {
+        Logger.log(JSON.stringify({
+          event: "reviewer_pdf_job_cancelled",
+          correlationId: job.eventId,
+        }));
+        continue;
+      }
       try {
-        failedJob = JSON.parse(
-          getScriptProps().getProperty(reviewerPdfJobPropertyKey_(job.jobId)) || "{}",
-        );
+        failedJob = JSON.parse(currentJobRaw);
       } catch (readError) {
         Logger.log("[processReviewerPdfQueue] Could not read failed job state.");
+      }
+      if (failedJob.status === "cancelled") {
+        getScriptProps().deleteProperty(
+          reviewerPdfJobPropertyKey_(job.jobId),
+        );
+        continue;
       }
       failedJob.status = "failed";
       delete failedJob.processingAt;
@@ -3002,12 +3287,14 @@ async function processReviewerPdfQueue(event) {
         }
         if (
           job &&
-          job.outputFileId &&
+          (job.outputFileId || job.status === "cancelled") &&
           Number(job.expiresAt) > 0
         ) {
-          var cleanupAt = Number(job.expiresAt) <= Date.now()
-            ? Date.now() + 60000
-            : Number(job.expiresAt);
+          var cleanupAt = job.status === "cancelled"
+            ? Math.min(Date.now() + 60000, Number(job.expiresAt))
+            : Number(job.expiresAt) <= Date.now()
+              ? Date.now() + 60000
+              : Number(job.expiresAt);
           if (!nextCleanupAt || cleanupAt < nextCleanupAt)
             nextCleanupAt = cleanupAt;
         }
@@ -3039,7 +3326,7 @@ async function handleGetReviewerPdfRequest(data, expectedSourceVersion) {
       data,
       startedAt,
       "BAD_REQUEST",
-      "A valid Reviewer PDF ID is required.",
+      "A valid PDF ID is required.",
     );
   var source = getReviewerPdfSource_(fileId);
   if (source.error)
@@ -3057,7 +3344,7 @@ async function handleGetReviewerPdfRequest(data, expectedSourceVersion) {
       data,
       startedAt,
       "PDF_SOURCE_CHANGED",
-      "The Reviewer PDF source changed before processing. Request it again.",
+      "The PDF source changed before processing. Request it again.",
     );
   var entry = source.entry;
 
@@ -3082,14 +3369,18 @@ async function handleGetReviewerPdfRequest(data, expectedSourceVersion) {
   var correlationId = String(data.eventId || "").trim();
   var processed;
   try {
+    var watermarkIdentity = reviewerPdfWatermarkIdentity_(
+      authorization.account,
+      authorization.email,
+    );
     processed = watermarkReviewerPdfBytes_(
       sourceBytes,
-      reviewerPdfWatermarkIdentity_(authorization.account, authorization.email),
+      watermarkIdentity,
     );
     processed = await processed;
     var verification = await verifyReviewerPdfWatermarks_(
       processed.bytes,
-      authorization.email,
+      watermarkIdentity,
     );
     if (
       verification.pageCount !== processed.pageCount ||
@@ -3150,7 +3441,7 @@ async function handleGetReviewerPdfRequest(data, expectedSourceVersion) {
       data,
       startedAt,
       "PDF_SOURCE_CHANGED",
-      "The Reviewer PDF source changed during processing.",
+      "The PDF source changed during processing.",
     );
   appendMRHAccessLog_(
     "REVIEWERS",
@@ -5234,7 +5525,10 @@ function doGetInternal(e) {
   var versionError = clientVersionRequired(params.v || params.appVersion);
   if (versionError) return versionError;
   if (String(params.sync || "") === "1") {
-    return handleDeckSyncSnapshot_(String(params.since || ""));
+    return handleDeckSyncSnapshot_(
+      String(params.since || ""),
+      String(params.sinceCacheVersion || ""),
+    );
   }
   var requestedSubject = normalizeSubject(params.subject || "");
 
@@ -5314,7 +5608,7 @@ function doGetInternal(e) {
   return jsonResponse({ isColdStart: true, subjects: [] });
 }
 
-function handleDeckSyncSnapshot_(knownTimestamp) {
+function handleDeckSyncSnapshot_(knownTimestamp, knownCacheVersion) {
   var props = getScriptProps();
   var schemaMismatch =
     props.getProperty("MRH_SUBJECT_SCHEMA_VERSION") !== SUBJECT_SCHEMA_VERSION;
@@ -5344,7 +5638,12 @@ function handleDeckSyncSnapshot_(knownTimestamp) {
     });
   }
 
-  if (knownTimestamp && knownTimestamp === timestamp) {
+  if (
+    knownTimestamp &&
+    knownTimestamp === timestamp &&
+    knownCacheVersion &&
+    knownCacheVersion === cacheVersion
+  ) {
     return jsonResponse({
       status: "ok",
       notModified: true,
@@ -5488,8 +5787,10 @@ function doPost(e) {
         "verify_reviewer_access",
         "request_reviewer_enrollment",
         "get_reviewer_dashboard",
+        "get_reviewer_pdf_preview",
         "get_reviewer_pdf",
         "get_reviewer_pdf_job",
+        "cleanup_reviewer_pdf_jobs",
         "log_module_access",
         "log_resource_file_click",
         "log_resource_dashboard_action",
@@ -5517,10 +5818,14 @@ function doPost(e) {
       return handleReviewerEnrollmentRequest(data);
     if (requestType === "get_reviewer_dashboard")
       return handleGetReviewerDashboardRequest(data);
+    if (requestType === "get_reviewer_pdf_preview")
+      return handleGetReviewerPdfPreviewRequest_(data);
     if (requestType === "get_reviewer_pdf")
       return enqueueReviewerPdfRequest_(data);
     if (requestType === "get_reviewer_pdf_job")
       return getReviewerPdfJobStatus_(data);
+    if (requestType === "cleanup_reviewer_pdf_jobs")
+      return cleanupReviewerPdfJobsRequest_(data);
     if (requestType === "log_module_access")
       return handleLogModuleAccessRequest(data);
     if (requestType === "log_resource_file_click")

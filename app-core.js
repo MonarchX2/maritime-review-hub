@@ -52,6 +52,8 @@
   const arraySignatureCache = new WeakMap();
   const subjectListSignatureCache = new WeakMap();
   const SYNC_STATUS_STORAGE_KEY = "mrh_last_applied_sync_status_timestamp";
+  const SYNC_CACHE_VERSION_STORAGE_KEY =
+    "mrh_last_applied_sync_cache_version";
   const SYNC_REQUEST_TIMEOUT_MS = appConfig.syncRequestTimeoutMs ?? 60000;
   const BROADCAST_PROTOCOL = "mrh-broadcast-v1";
   const inFlightDeckDatabaseWrites = new Set();
@@ -151,9 +153,18 @@
     return String(stored).trim();
   }
 
-  function persistSyncStatusTimestamp(timestamp) {
+  function readStoredSyncStatusCacheVersion() {
+    const stored = getStoredItem?.(SYNC_CACHE_VERSION_STORAGE_KEY, "") || "";
+    return String(stored).trim();
+  }
+
+  function persistSyncStatusTimestamp(timestamp, cacheVersion = "") {
     lastSyncStatusTimestamp = String(timestamp || "").trim();
     try {
+      setStoredItem?.(
+        SYNC_CACHE_VERSION_STORAGE_KEY,
+        String(cacheVersion || "").trim(),
+      );
       setStoredItem?.(SYNC_STATUS_STORAGE_KEY, lastSyncStatusTimestamp);
     } catch (e) {
       appLogger.warn("Unable to persist sync status timestamp.", e);
@@ -773,6 +784,7 @@
       },
       normalizeSummaryData,
       readStoredSyncStatusTimestamp,
+      readStoredSyncStatusCacheVersion,
       persistSyncStatusTimestamp,
       persistSummaryData: async () => {
         const saved = await saveState("summary");
@@ -5570,6 +5582,37 @@
 
   let appResourcesCleanedUp = false;
 
+  function sendReviewerPdfCleanupBeacon() {
+    const sessionId =
+      reviewerSessionId || reviewerPendingEnrollmentSessionId || "";
+    const endpoint = String(appConfig.databaseUrl || "").trim();
+    const appVersion = String(globalScope.__MRH_APP__?.version || "").trim();
+    if (
+      !sessionId ||
+      !endpoint ||
+      !appVersion ||
+      typeof navigator === "undefined" ||
+      typeof navigator.sendBeacon !== "function" ||
+      typeof Blob !== "function"
+    )
+      return false;
+    const payload = {
+      type: "cleanup_reviewer_pdf_jobs",
+      sessionId,
+      eventId: createResourceEventId(),
+      appVersion,
+    };
+    const queued = navigator.sendBeacon(
+      endpoint,
+      new Blob([JSON.stringify(payload)], { type: "text/plain;charset=UTF-8" }),
+    );
+    if (!queued)
+      appLogger.warn(
+        "Temporary PDF cleanup could not be queued during page exit.",
+      );
+    return queued;
+  }
+
   function cleanupAppResources(event) {
     if (appResourcesCleanedUp) return;
 
@@ -5584,6 +5627,7 @@
       return;
     }
 
+    sendReviewerPdfCleanupBeacon();
     appResourcesCleanedUp = true;
     if (typeof AppState?.stopStatePersistence === "function") {
       void AppState.stopStatePersistence();
@@ -5980,7 +6024,9 @@
   let resourcePortalStatusMessage = "";
   let resourcePortalPreviewObjectUrl = "";
   let resourcePortalPreviewIsReviewer = false;
+  let resourcePortalReviewerPdf = null;
   let reviewerPdfPreviewInFlight = null;
+  let reviewerPdfDownloadInFlight = null;
   let resourceDashboardData = null;
   let resourceDashboardActiveTab = "PROFILE";
   let resourceDashboardLoadingPromise = null;
@@ -6008,7 +6054,7 @@
   let reviewerSessionRestorePending = false;
   let reviewerReauthenticationPromptAttempted = false;
   let reviewerSignOutStorageListenerInstalled = false;
-  const REVIEWER_STATUS_POLL_INTERVAL_MS = 5000;
+  const REVIEWER_STATUS_POLL_INTERVAL_MS = 2000;
   const REVIEWER_EXPLICIT_SIGNOUT_KEY = "mrh_reviewer_explicit_signout_v1";
   const REVIEWER_EXPLICIT_SIGNOUT_COOKIE = "mrh_reviewer_explicit_signout_v1";
   const REVIEWER_SESSION_STORAGE_KEY = "mrh_reviewer_session_v1";
@@ -6016,7 +6062,10 @@
   const STUDENT_PORTAL_WELCOME_HIDDEN_KEY =
     "mrh_student_portal_welcome_hidden_v1";
   const REVIEWER_PROFILE_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+  const REVIEWER_DASHBOARD_CACHE_KEY = "mrh_reviewer_dashboard_session_v1";
+  const REVIEWER_DASHBOARD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
   const REVIEWER_PDF_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
+  const REVIEWER_PDF_MAX_SOURCE_BYTES = 2 * 1024 * 1024;
   const REVIEWER_PDF_MAX_BASE64_LENGTH =
     Math.ceil(REVIEWER_PDF_MAX_OUTPUT_BYTES / 3) * 4;
   const RESOURCE_DASHBOARD_CACHE_KEY = "resource_dashboard_cache_v1";
@@ -6164,6 +6213,74 @@
       globalScope.localStorage.removeItem(REVIEWER_PROFILE_CACHE_KEY);
     } catch {
       // Cached profile details are optional when browser storage is unavailable.
+    }
+  }
+
+  function getStoredReviewerDashboard(email) {
+    try {
+      const cached = JSON.parse(
+        globalScope.sessionStorage.getItem(REVIEWER_DASHBOARD_CACHE_KEY) ||
+          "null",
+      );
+      const cachedEmail = String(cached?.email || "").trim().toLowerCase();
+      const age = Date.now() - Number(cached?.cachedAt || 0);
+      const tab = cached?.tab;
+      if (
+        cachedEmail !== String(email || "").trim().toLowerCase() ||
+        !Number.isFinite(age) ||
+        age < 0 ||
+        age > REVIEWER_DASHBOARD_CACHE_MAX_AGE_MS ||
+        !Array.isArray(tab?.columns) ||
+        !Array.isArray(tab?.rows) ||
+        !tab.rows.every(Array.isArray)
+      ) {
+        globalScope.sessionStorage.removeItem(REVIEWER_DASHBOARD_CACHE_KEY);
+        return null;
+      }
+      return tab;
+    } catch (error) {
+      (globalScope.DebugUtils || console).warn(
+        "Unable to read the current-tab reviewer dashboard cache.",
+        error,
+      );
+      return null;
+    }
+  }
+
+  function cacheReviewerDashboard(email, tab) {
+    if (
+      !email ||
+      !Array.isArray(tab?.columns) ||
+      !Array.isArray(tab?.rows) ||
+      !tab.rows.every(Array.isArray)
+    )
+      return false;
+    const value = JSON.stringify({
+      email: String(email).trim().toLowerCase(),
+      cachedAt: Date.now(),
+      tab,
+    });
+    if (value.length > 90000) return false;
+    try {
+      globalScope.sessionStorage.setItem(REVIEWER_DASHBOARD_CACHE_KEY, value);
+      return true;
+    } catch (error) {
+      (globalScope.DebugUtils || console).warn(
+        "Unable to save the current-tab reviewer dashboard cache.",
+        error,
+      );
+      return false;
+    }
+  }
+
+  function clearStoredReviewerDashboard() {
+    try {
+      globalScope.sessionStorage.removeItem(REVIEWER_DASHBOARD_CACHE_KEY);
+    } catch (error) {
+      (globalScope.DebugUtils || console).warn(
+        "Unable to clear the current-tab reviewer dashboard cache.",
+        error,
+      );
     }
   }
 
@@ -7125,9 +7242,12 @@
             tab.linkTitles?.[rowIndex]?.[index] || "",
           ).trim();
           const titleInParentheses = /\(([^()]*)\)/.exec(fileTitle);
-          const resourceTitle = String(
+          const rawResourceTitle = String(
             titleInParentheses ? titleInParentheses[1] : fileTitle,
           ).trim();
+          const resourceTitle = reviewerPdfMatch
+            ? getReviewerPdfDisplayName(rawResourceTitle)
+            : rawResourceTitle;
           const isModuleFolderFallback =
             resourceDashboardActiveTab === "MODULES" &&
             (!titleInParentheses || !resourceTitle);
@@ -7390,6 +7510,14 @@
     )
       return false;
     resourceDashboardLastRefreshAt = Date.now();
+    if (
+      resourceDashboardActiveTab === "REVIEWERS" &&
+      reviewerSessionId &&
+      reviewerAccountStatus === "TRUE"
+    ) {
+      void loadReviewerDashboard({ refresh: true });
+      return true;
+    }
     void loadResourceDashboard({ silent: true });
     return true;
   }
@@ -7405,8 +7533,19 @@
       "visibilitychange",
       refreshResourceDashboardIfNeeded,
     );
+    document.addEventListener("visibilitychange", () => {
+      if (
+        document.visibilityState === "visible" &&
+        reviewerSessionId
+      )
+        scheduleReviewerStatusPolling(reviewerSessionId, 0);
+    });
     globalScope.addEventListener("pageshow", refreshResourceDashboardIfNeeded);
-    globalScope.addEventListener("focus", refreshResourceDashboardIfNeeded);
+    globalScope.addEventListener("focus", () => {
+      refreshResourceDashboardIfNeeded();
+      if (reviewerSessionId)
+        scheduleReviewerStatusPolling(reviewerSessionId, 0);
+    });
     resourceDashboardAutoRefreshEventsInstalled = true;
   }
 
@@ -7916,6 +8055,7 @@
     reviewerDashboardRequestGeneration += 1;
     reviewerDashboardRequestPromise = null;
     reviewerDashboardLoadedForEmail = "";
+    clearStoredReviewerDashboard();
     setReviewerNavigationBusy(false);
     if (resourceDashboardData) {
       resourceDashboardData.REVIEWERS = {
@@ -8343,7 +8483,10 @@
     return accountStatus === "TRUE";
   }
 
-  function scheduleReviewerStatusPolling(sessionId) {
+  function scheduleReviewerStatusPolling(
+    sessionId,
+    delay = REVIEWER_STATUS_POLL_INTERVAL_MS,
+  ) {
     stopReviewerStatusPolling();
     if (!sessionId) return;
     const authGeneration = reviewerAuthGeneration;
@@ -8411,7 +8554,7 @@
         )
           scheduleReviewerStatusPolling(sessionId);
       }
-    }, REVIEWER_STATUS_POLL_INTERVAL_MS);
+    }, Math.max(0, Number(delay) || 0));
   }
 
   async function completeReviewerSignIn(idToken) {
@@ -8716,6 +8859,7 @@
     reviewerDashboardLoadedForEmail = "";
     reviewerProfilePictureUrl = "";
     clearStoredReviewerProfile();
+    clearStoredReviewerDashboard();
     setReviewerNavigationBusy(false);
     stopReviewerStatusPolling();
     reviewerDashboardRequestGeneration += 1;
@@ -8807,8 +8951,28 @@
       }
       return false;
     }
+    let restoredDashboardCache = false;
     if (
       !refresh &&
+      reviewerAccountStatus === "TRUE" &&
+      reviewerDashboardLoadedForEmail?.toLowerCase() !==
+        reviewerAuthorizedEmail.toLowerCase()
+    ) {
+      const cachedReviewerTab =
+        getStoredReviewerDashboard(reviewerAuthorizedEmail);
+      if (cachedReviewerTab) {
+        resourceDashboardData = {
+          ...(resourceDashboardData || {}),
+          REVIEWERS: cachedReviewerTab,
+        };
+        reviewerDashboardLoadedForEmail = reviewerAuthorizedEmail;
+        restoredDashboardCache = true;
+        renderResourceDashboardTab();
+      }
+    }
+    if (
+      !refresh &&
+      !restoredDashboardCache &&
       reviewerDashboardLoadedForEmail?.toLowerCase() ===
         reviewerAuthorizedEmail.toLowerCase() &&
       resourceDashboardData?.REVIEWERS
@@ -8874,6 +9038,7 @@
         REVIEWERS: response.tab,
       };
       reviewerDashboardLoadedForEmail = reviewerAuthorizedEmail;
+      cacheReviewerDashboard(reviewerAuthorizedEmail, response.tab);
       renderResourceDashboardTab();
       return true;
     } catch (error) {
@@ -9450,6 +9615,193 @@
     });
   }
 
+  function clearReviewerPdfWatermark() {
+    const watermark = document.getElementById(
+      "resource-portal-preview-watermark",
+    );
+    if (watermark) {
+      watermark.replaceChildren();
+      watermark.hidden = true;
+    }
+  }
+
+  function renderReviewerPdfWatermark(fullName, email) {
+    const watermark = document.getElementById(
+      "resource-portal-preview-watermark",
+    );
+    const normalizedName = String(fullName || "")
+      .replace(/[\u0000-\u001f\u007f]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    if (
+      !watermark ||
+      !normalizedName ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+    )
+      throw new Error("The PDF preview watermark could not be displayed.");
+    const text = `${normalizedName}\n${normalizedEmail}`;
+    watermark.replaceChildren(
+      ...Array.from({ length: 6 }, () => {
+        const line = document.createElement("span");
+        line.textContent = text;
+        return line;
+      }),
+    );
+    watermark.hidden = false;
+  }
+
+  function getReviewerPdfDisplayName(fileName) {
+    return String(fileName || "PDF")
+      .replace(/\breviewers?\b/gi, "")
+      .replace(/\s+/g, " ")
+      .trim() || "PDF";
+  }
+
+  async function downloadReviewerPdf() {
+    if (reviewerPdfDownloadInFlight) return reviewerPdfDownloadInFlight;
+    const activePdf = resourcePortalReviewerPdf;
+    const requestSessionId = reviewerSessionId;
+    if (!activePdf || !requestSessionId) return false;
+    const button = document.getElementById(
+      "resource-portal-preview-download",
+    );
+    const status = document.getElementById("resource-portal-preview-status");
+    if (button) button.disabled = true;
+    if (status) {
+      status.textContent = "Preparing PDF download…";
+      status.hidden = false;
+    }
+    const downloadRequest = (async () => {
+      try {
+        let response = await globalScope.AppNetwork.callBackend(
+          {
+            type: "get_reviewer_pdf",
+            sessionId: requestSessionId,
+            eventId: createResourceEventId(),
+            fileId: activePdf.fileId,
+          },
+          { timeoutMs: 60000, maxRetries: 0 },
+        );
+        const deadline = Date.now() + 5 * 60 * 1000;
+        let pollDelayMs = 1800;
+        if (response?.status !== "pending")
+          throw new Error(
+            response?.message || "The PDF download could not be prepared.",
+          );
+        const jobId = String(response.jobId || "");
+        if (!/^[a-f0-9]{96}$/i.test(jobId))
+          throw new Error("The PDF service returned an invalid job.");
+        while (response.status === "pending") {
+          if (requestSessionId !== reviewerSessionId) return false;
+          if (Date.now() >= deadline)
+            throw new Error(
+              "PDF preparation is taking too long. Please try again shortly.",
+            );
+          await new Promise((resolve) => setTimeout(resolve, pollDelayMs));
+          if (requestSessionId !== reviewerSessionId) return false;
+          response = await globalScope.AppNetwork.callBackend(
+            {
+              type: "get_reviewer_pdf_job",
+              sessionId: requestSessionId,
+              eventId: createResourceEventId(),
+              jobId,
+            },
+            {
+              timeoutMs: Math.min(60000, deadline - Date.now()),
+              maxRetries: 0,
+            },
+          );
+          pollDelayMs = Math.min(5000, Math.round(pollDelayMs * 1.5));
+        }
+        if (
+          response?.status !== "success" ||
+          String(response.mimeType || "").toLowerCase() !==
+            "application/pdf" ||
+          typeof response.data !== "string" ||
+          response.data.length > REVIEWER_PDF_MAX_BASE64_LENGTH ||
+          !/^[A-Za-z0-9+/]*={0,2}$/.test(response.data)
+        )
+          throw new Error(
+            response?.message || "The download service returned invalid PDF data.",
+          );
+        const binary = atob(response.data);
+        const bytes = Uint8Array.from(binary, (character) =>
+          character.charCodeAt(0),
+        );
+        if (
+          bytes.byteLength < 5 ||
+          bytes.byteLength > REVIEWER_PDF_MAX_OUTPUT_BYTES ||
+          bytes[0] !== 0x25 ||
+          bytes[1] !== 0x50 ||
+          bytes[2] !== 0x44 ||
+          bytes[3] !== 0x46 ||
+          bytes[4] !== 0x2d
+        )
+          throw new Error("The download service returned invalid PDF content.");
+        const blobUrl = URL.createObjectURL(
+          new Blob([bytes], { type: "application/pdf" }),
+        );
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = `${getReviewerPdfDisplayName(activePdf.fileName).replace(
+          /\.pdf$/i,
+          "",
+        )}.pdf`;
+        link.hidden = true;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        globalScope.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+        if (status) {
+          status.textContent = "Download started.";
+          status.hidden = false;
+        }
+        return true;
+      } catch (error) {
+        if (isDefinitivelyInvalidReviewerCredential(error)) {
+          signOutReviewer(false);
+          setReviewerAuthStatus(
+            "Your session expired or was revoked. Sign in with Google again.",
+          );
+          openResourceDashboardTab("PROFILE");
+          return false;
+        }
+        if (status) {
+          status.textContent = `Unable to download PDF: ${String(
+            error?.message || error,
+          )}`;
+          status.hidden = false;
+        }
+        (globalScope.DebugUtils || console).error(
+          "Unable to download protected PDF.",
+          error,
+        );
+        return false;
+      } finally {
+        void globalScope.AppNetwork.callBackend(
+          {
+            type: "cleanup_reviewer_pdf_jobs",
+            sessionId: requestSessionId,
+            eventId: createResourceEventId(),
+          },
+          { timeoutMs: 10000, maxRetries: 0 },
+        ).catch((cleanupError) => {
+          (globalScope.DebugUtils || console).warn(
+            "Temporary PDF cleanup will be retried automatically.",
+            cleanupError,
+          );
+        });
+        if (requestSessionId === reviewerSessionId && button)
+          button.disabled = false;
+        if (reviewerPdfDownloadInFlight === downloadRequest)
+          reviewerPdfDownloadInFlight = null;
+      }
+    })();
+    reviewerPdfDownloadInFlight = downloadRequest;
+    return downloadRequest;
+  }
+
   async function previewResourceFile(
     fileId,
     fileName,
@@ -9459,6 +9811,12 @@
     const title = document.getElementById("resource-portal-preview-title");
     const frame = document.getElementById("resource-portal-preview-frame");
     const status = document.getElementById("resource-portal-preview-status");
+    const watermark = document.getElementById(
+      "resource-portal-preview-watermark",
+    );
+    const downloadButton = document.getElementById(
+      "resource-portal-preview-download",
+    );
     if (!preview || !title || !frame) return false;
     const closeButton = document.getElementById(
       "resource-portal-preview-close",
@@ -9473,6 +9831,12 @@
     if (expandButton && !expandButton.dataset.initialized) {
       expandButton.addEventListener("click", toggleResourceViewer);
       expandButton.dataset.initialized = "true";
+    }
+    if (downloadButton && !downloadButton.dataset.initialized) {
+      downloadButton.addEventListener("click", () => {
+        void downloadReviewerPdf();
+      });
+      downloadButton.dataset.initialized = "true";
     }
     const reviewerRequestKey = reviewer
       ? `${reviewerSessionId}:${String(fileId || "")}`
@@ -9496,13 +9860,21 @@
     }
     const previewGeneration = ++resourcePortalPreviewGeneration;
     resourcePortalPreviewIsReviewer = reviewer;
+    resourcePortalReviewerPdf = null;
+    if (downloadButton) {
+      downloadButton.hidden = true;
+      downloadButton.disabled = false;
+    }
+    clearReviewerPdfWatermark();
     if (resourcePortalPreviewObjectUrl) {
       URL.revokeObjectURL(resourcePortalPreviewObjectUrl);
       resourcePortalPreviewObjectUrl = "";
     }
     frame.removeAttribute("src");
     frame.hidden = true;
-    title.textContent = String(fileName || "File preview");
+    title.textContent = reviewer
+      ? getReviewerPdfDisplayName(fileName)
+      : String(fileName || "File preview");
     frame.title = `Preview of ${title.textContent}`;
     preview.hidden = false;
     preview.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
@@ -9513,11 +9885,11 @@
     }
     try {
       if (reviewer && !reviewerSessionId)
-        throw new Error("Sign in to an approved Reviewer account to view this PDF.");
+        throw new Error("Sign in with an approved account to view this PDF.");
       let response = await globalScope.AppNetwork.callBackend(
         reviewer
           ? {
-              type: "get_reviewer_pdf",
+              type: "get_reviewer_pdf_preview",
               sessionId: reviewerSessionId,
               eventId: createResourceEventId(),
               fileId,
@@ -9525,43 +9897,6 @@
           : { type: "get_resource_preview", fileId },
         { timeoutMs: 60000, maxRetries: 0 },
       );
-      if (reviewer && response?.status === "pending") {
-        const jobId = String(response.jobId || "");
-        if (!/^[a-f0-9]{96}$/.test(jobId))
-          throw new Error("The PDF service returned an invalid processing job.");
-        const deadline = Date.now() + 5 * 60 * 1000;
-        let pollDelayMs = 3000;
-        if (status) status.textContent = "Preparing watermarked Reviewer PDF…";
-        while (response.status === "pending") {
-          if (previewGeneration !== resourcePortalPreviewGeneration) return false;
-          if (Date.now() >= deadline)
-            throw new Error(
-              "Reviewer PDF preparation is taking too long. Please try again shortly.",
-            );
-          await new Promise((resolve) => setTimeout(resolve, pollDelayMs));
-          if (previewGeneration !== resourcePortalPreviewGeneration)
-            return false;
-          const remainingTimeMs = deadline - Date.now();
-          if (remainingTimeMs <= 0)
-            throw new Error(
-              "Reviewer PDF preparation is taking too long. Please try again shortly.",
-            );
-          response = await globalScope.AppNetwork.callBackend(
-            {
-              type: "get_reviewer_pdf_job",
-              sessionId: reviewerSessionId,
-              eventId: createResourceEventId(),
-              jobId,
-            },
-            { timeoutMs: Math.min(60000, remainingTimeMs), maxRetries: 0 },
-          );
-          if (Date.now() >= deadline)
-            throw new Error(
-              "Reviewer PDF preparation is taking too long. Please try again shortly.",
-            );
-          pollDelayMs = Math.min(8000, Math.round(pollDelayMs * 1.5));
-        }
-      }
       if (previewGeneration !== resourcePortalPreviewGeneration) return false;
       if (
         response?.status !== "success" ||
@@ -9578,10 +9913,11 @@
       if (
         reviewer &&
         (responseMimeType !== "application/pdf" ||
-          response.data.length > REVIEWER_PDF_MAX_BASE64_LENGTH)
+          response.data.length >
+            Math.ceil(REVIEWER_PDF_MAX_SOURCE_BYTES / 3) * 4)
       )
         throw new Error(
-          "The Reviewer PDF service returned an invalid or oversized PDF.",
+          "The PDF service returned an invalid or oversized PDF.",
         );
       const binary = atob(response.data);
       const bytes = Uint8Array.from(binary, (character) =>
@@ -9589,7 +9925,7 @@
       );
       if (
         reviewer &&
-        (bytes.byteLength > REVIEWER_PDF_MAX_OUTPUT_BYTES ||
+        (bytes.byteLength > REVIEWER_PDF_MAX_SOURCE_BYTES ||
           bytes.byteLength < 5 ||
           bytes[0] !== 0x25 ||
           bytes[1] !== 0x50 ||
@@ -9598,7 +9934,7 @@
           bytes[4] !== 0x2d)
       )
         throw new Error(
-          "The Reviewer PDF service returned invalid PDF content.",
+          "The PDF service returned invalid content.",
         );
       const isSafeInlineType =
         responseMimeType === "application/pdf" ||
@@ -9621,6 +9957,16 @@
       }
       const previewBlob = new Blob([bytes], { type: previewMimeType });
       resourcePortalPreviewObjectUrl = URL.createObjectURL(previewBlob);
+      if (reviewer) {
+        renderReviewerPdfWatermark(response.fullName, response.email);
+        resourcePortalReviewerPdf = {
+          fileId: String(fileId || ""),
+          fileName: getReviewerPdfDisplayName(fileName),
+        };
+        if (downloadButton) downloadButton.hidden = false;
+      } else if (watermark) {
+        watermark.hidden = true;
+      }
       frame.src =
         previewMimeType === "application/pdf"
           ? `${resourcePortalPreviewObjectUrl}#toolbar=0&navpanes=0&scrollbar=0`
@@ -9633,6 +9979,15 @@
       return true;
     } catch (error) {
       if (previewGeneration !== resourcePortalPreviewGeneration) return false;
+      if (reviewer) {
+        if (resourcePortalPreviewObjectUrl) {
+          URL.revokeObjectURL(resourcePortalPreviewObjectUrl);
+          resourcePortalPreviewObjectUrl = "";
+        }
+        resourcePortalReviewerPdf = null;
+        clearReviewerPdfWatermark();
+        if (downloadButton) downloadButton.hidden = true;
+      }
       if (reviewer && isDefinitivelyInvalidReviewerCredential(error)) {
         signOutReviewer(false);
         setReviewerAuthStatus(
@@ -9660,7 +10015,7 @@
           if (accountStatus.accountStatus !== "TRUE") return false;
           if (status) {
             status.textContent =
-              "This account is not authorized to view Reviewer PDFs.";
+              "This account is not authorized to view this PDF.";
             status.hidden = false;
           }
           return false;
@@ -9736,12 +10091,21 @@
     const preview = document.getElementById("resource-portal-preview");
     const frame = document.getElementById("resource-portal-preview-frame");
     const status = document.getElementById("resource-portal-preview-status");
+    const downloadButton = document.getElementById(
+      "resource-portal-preview-download",
+    );
     if (frame) frame.removeAttribute("src");
     if (resourcePortalPreviewObjectUrl) {
       URL.revokeObjectURL(resourcePortalPreviewObjectUrl);
       resourcePortalPreviewObjectUrl = "";
     }
     resourcePortalPreviewIsReviewer = false;
+    resourcePortalReviewerPdf = null;
+    clearReviewerPdfWatermark();
+    if (downloadButton) {
+      downloadButton.hidden = true;
+      downloadButton.disabled = false;
+    }
     if (status) {
       status.textContent = "";
       status.hidden = true;

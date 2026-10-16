@@ -645,6 +645,7 @@ async function checkBackendErrorHandling() {
   };
   const syncSnapshot = await network.getDeckSyncSnapshot({
     since: "2026-10-14T00:00:00.000Z",
+    sinceCacheVersion: "backend-cache-8",
     maxRetries: 0,
   });
   assert.equal(syncSnapshot.notModified, true);
@@ -654,6 +655,10 @@ async function checkBackendErrorHandling() {
   assert.equal(
     snapshotUrl.searchParams.get("since"),
     "2026-10-14T00:00:00.000Z",
+  );
+  assert.equal(
+    snapshotUrl.searchParams.get("sinceCacheVersion"),
+    "backend-cache-8",
   );
   assert.equal(
     snapshotUrl.searchParams.get("v"),
@@ -718,6 +723,7 @@ async function checkBackendErrorHandling() {
 
   const unchangedLegacySnapshot = await network.getDeckSyncSnapshot({
     since: "legacy-v1",
+    sinceCacheVersion: "legacy-cache-v1",
     maxRetries: 0,
   });
   assert.equal(unchangedLegacySnapshot.notModified, true);

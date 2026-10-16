@@ -87,7 +87,7 @@ test("the bundled library runs without Node or browser-only globals", async () =
   const result = await runtime.watermarkReviewerPdfBytes_(
     Array.from(original, (byte) => (byte > 127 ? byte - 256 : byte)),
     {
-      fullName: "Test Reviewer",
+      fullName: "Test Reviewer | Dept",
       email: "test.reviewer@example.com",
     },
   );
@@ -95,14 +95,42 @@ test("the bundled library runs without Node or browser-only globals", async () =
   assert.equal(result.pageCount, 3);
   assert.ok(result.bytes.length > 0);
   assert.ok(result.bytes.length <= runtime.MRH_REVIEWER_PDF_MAX_OUTPUT_BYTES);
+  const expectedWatermarkName = "Test Reviewer Dept";
   const verification = await runtime.verifyReviewerPdfWatermarks_(
     result.bytes,
-    "test.reviewer@example.com",
+    {
+      fullName: expectedWatermarkName,
+      email: "test.reviewer@example.com",
+    },
   );
   assert.deepEqual(
     JSON.parse(JSON.stringify(verification)),
     { pageCount: 3, pagesWithWatermarks: 3 },
   );
+  runtime.__reviewerPdfBytes = result.bytes;
+  const firstPageText = await vm.runInContext(
+    `(async function () {
+      var pdf = await PDFLib.PDFDocument.load(
+        Uint8Array.from(__reviewerPdfBytes),
+      );
+      var page = pdf.getPages()[0];
+      var contents = pdf.context.lookup(page.node.Contents());
+      var streams = contents instanceof PDFLib.PDFArray
+        ? contents.asArray()
+        : [page.node.Contents()];
+      return streams.map(function (stream) {
+        return reviewerPdfStreamText_(pdf, stream);
+      }).join("\\n");
+    })()`,
+    runtime,
+  );
+  delete runtime.__reviewerPdfBytes;
+  assert.equal(firstPageText.split(expectedWatermarkName).length - 1, 3);
+  assert.equal(
+    firstPageText.split("test.reviewer@example.com").length - 1,
+    3,
+  );
+  assert.doesNotMatch(firstPageText, /AUTHORIZED USER:|Student Portal|\|/);
   assert.equal(
     crypto
       .createHash("sha256")
@@ -198,7 +226,10 @@ test("processes a synthetic 20-page PDF and records local workload metrics", asy
   );
   const verification = await runtime.verifyReviewerPdfWatermarks_(
     result.bytes,
-    "test.reviewer@example.com",
+    {
+      fullName: "Test Reviewer",
+      email: "test.reviewer@example.com",
+    },
   );
   const elapsedMs = performance.now() - startedAt;
   assert.equal(result.pageCount, 20);

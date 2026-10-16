@@ -13,6 +13,7 @@ let uuidSequence = 0;
 let spreadsheetTimeZone = "";
 let spreadsheetOpenCount = 0;
 let reviewerDriveLookupCount = 0;
+const driveFiles = new Map();
 const accountRows = [
   [
     "Email",
@@ -280,7 +281,17 @@ const context = {
                   getDataAsString: () =>
                     JSON.stringify({
                       b: "https://drive.google.com/open?id=",
-                      d: {},
+                      d: {
+                        "3.2": {
+                          PRELIMS: {
+                            NAV6: {
+                              n: "Reviewer.pdf",
+                              t: "pdf",
+                              u: "https://drive.google.com/file/d/reviewerPdf_123456/view",
+                            },
+                          },
+                        },
+                      },
                     }),
                 }),
               };
@@ -288,6 +299,13 @@ const context = {
           };
         },
       };
+    },
+  },
+  Drive: {
+    Files: {
+      get(id) {
+        return driveFiles.get(String(id)) || null;
+      },
     },
   },
   LockService: {
@@ -382,6 +400,73 @@ assert.equal(
   context.authorizeMRHReviewerStatusEmails(),
   100,
   "the owner should be able to authorize the send-mail permission explicitly",
+);
+const resourceRootId = context.RESOURCE_PORTAL_ROOT_FOLDER_ID;
+driveFiles.set("valid-reviewer-pdf", {
+  id: "valid-reviewer-pdf",
+  name: "Reviewer.pdf",
+  mimeType: "application/pdf",
+  parents: ["private-reviewer-folder"],
+  size: "100",
+});
+driveFiles.set("private-reviewer-folder", {
+  id: "private-reviewer-folder",
+  name: "REVIEWERS v26.10.17",
+  mimeType: "application/vnd.google-apps.folder",
+  parents: [resourceRootId],
+});
+driveFiles.set(resourceRootId, {
+  id: resourceRootId,
+  name: "Resources",
+  mimeType: "application/vnd.google-apps.folder",
+  parents: [],
+});
+assert.equal(
+  context.getReviewerPdfDriveHierarchy_("valid-reviewer-pdf").insideRoot,
+  true,
+  "Reviewer PDFs in a versioned private folder under the resource portal root must be accepted",
+);
+driveFiles.set("public-resource-pdf", {
+  id: "public-resource-pdf",
+  name: "Public.pdf",
+  mimeType: "application/pdf",
+  parents: ["public-resource-folder"],
+  size: "100",
+});
+driveFiles.set("public-resource-folder", {
+  id: "public-resource-folder",
+  name: "MODULES v26.10.17",
+  mimeType: "application/vnd.google-apps.folder",
+  parents: [resourceRootId],
+});
+assert.equal(
+  context.getReviewerPdfDriveHierarchy_("public-resource-pdf").insideRoot,
+  false,
+  "a resource outside a versioned private Reviewer folder must be rejected",
+);
+driveFiles.set("unrelated-root-pdf", {
+  id: "unrelated-root-pdf",
+  name: "Reviewer.pdf",
+  mimeType: "application/pdf",
+  parents: ["unrelated-private-folder"],
+  size: "100",
+});
+driveFiles.set("unrelated-private-folder", {
+  id: "unrelated-private-folder",
+  name: "REVIEWERS v26.10.17",
+  mimeType: "application/vnd.google-apps.folder",
+  parents: ["unrelated-database-root"],
+});
+driveFiles.set("unrelated-database-root", {
+  id: "unrelated-database-root",
+  name: "Database",
+  mimeType: "application/vnd.google-apps.folder",
+  parents: [],
+});
+assert.equal(
+  context.getReviewerPdfDriveHierarchy_("unrelated-root-pdf").insideRoot,
+  false,
+  "a Reviewer PDF beneath the database root must not count as part of the resource hierarchy",
 );
 
 const clientId = "1234567890-example.apps.googleusercontent.com";
@@ -1123,7 +1208,20 @@ assert.deepEqual(
   ["success", "Year"],
   "an approved account should receive the reviewer payload",
 );
-reviewerDashboardRequest();
+assert.equal(
+  reviewerDashboard.tab.links[0][2],
+  "mrh-reviewer-pdf:reviewerPdf_123456",
+  "reviewer PDF URLs should be converted to protected file references",
+);
+const cachedReviewerDashboard = reviewerDashboardRequest();
+assert.deepEqual(
+  [
+    cachedReviewerDashboard.status,
+    cachedReviewerDashboard.tab.links[0][2],
+  ],
+  ["success", "mrh-reviewer-pdf:reviewerPdf_123456"],
+  "cached reviewer PDF references should remain valid when the dashboard is served again",
+);
 assert.equal(
   reviewerDriveLookupCount,
   1,
@@ -1318,6 +1416,29 @@ assert.equal(
   }).code,
   "AUTH_PROVIDER_UNAVAILABLE",
   "temporary outages at both Google verification endpoints must fail explicitly",
+);
+
+const liveAccount = accountRows.find(
+  (row) => row[0] === "reviewer@example.com",
+);
+tokenClaims = validClaims("reviewer@example.com");
+liveAccount[4] = "FALSE";
+cacheValues.clear();
+assert.equal(
+  post({
+    type: "get_reviewer_account_status",
+    idToken: "fresh-status-token",
+  }).accountStatus,
+  "FALSE",
+);
+liveAccount[4] = "TRUE";
+assert.equal(
+  post({
+    type: "get_reviewer_account_status",
+    idToken: "fresh-status-token",
+  }).accountStatus,
+  "TRUE",
+  "status polling must bypass a cached account record after an administrator updates ACCOUNTS",
 );
 
 console.log("Reviewer authorization and approval lifecycle checks passed.");

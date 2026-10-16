@@ -83,8 +83,43 @@ assert.doesNotMatch(
 );
 assert.match(
   appCore,
-  /function scheduleReviewerStatusPolling\(sessionId\)[\s\S]*?type: "get_reviewer_account_status", sessionId[\s\S]*?applyReviewerAccountStatus\(response, sessionId, true\)[\s\S]*?REVIEWER_STATUS_POLL_INTERVAL_MS/,
+  /function scheduleReviewerStatusPolling\(\s*sessionId,\s*delay = REVIEWER_STATUS_POLL_INTERVAL_MS,[\s\S]*?type: "get_reviewer_account_status", sessionId[\s\S]*?applyReviewerAccountStatus\(response, sessionId, true\)[\s\S]*?Math\.max\(0, Number\(delay\) \|\| 0\)/,
   "the page should poll the server so administrator approval changes take effect while open",
+);
+assert.match(
+  appCore,
+  /const REVIEWER_STATUS_POLL_INTERVAL_MS = 2000/,
+  "account approval changes should be refreshed at a two-second interval",
+);
+assert.match(
+  appCore,
+  /document\.visibilityState === "visible"[\s\S]*?scheduleReviewerStatusPolling\(reviewerSessionId, 0\)[\s\S]*?globalScope\.addEventListener\("focus"[\s\S]*?scheduleReviewerStatusPolling\(reviewerSessionId, 0\)/,
+  "returning to an active tab should immediately recheck account approval",
+);
+assert.match(
+  appCore,
+  /function getStoredReviewerDashboard\(email\)[\s\S]*?sessionStorage\.getItem\(REVIEWER_DASHBOARD_CACHE_KEY\)[\s\S]*?cachedEmail !== String\(email \|\| ""\)\.trim\(\)\.toLowerCase\(\)[\s\S]*?REVIEWER_DASHBOARD_CACHE_MAX_AGE_MS/,
+  "instant dashboard rows must come only from a fresh current-tab cache for the authenticated account",
+);
+assert.match(
+  appCore,
+  /reviewerAccountStatus === "TRUE"[\s\S]*?getStoredReviewerDashboard\(reviewerAuthorizedEmail\)[\s\S]*?renderResourceDashboardTab\(\)[\s\S]*?type: "get_reviewer_dashboard"/,
+  "approved users should see cached rows immediately while the server refreshes them",
+);
+assert.match(
+  appCore,
+  /cacheReviewerDashboard\(reviewerAuthorizedEmail, response\.tab\)/,
+  "fresh dashboard data should refresh the current-tab cache",
+);
+assert.match(
+  appCore,
+  /function clearReviewerResourceRows\(\)[\s\S]*?clearStoredReviewerDashboard\(\)/,
+  "approval loss should clear the current-tab reviewer dashboard cache",
+);
+assert.match(
+  appCore,
+  /function signOutReviewer\(explicit = true[\s\S]*?clearStoredReviewerDashboard\(\)/,
+  "sign-out should remove reviewer data cached in the current tab",
 );
 assert.match(
   appCore,
@@ -93,7 +128,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function scheduleReviewerStatusPolling\(sessionId\)[\s\S]*?const authGeneration = reviewerAuthGeneration;[\s\S]*?authGeneration !== reviewerAuthGeneration[\s\S]*?scheduleReviewerStatusPolling\(sessionId\);[\s\S]*?applyReviewerAccountStatus\(response, sessionId, true\)/,
+  /function scheduleReviewerStatusPolling\([\s\S]*?const authGeneration = reviewerAuthGeneration;[\s\S]*?authGeneration !== reviewerAuthGeneration[\s\S]*?scheduleReviewerStatusPolling\(sessionId\);[\s\S]*?applyReviewerAccountStatus\(response, sessionId, true\)/,
   "approval polling should ignore stale auth responses and reschedule if another check is in flight",
 );
 assert.match(
@@ -300,6 +335,11 @@ assert.match(
   appCore,
   /function initializeResourceDashboardAutoRefresh\(\)[\s\S]*?setInterval\([\s\S]*?RESOURCE_DASHBOARD_AUTO_REFRESH_INTERVAL_MS[\s\S]*?visibilitychange[\s\S]*?pageshow[\s\S]*?function initializeResourceDashboardControls\(\)/,
   "auto-refresh should be initialized once and revalidate the dashboard when a page returns",
+);
+assert.match(
+  appCore,
+  /function refreshResourceDashboardIfNeeded\(\)[\s\S]*?resourceDashboardActiveTab === "REVIEWERS"[\s\S]*?reviewerAccountStatus === "TRUE"[\s\S]*?loadReviewerDashboard\(\{ refresh: true \}\)/,
+  "the visible reviewer table should refresh in the background without blocking cached rendering",
 );
 assert.doesNotMatch(
   indexHtml,

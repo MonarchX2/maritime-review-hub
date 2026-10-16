@@ -21,6 +21,7 @@ function reviewerPdfWatermarkIdentity_(account, verifiedEmail) {
   fullName = String(fullName)
     .normalize("NFKC")
     .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\|/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 160);
@@ -45,32 +46,6 @@ function reviewerPdfSafeText_(value, maxLength) {
     .slice(0, maxLength);
 }
 
-function reviewerPdfWrapText_(text, font, fontSize, maxWidth) {
-  var words = text.split(/\s+/).filter(Boolean);
-  var lines = [];
-  var line = "";
-  words.forEach(function (word) {
-    var candidate = line ? line + " " + word : word;
-    if (font.widthOfTextAtSize(candidate, fontSize) <= maxWidth) {
-      line = candidate;
-      return;
-    }
-    if (line) lines.push(line);
-    line = "";
-    Array.from(word).forEach(function (character) {
-      var next = line + character;
-      if (line && font.widthOfTextAtSize(next, fontSize) > maxWidth) {
-        lines.push(line);
-        line = character;
-      } else {
-        line = next;
-      }
-    });
-  });
-  if (line) lines.push(line);
-  return lines;
-}
-
 async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
   if (typeof PDFLib === "undefined" || !PDFLib.PDFDocument)
     throw reviewerPdfError_("The bundled PDF processor is unavailable.", "PDF_LIBRARY_UNAVAILABLE");
@@ -91,10 +66,13 @@ async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
     throw reviewerPdfError_("The source is not a supported PDF.", "INVALID_PDF");
 
   var email = reviewerPdfSafeText_(identity && identity.email, 254).toLowerCase();
-  var fullName = reviewerPdfSafeText_(identity && identity.fullName, 160);
+  var fullName = reviewerPdfSafeText_(identity && identity.fullName, 160)
+    .replace(/\|/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!fullName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     throw reviewerPdfError_("Verified account details are required.", "BAD_REQUEST");
-  var watermark = "AUTHORIZED USER: " + fullName + " | " + email + " | Student Portal";
+  var watermarkLines = [fullName, email];
   var pdf;
   try {
     pdf = await PDFLib.PDFDocument.load(unsignedBytes, {
@@ -116,11 +94,21 @@ async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
       var size = page.getSize();
       var maxWidth = Math.max(80, size.width * 0.88);
       var fontSize = Math.max(10, Math.min(25, Math.min(size.width, size.height) * 0.045));
-      var lines = reviewerPdfWrapText_(watermark, font, fontSize, maxWidth);
-      while (lines.length > 4 && fontSize > 10) {
+      while (
+        watermarkLines.some(function (line) {
+          return font.widthOfTextAtSize(line, fontSize) > maxWidth;
+        }) &&
+        fontSize > 10
+      ) {
         fontSize -= 1;
-        lines = reviewerPdfWrapText_(watermark, font, fontSize, maxWidth);
       }
+      var lines = watermarkLines.slice();
+      if (
+        lines.some(function (line) {
+          return font.widthOfTextAtSize(line, fontSize) > maxWidth;
+        })
+      )
+        throw reviewerPdfError_("Account details do not fit the watermark area.", "WATERMARK_TEXT_TOO_LONG");
       var blockHeight = lines.length * fontSize * 1.25;
       if (blockHeight > size.height * 0.25)
         throw reviewerPdfError_("Account details do not fit the watermark area.", "WATERMARK_TEXT_TOO_LONG");
@@ -148,7 +136,7 @@ async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
 
   var savedBytes;
   try {
-    savedBytes = await pdf.save({ useObjectStreams: false });
+    savedBytes = await pdf.save({ useObjectStreams: true });
   } catch (error) {
     throw reviewerPdfError_("The watermarked PDF could not be created.", "PDF_PROCESSING_FAILED");
   }
@@ -184,7 +172,11 @@ function reviewerPdfStreamText_(pdf, streamReference) {
   });
 }
 
-async function verifyReviewerPdfWatermarks_(bytes, email) {
+async function verifyReviewerPdfWatermarks_(bytes, identity) {
+  var fullName = reviewerPdfSafeText_(identity && identity.fullName, 160);
+  var email = reviewerPdfSafeText_(identity && identity.email, 254).toLowerCase();
+  if (!fullName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    throw reviewerPdfError_("Verified account details are required.", "BAD_REQUEST");
   var pdf = await PDFLib.PDFDocument.load(
     Uint8Array.from(bytes, function (byte) { return Number(byte) & 255; }),
     { ignoreEncryption: false },
@@ -198,9 +190,11 @@ async function verifyReviewerPdfWatermarks_(bytes, email) {
     var pageText = streams.map(function (stream) {
       return reviewerPdfStreamText_(pdf, stream);
     }).join("\n");
+    var fullNameCount = pageText.split(fullName).length - 1;
+    var emailCount = pageText.split(email).length - 1;
     if (
-      (pageText.match(/AUTHORIZED USER:/g) || []).length < 3 ||
-      pageText.indexOf(String(email || "").toLowerCase()) < 0
+      fullNameCount < 3 ||
+      emailCount < 3
     )
       throw reviewerPdfError_("A page is missing the verified identity watermark.", "WATERMARK_VERIFICATION_FAILED");
     pagesWithWatermarks += 1;

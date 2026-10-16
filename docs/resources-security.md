@@ -102,72 +102,57 @@ Reviewer-PDF IDs. The viewing request revalidates the application session and
 reads the `ACCOUNTS` status directly (bypassing the short account cache), then
 checks that the requested ID is still present in `reviewers_combined.json`,
 that Drive identifies it as a non-trashed PDF, and that its ancestor chain
-reaches the configured `ROOT_FOLDER_ID`. Invalid IDs, stale index entries,
-unsupported files, and files outside the configured root are denied.
+reaches `RESOURCE_PORTAL_ROOT_FOLDER_ID` through a versioned private
+`REVIEWERS` folder. Invalid IDs, stale index entries, unsupported files, and
+files outside that protected resource hierarchy are denied.
+
+For faster return visits, the browser keeps a reviewer table snapshot in
+current-tab session storage for up to 24 hours. It is used only after the
+server confirms the saved session is still approved, refreshed from the
+backend, and cleared on sign-out or loss of approval. Reviewer PDF requests
+still reauthorize the account and revalidate current index membership and
+source ancestry before processing.
 
 The original PDF remains in Drive and is read only by the existing Apps
-Script execution identity. The local proof-of-concept bundles `pdf-lib` 1.17.1
-(MIT licensed); its asynchronous helper watermarks the server-verified
-identity onto every page in memory and verifies every saved page stream. A
-real Apps Script run processed a private synthetic 20-page portrait/landscape
-PDF: 586,373-byte source, 609,664-byte derivative, 812,888 base64 characters,
-7,461 ms elapsed, and 20/20 pages verified. The source hash was unchanged,
-both temporary Drive files were private, and both were trashed. Apps Script
-memory was not observable. This did not use an actual Reviewer PDF or test
-processing at the code's provisional limits.
+Script execution identity. Online preview uses the authenticated
+`get_reviewer_pdf_preview` route to return the original bytes without invoking
+PDF processing or creating a Drive derivative. The browser displays the PDF
+with a dynamic overlay containing the verified full name and email on separate
+lines. The frame and object URL are cleared when the preview closes, approval
+is lost, or the session ends.
 
-The existing `/dev` web app was tested with a Promise-return probe and Apps
-Script rejected the returned Promise as unsupported. The local implementation
-therefore keeps `doPost` synchronous: `get_reviewer_pdf` queues an authorized
-request and returns a session-bound job ID; an on-demand installable trigger
-performs the async watermark operation, saves only a private derivative, and
-the authenticated browser polls `get_reviewer_pdf_job` for that derivative.
-Enqueue, processing, and poll recheck the reviewer session and require the
-account's stored Active value to be exactly `TRUE`. Poll also rechecks current
-Reviewer-index membership, Drive MIME type, root ancestry, and source version.
-The index payload is cached by its Drive file ID and last-modified timestamp;
-watermarked derivatives are never cached or reused between users or jobs. The
-queue is capped at three active jobs, records expire after ten minutes, stale
-temporary derivatives are trashed, and the worker rejects derivatives whose
-Drive permissions are not private to the execution owner.
+Only the explicit Download action calls `get_reviewer_pdf`. It creates a
+session-bound job for the asynchronous watermark worker; the worker rechecks
+the session and stored Active value (`TRUE`), current index membership, Drive
+MIME type, protected-root ancestry, and source version. The `pdf-lib` 1.17.1
+(MIT licensed) helper uses two lines (full name and email) on each physical
+page and verifies each page after saving. The browser polls
+`get_reviewer_pdf_job`, which reauthorizes and revalidates the source before
+delivery. Its private Drive derivative is permanently deleted before response
+bytes are returned. Sign-out and a page-exit beacon clean up any remaining
+session outputs; ten-minute job expiry is the fallback if the browser exits
+without the beacon. Cleanup only targets files created as temporary outputs.
+The index payload is cached by Drive file ID and last-modified timestamp.
 `setupReviewerPdfDelivery()` must be run by the Apps Script project owner to
-install the worker trigger. No Cloud Run service, third-party processor,
-public temporary copy, or runtime CDN request is part of the local runtime
-path.
+install the worker trigger.
 
-The browser renders a Reviewer response only when the authenticated endpoint
-returns `application/pdf`, a PDF signature, and data within the configured
-derivative limit. Repeated clicks for the same session and file do not enqueue
-duplicate jobs. The viewer's object URL is revoked and its frame cleared when
-the user signs out, approval is lost, or the session expires. Non-PDF Reviewer
-resources and MODULES/SYLLABUS previews keep their existing behavior.
-
-The code currently rejects sources over 2 MiB, derivatives over 4 MiB, and
-files over 80 pages. These are implementation guards, not validated Apps
-Script service limits. A 4 MiB derivative expands to at most 5,592,408 base64
-characters (about 5.33 MiB) before JSON; maximum-size and actual
-`ContentService` response behavior, time-trigger execution/recovery, and
-large derivative delivery remain untested in the actual deployment. No
-production delivery claim is made. Validate the queue, trigger, private output,
-and browser response end-to-end against a test deployment with representative
-Reviewer PDFs before enabling production delivery. MODULES, SYLLABUS, and
-non-PDF REVIEWERS flows remain unchanged.
+The code rejects sources over 2 MiB, derivatives over 4 MiB, and files over
+80 pages. These are implementation guards, not validated Apps Script service
+limits. A 4 MiB derivative expands to at most 5,592,408 base64 characters
+(about 5.33 MiB) before JSON; maximum-size and actual `ContentService`
+response behavior, time-trigger execution/recovery, and large download
+delivery remain untested against a representative protected file.
+MODULES, SYLLABUS, and non-PDF resource flows remain unchanged.
 Browser POSTs use `cache: "no-store"`; personalized output is not placed in
 shared Apps Script or dashboard caches.
 
 The local bundle, MIT attribution, compatibility tests, Apps Script proof,
 queue setup, and deployment checklist are documented in
-[the Reviewer PDF setup and test guide](../reviewer-pdf-service/README.md).
-The queue implementation has been synchronized to Apps Script and a separate
-version-154 test deployment was updated. Production version 152 was not
-redeployed. Smoke tests confirmed the test endpoint's auth configuration,
-rejection of a forged Google credential at sign-in, and rejection of a
-fabricated reviewer session before the worker configuration check. The worker
-has not been initialized, and the complete PDF job, browser response, and
-real-account flows remain unverified. The read-only Drive permission audit
-failed with an Apps Script storage `NOT_FOUND` error; no Drive permissions were
-changed. Reviewer PDF delivery is not production-ready until the remaining
-live checks below pass.
+[the PDF setup and test guide](../reviewer-pdf-service/README.md). The deployed
+production endpoint has not been tested end-to-end with a representative
+protected PDF or an active/revoked user through download and cleanup. The
+read-only Drive permission audit failed with an Apps Script storage
+`NOT_FOUND` error; no Drive permissions were changed.
 
 The Apps Script editor functions `auditReviewerPdfDrivePermissions()` and
 `applyReviewedReviewerPdfPermissionRevocations()` are separately invoked.
@@ -252,10 +237,11 @@ To initialize sign-in and access logging:
    approve the requested permissions as the deployment owner.
 7. Test sign-in with a Google account. A new account can use Reviewers only
    after an administrator sets `Active` to `TRUE`. While a user remains
-   signed in, the website checks approval about every five seconds and locks
-   Reviewer access when the spreadsheet status changes. A short-lived account
-   lookup cache may delay a status change by a few seconds. New access-log
-   timestamps display in Philippine local time (`Asia/Manila`).
+   signed in, the website checks approval about every two seconds and
+   immediately after the tab becomes active. The protected backend reads the
+   current account status directly, bypassing the short-lived account lookup
+   cache. New access-log timestamps display in Philippine local time
+   (`Asia/Manila`).
 
 If Apps Script asks for OAuth scopes to be entered manually, add one scope per
 line in the Apps Script project manifest's `oauthScopes` array:
@@ -296,11 +282,12 @@ account; anonymous syllabus and module clicks have a blank email. Reviewer
 clicks always require the same authorization as reviewer resource access. The
 `SCOPES` tab documents required backend OAuth scopes and is refreshed when the
 initializer runs. Changing
-`Active` from `TRUE` to `FALSE` or `DENIED` blocks reviewer access after the
-short account-cache window and the next status poll; removing the account row
-also blocks access. Google token verification results are cached by token hash
-for at most five minutes; the raw token is not stored in the sheet or cache
-key.
+`Active` from `TRUE` to `FALSE` or `DENIED` blocks protected reviewer requests
+on their next authorization check. Active browser sessions normally reflect
+the change within about two seconds, or immediately after the tab is focused
+or made visible; removing the account row also blocks access. Google token
+verification results are cached by token hash for at most five minutes; the
+raw token is not stored in the sheet or cache key.
 
 The spreadsheet log is suitable for moderate usage, not unlimited traffic:
 Google Apps Script execution and Sheets API quotas still apply. Appends use the

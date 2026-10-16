@@ -1679,6 +1679,47 @@ button:active:not(:disabled) {
   background: #fff;
 }
 
+.resource-portal-preview-viewer {
+  position: relative;
+  height: 70vh;
+  min-height: 20rem;
+}
+
+.resource-portal-preview-viewer .resource-portal-preview-frame {
+  height: 100%;
+  min-height: 0;
+}
+
+.resource-portal-preview-watermark {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: grid;
+  grid-template: repeat(3, 1fr) / repeat(2, 1fr);
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.resource-portal-preview-watermark span {
+  display: grid;
+  place-items: center;
+  color: rgb(51 65 85 / 24%);
+  font-size: clamp(0.7rem, 1.4vw, 1.15rem);
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: pre-line;
+  transform: rotate(-28deg);
+}
+
+.resource-portal-preview-frame[hidden],
+.resource-portal-preview-watermark[hidden],
+.resource-portal-preview-header button[hidden] {
+  display: none;
+}
+
 .resource-dashboard-layout {
   --resource-dashboard-font-title: 1.125rem;
   --resource-dashboard-font: 0.875rem;
@@ -2567,6 +2608,11 @@ button:active:not(:disabled) {
 }
 
 .resource-portal-preview.is-expanded .resource-portal-preview-frame {
+  height: 100%;
+  min-height: 0;
+}
+
+.resource-portal-preview.is-expanded .resource-portal-preview-viewer {
   height: 100%;
   min-height: 0;
 }

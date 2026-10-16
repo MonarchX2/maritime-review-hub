@@ -1,5 +1,25 @@
 # Changelog
 
+## 26.10.18 - 2026-10-17
+
+### Fixed
+
+- Keep deck sync snapshots consistent when the backend cache changes without a
+  newer timestamp, and immediately retry with both the applied timestamp and
+  cache version.
+- Refresh account approval every two seconds and recheck immediately when the
+  Student Portal tab becomes active.
+
+### Improved
+
+- Render cached reviewer resources immediately and refresh the visible table
+  without blocking navigation.
+- Preview protected PDFs without generating a server-side copy; overlay the
+  verified full name and email in the viewer and generate watermarked PDFs only
+  after an explicit download.
+- Permanently remove private download derivatives after delivery or session
+  cleanup, and reduce PDF output size with object streams.
+
 ## 26.10.17 - 2026-10-17
 
 ### Improved

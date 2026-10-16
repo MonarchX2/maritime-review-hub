@@ -1,5 +1,5 @@
 {
-  "version": "26.10.17",
+  "version": "26.10.18",
   "scripts": {
     "sync:version": "node scripts/sync-package-version.js",
     "sync:about-changelog": "node scripts/sync-about-changelog.js",
@@ -27,6 +27,7 @@
     "vendor:qr": "node scripts/vendor-qr-libraries.js",
     "check:deck-clear": "node scripts/check-deck-clear-race.js",
     "check:sync-timestamp": "node scripts/check-sync-timestamp-recovery.js",
+    "check:sync-cache-version": "node scripts/check-sync-cache-version.js",
     "check:fast-sync": "node scripts/check-fast-sync.js",
     "check:app-update-flow": "node scripts/check-app-update-flow.js",
     "check:resource-portal": "node scripts/check-resource-portal.js",

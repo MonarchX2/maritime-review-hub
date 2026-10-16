@@ -26,6 +26,9 @@ const publicDashboardHandler =
 const reviewerPreview = frontend.match(
   /async function previewResourceFile\([\s\S]*?\n  \}/,
 )?.[0] || "";
+const reviewerDownload = frontend.match(
+  /async function downloadReviewerPdf\([\s\S]*?\n  \}/,
+)?.[0] || "";
 
 assert.match(
   backend,
@@ -44,6 +47,16 @@ assert.match(
 );
 assert.match(
   backend,
+  /if \(String\(file\.id\) === RESOURCE_PORTAL_ROOT_FOLDER_ID\)[\s\S]*?isPrivateResourceFolderName\(item\.name\)/,
+  "protected PDF ancestry must reach the resource portal root through a versioned private Reviewer folder",
+);
+assert.match(
+  backend,
+  /message: "This PDF is outside the protected resource hierarchy\."/,
+  "the out-of-hierarchy response should not include the word Reviewer",
+);
+assert.match(
+  backend,
   /function handleGetReviewerPdfRequest\(data, expectedSourceVersion\)[\s\S]*?await verifyReviewerPdfWatermarks_\([\s\S]*?mimeType: "application\/pdf"[\s\S]*?sourceVersion: source\.sourceVersion[\s\S]*?data: Utilities\.base64Encode\(outputBytes\)/,
   "only a derivative verified page-by-page may be returned",
 );
@@ -57,8 +70,20 @@ assert.doesNotMatch(
 );
 assert.match(
   backend,
-  /if \(requestType === "get_reviewer_pdf"\)\s*return enqueueReviewerPdfRequest_\(data\)/,
-  "the web-app route must enqueue work instead of returning an async response",
+  /if \(requestType === "get_reviewer_pdf_preview"\)\s*return handleGetReviewerPdfPreviewRequest_\(data\)[\s\S]*?if \(requestType === "get_reviewer_pdf"\)\s*return enqueueReviewerPdfRequest_\(data\)/,
+  "preview must be a lightweight protected route while explicit downloads enqueue PDF processing",
+);
+assert.match(
+  backend,
+  /function handleGetReviewerPdfPreviewRequest_\(data\)[\s\S]*?authorizeReviewerPdfRequest_\(data\)[\s\S]*?getReviewerPdfSource_\(fileId\)[\s\S]*?data: Utilities\.base64Encode\(sourceBytes\)/,
+  "online preview must authorize and return only the current protected source bytes without watermark generation",
+);
+assert.doesNotMatch(
+  backend.match(
+    /function handleGetReviewerPdfPreviewRequest_\(data\)[\s\S]*?\n\}/,
+  )?.[0] || "",
+  /watermarkReviewerPdfBytes_|DriveApp\.createFile/,
+  "online preview must not generate or persist a physical derivative",
 );
 assert.match(
   backend,
@@ -83,7 +108,22 @@ assert.match(
 assert.match(
   backend,
   /function getReviewerPdfJobStatus_\([\s\S]*?authorizeReviewerPdfRequest_\(data\)[\s\S]*?job\.sessionId !== String\(data\.sessionId[\s\S]*?getReviewerPdfSource_\(job\.fileId\)[\s\S]*?currentSource\.sourceVersion !== job\.sourceVersion[\s\S]*?Utilities\.base64Encode\(outputBytes\)/,
-  "polling must reauthorize and revalidate the index, source version, and session before returning the derivative",
+  "download polling must reauthorize and revalidate the index, source version, and session before returning the derivative",
+);
+assert.match(
+  backend,
+  /function getReviewerPdfJobStatus_\([\s\S]*?Utilities\.base64Encode\(outputBytes\)[\s\S]*?permanentlyDeleteReviewerPdfOutput_\(job\.outputFileId\)/,
+  "a generated download must be permanently deleted from Drive before its bytes are returned",
+);
+assert.match(
+  backend,
+  /function permanentlyDeleteReviewerPdfOutput_\([\s\S]*?Drive\.Files\.delete\(normalizedId, \{ supportsAllDrives: true \}\)/,
+  "temporary PDF outputs must be permanently deleted rather than merely trashed",
+);
+assert.match(
+  backend,
+  /function cleanupReviewerPdfJobsForSession_\([\s\S]*?job\.sessionId !== normalizedSessionId[\s\S]*?permanentlyDeleteReviewerPdfOutput_\(job\.outputFileId\)/,
+  "session cleanup must only delete generated PDFs belonging to that session",
 );
 assert.match(
   backend,
@@ -126,6 +166,16 @@ assert.match(
   "watermarking must run in Apps Script using its locally loaded PDF library",
 );
 assert.match(
+  pdfHelper,
+  /var watermarkLines = \[fullName, email\]/,
+  "the PDF watermark should contain only the account name and email on separate lines",
+);
+assert.doesNotMatch(
+  pdfHelper,
+  /AUTHORIZED USER:|Student Portal|var watermark = .*\\\|/,
+  "the watermark should not add a label, separator, or portal name",
+);
+assert.match(
   backend,
   /async function runReviewerPdfWatermarkProofOfConcept\(\)[\s\S]*?Session\.getEffectiveUser\(\)\.getEmail\(\)[\s\S]*?DriveApp\.createFile[\s\S]*?sourceFile\.setTrashed\(true\)/,
   "the in-project proof must use a verified script identity and clean up its private test source",
@@ -147,6 +197,16 @@ assert.match(
 );
 assert.match(
   network,
+  /get_reviewer_pdf_preview:\s*\{\s*required:\s*\["sessionId",\s*"eventId",\s*"fileId"\]/,
+  "preview requests must require a valid session, correlation ID, and file ID",
+);
+assert.match(
+  network,
+  /cleanup_reviewer_pdf_jobs:\s*\{\s*required:\s*\["sessionId",\s*"eventId"\]/,
+  "temporary PDF cleanup requests must be session-bound",
+);
+assert.match(
+  network,
   /get_reviewer_pdf:\s*\{\s*required:\s*\["sessionId",\s*"eventId",\s*"fileId"\]/,
   "the frontend must require a session, correlation ID, and file ID for protected PDFs",
 );
@@ -162,13 +222,13 @@ assert.match(
 );
 assert.match(
   frontend,
-  /resourceDashboardActiveTab === "REVIEWERS"[\s\S]*?mrh-reviewer-pdf:[\s\S]*?type: "get_reviewer_pdf"[\s\S]*?sessionId: reviewerSessionId/,
-  "only the Reviewer tab may route opaque PDF IDs to the protected viewer",
+  /resourceDashboardActiveTab === "REVIEWERS"[\s\S]*?mrh-reviewer-pdf:[\s\S]*?reviewer: true/,
+  "only the protected PDF tab may route opaque IDs to the protected viewer",
 );
 assert.match(
-  frontend,
-  /type: "get_reviewer_pdf_job"[\s\S]*?sessionId: reviewerSessionId[\s\S]*?jobId/,
-  "the protected viewer must poll its session-bound background job",
+  reviewerPreview,
+  /type: "get_reviewer_pdf_preview"[\s\S]*?sessionId: reviewerSessionId[\s\S]*?fileId/,
+  "online preview must fetch the source PDF without enqueuing watermark processing",
 );
 assert.doesNotMatch(
   reviewerPreview,
@@ -177,13 +237,28 @@ assert.doesNotMatch(
 );
 assert.match(
   reviewerPreview,
-  /responseMimeType !== "application\/pdf"[\s\S]*?REVIEWER_PDF_MAX_BASE64_LENGTH/,
-  "Reviewer PDF responses must have the PDF MIME type and stay within the derivative limit",
+  /responseMimeType !== "application\/pdf"[\s\S]*?REVIEWER_PDF_MAX_SOURCE_BYTES/,
+  "preview responses must have the PDF MIME type and stay within the source limit",
 );
 assert.match(
   reviewerPreview,
-  /bytes\.byteLength > REVIEWER_PDF_MAX_OUTPUT_BYTES[\s\S]*?bytes\[0\] !== 0x25[\s\S]*?bytes\[4\] !== 0x2d/,
-  "Reviewer responses must be bounded and begin with a PDF signature before rendering",
+  /bytes\.byteLength > REVIEWER_PDF_MAX_SOURCE_BYTES[\s\S]*?bytes\[0\] !== 0x25[\s\S]*?bytes\[4\] !== 0x2d/,
+  "preview responses must be bounded and begin with a PDF signature before rendering",
+);
+assert.match(
+  reviewerPreview,
+  /renderReviewerPdfWatermark\(response\.fullName, response\.email\)[\s\S]*?resourcePortalReviewerPdf/,
+  "online preview must display the verified identity as a dynamic viewer overlay",
+);
+assert.match(
+  reviewerDownload,
+  /type: "get_reviewer_pdf"[\s\S]*?type: "get_reviewer_pdf_job"[\s\S]*?link\.download/,
+  "only the explicit download action may enqueue and save a physical watermarked PDF",
+);
+assert.match(
+  frontend,
+  /function sendReviewerPdfCleanupBeacon\(\)[\s\S]*?navigator\.sendBeacon[\s\S]*?cleanup_reviewer_pdf_jobs/,
+  "the browser must request session cleanup when the active page exits",
 );
 assert.match(
   reviewerPreview,

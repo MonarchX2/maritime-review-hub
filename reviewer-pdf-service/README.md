@@ -1,13 +1,14 @@
 # Apps Script Reviewer PDF delivery
 
-The local backend now uses a synchronous request/response boundary around an
-asynchronous watermark worker: an authorized request queues a private job,
-an installable time trigger watermarks and verifies it, and the authorized
-browser polls for the derivative. `doPost` itself always returns a normal
-Apps Script `TextOutput`; it never returns a Promise or the source PDF.
-This queue design still requires staged validation in the actual Apps Script
-project before enabling a production deployment. No Cloud Run processor,
-paid API, CDN, or runtime package download is required.
+Online preview returns the authorized source PDF without creating a derivative;
+the browser overlays the verified account name and email while viewing.
+Watermarked bytes are generated only after the user selects Download. An
+on-demand trigger processes the session-bound download job, and the delivery
+request permanently deletes its private Drive output before returning the
+download bytes. Sign-out and page-exit cleanup remove remaining outputs for
+that session; a ten-minute expiry cleanup is the fallback if the browser
+disconnects. `doPost` always returns a normal Apps Script `TextOutput`.
+No Cloud Run processor, paid API, CDN, or runtime package download is required.
 
 ## Dependency and license
 
@@ -38,16 +39,25 @@ landscape PDFs, oversized and invalid inputs, watermark verification, and
 source-byte integrity. These local tests complement, but do not replace, the
 Apps Script runtime proof below.
 
-`get_reviewer_pdf` now queues work and returns a random, session-bound job ID.
-`processReviewerPdfQueue` runs from an on-demand one-time trigger, rechecks the
-reviewer session and current approval, watermarks and verifies every page, and
-stores only a private temporary derivative in Drive. The browser polls
-`get_reviewer_pdf_job`; that request rechecks approval and session ownership
-before returning the derivative. Jobs expire after ten minutes, the active
-queue is capped at three, and stale outputs are trashed during job cleanup.
-No watermarked derivative is cached or reused; each job creates its own
-session-bound output. The authoritative index is cached only by its Drive file
-ID and last-modified timestamp, and checked again for each protected request.
+`get_reviewer_pdf_preview` checks the current session, account approval,
+authoritative index membership, source version, and protected Drive ancestry,
+then returns the original bytes. The frontend overlays the account name and
+email; this path does not run PDF processing or create Drive files.
+
+`get_reviewer_pdf` is used only by the explicit Download action. It queues a
+random, session-bound job. `processReviewerPdfQueue` runs from an on-demand
+one-time trigger, rechecks the session and approval, watermarks and verifies
+every page, and stores a private temporary derivative in Drive. The browser
+polls `get_reviewer_pdf_job`; that request rechecks approval, session
+ownership, source membership, and source version. It permanently deletes the
+private derivative before returning its bytes. Sign-out and page-exit cleanup
+permanently delete any remaining outputs for the session; job expiry after ten
+minutes is a cleanup fallback. The active queue is capped at three.
+
+Each physical page watermark contains only the verified account's full name
+and email on two separate lines. No derivative is cached or reused. The
+authoritative index is cached only by its Drive file ID and last-modified
+timestamp, and checked again for each protected request.
 Run `setupReviewerPdfDelivery()` once from the Apps Script editor as the
 deployment owner to authorize and initialize on-demand worker triggers.
 Without setup, requests fail closed with `PDF_PROCESSOR_NOT_CONFIGURED`.
@@ -78,11 +88,9 @@ The helper currently enforces these conservative limits:
 
 These are code guards, not validated service limits. The actual Apps Script
 proof completed a 20-page synthetic portrait/landscape PDF, but did not test a
-real Reviewer file, the maximum input/output limits, the time-trigger queue,
+real protected file, the maximum input/output limits, the time-trigger queue,
 or large `ContentService` responses. Apps Script has execution and service
-quotas and does not expose a reliable per-execution memory measurement. Do not
-enable production delivery until the queue and response path are verified
-against the actual deployed `/dev` endpoint and representative Reviewer PDFs.
+quotas and does not expose a reliable per-execution memory measurement.
 
 ## Apps Script proof of concept
 
@@ -107,10 +115,10 @@ compared the source before/after, and trashed both temporary files. Results:
 
 This proves the PDF library and watermark helper can process that synthetic
 input in Apps Script. It does not establish performance at the configured
-limits, processing of actual Reviewer PDFs, trigger execution, or successful
-web-app delivery through the job queue. Separately, the existing `/dev` web app
-was tested with a Promise-return probe and rejected the return value as
-unsupported.
+limits, processing of actual protected PDFs, trigger execution, or successful
+web-app download delivery through the job queue. Separately, the existing
+`/dev` web app was tested with a Promise-return probe and rejected the return
+value as unsupported.
 
 ## Install and update the local bundle
 
@@ -123,21 +131,13 @@ existing Apps Script project. Run `setupReviewerPdfDelivery()` as the project
 owner, then create a separate test deployment and verify the complete request,
 worker, poll, and browser-render flow before updating production.
 
-The Apps Script project has been synchronized with the queue implementation
-and a separate version-154 test deployment was updated. Production deployment
-version 152 remains unchanged. The test endpoint returned its auth
-configuration, rejected a forged Google credential at sign-in, and rejected a
-fabricated reviewer session before returning a worker-configuration error.
-`setupReviewerPdfDelivery()` has not been run, so the test worker remains
-uninitialized. A read-only live Drive permission audit did not complete
-(Apps Script returned a storage `NOT_FOUND` error); no permissions were changed.
-
-Do not update production or claim production readiness until the test worker is
-initialized and the complete request/worker/poll/browser flow passes with an
-active and a revoked account, a representative Reviewer PDF, output privacy,
-trigger recovery and cleanup, maximum supported output size, and the actual
-browser response body. Also complete and retain the live Drive ACL report,
-including inherited permissions.
+The production Apps Script project is updated through the version noted in the
+release record. Local tests cover PDF rendering, page-by-page watermark checks,
+authorization contracts, and cleanup behavior, but the full request/worker/
+poll/browser flow has not been revalidated against an active account and a
+representative protected PDF. Actual maximum-size response delivery and live
+Drive ACL auditing remain separate operational checks; no account or folder
+permissions were changed by this implementation.
 
 No paid-service dependency remains in the runtime path. This does not certify
 that Google Drive storage or other account services have no quota or account

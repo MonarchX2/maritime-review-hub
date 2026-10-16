@@ -541,9 +541,17 @@
         "appVersion",
       ],
     },
+    get_reviewer_pdf_preview: {
+      required: ["sessionId", "eventId", "fileId"],
+      allowed: ["type", "sessionId", "eventId", "fileId", "appVersion"],
+    },
     get_reviewer_pdf_job: {
       required: ["sessionId", "eventId", "jobId"],
       allowed: ["type", "sessionId", "eventId", "jobId", "appVersion"],
+    },
+    cleanup_reviewer_pdf_jobs: {
+      required: ["sessionId", "eventId"],
+      allowed: ["type", "sessionId", "eventId", "appVersion"],
     },
     log_module_access: {
       required: ["eventId"],
@@ -1090,7 +1098,13 @@
         return { ...status, legacySnapshot: true };
       }
       const since = String(options.since || "").trim();
-      if (since && since === String(status.syncTimestamp || "").trim()) {
+      const sinceCacheVersion = String(options.sinceCacheVersion || "").trim();
+      if (
+        since &&
+        since === String(status.syncTimestamp || "").trim() &&
+        (!status.cacheVersion ||
+          (sinceCacheVersion && sinceCacheVersion === status.cacheVersion))
+      ) {
         return { ...status, notModified: true, legacySnapshot: true };
       }
       const summary = await getDeckSummary({
@@ -1144,6 +1158,9 @@
     url.searchParams.set("sync", "1");
     const since = String(options.since || "").trim();
     if (since) url.searchParams.set("since", since);
+    const sinceCacheVersion = String(options.sinceCacheVersion || "").trim();
+    if (sinceCacheVersion)
+      url.searchParams.set("sinceCacheVersion", sinceCacheVersion);
 
     const result = await defaultConnectionPool.request(
       async () => {

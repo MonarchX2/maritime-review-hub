@@ -52,6 +52,9 @@ jobs:
       - name: Check resource dashboard request contract
         run: npm run check:resource-dashboard-contract
 
+      - name: Check protected PDF preview and download
+        run: npm run check:reviewer-pdf-security
+
       - name: Check Conventional Commit SemVer versioning
         run: npm run check:semver-version
 
@@ -72,6 +75,9 @@ jobs:
 
       - name: Check optimized sync snapshots
         run: npm run check:fast-sync
+
+      - name: Check backend cache-version consistency
+        run: npm run check:sync-cache-version
 
   deploy:
     needs: security
