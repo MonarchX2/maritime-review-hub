@@ -134,9 +134,11 @@ syllabus file clicks are recorded in `SYLLABUS`. A click's `Event` value
 includes the category, resource name, and Drive ID (for example,
 `FILE_CLICK:MODULES:Module 1.pdf:012345678901234567890`). Syllabus and module
 resources remain public, so their clicks can be recorded with a blank email.
-Reviewer clicks include the verified account and require the same
-authorization as reviewer resource access. The `SCOPES` tab documents required
-backend OAuth scopes and is refreshed when the initializer runs. Changing
+When a user is signed in, clicks in all three areas include the verified
+account; anonymous syllabus and module clicks have a blank email. Reviewer
+clicks always require the same authorization as reviewer resource access. The
+`SCOPES` tab documents required backend OAuth scopes and is refreshed when the
+initializer runs. Changing
 `Active` from `TRUE` to `FALSE` or `DENIED` blocks reviewer access after the
 short account-cache window and the next status poll; removing the account row
 also blocks access. Google token verification results are cached by token hash

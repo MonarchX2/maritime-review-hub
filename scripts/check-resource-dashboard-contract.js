@@ -467,6 +467,11 @@ assert.match(
   "clicking a syllabus, module, or reviewer resource should log that specific resource",
 );
 assert.match(
+  appCore,
+  /if \(reviewerIdentityToken\)\s*payload\.idToken = reviewerIdentityToken;/,
+  "file click logs should include the verified account when the user is signed in",
+);
+assert.match(
   network,
   /log_resource_file_click:\s*\{\s*required:\s*\["eventId",\s*"resourceArea",\s*"fileName",\s*"fileId"\]/,
   "file click logging requests should validate the category, resource name, and Drive ID",

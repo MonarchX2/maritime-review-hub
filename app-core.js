@@ -6222,7 +6222,7 @@
         fileName,
         fileId,
       };
-      if (resourceArea === "REVIEWERS" && reviewerIdentityToken)
+      if (reviewerIdentityToken)
         payload.idToken = reviewerIdentityToken;
       await globalScope.AppNetwork.callBackend(payload, {
         timeoutMs: 15000,

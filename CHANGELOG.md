@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.16-31 - 2026-10-16
+
+### Fixed
+- Recheck account rows before profile submissions so stale cached rows cannot create duplicates or overwrite a different account.
+- Include the verified account in module and syllabus file-click logs when a user is signed in.
+
 ## 26.10.16-30 - 2026-10-16
 
 ### Added

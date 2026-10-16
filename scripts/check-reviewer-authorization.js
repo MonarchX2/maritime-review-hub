@@ -627,6 +627,43 @@ assert.equal(
   "a corrected denied profile must return to pending review",
 );
 
+tokenClaims = validClaims("admin-added@example.com");
+assert.equal(
+  post(
+    authRequest(
+      "verify_reviewer_access",
+      "admin-added-token",
+      eventId("a"),
+    ),
+  ).accountStatus,
+  "NOT_FOUND",
+);
+accountRows.push([
+  "admin-added@example.com",
+  "Existing",
+  "Account",
+  "",
+  "TRUE",
+]);
+const cachedNotFoundSubmission = post({
+  type: "request_reviewer_enrollment",
+  idToken: "admin-added-token",
+  eventId: eventId("b"),
+  lastName: "Updated",
+  firstName: "Account",
+});
+assert.equal(cachedNotFoundSubmission.accountStatus, "FALSE");
+assert.equal(
+  accountRows.filter((row) => row[0] === "admin-added@example.com").length,
+  1,
+  "enrollment must recheck a cached account miss before appending a duplicate",
+);
+assert.deepEqual(
+  Array.from(accountRows.find((row) => row[0] === "admin-added@example.com")),
+  ["admin-added@example.com", "Updated", "Account", "", "FALSE"],
+  "a fresh account match must update the correct row and reset approval",
+);
+
 tokenClaims = validClaims();
 const existingReviewerRow = accountRows.findIndex(
   (row) => row[0] === "reviewer@example.com",
@@ -733,6 +770,38 @@ assert.equal(
     eventId: eventId("8"),
   }).accountStatus,
   "DENIED",
+);
+
+cacheValues.clear();
+post({
+  type: "get_reviewer_account_status",
+  idToken: "approved-token",
+});
+const interveningAccount = [
+  "intervening@example.com",
+  "Unchanged",
+  "Account",
+  "",
+  "FALSE",
+];
+accountRows.splice(1, 0, interveningAccount);
+const shiftedAccountEdit = post({
+  type: "request_reviewer_enrollment",
+  idToken: "approved-token",
+  eventId: eventId("c"),
+  lastName: "Correct",
+  firstName: "Row",
+});
+assert.equal(shiftedAccountEdit.accountStatus, "FALSE");
+assert.deepEqual(
+  Array.from(accountRows.find((row) => row[0] === "reviewer@example.com")),
+  ["reviewer@example.com", "Correct", "Row", "", "FALSE"],
+  "profile edits must use a fresh account row after sheet rows move",
+);
+assert.deepEqual(
+  Array.from(interveningAccount),
+  ["intervening@example.com", "Unchanged", "Account", "", "FALSE"],
+  "profile edits must not overwrite another account after sheet rows move",
 );
 
 const allLogRows = Object.values(appendedRows).flat();
