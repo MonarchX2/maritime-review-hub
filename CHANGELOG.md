@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.16-42 - 2026-10-16
+
+### Changed
+
+- Bump the website release version.
+
 ## 26.10.16-41 - 2026-10-16
 
 ### Improved
