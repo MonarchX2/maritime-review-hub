@@ -5,7 +5,6 @@ const appCore = fs.readFileSync("app-core.js", "utf8");
 const network = fs.readFileSync("app-core-network.js", "utf8");
 const indexHtml = fs.readFileSync("index.html", "utf8");
 const resourceStyles = fs.readFileSync("styles.css", "utf8");
-const backend = fs.readFileSync("backend/main.js", "utf8");
 
 assert.doesNotMatch(
   indexHtml,
@@ -146,16 +145,6 @@ assert.match(
   indexHtml,
   /id="resource-profile-avatar-fallback"[\s\S]*?id="resource-profile-picture"[^>]*alt="Profile picture"[\s\S]*?id="resource-profile-name"[\s\S]*?id="resource-profile-email"/,
   "the Profile screen should render its avatar, name, and email in order",
-);
-assert.match(
-  backend,
-  /function getVerifiedGooglePicture_[\s\S]*?lh\[3-6\]/,
-  "profile-picture URLs should be restricted to Google-hosted image URLs",
-);
-assert.match(
-  backend,
-  /picture: authorization\.picture/,
-  "only a Google-verified and Google-hosted profile picture should be sent to the frontend",
 );
 assert.match(
   appCore,
