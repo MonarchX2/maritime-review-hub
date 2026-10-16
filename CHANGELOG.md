@@ -1,5 +1,30 @@
 # Changelog
 
+## 26.10.16-48 - 2026-10-16
+
+### Fixed
+
+- Keep the Student Portal title visible on small screens instead of replacing
+  it with a home icon.
+- Automatically request the current website release when the backend rejects
+  an outdated client, while preserving local study data.
+- Keep the Google sign-in button manual by disabling the automatic account
+  prompt and account selection.
+
+### Improved
+
+- Default Modules and Reviewers to Finals, then Midterms and Prelims when a
+  preferred category is unavailable.
+- Split access-log dates and times into separate columns, rename the
+  `MODULE` log worksheet to `MODULES`, and migrate older log rows safely.
+- Record tab visits, filter changes, and resource clicks in Syllabus, Modules,
+  and Reviewers with separate Event, Course, Year, Semester, Category, and
+  Resource fields; Drive file IDs are not written to the logs.
+- Reduce casual copying of resource links and show `Submit` for denied-profile
+  corrections.
+- Synchronize the About MRH release history from this changelog and update
+  Reviewer table content incrementally.
+
 ## 26.10.16-47 - 2026-10-16
 
 ### Improved

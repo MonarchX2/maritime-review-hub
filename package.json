@@ -1,7 +1,8 @@
 {
-  "version": "26.10.16-47",
+  "version": "26.10.16-48",
   "scripts": {
     "sync:version": "node scripts/sync-package-version.js",
+    "sync:about-changelog": "node scripts/sync-about-changelog.js",
     "build:css": "node scripts/build-css.js",
     "check:architecture": "node scripts/frontend-architecture-check.js",
     "check:runtime": "node scripts/check-runtime-reliability.js",

@@ -1,8 +1,8 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-26.10.16-47-d263c7d885fd";
-  const APP_DISPLAY_VERSION = "26.10.16-47";
+  const APP_VERSION = "mrh-26.10.16-48";
+  const APP_DISPLAY_VERSION = "26.10.16-48";
   const UPDATE_QUERY_PARAMETER = "__mrh_update";
   const LEGACY_PAGES_BASE_PATH = "/maritime-review-hub/";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
@@ -293,6 +293,8 @@
         bootstrapLogger().warn("Deployed app version check failed:", error);
       });
   }
+
+  rootScope.__MRH_REQUEST_APP_UPDATE = checkForAppUpdate;
 
   async function verifyDeployedReleaseAssets(version) {
     const baseUrl = new URL(

@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src blob: https://accounts.google.com; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com; img-src 'self' https: data: blob:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net https://accounts.google.com; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-26.10.16-47-d263c7d885fd" />
+    <link rel="manifest" href="manifest.json?v=mrh-26.10.16-48" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,28 +253,28 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-26.10.16-47-d263c7d885fd"
+      href="icon.svg?v=mrh-26.10.16-48"
       type="image/svg+xml"
     />
     <link
       rel="apple-touch-icon"
-      href="icon.svg?v=mrh-26.10.16-47-d263c7d885fd"
+      href="icon.svg?v=mrh-26.10.16-48"
     />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-26.10.16-47-d263c7d885fd"
+      href="tailwind.generated.css?v=mrh-26.10.16-48"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-26.10.16-47-d263c7d885fd"
+      href="styles.css?v=mrh-26.10.16-48"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-26.10.16-47-d263c7d885fd"
+      href="tailwind.generated.css?v=mrh-26.10.16-48"
       media="print"
       onload="
         this.media = 'all';
@@ -283,7 +283,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-26.10.16-47-d263c7d885fd"
+      href="styles.css?v=mrh-26.10.16-48"
       media="print"
       onload="
         this.media = 'all';
@@ -932,6 +932,13 @@
                         Cancel
                       </button>
                     </div>
+                    <p
+                      id="resource-reviewer-enrollment-status"
+                      class="resource-profile-status"
+                      role="status"
+                      aria-live="polite"
+                      hidden
+                    ></p>
                   </form>
                 </div>
               </section>
@@ -2175,428 +2182,921 @@
               Changelog
             </h4>
             <div id="about-changelog-entries" class="mt-3">
-              <h5
-                class="text-sm font-semibold text-gray-700 dark:text-gray-200"
-              >
-                Version 10.15.26-6
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>
-                  When the backend retires an app version, clear that app's
-                  saved browser data and offline files before showing the
-                  update-required page.
-                </li>
-              </ul>
-              <h5
-                class="text-sm font-semibold text-gray-700 dark:text-gray-200"
-              >
-                Version 10.15.26-5
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>
-                  Block unsupported app versions at the backend and require a
-                  current app version on every API request.
-                </li>
-              </ul>
-              <h5
-                class="text-sm font-semibold text-gray-700 dark:text-gray-200"
-              >
-                Version 10.15.26-4
-              </h5>
-              <ul
-                class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-              >
-                <li>
-                  Restored Quiz-only progress bars and question/card counts;
-                  deck progress bars appear only when a deck has saved Quiz
-                  progress.
-                </li>
-                <li>
-                  Added per-deck Show Answers settings to Review mode and
-                  removed Reset buttons from Review deck cards.
-                </li>
-                <li>Fixed deck-card rendering so decks open reliably.</li>
-                <li>
-                  Added no-redirect cleanup for cached service workers and
-                  assets from the retired Pages path.
-                </li>
-              </ul>
-              <div id="about-changelog-older" class="hidden">
-                <h5
-                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
+              <!-- ABOUT CHANGELOG START -->
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-48
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Keep the Student Portal title visible on small screens instead of replacing it with a home icon.</li>
+                  <li>Automatically request the current website release when the backend rejects an outdated client, while preserving local study data.</li>
+                  <li>Keep the Google sign-in button manual by disabling the automatic account prompt and account selection.</li>
+                </ul>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Improved
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Default Modules and Reviewers to Finals, then Midterms and Prelims when a preferred category is unavailable.</li>
+                  <li>Split access-log dates and times into separate columns, rename the <code>MODULE</code> log worksheet to <code>MODULES</code>, and migrate older log rows safely.</li>
+                  <li>Record tab visits, filter changes, and resource clicks in Syllabus, Modules, and Reviewers with separate Event, Course, Year, Semester, Category, and Resource fields; Drive file IDs are not written to the logs.</li>
+                  <li>Reduce casual copying of resource links and show <code>Submit</code> for denied-profile corrections.</li>
+                  <li>Synchronize the About MRH release history from this changelog and update Reviewer table content incrementally.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-47
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Improved
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Show a consistent Google sign-in prompt when signed out and a visible &quot;Signing in...&quot; state while verifying a sign-in.</li>
+                  <li>Simplify reviewer profile enrollment by removing the redundant Edit button, uppercasing names as they are typed, and confirming name accuracy before submission.</li>
+                  <li>Remove the redundant Year column from Syllabus, Modules, and Reviewer tables while retaining year and semester filtering.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-46
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Improved
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Send formal reviewer status emails with Maritime Review Hub as the displayed sender name.</li>
+                  <li>Keep the Reviewer dashboard on Loading until its authorized table response arrives, and show a clear empty state when the loaded data has no resources.</li>
+                  <li>Place profile enrollment and correction forms below the profile details.</li>
+                </ul>
+                <div id="about-changelog-older" class="hidden">
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-45
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Maintenance
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Synchronize deck-navigation formatting and update its multiline regression check to match the current helper signature.</li>
+                  <li>Redeploy the validated Reviewer backend with the current website release.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-44
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Improved
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Clarify that a middle initial may be any single letter followed by a period, not one specific initial.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-43
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Validate reviewer names and the one-letter-plus-period middle initial in the browser before sending an enrollment request, and keep profile drafts intact during status refreshes.</li>
+                  <li>Show only the Reviewer loading state while a saved session is being restored.</li>
+                </ul>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Improved
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Clarify reviewer profile warnings and email/name matching, and send pending, access-granted, and access-denied status emails.</li>
+                  <li>Refine profile status and sign-out presentation, and disable Reviewer filters while dashboard data is loading.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-42
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Bump the website release version.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-41
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Improved
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Simplify the locked Reviewer prompt with a red lock icon and concise sign-in action.</li>
+                  <li>Cache reviewer display details for instant Profile and header rendering while validating sessions and refreshing resources silently in the background.</li>
+                  <li>Open Reviewer resources by default for signed-in users and refine Profile actions.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-40
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Improved
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Show Popular badges on General Knowledge, BSMT Competencies, and Review Notes for Deck Officers decks.</li>
+                  <li>Keep unavailable Student Portal filter choices visible but disabled, and omit empty table columns.</li>
+                  <li>Show horizontal table scrolling only when populated columns exceed the dashboard width while preserving full-width row and header decorations.</li>
+                  <li>Enlarge the Profile avatar and remove redundant approval and sign-in loading status indicators.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-39
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Keep authorized Reviewer resources visible when public dashboard refreshes return the intentionally empty protected-tab placeholder.</li>
+                  <li>Preserve the last loaded Reviewer rows during temporary refresh failures and refresh them when returning to the Reviewer tab.</li>
+                  <li>Match reviewer account email addresses without case sensitivity when retaining loaded Reviewer data.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-38
+                </h5>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Persist reviewer sign-in across browser restarts with server-validated application sessions and cross-tab sign-out synchronization.</li>
+                  <li>Move Student Portal to the top of Home and refine dashboard and breadcrumb spacing.</li>
+                  <li>Auto-size the Resource Dashboard box around its content and wrap dashboard navigation instead of clipping it.</li>
+                  <li>Centralize the semantic release baseline in <code>package.json</code> and regenerate app, worker, manifest, and runtime release metadata during deployment.</li>
+                  <li>Preserve reviewer authentication state after temporary verification failures and offer a retry.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-37
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Improved
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Center resource tables and show the syllabus link column as SYLLABUS.</li>
+                  <li>Keep reviewer navigation in place while sign-in is being verified and reuse authorized reviewer data during the session.</li>
+                  <li>Show progress indicators during dashboard data loads and reviewer sign-in checks.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-36
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Improved
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Center dashboard navigation links when they fit and keep them scrollable on narrow screens.</li>
+                  <li>Tighten the Category dropdown and retain versioned dashboard payloads longer to avoid repeated index rebuilds.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-35
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Place the Profile settings button at the right side of the Resource Dashboard title bar.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-34
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Add contextual usage notes and filter explanations throughout the Resource Dashboard.</li>
+                  <li>Make the Category filter more compact and hide phase columns that are not selected.</li>
+                  <li>Reduce horizontal spacing between resource table columns.</li>
+                  <li>Keep Resource Dashboard tabs on one row on small screens, with horizontal scrolling when needed.</li>
+                  <li>Use a clipboard-check icon for the Reviewers tab.</li>
+                  <li>Ignore stale Google sign-in, approval-poll, and profile-submission responses after account state changes.</li>
+                  <li>Return a clear provider-unavailable response when Google returns malformed token data.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-33
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Keep the profile name editor open and preserve unsaved changes while reviewer approval status refreshes.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-32
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Improve Google sign-in restoration after refresh with FedCM automatic selection for both the returning-user prompt and sign-in button, without persisting credentials.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-31
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Recheck account rows before profile submissions so stale cached rows cannot create duplicates or overwrite a different account.</li>
+                  <li>Include the verified account in module and syllabus file-click logs when a user is signed in.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-30
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Added
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Add a PRELIMS, MIDTERMS, FINALS, or All category filter to the Modules and Reviewers dashboards, defaulting to All.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-29
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Added
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Let signed-in users edit their profile name; any actual change returns Reviewer access to pending administrator approval.</li>
+                </ul>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Hide the Google sign-in control after authentication and keep approval status visible without duplicate Profile copy.</li>
+                </ul>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Simplify Profile guidance and use Google FedCM/automatic account selection after refresh without storing ID tokens.</li>
+                  <li>Serve Modules, Syllabus, and Reviewer snapshots from short-lived backend caches, and avoid opening the account spreadsheet for sign-in configuration.</li>
+                  <li>Keep file-click logs while removing redundant dashboard-load log writes and disabling per-request Apps Script tracing by default.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-28
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Keep the Reviewer name-entry form and its First Name field within the Profile dialog on narrow screens.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-27
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Keep the Modules and Syllabus table frame sized to its content while aligning it with the dashboard filters.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-26
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Expand the Resource Dashboard to the available page width and add consistent spacing across profile, navigation, filters, and resource tables.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-25
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Keep cached deck access enabled when the backend confirms the cached summary is already current.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-24
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Added
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Require administrator approval before reviewer resources are available; pending users stay locked, and denied users can correct their name and resubmit.</li>
+                  <li>Refresh account approval while users are signed in so spreadsheet changes take effect without a page reload.</li>
+                </ul>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Remove device identity from account matching, access-log columns, and frontend requests; migrate and deduplicate legacy account/log rows during spreadsheet setup.</li>
+                  <li>Format new access-log timestamps in Philippine local time and use targeted account lookups for status checks.</li>
+                  <li>Open the Resource Dashboard on Profile and confirm before exiting it.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-23
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Preserve reviewer sign-out state across refreshes without storing Google ID tokens, and always clear the in-memory session even if browser storage is unavailable.</li>
+                </ul>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Register one <code>ACCOUNTS</code> row per verified email and browser-device UUID, allowing an existing account to sign in on additional browsers without re-entering profile details.</li>
+                  <li>Document that clearing browser storage creates a new device UUID rather than recovering a physical-device identifier.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-22
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Record individual syllabus, module, and reviewer resource clicks with the resource name and Drive ID in their respective log tabs.</li>
+                  <li>Create the <code>SYLLABUS</code> access-log tab during account spreadsheet setup.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-21
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Clear the previous resource tab&#39;s table and filters while Reviewer resources are loading.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-20
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Keep the signed-out Reviewers tab accessible and clickable by removing disabled ARIA semantics.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-19
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Apply safe frontend updates while the Resource Dashboard is open, while preserving unfinished Profile enrollment details.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-18
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Keep the Reviewers tab clickable while signed out and route users to Profile for Google sign-in.</li>
+                  <li>Make the Reviewers tab clickable after sign-in and show the signed-in profile picture in the header Profile button.</li>
+                </ul>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Initialize Google automatic re-authentication on dashboard load without storing ID tokens in browser storage.</li>
+                  <li>Improve Profile form spacing, mark Middle Initial optional, and show a name-capitalization example.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-16
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Center Google sign-in and show the signed-in profile picture above the account name and email.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-15
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Allow every verified Google account to access reviewer resources after profile enrollment, and log each sign-in and reviewer access.</li>
+                  <li>Record required Apps Script OAuth scopes in the <code>SCOPES</code> worksheet and style the Google sign-in button to match the dashboard.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-12
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Add a dedicated Profile section for Google sign-in, new-account enrollment, and signed-in account details/sign-out.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-11
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Place sign-in and profile controls at the right side of the dashboard tab header and default Google sign-in UI to English.</li>
+                  <li>Allow the Google Identity Services stylesheet through the site Content Security Policy.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-10
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Move Google sign-in and the signed-in profile control to the right side of the Syllabus/Modules/Reviewers header, and request English for Google sign-in.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-9
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Treat empty Module title parentheses as a missing title and preserve safe dashboard cache data when sanitizing legacy reviewer rows.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-8
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Show a folder icon and “Folder” for Module resources without a parenthesized title.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-7
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Label dashboard row counts with the selected “Year Level X.Y” term.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-6
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Label the all-years dropdown option “All” and align reviewer sign-in/profile controls to the far right of the dashboard toolbar.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-5
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Label the year-wide dashboard filter “All Year Levels”, include every semester, and disable the semester selector while it is active.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-4
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Avoid generating a device ID during public dashboard loads or before a returning Google account has had a chance to recover its registered identity.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-3
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Hide device IDs from the reviewer interface and recover the account&#39;s existing ID automatically after browser storage is cleared.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-2
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Added
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Let verified Google users submit pending reviewer-account requests with their name and device identity; an administrator must activate each account.</li>
+                </ul>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Security
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Preserve device identity in redundant browser storage, refuse silent replacement when saved copies are damaged or disagree, and restore an existing account identity after browser storage loss.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.16-1
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Added
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Add Google account and registered-device authorization using an administrator-managed <code>MRH_Accounts</code> spreadsheet, with separate <code>MODULE</code> and <code>REVIEWERS</code> access logs.</li>
+                </ul>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Match review question-range typography to the page indicator and prompt before exiting Review Mode from the last page.</li>
+                  <li>Cache backend dashboard and verified-account data to reduce repeated Drive, Sheets, and Google token-verification work.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-29
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Use <code>/dashboard</code> as the Resource Dashboard route while preserving <code>/resources</code> links, add an All-years filter, improve loading visibility, and standardize dashboard typography and spacing.</li>
+                  <li>Refresh dashboard navigation labels and icons, and hide empty rows and columns.</li>
+                </ul>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Security
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Lock Reviewers pending account setup, omit reviewer data from the public dashboard response, and remove reviewer data from previously cached dashboard indexes.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-28
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Keep the legacy sync fallback cache-version-aware, avoid nested connection-pool waits, and preserve cold-start handling.</li>
+                  <li>Restore the dashboard row count after an unchanged cached-dashboard check.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-27
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Reduce the Resource Dashboard tab bar height and standardize dashboard typography.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-26
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Performance
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Fetch changed sync metadata and the deck summary in one backend request, with a single-request unchanged check.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-25
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Hide empty Resource Dashboard rows and align the Return control and Dashboard title to the left.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-24
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Place the centered file-update delay note at the bottom inside the dashboard card.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-23
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Move the Return control outside the dashboard card, place the Dashboard label beside it, and use an icon-only Return control on small screens.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-22
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Note that Resource Dashboard updates may take up to three minutes to appear.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-21
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Rename the dashboard tab to Syllabus, move it before Modules, normalize dashboard spacing, and add a return-to-menu button.</li>
+                </ul>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Keep dashboard data loading from blocking navigation back to the main menu.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-20
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Keep the Resource Dashboard compatible with older backend responses that include syllabus data in the Reviewers tab.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-19
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Separate Course Syllabus resources into their own Resource Dashboard tab.</li>
+                  <li>Support compact Drive-ID and legacy tuple index exports.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-18
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Show syllabus resources as PDF buttons with PDF icons in the Resource Dashboard.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-17
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Cache Resource Dashboard data in browser storage and refresh it only when the website release or a Drive JSON index changes.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-16
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Refresh the Resource Dashboard layout, remove filled active-tab backgrounds, and compact the term filters.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-15
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Limit Resource Dashboard filtering to Year and Semester, defaulting to 3.1.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-14
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Show parenthesized resource filenames in dashboard buttons, with PDF icons for Reviewers and folder icons for Modules.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-13
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Resolve Drive file titles for dashboard resource links with a DriveApp fallback and avoid exposing unresolved raw URLs.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-12
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Label dashboard resource buttons with the linked Drive file title instead of the raw URL.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-11
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Size dashboard columns to their content and display spreadsheet resource links as labeled buttons.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-10
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Add column-based filtering and sortable headers to the resource dashboard.</li>
+                  <li>Preserve spreadsheet links and render Google Drive and Docs resources as same-tab links.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-9
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Allow the Resource Dashboard request through frontend backend-payload validation.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-8
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Increase the website header height and simplify the resource dashboard title.</li>
+                  <li>Remove dashboard search and external spreadsheet/document links so dashboard data stays in the website.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-7
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Replace the Resources Drive browser with Modules and Reviewers dashboards backed by the shared spreadsheet.</li>
+                  <li>Disable the Resource Portal Drive listing and preview endpoints.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.15-6
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Remove explanatory and access-disclosure copy from the Resources portal while retaining functional status messages.</li>
+                  <li>Adopt <code>YY.MM.DD-sequence</code> release numbering and advance the sequence for subsequent code releases on the same date.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 10.16.5
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Use a field-limited Drive API listing for Resources instead of per-item DriveApp metadata reads.</li>
+                  <li>Speed up repeat browsing with a bounded 30-second server-side metadata cache while checking folder ancestry on every request.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 10.16.4
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Add a dedicated reviewer-access screen that clearly keeps sign-in disabled until verified identity and folder grants are configured.</li>
+                  <li>Allow supported resource previews to expand into a focused online viewer.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 10.16.3
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Apply the exact <code>REVIEWERS vXX.XX.XX</code> folder rule and deny public access to matching folders and descendants until recipient authorization is configured.</li>
+                  <li>Remove stale listing caches, direct Google Drive links, and download controls; route supported previews through the portal without caching document bytes.</li>
+                  <li>Disclose that browser-based copying or capture cannot be prevented.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 10.16.2
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Cache small private-file previews so repeat opens avoid exporting Google Workspace documents again.</li>
+                  <li>Allow the first private Google Workspace preview more time to finish exporting.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 10.16.1
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Restyle Resources as a responsive Drive file browser with current-folder search, file types, and modified dates.</li>
+                  <li>Allow the website to browse and preview files under the private Drive root without changing Drive sharing; reviewer-named folders remain excluded.</li>
+                  <li>Cache recent folder listings so previously visited resources appear immediately while refreshing.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 10.15.26-10
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Allow the Resources portal&#39;s public Drive listing request through frontend backend-payload validation.</li>
+                  <li>Preview public Drive files inside the Resources page.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 10.15.26-9
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Added
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Publish the public Drive resource browser with folder listing integrated into the Resources view.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 10.15.26-8
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Added
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Browse publicly shared Drive folders and files in the Resources portal while excluding private reviewer folders.</li>
+                  <li>Open publicly shared files using their Google Drive links.</li>
+                  <li>Use <code>/resources</code> and the shorter “Resources” page title.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 10.15.26-7
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Added
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Add a Resource Portal frontend view with a dedicated navigation route and setup empty state.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 10.15.26-6
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>When the backend retires an app version, clear all Maritime Review Hub browser namespaces, its local database, offline caches, and app service workers before showing an update-required page.</li>
+                  <li>Keep unrelated origin storage, caches, and service workers untouched.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 10.15.26-5
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Require the current app version on every backend API request and reject clients older than 10.15.26-5.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 10.15.26-4
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Added
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Restore quiz-only progress bars and question/card counts, showing deck progress bars only on decks with saved quiz progress.</li>
+                  <li>Add a per-deck Show Answers setting to Review mode.</li>
+                  <li>Remove Reset buttons from Review-mode deck cards.</li>
+                </ul>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Fix a deck-card rendering error that could prevent users from opening decks.</li>
+                  <li>Retire cached service workers and assets from the old Pages path when the new site is opened, without redirecting old links.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 10.15.26-3
                 </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Scoped Quiz and Study preferences, including navigation
-                    position, to the active deck.
-                  </li>
-                  <li>
-                    Removed progress bars and completed/total counters while
-                    retaining the Study question range below pagination.
-                  </li>
-                  <li>
-                    Scrambled protected deck and folder names before blurring,
-                    removed redundant lock icons, and kept sort/filter menus
-                    within small screens.
-                  </li>
-                  <li>
-                    Restored the previous question type when its confirmation is
-                    canceled.
-                  </li>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Added
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Keep Quiz and Study preferences, including navigation position, scoped to the active deck.</li>
                 </ul>
-                <h5
-                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Remove progress bars and completed/total counters from deck cards and sessions while retaining the Study question range below pagination.</li>
+                  <li>Scramble protected deck and folder names before blurring them, and remove redundant lock icons beside those names.</li>
+                  <li>Keep sort and filter menus within small viewports.</li>
+                  <li>Restore the previous question type when its confirmation is canceled.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 10.15.26-2
                 </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Increased spacing above dashboard navigation and below
-                    session progress controls.
-                  </li>
-                  <li>
-                    Adjusted review title and action spacing for small and large
-                    screens.
-                  </li>
-                  <li>
-                    Changed the dashboard heading to “SUBJECTS” and shortened
-                    the deck filter to “All”.
-                  </li>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Changed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Increase spacing above the dashboard navigation bar and below the session progress area.</li>
+                  <li>Adjust review title and action spacing for small and large screens.</li>
+                  <li>Shorten the deck source filter to “All” and capitalize the dashboard heading as “SUBJECTS”.</li>
                 </ul>
-                <h5
-                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 10.15.26
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 10.16.0
                 </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Refined review headers and compacted dashboard controls and
-                    navigation spacing.
-                  </li>
-                  <li>
-                    Kept locked-deck mode switches within the already-authorized
-                    session and blurred protected deck names in reset
-                    confirmations.
-                  </li>
-                  <li>
-                    Fixed dashboard progress indicators briefly appearing on
-                    unrelated decks after returning from a session.
-                  </li>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Added
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Keep study and quiz sessions addressable in the URL and offer to restore saved progress after a page refresh.</li>
+                  <li>Add navigation and practice/review regression coverage for session routing and dashboard updates.</li>
                 </ul>
-                <h5
-                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 14.15.0
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Moved locked decks and folders below unlocked items and made
-                    deck/session navigation immediate.
-                  </li>
-                  <li>
-                    Showed incorrect deck passwords directly in the unlock
-                    dialog and standardized its button spacing.
-                  </li>
-                  <li>
-                    Disabled session resume and the automatic landscape action;
-                    rotate devices manually when needed.
-                  </li>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Correct JavaScript syntax in dashboard navigation so the root-level syntax check passes.</li>
+                  <li>Keep session navigation URLs and dashboard progress displays consistent when moving between views.</li>
                 </ul>
-                <h5
-                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 14.14.1
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Prevented browser password autofill prompts in locked deck
-                    and folder dialogs.
-                  </li>
-                </ul>
-                <h5
-                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 14.13.0
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>Reduced the header height on desktop and mobile.</li>
-                  <li>
-                    Improved update checks when mobile browsers return to the
-                    app.
-                  </li>
-                </ul>
-                <h5
-                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 14.12.0
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Kept password dialogs visible with progress feedback while
-                    protected decks load or switch modes.
-                  </li>
-                  <li>
-                    Blocked other website interactions during password-protected
-                    transitions.
-                  </li>
-                  <li>
-                    Improved locked-deck privacy and password entry, including
-                    blurred names and reduced autofill prompts.
-                  </li>
-                  <li>
-                    Preserved literal UUID-sheet passwords and made password
-                    verification consistent.
-                  </li>
-                </ul>
-                <h5
-                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 14.11.0
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Stopped review pagination from shaking while restoring the
-                    expected previous-page position.
-                  </li>
-                  <li>
-                    Blocked app interactions while a deck is opening and
-                    restored controls safely when loading completes.
-                  </li>
-                </ul>
-                <h5
-                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 14.10.0
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Preserved GitHub Pages deep links and added clear notices
-                    for missing decks.
-                  </li>
-                  <li>
-                    Added fingerprint-verified backend payload updates with
-                    safer background sync and study-session preservation.
-                  </li>
-                  <li>
-                    Reduced motion when entering app views and improved
-                    study/quiz progress handling.
-                  </li>
-                </ul>
-                <h5
-                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 14.9.1
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Hardened Pages deployments with safe, targeted asset
-                    minification and release verification.
-                  </li>
-                  <li>
-                    Removed vulnerable CSS build dependencies while retaining
-                    Tailwind v3 browser support.
-                  </li>
-                </ul>
-                <h5
-                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 14.9.0
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Added automatic semantic versioning for feature, fix, and
-                    breaking changes.
-                  </li>
-                  <li>
-                    Improved deployment updates with content-hashed assets and
-                    safe progress-preserving reloads.
-                  </li>
-                </ul>
-                <h5
-                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 14.8
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Moved progress transfer into Settings and temporarily
-                    limited transfers to files.
-                  </li>
-                </ul>
-                <h5
-                  class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 14.7
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Preserved QR libraries for mobile browsers and cached app
-                    versions.
-                  </li>
-                  <li>
-                    Kept the About dialog within the screen and made older
-                    changelogs expandable.
-                  </li>
-                </ul>
-                <h5
-                  class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 14.6
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Fixed QR tools failing to load after deployment
-                    minification.
-                  </li>
-                </ul>
-                <h5
-                  class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 14.5
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Kept the About dialog within the screen and made older
-                    changelogs expandable.
-                  </li>
-                </ul>
-                <h5
-                  class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 14.4
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Added direct, serverless progress transfer between devices
-                    on the same local network.
-                  </li>
-                  <li>
-                    Improved spacing in the transfer dialog and bundled QR tools
-                    for offline use.
-                  </li>
-                </ul>
-                <h5
-                  class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 14.3
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Added offline-capable transfer files for large progress
-                    exports; improved QR scanning reliability.
-                  </li>
-                </ul>
-                <h5
-                  class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 14.2
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Improved QR scanning efficiency, rapid navigation, and
-                    release asset verification.
-                  </li>
-                </ul>
-                <h5
-                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 14.1
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Removed unnecessary empty space in the progress-transfer
-                    dialog and improved QR transfer reliability.
-                  </li>
-                </ul>
-                <h5
-                  class="text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 14.0
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Added QR-code transfer for saved progress between devices.
-                  </li>
-                  <li>
-                    Added an explicit choice to keep or replace saved settings
-                    during import.
-                  </li>
-                </ul>
-                <h5
-                  class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 13.9
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>
-                    Prevented text selection across the app while preserving
-                    editable fields.
-                  </li>
-                  <li>
-                    Centered the Settings footer and refreshed its hierarchy.
-                  </li>
-                  <li>Moved release notes into About MRH.</li>
-                </ul>
-                <h5
-                  class="mt-4 text-sm font-semibold text-gray-700 dark:text-gray-200"
-                >
-                  Version 13.8
-                </h5>
-                <ul
-                  class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400"
-                >
-                  <li>Restored the Danger Zone in Main Settings.</li>
-                  <li>Kept advanced options and text alignment hidden.</li>
-                </ul>
-              </div>
+                </div>
+              <!-- ABOUT CHANGELOG END -->
               <button
                 id="about-changelog-toggle"
                 type="button"
@@ -3020,7 +3520,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 26.10.16-47</p>
+    <p id="site-version" class="site-version">Version 26.10.16-48</p>
 
     <div
       id="qr-transfer-modal"

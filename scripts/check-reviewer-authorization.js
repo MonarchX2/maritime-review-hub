@@ -60,6 +60,20 @@ const oldLogHeaders = [
   "Event",
 ];
 const currentLogHeaders = [
+  "Date",
+  "Time",
+  "Email",
+  "Last Name",
+  "First Name",
+  "Middle Initial",
+  "Event",
+  "Course",
+  "Year",
+  "Semester",
+  "Category",
+  "Resource",
+];
+const previousLogHeaders = [
   "Timestamp",
   "Email",
   "Last Name",
@@ -90,7 +104,7 @@ const reviewerLogs = [
 ];
 const appendedRows = {
   SYLLABUS: [],
-  MODULE: [],
+  MODULES: [],
   REVIEWERS: [],
   "SIGN-IN": [],
 };
@@ -166,14 +180,24 @@ function createSheet(rows) {
     deleteRows(startRow, count) {
       rows.splice(startRow - 1, count);
     },
+    setName(name) {
+      const oldName = Object.keys(sheets).find(
+        (sheetName) => sheets[sheetName] === this,
+      );
+      if (oldName) {
+        delete sheets[oldName];
+        sheets[name] = this;
+      }
+      return this;
+    },
   };
 }
 
 const sheets = {
   ACCOUNTS: createSheet(accountRows),
   Accounts: createSheet(legacyAccountRows),
-  SYLLABUS: createSheet([currentLogHeaders]),
-  MODULE: createSheet([currentLogHeaders]),
+  SYLLABUS: createSheet([previousLogHeaders]),
+  MODULE: createSheet([previousLogHeaders]),
   REVIEWERS: createSheet(reviewerLogs),
 };
 const spreadsheet = {
@@ -301,13 +325,18 @@ const context = {
     },
     formatDate(date, timeZone, format) {
       assert.equal(timeZone, "Asia/Manila");
-      assert.equal(format, "yyyy-MM-dd HH:mm:ss");
-      return new Date(
+      assert.ok(
+        ["yyyy-MM-dd", "HH:mm:ss", "yyyy-MM-dd HH:mm:ss"].includes(format),
+      );
+      const localTimestamp = new Date(
         new Date(date).getTime() + 8 * 60 * 60 * 1000,
       )
         .toISOString()
         .slice(0, 19)
         .replace("T", " ");
+      if (format === "yyyy-MM-dd") return localTimestamp.slice(0, 10);
+      if (format === "HH:mm:ss") return localTimestamp.slice(11);
+      return localTimestamp;
     },
   },
   UrlFetchApp: {
@@ -430,10 +459,17 @@ assert.deepEqual(Array.from(accountRows[1]), [
 ]);
 assert.equal(accountRows[2][0], "second-reviewer@example.com");
 assert.equal(sheets.Accounts, undefined);
+assert.equal(sheets.MODULE, undefined);
+assert.equal(sheets.MODULES !== undefined, true);
+assert.deepEqual(
+  sheets.ACCOUNTS.getRange(1, 1, 1, 5).getDisplayValues()[0],
+  ["Email", "Last Name", "First Name", "Middle Initial", "Active"],
+  "the ACCOUNTS tab must remain free of date and time fields",
+);
 assert.equal(spreadsheetTimeZone, "Asia/Manila");
 assert.deepEqual(Array.from(reviewerLogs[0]), currentLogHeaders);
 assert.equal(
-  reviewerLogs.some((row) => String(row[5] || "").startsWith("SIGN_IN")),
+  reviewerLogs.some((row) => String(row[6] || "").startsWith("SIGN_IN")),
   false,
   "legacy sign-in events should be moved out of REVIEWERS",
 );
@@ -449,7 +485,12 @@ assert.equal(
 );
 assert.equal(
   appendedRows["SIGN-IN"][0][0],
-  "2026-10-01 16:00:00",
+  "2026-10-01",
+  "historical UTC timestamps should be migrated to the Philippine local date",
+);
+assert.equal(
+  appendedRows["SIGN-IN"][0][1],
+  "16:00:00",
   "historical UTC timestamps should be migrated to Philippine local time",
 );
 assert.equal(
@@ -495,6 +536,7 @@ tokenClaims = validClaims();
 const approved = post(
   authRequest("verify_reviewer_access", "approved-token", eventId("1")),
 );
+assert.equal(approved.status, "success", JSON.stringify(approved));
 assert.deepEqual(
   {
     status: approved.status,
@@ -540,8 +582,8 @@ assert.equal(
   0,
   "the first observed status should establish a baseline without sending email",
 );
-assert.equal(appendedRows["SIGN-IN"][1][5], "SIGN_IN:TRUE");
-assert.equal(appendedRows["SIGN-IN"][1].length, 6);
+assert.equal(appendedRows["SIGN-IN"][1][6], "SIGN_IN:TRUE");
+assert.equal(appendedRows["SIGN-IN"][1].length, currentLogHeaders.length);
 const beforeStatusCheck = appendedRows["SIGN-IN"].length;
 assert.equal(
   post({
@@ -1017,6 +1059,58 @@ assert.equal(
   1,
   "authorized reviewer payload cache hits should skip Drive metadata lookups",
 );
+for (const [resourceArea, eventSuffix] of [
+  ["SYLLABUS", "a"],
+  ["MODULES", "b"],
+  ["REVIEWERS", "c"],
+]) {
+  const response = post({
+    type: "log_resource_dashboard_action",
+    resourceArea,
+    action: "TAB_OPEN",
+    eventId: eventId(eventSuffix),
+    ...(resourceArea === "REVIEWERS" ? { idToken: "approved-token" } : {}),
+  });
+  assert.equal(response.status, "success");
+  assert.equal(
+    appendedRows[resourceArea].at(-1)[6],
+    "TAB_OPEN",
+    `${resourceArea} tab visits should be recorded in their matching log sheet`,
+  );
+}
+const moduleFilterLog = post({
+  type: "log_resource_dashboard_action",
+  resourceArea: "MODULES",
+  action: "FILTER_YEAR",
+  detail: "3",
+  course: "NAV6",
+  semester: "2",
+  category: "FINALS",
+  eventId: eventId("d"),
+});
+assert.equal(moduleFilterLog.status, "success");
+assert.deepEqual(
+  Array.from(appendedRows.MODULES.at(-1).slice(6, 11)),
+  ["FILTER_YEAR", "NAV6", "3", "2", "FINALS"],
+  "resource activity should store event, course, year, semester, and category separately",
+);
+const syllabusFileLog = post({
+  type: "log_resource_file_click",
+  resourceArea: "SYLLABUS",
+  fileId: "012345678901234567890",
+  fileName: "NAV6 Course Syllabus",
+  course: "NAV6",
+  year: "3",
+  semester: "2",
+  category: "SYLLABUS",
+  eventId: eventId("e"),
+});
+assert.equal(syllabusFileLog.status, "success");
+assert.deepEqual(
+  Array.from(appendedRows.SYLLABUS.at(-1).slice(6)),
+  ["FILE_CLICK", "NAV6", "3", "2", "SYLLABUS", "NAV6 Course Syllabus"],
+  "syllabus clicks should record their context without storing private Drive IDs",
+);
 accountRows[existingReviewerRow][4] = "FALSE";
 cacheValues.clear();
 assert.equal(
@@ -1093,10 +1187,14 @@ assert.equal(
 );
 assert.equal(
   allLogRows
-    .filter((row) => row[0] !== "2026-10-01 16:00:00")
-    .every((row) => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(row[0])),
+    .filter((row) => row[0] !== "2026-10-01")
+    .every(
+      (row) =>
+        /^\d{4}-\d{2}-\d{2}$/.test(row[0]) &&
+        /^\d{2}:\d{2}:\d{2}$/.test(row[1]),
+    ),
   true,
-  "new access-log timestamps should be formatted in Philippine local time",
+  "access-log dates and times should be stored in separate Philippine-local columns",
 );
 
 tokenClaims = validClaims("fallback@example.com");

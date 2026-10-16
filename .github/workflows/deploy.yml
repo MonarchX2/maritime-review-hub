@@ -28,7 +28,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm run sync:version && npm ci
+        run: npm run sync:version && npm run sync:about-changelog && npm ci
 
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
@@ -86,6 +86,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Sync About changelog
+        run: node scripts/sync-about-changelog.js
 
       - name: Resolve semantic release version
         id: release

@@ -154,8 +154,9 @@
 
   async function processBackendError(error) {
     if (!error) return;
-    if (error.payload?.purgeClientData === true) {
-      await purgeAppOwnedData();
+    if (error.payload?.code === "CLIENT_UPDATE_REQUIRED") {
+      const requestUpdate = globalScope.__MRH_REQUEST_APP_UPDATE;
+      if (typeof requestUpdate === "function") await requestUpdate();
     }
     throw error;
   }
@@ -542,6 +543,27 @@
         "resourceArea",
         "fileName",
         "fileId",
+        "course",
+        "year",
+        "semester",
+        "category",
+        "idToken",
+        "sessionId",
+        "appVersion",
+      ],
+    },
+    log_resource_dashboard_action: {
+      required: ["eventId", "resourceArea", "action"],
+      allowed: [
+        "type",
+        "eventId",
+        "resourceArea",
+        "action",
+        "detail",
+        "course",
+        "year",
+        "semester",
+        "category",
         "idToken",
         "sessionId",
         "appVersion",

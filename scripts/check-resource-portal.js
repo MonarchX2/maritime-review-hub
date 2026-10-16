@@ -138,6 +138,11 @@ assert.match(
   /resource-reviewer-enrollment-form[\s\S]*?name="lastName"[\s\S]*?name="firstName"[\s\S]*?name="middleInitial"/,
   "the sign-in panel should collect the names needed for new account enrollment",
 );
+assert.match(
+  index,
+  /class="resource-reviewer-form-actions"[\s\S]*?<button type="submit">[\s\S]*?id="resource-reviewer-enrollment-status"[^>]*role="status"/,
+  "profile submission progress should appear beneath the enrollment action",
+);
 assert.ok(
   index.indexOf('id="resource-reviewer-enrollment-form"') >
     index.indexOf('id="resource-profile-account-details"'),
@@ -290,7 +295,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /accountStatus === "NOT_FOUND" \|\| accountStatus === "DENIED"[\s\S]*?Correct details and submit/,
+  /accountStatus === "NOT_FOUND" \|\| accountStatus === "DENIED"[\s\S]*?accountStatus === "DENIED"\s*\?\s*"Submit"/,
   "first-time and denied accounts should use the enrollment form without an Edit button",
 );
 assert.doesNotMatch(
@@ -427,7 +432,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /resourceDashboardSelectedCategory = "all"/,
+  /resourceDashboardSelectedCategories = \{\s*MODULES: "all",\s*REVIEWERS: "all",\s*\}/,
   "the category filter should default to All",
 );
 assert.match(
@@ -437,7 +442,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /const selectedPhaseColumnIndex =[\s\S]*?phaseColumnIndexes\[resourceDashboardSelectedCategory\]/,
+  /const selectedPhaseColumnIndex =[\s\S]*?phaseColumnIndexes\[selectedCategory\]/,
   "a selected phase should restrict visible columns and rows to resources in that category",
 );
 assert.match(
@@ -447,7 +452,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /const categoryColumnIndices =\s*hasCategoryFilter && resourceDashboardSelectedCategory !== "all"[\s\S]*?columnIndex === selectedPhaseColumnIndex[\s\S]*?const visibleColumnIndices = categoryColumnIndices\.filter/,
+  /const categoryColumnIndices =\s*hasCategoryFilter && selectedCategory !== "all"[\s\S]*?columnIndex === selectedPhaseColumnIndex[\s\S]*?const visibleColumnIndices = categoryColumnIndices\.filter/,
   "a selected phase should hide the other phase columns",
 );
 assert.match(

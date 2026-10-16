@@ -126,10 +126,10 @@ assert.doesNotMatch(
   /preparingReviewerResources|Checking your profile and administrator approval/,
   "approved sign-in should not show redundant background-check status text",
 );
-assert.match(
+assert.doesNotMatch(
   appCore,
-  /if \(reviewerAuthCheckPending\) \{\s*authStatus\?\.removeAttribute\("aria-busy"\);\s*setReviewerNavigationBusy\(true\);[\s\S]*?globalScope\.google\.accounts\.id\.prompt/,
-  "the Google sign-in instruction should not show a loading spinner while the navigation remains busy",
+  /google\.accounts\.id\.prompt\(/,
+  "the signed-out reviewer view should not open an automatic Google account prompt",
 );
 assert.doesNotMatch(
   appCore,
@@ -200,23 +200,6 @@ assert.doesNotMatch(
   appCore,
   /Signed out\. Reviewer data|Signed out here, but|Signed out in another tab\./,
   "signed-out states should not display redundant signed-out messages",
-);
-const reviewerPromptCallback = appCore.match(
-  /globalScope\.google\.accounts\.id\.prompt\(\(notification\) => \{[\s\S]*?\n          \}\);/,
-);
-assert.ok(
-  reviewerPromptCallback,
-  "the returning-user prompt callback should exist",
-);
-assert.match(
-  reviewerPromptCallback[0],
-  /reviewerAuthCheckPending = false;\s*setReviewerNavigationBusy\(\s*Boolean\(\s*reviewerPendingEnrollmentSessionId \|\|\s*reviewerSessionId \|\|\s*reviewerSessionRestorePending,\s*\),\s*\)/,
-  "a prompt completion notification should preserve the busy state when credential verification is already underway",
-);
-assert.doesNotMatch(
-  reviewerPromptCallback[0],
-  /openResourceDashboardTab\("PROFILE"\)/,
-  "a prompt completion notification must not redirect away from Reviewers before a credential callback settles",
 );
 assert.match(
   appCore,
@@ -290,7 +273,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /categoryFilterControl[\s\S]*?querySelectorAll\("\[data-category\]"\)[\s\S]*?button\.addEventListener\("click"[\s\S]*?resourceDashboardSelectedCategory = button\.dataset\.category[\s\S]*?renderResourceDashboardTab\(\)/,
+  /categoryFilterControl[\s\S]*?querySelectorAll\("\[data-category\]"\)[\s\S]*?button\.addEventListener\("click"[\s\S]*?resourceDashboardSelectedCategories\[resourceDashboardActiveTab\]\s*=\s*button\.dataset\.category[\s\S]*?renderResourceDashboardTab\(\)/,
   "selecting a category segment should immediately rerender the dashboard",
 );
 assert.match(
@@ -375,8 +358,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /`Year Level \$\{resourceDashboardSelectedYear\}\.\$\{resourceDashboardSelectedSemester\}`[\s\S]*?`Showing \$\{visibleRows\.length\} of \$\{nonEmptyRows\.length\} rows for \$\{selectedTerm\}\./,
-  "the dashboard row count should identify the selected term as Year Level X.Y and end with a period",
+  /`Year Level \$\{resourceDashboardSelectedYear\}\.\$\{resourceDashboardSelectedSemester\}`[\s\S]*?`Showing \$\{visibleRows\.length\} of \$\{nonEmptyRows\.length\} rows for \$\{selectedTerm\}`[\s\S]*?document\.createTextNode\("\."\)/,
+  "the dashboard row count should bold the selected-term summary and keep its final period separate",
+);
+assert.match(
+  appCore,
+  /function setReviewerEnrollmentStatus\(message, busy = false\)[\s\S]*?resource-reviewer-enrollment-status[\s\S]*?status\.hidden = !message/,
+  "reviewer submission feedback should target its dedicated status below the enrollment controls",
 );
 assert.match(
   resourceStyles,
@@ -515,13 +503,38 @@ assert.match(
 );
 assert.match(
   appCore,
-  /auto_select:\s*!hasExplicitReviewerSignOut\(\)[\s\S]*?button_auto_select:\s*!hasExplicitReviewerSignOut\(\)[\s\S]*?use_fedcm_for_prompt:\s*true[\s\S]*?use_fedcm_for_button:\s*true[\s\S]*?globalScope\.google\.accounts\.id\.prompt\(\(notification\) =>/,
-  "returning users should be automatically reauthenticated through Google prompt and button flows unless they explicitly signed out",
+  /auto_select:\s*false[\s\S]*?button_auto_select:\s*false[\s\S]*?use_fedcm_for_prompt:\s*false[\s\S]*?use_fedcm_for_button:\s*false/,
+  "the app should not auto-select or pre-prompt a Google account before the user clicks sign-in",
 );
 assert.match(
   appCore,
-  /use_fedcm_for_prompt:\s*true[\s\S]*?itp_support:\s*true/,
-  "Google should reauthenticate returning users through FedCM where available",
+  /itp_support:\s*true[\s\S]*?renderResponsiveSignInButton/,
+  "manual Google sign-in should remain available without an automatic account prompt",
+);
+assert.doesNotMatch(
+  appCore,
+  /google\.accounts\.id\.prompt\(/,
+  "reviewer sign-in should not display the One Tap account suggestion",
+);
+assert.match(
+  appCore,
+  /link\.draggable = false;[\s\S]*?\["copy", "contextmenu", "dragstart"\][\s\S]*?link\.dataset\.logCourse = rowValue\("course"\);[\s\S]*?link\.dataset\.logCategory = resourceCategory/,
+  "resource clicks should resist casual link copying and log their course/year/semester/category context",
+);
+assert.match(
+  appCore,
+  /logResourceDashboardAction\(tabName, "TAB_OPEN"\)[\s\S]*?logResourceDashboardAction\([\s\S]*?"FILTER_YEAR"[\s\S]*?logResourceDashboardAction\([\s\S]*?"FILTER_SEMESTER"[\s\S]*?logResourceDashboardAction\([\s\S]*?"FILTER_CATEGORY"/,
+  "tab opens and dashboard filter changes should be recorded",
+);
+assert.match(
+  indexHtml,
+  /<span>Student Portal<\/span>/,
+  "the Student Portal title should retain its text at narrow widths",
+);
+assert.match(
+  resourceStyles,
+  /@media \(max-width: 520px\)[\s\S]*?\.resource-dashboard-title > span\s*\{\s*display:\s*inline;/,
+  "narrow layouts should retain the Student Portal title instead of replacing it with the home icon",
 );
 assert.match(
   appCore,
@@ -845,6 +858,117 @@ assert.match(
   /const hasExistingReviewerRows =[\s\S]*?const silentRefresh = refresh && hasExistingReviewerRows[\s\S]*?if \(!silentRefresh\)\s*showReviewerDashboardLoading\(!hasExistingReviewerRows\)/,
   "reviewer refreshes should keep existing rows and status while loading only on first fetch",
 );
+assert.match(
+  appCore,
+  /const alreadyLoading =\s*status\?\.getAttribute\("aria-busy"\) === "true" &&\s*status\.textContent\.trim\(\) === "Loading"[\s\S]*?if \(!alreadyLoading\) setResourceDashboardStatus\("Loading", true, true\)/,
+  "session restore and the following authorized fetch should reuse one loading state",
+);
+assert.match(
+  appCore,
+  /if \(tabName !== "REVIEWERS"\) \{\s*const status = document\.getElementById\("resource-portal-status"\);[\s\S]*?status\.textContent\.trim\(\) === "Loading"[\s\S]*?setResourceDashboardStatus\(""\)/,
+  "switching away from a loading Reviewer tab should clear its loading box immediately",
+);
+assert.match(
+  appCore,
+  /function reconcileResourceDashboardTable\([\s\S]*?currentCell\?\.isEqualNode\(nextCell\)[\s\S]*?currentCell\.replaceWith\(nextCell\)[\s\S]*?currentRows\.get\(rowKey\)/,
+  "silent table refreshes should preserve unchanged cells and update only changed cells in stable rows",
+);
+const reconcileTableFunction = appCore.match(
+  /function reconcileResourceDashboardTable\([\s\S]*?\n  \}/,
+);
+assert.ok(reconcileTableFunction, "the dashboard table reconciler should exist");
+const reconcileResourceDashboardTable = new Function(
+  `${reconcileTableFunction[0]}; return reconcileResourceDashboardTable;`,
+)();
+class TestDashboardNode {
+  constructor(rowKey = "", columnKey = "", content = "") {
+    this.dataset = {
+      dashboardRowKey: rowKey,
+      dashboardColumnKey: columnKey,
+    };
+    this.content = content;
+    this.children = [];
+    this.parent = null;
+    this.replaceChildrenCalls = 0;
+  }
+
+  get firstElementChild() {
+    return this.children[0] || null;
+  }
+
+  isEqualNode(other) {
+    return (
+      this.content === other.content &&
+      this.dataset.dashboardColumnKey === other.dataset.dashboardColumnKey
+    );
+  }
+
+  replaceWith(node) {
+    const index = this.parent.children.indexOf(this);
+    this.parent.children[index] = node;
+    node.parent = this.parent;
+    this.parent = null;
+  }
+
+  remove() {
+    if (!this.parent) return;
+    const index = this.parent.children.indexOf(this);
+    if (index >= 0) this.parent.children.splice(index, 1);
+    this.parent = null;
+  }
+
+  replaceChildren(...children) {
+    this.replaceChildrenCalls += 1;
+    this.children.forEach((child) => {
+      child.parent = null;
+    });
+    this.children = children;
+    this.children.forEach((child) => {
+      child.parent = this;
+    });
+  }
+}
+const currentHeader = new TestDashboardNode();
+const currentHeaderCell = new TestDashboardNode("", "0", "Course");
+currentHeader.replaceChildren(currentHeaderCell);
+const testHead = new TestDashboardNode();
+testHead.replaceChildren(currentHeader);
+const currentFirstRow = new TestDashboardNode("modules:1");
+const unchangedCourseCell = new TestDashboardNode("", "0", "NAV6");
+const changedResourceCell = new TestDashboardNode("", "1", "Old.pdf");
+currentFirstRow.replaceChildren(unchangedCourseCell, changedResourceCell);
+const unchangedSecondRow = new TestDashboardNode("modules:2");
+unchangedSecondRow.replaceChildren(
+  new TestDashboardNode("", "0", "SHIP'S AUDIT"),
+);
+const testBody = new TestDashboardNode();
+testBody.replaceChildren(currentFirstRow, unchangedSecondRow);
+const nextHeader = new TestDashboardNode();
+nextHeader.replaceChildren(new TestDashboardNode("", "0", "Course"));
+const nextFirstRow = new TestDashboardNode("modules:1");
+nextFirstRow.replaceChildren(
+  new TestDashboardNode("", "0", "NAV6"),
+  new TestDashboardNode("", "1", "Updated.pdf"),
+);
+const nextSecondRow = new TestDashboardNode("modules:2");
+nextSecondRow.replaceChildren(
+  new TestDashboardNode("", "0", "SHIP'S AUDIT"),
+);
+const initialBodyReplaceChildrenCalls = testBody.replaceChildrenCalls;
+reconcileResourceDashboardTable(testHead, testBody, nextHeader, [
+  nextFirstRow,
+  nextSecondRow,
+]);
+assert.equal(testBody.children[0], currentFirstRow);
+assert.equal(testBody.children[1], unchangedSecondRow);
+assert.equal(currentFirstRow.children[0], unchangedCourseCell);
+assert.notEqual(currentFirstRow.children[1], changedResourceCell);
+assert.equal(currentFirstRow.children[1].content, "Updated.pdf");
+assert.equal(
+  testBody.replaceChildrenCalls,
+  initialBodyReplaceChildrenCalls,
+  "an in-place cell update should not replace the table body",
+);
 const reviewerDashboardLoader = appCore.match(
   /async function loadReviewerDashboard\(\{ refresh = false \} = \{\}\)[\s\S]*?\n  \}/,
 );
@@ -862,10 +986,10 @@ assert.match(
   /function clearReviewerResourceRows\(\)[\s\S]*?reviewerDashboardLoadedForEmail = ""[\s\S]*?function populateReviewerProfile/,
   "reviewer data should be cleared on account-state changes without forcing a tab redirect",
 );
-assert.match(
+assert.doesNotMatch(
   appCore,
-  /globalScope\.google\.accounts\.id\.prompt\(\(notification\) => \{[\s\S]*?isNotDisplayed\?\.\(\)[\s\S]*?isSkippedMoment\?\.\(\)[\s\S]*?reviewerAuthCheckPending = false/,
-  "the pending reviewer tab should resolve to Profile only after Google confirms no sign-in is available",
+  /google\.accounts\.id\.prompt\(/,
+  "the reviewer tab should not depend on an automatic account prompt",
 );
 assert.match(
   appCore,
@@ -923,8 +1047,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /const visibleRows = nonEmptyRows[\s\S]*?const populatedColumnIndices = tab\.columns[\s\S]*?visibleRows\.some\([\s\S]*?const visibleColumnIndices =[\s\S]*?visibleColumnIndices\.forEach\(\(columnIndex\) => \{[\s\S]*?tableHead\.appendChild\(headerRow\)[\s\S]*?visibleRows\.forEach\(\(\{ values, rowIndex \}\) => \{\s*const row = document\.createElement\("tr"\);\s*visibleColumnIndices\.forEach\(\(index\) => \{/,
-  "dashboard headers and cells should use columns populated after the active filters",
+  /const visibleRows = nonEmptyRows[\s\S]*?const populatedColumnIndices = tab\.columns[\s\S]*?visibleRows\.some\([\s\S]*?const visibleColumnIndices =[\s\S]*?visibleColumnIndices\.forEach\(\(columnIndex\) => \{[\s\S]*?const renderedRows = visibleRows\.map\(\(\{ values, rowIndex \}\) => \{\s*const row = document\.createElement\("tr"\);[\s\S]*?visibleColumnIndices\.forEach\(\(index\) => \{[\s\S]*?reconcileResourceDashboardTable\(/,
+  "dashboard headers and cells should use filtered rows and reconcile updates in place",
 );
 assert.match(
   appCore,
@@ -933,8 +1057,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /resourceDashboardSelectedCategory !== "all" &&\s*!availableCategories\.has\(resourceDashboardSelectedCategory\)[\s\S]*?resourceDashboardSelectedCategory = "all"/,
-  "an unavailable phase should not remain selected after its resources disappear",
+  /resourceDashboardSelectedCategories = \{\s*MODULES: "all",\s*REVIEWERS: "all",\s*\}[\s\S]*?resourceDashboardCategorySelectionMade = \{\s*MODULES: false,\s*REVIEWERS: false,\s*\}[\s\S]*?!resourceDashboardCategorySelectionMade\[resourceDashboardActiveTab\][\s\S]*?hasCategoryFilter[\s\S]*?availableCategories\.size > 0[\s\S]*?selectedCategory =\s*\["FINALS", "MIDTERMS", "PRELIMS"\]\.find/,
+  "Modules and Reviewers should independently default to Finals and fall back through Midterms and Prelims",
+);
+assert.match(
+  appCore,
+  /else if \(\s*selectedCategory !== "all" &&\s*!availableCategories\.has\(selectedCategory\)\s*\)\s*\{\s*selectedCategory =\s*\["FINALS", "MIDTERMS", "PRELIMS"\]\.find[\s\S]*?resourceDashboardSelectedCategories\[resourceDashboardActiveTab\]\s*=\s*selectedCategory/,
+  "an unavailable selected category should fall back to the highest-priority available category",
 );
 assert.match(
   appCore,
@@ -958,8 +1087,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /link\.addEventListener\("click",\s*\(\) => \{\s*void logResourceFileClick\(resourceArea,\s*fileName,\s*fileId\);/,
-  "clicking a syllabus, module, or reviewer resource should log that specific resource",
+  /link\.dataset\.logResourceArea = resourceArea;[\s\S]*?link\.dataset\.logCourse = rowValue\("course"\);[\s\S]*?link\.dataset\.logCategory = resourceCategory;[\s\S]*?logResourceFileClick\(\s*clickedLink\.dataset\.logResourceArea,[\s\S]*?course:\s*clickedLink\.dataset\.logCourse[\s\S]*?category:\s*clickedLink\.dataset\.logCategory/,
+  "resource click handlers should log current row context even when table cells are reconciled in place",
 );
 assert.match(
   appCore,
@@ -968,8 +1097,13 @@ assert.match(
 );
 assert.match(
   network,
-  /log_resource_file_click:\s*\{\s*required:\s*\["eventId",\s*"resourceArea",\s*"fileName",\s*"fileId"\]/,
-  "file click logging requests should validate the category, resource name, and Drive ID",
+  /log_resource_file_click:\s*\{\s*required:\s*\["eventId",\s*"resourceArea",\s*"fileName",\s*"fileId"\][\s\S]*?"course"[\s\S]*?"year"[\s\S]*?"semester"[\s\S]*?"category"/,
+  "file click logging should validate resource identity and its course/year/semester/category context",
+);
+assert.match(
+  network,
+  /log_resource_dashboard_action:\s*\{\s*required:\s*\["eventId",\s*"resourceArea",\s*"action"\][\s\S]*?"year"[\s\S]*?"semester"[\s\S]*?"category"/,
+  "dashboard activity requests should validate filter and tab actions with structured context",
 );
 assert.match(
   resourceStyles,
@@ -1030,6 +1164,11 @@ assert.match(
   resourceStyles,
   /\.resource-dashboard-browser \.resource-portal-status\[aria-busy="true"\]::before\s*\{[^}]*animation:\s*resource-dashboard-status-spin/,
   "dashboard loading and update checks should show a subtle progress indicator",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-browser \.resource-portal-status\[aria-busy="true"\]\s*\{[^}]*box-sizing:\s*border-box;[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*min-width:\s*0;/,
+  "dashboard loading status boxes should stay constrained to the active dashboard width",
 );
 assert.match(
   resourceStyles,

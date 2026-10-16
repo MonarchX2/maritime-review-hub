@@ -9,6 +9,10 @@ const rootDir = path.resolve(__dirname, "..");
 const appEntry = fs.readFileSync(path.join(rootDir, "app-entry.js"), "utf8");
 const worker = fs.readFileSync(path.join(rootDir, "sw.js"), "utf8");
 const html = fs.readFileSync(path.join(rootDir, "index.html"), "utf8");
+const changelog = fs.readFileSync(
+  path.join(rootDir, "CHANGELOG.md"),
+  "utf8",
+);
 const manifest = JSON.parse(
   fs.readFileSync(path.join(rootDir, "manifest.json"), "utf8"),
 );
@@ -40,7 +44,17 @@ assert.equal(
   3,
   "only the three newest changelogs should be visible by default",
 );
-
+const markdownChangelogVersions = [
+  ...changelog.matchAll(/^## (\d+\.\d+\.\d+-\d+) - /gm),
+].map((match) => match[1]);
+const aboutChangelogVersions = [
+  ...aboutModal.matchAll(/Version (\d+\.\d+\.\d+-\d+)/g),
+].map((match) => match[1]);
+assert.deepEqual(
+  aboutChangelogVersions,
+  markdownChangelogVersions,
+  "every About changelog release should match CHANGELOG.md in order",
+);
 const appVersion = appEntry.match(/^  const APP_VERSION = "([^"]+)";$/m)?.[1];
 const appDisplayVersion = appEntry.match(
   /^  const APP_DISPLAY_VERSION = "([^"]+)";$/m,
@@ -191,6 +205,11 @@ assert.ok(
 );
 assert.match(appEntry, /MRH_QUERY_CLIENT_VERSION/);
 assert.match(appEntry, /MRH_UPDATE_AVAILABLE/);
+assert.match(
+  appEntry,
+  /__MRH_REQUEST_APP_UPDATE = checkForAppUpdate/,
+  "the backend version gate should trigger the existing safe state-save and reload flow",
+);
 assert.match(appEntry, /PENDING_UPDATE_RETRY_INTERVAL_MS = 15 \* 1000/);
 assert.match(
   appEntry,
@@ -250,8 +269,13 @@ for (const asset of [
 assert.match(workflow, /Stamp release version[\s\S]*?Verify deployed release version/);
 assert.match(
   workflow,
-  /npm run sync:version[\s\S]*?npm ci/,
-  "the workflow must sync package metadata from version.json before installing dependencies",
+  /npm run sync:version[\s\S]*?npm run sync:about-changelog[\s\S]*?npm ci/,
+  "the workflow must sync package metadata and the About changelog before installing dependencies",
+);
+assert.match(
+  workflow,
+  /- name: Sync About changelog\s+run: node scripts\/sync-about-changelog\.js[\s\S]*?- name: Resolve semantic release version/,
+  "the deployment job must generate the About changelog before publishing the site",
 );
 assert.match(
   workflow,

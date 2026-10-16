@@ -6018,7 +6018,20 @@
   let resourceDashboardLastRefreshAt = 0;
   let resourceDashboardSelectedYear = "3";
   let resourceDashboardSelectedSemester = "2";
-  let resourceDashboardSelectedCategory = "all";
+  const resourceDashboardSelectedCategories = {
+    MODULES: "all",
+    REVIEWERS: "all",
+  };
+  const resourceDashboardCategorySelectionMade = {
+    MODULES: false,
+    REVIEWERS: false,
+  };
+
+  function getSelectedResourceCategory(
+    tabName = resourceDashboardActiveTab,
+  ) {
+    return resourceDashboardSelectedCategories[tabName] || "all";
+  }
 
   function isDefinitivelyInvalidReviewerCredential(error) {
     return [
@@ -6343,6 +6356,17 @@
     else status.removeAttribute("aria-busy");
   }
 
+  function setReviewerEnrollmentStatus(message, busy = false) {
+    const status = document.getElementById(
+      "resource-reviewer-enrollment-status",
+    );
+    if (!status) return;
+    status.textContent = message;
+    status.hidden = !message;
+    if (busy) status.setAttribute("aria-busy", "true");
+    else status.removeAttribute("aria-busy");
+  }
+
   function setReviewerNavigationBusy() {
     const button = document.getElementById("resource-dashboard-reviewers-nav");
     button?.removeAttribute("aria-busy");
@@ -6379,6 +6403,10 @@
     const categoryFilter = document.getElementById(
       "resource-dashboard-category-filter",
     );
+    const status = document.getElementById("resource-portal-status");
+    const alreadyLoading =
+      status?.getAttribute("aria-busy") === "true" &&
+      status.textContent.trim() === "Loading";
     if (filters) filters.hidden = false;
     if (categoryFilter) categoryFilter.hidden = false;
     const addLoadingOptions = (control, values, selectedValue) => {
@@ -6410,7 +6438,7 @@
         .getElementById("resource-dashboard-table-body")
         ?.replaceChildren();
     }
-    setResourceDashboardStatus("Loading", true, true);
+    if (!alreadyLoading) setResourceDashboardStatus("Loading", true, true);
   }
 
   function openResourceDashboardTab(tabName = "DEFAULT") {
@@ -6446,6 +6474,14 @@
       tabName = "PROFILE";
 
     resourceDashboardActiveTab = tabName;
+    if (tabName !== "REVIEWERS") {
+      const status = document.getElementById("resource-portal-status");
+      if (
+        status?.getAttribute("aria-busy") === "true" &&
+        status.textContent.trim() === "Loading"
+      )
+        setResourceDashboardStatus("");
+    }
     const modulesNav = document.getElementById(
       "resource-dashboard-modules-nav",
     );
@@ -6489,6 +6525,8 @@
       void initializeReviewerAuth();
       return true;
     }
+    if (tabName !== "REVIEWERS" || reviewerSessionId)
+      void logResourceDashboardAction(tabName, "TAB_OPEN");
     if (tabName === "REVIEWERS") {
       if (!reviewerSessionId) {
         if (
@@ -6535,8 +6573,6 @@
 
     if (resourceDashboardData) {
       renderResourceDashboardTab();
-      if (reviewerSessionId && tabName === "MODULES")
-        void logModuleDashboardAccess();
       return true;
     }
     return loadResourceDashboard();
@@ -6579,7 +6615,12 @@
     }
   }
 
-  async function logResourceFileClick(resourceArea, fileName, fileId) {
+  async function logResourceFileClick(
+    resourceArea,
+    fileName,
+    fileId,
+    context = {},
+  ) {
     try {
       const payload = {
         type: "log_resource_file_click",
@@ -6587,6 +6628,10 @@
         resourceArea,
         fileName,
         fileId,
+        course: context.course || "",
+        year: context.year || "",
+        semester: context.semester || "",
+        category: context.category || "",
       };
       if (reviewerSessionId) payload.sessionId = reviewerSessionId;
       await globalScope.AppNetwork.callBackend(payload, {
@@ -6599,6 +6644,45 @@
         signOutReviewer(false);
       (globalScope.DebugUtils || console).error(
         "Unable to record resource file click.",
+        error,
+      );
+      return false;
+    }
+  }
+
+  async function logResourceDashboardAction(resourceArea, action, detail = "") {
+    try {
+      const payload = {
+        type: "log_resource_dashboard_action",
+        eventId: createResourceEventId(),
+        resourceArea,
+        action,
+        detail,
+        course: "",
+        year:
+          action === "FILTER_YEAR"
+            ? detail
+            : resourceDashboardSelectedYear,
+        semester:
+          action === "FILTER_SEMESTER"
+            ? detail
+            : resourceDashboardSelectedSemester,
+        category:
+          action === "FILTER_CATEGORY"
+            ? detail
+            : getSelectedResourceCategory(),
+      };
+      if (reviewerSessionId) payload.sessionId = reviewerSessionId;
+      await globalScope.AppNetwork.callBackend(payload, {
+        timeoutMs: 15000,
+        maxRetries: 0,
+      });
+      return true;
+    } catch (error) {
+      if (isDefinitivelyInvalidReviewerCredential(error))
+        signOutReviewer(false);
+      (globalScope.DebugUtils || console).error(
+        "Unable to record resource dashboard activity.",
         error,
       );
       return false;
@@ -6719,11 +6803,31 @@
     );
     const showCategoryFilter =
       hasCategoryFilter || resourceDashboardActiveTab === "SYLLABUS";
+    let selectedCategory = getSelectedResourceCategory();
     if (
-      resourceDashboardSelectedCategory !== "all" &&
-      !availableCategories.has(resourceDashboardSelectedCategory)
-    )
-      resourceDashboardSelectedCategory = "all";
+      !resourceDashboardCategorySelectionMade[resourceDashboardActiveTab] &&
+      hasCategoryFilter &&
+      availableCategories.size > 0
+    ) {
+      selectedCategory =
+        ["FINALS", "MIDTERMS", "PRELIMS"].find((category) =>
+          availableCategories.has(category),
+        ) || "all";
+      resourceDashboardSelectedCategories[resourceDashboardActiveTab] =
+        selectedCategory;
+      resourceDashboardCategorySelectionMade[resourceDashboardActiveTab] =
+        true;
+    } else if (
+      selectedCategory !== "all" &&
+      !availableCategories.has(selectedCategory)
+    ) {
+      selectedCategory =
+        ["FINALS", "MIDTERMS", "PRELIMS"].find((category) =>
+          availableCategories.has(category),
+        ) || "all";
+      resourceDashboardSelectedCategories[resourceDashboardActiveTab] =
+        selectedCategory;
+    }
     if (categoryFilterContainer)
       categoryFilterContainer.hidden = !showCategoryFilter;
     if (categoryFilterControl)
@@ -6738,7 +6842,7 @@
             button.dataset.reviewerLoadingDisabled = String(button.disabled);
           button.setAttribute("aria-disabled", String(button.disabled));
           const selected =
-            button.dataset.category === resourceDashboardSelectedCategory;
+            button.dataset.category === selectedCategory;
           button.setAttribute("aria-pressed", String(selected));
           button.classList.toggle("is-active", selected);
         });
@@ -6904,11 +7008,11 @@
     }
 
     const selectedPhaseColumnIndex =
-      !hasCategoryFilter || resourceDashboardSelectedCategory === "all"
+      !hasCategoryFilter || selectedCategory === "all"
         ? -1
-        : phaseColumnIndexes[resourceDashboardSelectedCategory];
+        : phaseColumnIndexes[selectedCategory];
     const visibleRows = nonEmptyRows.filter(({ values, rowIndex }) => {
-      if (hasCategoryFilter && resourceDashboardSelectedCategory !== "all") {
+      if (hasCategoryFilter && selectedCategory !== "all") {
         if (selectedPhaseColumnIndex === undefined) return false;
         const phaseValue = String(
           values[selectedPhaseColumnIndex] ?? "",
@@ -6942,7 +7046,7 @@
         ),
       );
     const categoryColumnIndices =
-      hasCategoryFilter && resourceDashboardSelectedCategory !== "all"
+      hasCategoryFilter && selectedCategory !== "all"
         ? populatedColumnIndices.filter(
             (columnIndex) =>
               !Object.values(phaseColumnIndexes).includes(columnIndex) ||
@@ -6953,8 +7057,6 @@
       (columnIndex) => columnIndex !== yearColumnIndex,
     );
 
-    tableHead.replaceChildren();
-    tableBody.replaceChildren();
     const headerRow = document.createElement("tr");
     visibleColumnIndices.forEach((columnIndex) => {
       const column = tab.columns[columnIndex];
@@ -6963,17 +7065,40 @@
       if (columnName === "course" || columnName === "year") {
         header.classList.add(`resource-dashboard-column-${columnName}`);
       }
+      header.dataset.dashboardColumnKey = String(columnIndex);
       header.textContent = getResourceDashboardColumnHeading(column);
       headerRow.appendChild(header);
     });
-    if (populatedColumnIndices.length) tableHead.appendChild(headerRow);
 
-    visibleRows.forEach(({ values, rowIndex }) => {
+    const courseColumnIndex = tab.columns.findIndex(
+      (column) => String(column).trim().toLocaleLowerCase() === "course",
+    );
+    const rowIdentityColumns = [
+      yearColumnIndex,
+      semesterColumnIndex,
+      courseColumnIndex,
+    ].filter((columnIndex) => columnIndex >= 0);
+    const rowIdentityOccurrences = new Map();
+    const renderedRows = visibleRows.map(({ values, rowIndex }) => {
       const row = document.createElement("tr");
+      const rowIdentity = rowIdentityColumns.length
+        ? rowIdentityColumns.map((columnIndex) =>
+            String(values[columnIndex] ?? "").trim(),
+          )
+        : [rowIndex];
+      const rowIdentityKey = JSON.stringify(rowIdentity);
+      const occurrence = rowIdentityOccurrences.get(rowIdentityKey) || 0;
+      rowIdentityOccurrences.set(rowIdentityKey, occurrence + 1);
+      row.dataset.dashboardRowKey = JSON.stringify([
+        resourceDashboardActiveTab,
+        rowIdentity,
+        occurrence,
+      ]);
       visibleColumnIndices.forEach((index) => {
         const column = tab.columns[index];
         const cell = document.createElement("td");
         const columnName = String(column).trim().toLowerCase();
+        cell.dataset.dashboardColumnKey = String(index);
         if (columnName === "course" || columnName === "year") {
           cell.classList.add(`resource-dashboard-column-${columnName}`);
         }
@@ -7012,6 +7137,12 @@
             "resource-dashboard-link-button",
           );
           link.href = linkUrl;
+          link.draggable = false;
+          ["copy", "contextmenu", "dragstart"].forEach((eventName) => {
+            link.addEventListener(eventName, (event) => {
+              event.preventDefault();
+            });
+          });
           link.append(
             icon,
             createResourceDashboardElement(
@@ -7032,8 +7163,44 @@
               fileTitle ||
               (isResourceDashboardLink(value) ? "" : value) ||
               linkLabel;
-            link.addEventListener("click", () => {
-              void logResourceFileClick(resourceArea, fileName, fileId);
+            const rowValue = (name) => {
+              const columnIndex = tab.columns.findIndex(
+                (candidate) =>
+                  String(candidate).trim().toLocaleLowerCase() === name,
+              );
+              return columnIndex < 0
+                ? ""
+                : String(values[columnIndex] || "").trim();
+            };
+            const resourceCategory =
+              Object.entries(phaseColumnIndexes).find(
+                ([, columnIndex]) => columnIndex === index,
+              )?.[0] ||
+              (resourceDashboardActiveTab === "SYLLABUS"
+                ? "SYLLABUS"
+                : selectedCategory);
+            link.dataset.logResourceArea = resourceArea;
+            link.dataset.logFileName = fileName;
+            link.dataset.logFileId = fileId;
+            link.dataset.logCourse = rowValue("course");
+            link.dataset.logYear =
+              rowValue("year") || resourceDashboardSelectedYear;
+            link.dataset.logSemester =
+              rowValue("semester") || resourceDashboardSelectedSemester;
+            link.dataset.logCategory = resourceCategory;
+            link.addEventListener("click", (event) => {
+              const clickedLink = event.currentTarget;
+              void logResourceFileClick(
+                clickedLink.dataset.logResourceArea,
+                clickedLink.dataset.logFileName,
+                clickedLink.dataset.logFileId,
+                {
+                course: clickedLink.dataset.logCourse,
+                year: clickedLink.dataset.logYear,
+                semester: clickedLink.dataset.logSemester,
+                category: clickedLink.dataset.logCategory,
+                },
+              );
             });
           }
           cell.appendChild(link);
@@ -7059,8 +7226,14 @@
         }
         row.appendChild(cell);
       });
-      tableBody.appendChild(row);
+      return row;
     });
+    reconcileResourceDashboardTable(
+      tableHead,
+      tableBody,
+      populatedColumnIndices.length ? headerRow : null,
+      renderedRows,
+    );
 
     const selectedYearName = {
       1: "First",
@@ -7080,17 +7253,90 @@
         ? "No reviewer resources match the selected filters."
         : "No reviewer resources are currently available.";
     } else {
-      status.textContent = hasTermFilter
-        ? `Showing ${visibleRows.length} of ${nonEmptyRows.length} rows for ${selectedTerm}.${
-            tab.truncated ? " (first 2,000 loaded)" : ""
-          }`
-        : `${nonEmptyRows.length} ${
-            nonEmptyRows.length === 1 ? "row" : "rows"
-          }${tab.truncated ? " (showing the first 2,000)" : ""}`;
+      if (hasTermFilter) {
+        const summary = createResourceDashboardElement(
+          "strong",
+          "",
+          `Showing ${visibleRows.length} of ${nonEmptyRows.length} rows for ${selectedTerm}`,
+        );
+        status.replaceChildren(
+          summary,
+          document.createTextNode("."),
+          document.createTextNode(
+            tab.truncated ? " (first 2,000 loaded)" : "",
+          ),
+        );
+      } else {
+        status.textContent = `${nonEmptyRows.length} ${
+          nonEmptyRows.length === 1 ? "row" : "rows"
+        }${tab.truncated ? " (showing the first 2,000)" : ""}`;
+      }
     }
     status.removeAttribute("aria-busy");
     status.classList?.remove("resource-dashboard-status-stacked");
     return true;
+  }
+
+  function reconcileResourceDashboardTable(
+    tableHead,
+    tableBody,
+    desiredHeader,
+    desiredRows,
+  ) {
+    const reconcileCells = (currentRow, nextRow) => {
+      const currentCells = new Map(
+        [...currentRow.children].map((cell) => [
+          cell.dataset.dashboardColumnKey,
+          cell,
+        ]),
+      );
+      const nextCells = [...nextRow.children].map((nextCell) => {
+        const currentCell = currentCells.get(
+          nextCell.dataset.dashboardColumnKey,
+        );
+        currentCells.delete(nextCell.dataset.dashboardColumnKey);
+        if (currentCell?.isEqualNode(nextCell)) return currentCell;
+        if (currentCell) currentCell.replaceWith(nextCell);
+        return nextCell;
+      });
+      currentCells.forEach((cell) => cell.remove());
+      if (
+        currentRow.children.length !== nextCells.length ||
+        nextCells.some((cell, index) => currentRow.children[index] !== cell)
+      )
+        currentRow.replaceChildren(...nextCells);
+      return currentRow;
+    };
+
+    const currentHeader = tableHead.firstElementChild;
+    if (!desiredHeader) {
+      if (currentHeader) tableHead.replaceChildren();
+    } else if (currentHeader) {
+      reconcileCells(currentHeader, desiredHeader);
+    } else {
+      tableHead.replaceChildren(desiredHeader);
+    }
+
+    const currentRows = new Map(
+      [...tableBody.children].map((row) => [
+        row.dataset.dashboardRowKey,
+        row,
+      ]),
+    );
+    const nextRows = desiredRows.map((nextRow) => {
+      const rowKey = nextRow.dataset.dashboardRowKey;
+      const currentRow = currentRows.get(rowKey);
+      currentRows.delete(rowKey);
+      return currentRow
+        ? reconcileCells(currentRow, nextRow)
+        : nextRow;
+    });
+    currentRows.forEach((row) => row.remove());
+    if (
+      tableBody.children.length !== nextRows.length ||
+      nextRows.some((row, index) => tableBody.children[index] !== row)
+    )
+      tableBody.replaceChildren(...nextRows);
   }
 
   function createResourceDashboardElement(tagName, className, text) {
@@ -7153,6 +7399,11 @@
         if (!button || button.disabled || !yearFilterControl.contains(button))
           return;
         resourceDashboardSelectedYear = button.dataset.filterValue;
+        void logResourceDashboardAction(
+          resourceDashboardActiveTab,
+          "FILTER_YEAR",
+          resourceDashboardSelectedYear,
+        );
         if (resourceDashboardSelectedYear === "all")
           resourceDashboardSelectedSemester = "all";
         if (resourceDashboardData) renderResourceDashboardTab();
@@ -7169,6 +7420,11 @@
         )
           return;
         resourceDashboardSelectedSemester = button.dataset.filterValue;
+        void logResourceDashboardAction(
+          resourceDashboardActiveTab,
+          "FILTER_SEMESTER",
+          resourceDashboardSelectedSemester,
+        );
         if (resourceDashboardData) renderResourceDashboardTab();
       });
       semesterFilterControl.dataset.initialized = "true";
@@ -7178,7 +7434,16 @@
         .querySelectorAll("[data-category]")
         .forEach((button) => {
           button.addEventListener("click", () => {
-            resourceDashboardSelectedCategory = button.dataset.category;
+            resourceDashboardSelectedCategories[resourceDashboardActiveTab] =
+              button.dataset.category;
+            resourceDashboardCategorySelectionMade[
+              resourceDashboardActiveTab
+            ] = true;
+            void logResourceDashboardAction(
+              resourceDashboardActiveTab,
+              "FILTER_CATEGORY",
+              getSelectedResourceCategory(),
+            );
             if (resourceDashboardData) renderResourceDashboardTab();
           });
         });
@@ -7318,13 +7583,11 @@
       getStoredReviewerSessionId()
     )
       void restoreReviewerSession();
-    reviewerAuthCheckPending =
-      !hasExplicitReviewerSignOut() && !getStoredReviewerSessionId();
+    reviewerAuthCheckPending = false;
     reviewerAuthConfigPromise = (async () => {
       const authStatus = document.getElementById(
         "resource-reviewer-auth-status",
       );
-      if (reviewerAuthCheckPending) setReviewerNavigationBusy(true);
       const signInButton = document.getElementById(
         "resource-reviewer-signin-button",
       );
@@ -7422,11 +7685,11 @@
             }
             void completeReviewerSignIn(credential);
           },
-          auto_select: !hasExplicitReviewerSignOut(),
-          button_auto_select: !hasExplicitReviewerSignOut(),
+          auto_select: false,
+          button_auto_select: false,
           cancel_on_tap_outside: true,
-          use_fedcm_for_prompt: true,
-          use_fedcm_for_button: true,
+          use_fedcm_for_prompt: false,
+          use_fedcm_for_button: false,
           itp_support: true,
         });
         if (signInButton) {
@@ -7479,48 +7742,12 @@
           setReviewerAuthStatus(
             "Use Google to sign in and request access.",
           );
-        reviewerAuthCheckPending =
-          !hasExplicitReviewerSignOut() && !getStoredReviewerSessionId();
-        if (reviewerAuthCheckPending) {
+        reviewerAuthCheckPending = false;
+        setReviewerNavigationBusy(
+          Boolean(reviewerSessionRestorePending || reviewerSessionId),
+        );
+        if (!reviewerSessionRestorePending)
           authStatus?.removeAttribute("aria-busy");
-          setReviewerNavigationBusy(true);
-          globalScope.google.accounts.id.prompt((notification) => {
-            const promptFinished =
-              notification?.isNotDisplayed?.() ||
-              notification?.isSkippedMoment?.() ||
-              notification?.isDismissedMoment?.();
-            if (!promptFinished) return;
-            reviewerAuthCheckPending = false;
-            setReviewerNavigationBusy(
-              Boolean(
-                reviewerPendingEnrollmentSessionId ||
-                reviewerSessionId ||
-                reviewerSessionRestorePending,
-              ),
-            );
-            authStatus?.removeAttribute("aria-busy");
-            if (
-              !reviewerSessionId &&
-              !reviewerPendingEnrollmentSessionId &&
-              resourceDashboardActiveTab === "PROFILE"
-            )
-              setReviewerAuthStatus(
-                "Use Google to sign in and request access.",
-              );
-            if (
-              !reviewerSessionId &&
-              !reviewerPendingEnrollmentSessionId &&
-              resourceDashboardActiveTab === "REVIEWERS"
-            )
-              setResourceDashboardStatus("");
-          });
-        } else {
-          setReviewerNavigationBusy(
-            Boolean(reviewerSessionRestorePending || reviewerSessionId),
-          );
-          if (!reviewerSessionRestorePending)
-            authStatus?.removeAttribute("aria-busy");
-        }
         return true;
       } catch (error) {
         reviewerAuthCheckPending = false;
@@ -7859,7 +8086,7 @@
       if (formButton)
         formButton.textContent =
           accountStatus === "DENIED"
-            ? "Correct details and submit"
+            ? "Submit"
             : response.profileUpdated
               ? "Save changes for approval"
               : "Submit for administrator review";
@@ -8074,6 +8301,7 @@
     const form = event.currentTarget;
     const authStatus = document.getElementById("resource-reviewer-auth-status");
     const submitButton = form.querySelector('button[type="submit"]');
+    let submissionSucceeded = false;
     const enrollmentSessionId =
       reviewerPendingEnrollmentSessionId || reviewerSessionId;
     if (!enrollmentSessionId) {
@@ -8134,11 +8362,11 @@
     const authGeneration = ++reviewerAuthGeneration;
     stopReviewerStatusPolling();
     if (submitButton) submitButton.disabled = true;
-    if (authStatus) {
-      authStatus.textContent =
-        "Submitting your profile for administrator review...";
-      authStatus.setAttribute("aria-busy", "true");
-    }
+    if (authStatus) authStatus.textContent = "";
+    setReviewerEnrollmentStatus(
+      "Submitting your profile for administrator review...",
+      true,
+    );
     try {
       const response = await globalScope.AppNetwork.callBackend(
         {
@@ -8164,6 +8392,8 @@
         throw new Error(
           response?.message || "The profile request was not saved as pending.",
         );
+      submissionSucceeded = true;
+      setReviewerEnrollmentStatus("");
       applyReviewerAccountStatus(
         {
           ...response,
@@ -8184,10 +8414,9 @@
             "Your reviewer session expired or was revoked. Sign in with Google again.";
         return false;
       }
-      if (authStatus)
-        authStatus.textContent =
-          "Unable to submit account details: " +
-          String(error?.message || error);
+      setReviewerEnrollmentStatus(
+        "Unable to submit account details: " + String(error?.message || error),
+      );
       (globalScope.DebugUtils || console).error(
         "Unable to submit reviewer account details.",
         error,
@@ -8195,41 +8424,17 @@
       return false;
     } finally {
       if (submitButton) submitButton.disabled = false;
-      authStatus?.removeAttribute("aria-busy");
+      const enrollmentStatus = document.getElementById(
+        "resource-reviewer-enrollment-status",
+      );
+      enrollmentStatus?.removeAttribute("aria-busy");
+      if (submissionSucceeded) setReviewerEnrollmentStatus("");
       if (
         authGeneration === reviewerAuthGeneration &&
         (enrollmentSessionId === reviewerPendingEnrollmentSessionId ||
           enrollmentSessionId === reviewerSessionId)
       )
         scheduleReviewerStatusPolling(enrollmentSessionId);
-    }
-  }
-
-  async function logModuleDashboardAccess() {
-    if (!reviewerSessionId) return false;
-    try {
-      await globalScope.AppNetwork.callBackend(
-        {
-          type: "log_module_access",
-          sessionId: reviewerSessionId,
-          eventId: createResourceEventId(),
-        },
-        { timeoutMs: 15000, maxRetries: 0 },
-      );
-      return true;
-    } catch (error) {
-      if (isDefinitivelyInvalidReviewerCredential(error))
-        signOutReviewer(false);
-      const status = document.getElementById("resource-reviewer-auth-status");
-      if (status)
-        status.textContent = `Unable to record module access: ${String(
-          error?.message || error,
-        )}`;
-      (globalScope.DebugUtils || console).error(
-        "Unable to record module dashboard access.",
-        error,
-      );
-      return false;
     }
   }
 
@@ -8261,6 +8466,7 @@
     reviewerVerificationRetryToken = "";
     reviewerVerificationRetryAvailable = false;
     if (explicit) reviewerReauthenticationPromptAttempted = false;
+    setReviewerEnrollmentStatus("");
     if (explicit) {
       try {
         setExplicitReviewerSignOut(true);

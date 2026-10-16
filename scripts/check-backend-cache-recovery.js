@@ -705,8 +705,8 @@ assert.equal(
 assert.equal(
   context.clientVersionRequired("mrh-10.15.26-4-4daaf03c73b69520")
     .purgeClientData,
-  true,
-  "the backend must tell compatible stale clients to purge their app-owned data",
+  undefined,
+  "stale clients must be required to update without a destructive data-purge instruction",
 );
 assert.equal(
   context.doPost({

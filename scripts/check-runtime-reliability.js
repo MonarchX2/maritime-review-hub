@@ -139,6 +139,10 @@ networkContext.location = {
     networkContext.replacedLocation = url;
   },
 };
+let requestedAppUpdateCount = 0;
+networkContext.__MRH_REQUEST_APP_UPDATE = async () => {
+  requestedAppUpdateCount += 1;
+};
 networkContext.StorageUtils = {
   clearAllAppNamespaces() {
     networkContext.appNamespacesPurged = true;
@@ -444,6 +448,58 @@ async function checkBackendErrorHandling() {
     version: "dashboard-version",
     appVersion: networkContext.__MRH_APP__.version,
   });
+  await network.callBackend(
+    {
+      type: "log_resource_dashboard_action",
+      eventId: reviewerEventId,
+      resourceArea: "MODULES",
+      action: "FILTER_YEAR",
+      detail: "3",
+      course: "NAV6",
+      year: "3",
+      semester: "2",
+      category: "FINALS",
+    },
+    { maxRetries: 0 },
+  );
+  assert.deepEqual(JSON.parse(lastPostBody), {
+    type: "log_resource_dashboard_action",
+    eventId: reviewerEventId,
+    resourceArea: "MODULES",
+    action: "FILTER_YEAR",
+    detail: "3",
+    course: "NAV6",
+    year: "3",
+    semester: "2",
+    category: "FINALS",
+    appVersion: networkContext.__MRH_APP__.version,
+  });
+  await network.callBackend(
+    {
+      type: "log_resource_file_click",
+      eventId: reviewerEventId,
+      resourceArea: "SYLLABUS",
+      fileName: "NAV6 Syllabus",
+      fileId: "012345678901234567890",
+      course: "NAV6",
+      year: "3",
+      semester: "2",
+      category: "SYLLABUS",
+    },
+    { maxRetries: 0 },
+  );
+  assert.deepEqual(JSON.parse(lastPostBody), {
+    type: "log_resource_file_click",
+    eventId: reviewerEventId,
+    resourceArea: "SYLLABUS",
+    fileName: "NAV6 Syllabus",
+    fileId: "012345678901234567890",
+    course: "NAV6",
+    year: "3",
+    semester: "2",
+    category: "SYLLABUS",
+    appVersion: networkContext.__MRH_APP__.version,
+  });
   await assert.rejects(
     network.callBackend(
       {
@@ -471,16 +527,11 @@ async function checkBackendErrorHandling() {
     network.callBackend({ type: "get_sync_status" }, { maxRetries: 0 }),
     /This app version is no longer supported/,
   );
-  assert.equal(networkContext.appNamespacesPurged, true);
-  assert.deepEqual(deletedCacheNames, ["mrh-cache-old"]);
-  assert.deepEqual(unregisteredScopes, [
-    "https://example.test/mrh/",
-    "https://example.test/maritime-review-hub/",
-  ]);
-  assert.equal(
-    networkContext.replacedLocation,
-    "https://example.test/mrh/client-update-required.html?cleanup=complete",
-  );
+  assert.equal(requestedAppUpdateCount, 1);
+  assert.equal(networkContext.appNamespacesPurged, undefined);
+  assert.deepEqual(deletedCacheNames, []);
+  assert.deepEqual(unregisteredScopes, []);
+  assert.equal(networkContext.replacedLocation, undefined);
 
   fetchCount = 0;
   networkContext.fetch = async () => {
