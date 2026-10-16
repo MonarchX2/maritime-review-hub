@@ -72,6 +72,30 @@ assert.match(
   /<div class="p-4 flex flex-col flex-1">\s*<div class="flex justify-between items-start w-full gap-2">[\s\S]*?<\/div>\s*<div class="deck-card-badges mt-1 w-full flex flex-wrap items-start gap-1">[\s\S]*?<\/div>\s*<div class="mt-auto pt-2 flex justify-between items-center text-sm text-gray-500 dark:text-gray-400">[\s\S]*?<span>\$\{totalCards\} cards<\/span>[\s\S]*?\$\{popularBadge\}/,
   "Folder labels should span below the title and action buttons, above the bottom-anchored count footer.",
 );
+const popularMatcherSource = appCore.match(
+  /const popularDeckPaths = new Set\([\s\S]*?\n      const pinnedDecks =/,
+);
+assert.ok(popularMatcherSource, "the Popular deck path matcher should exist");
+const isPopularDeckPath = new Function(
+  `${popularMatcherSource[0].replace(/\n      const pinnedDecks =$/, "")}; return isPopularDeckPath;`,
+)();
+for (const deckName of [
+  "GENERAL KNOWLEDGE",
+  "BSMT COMPETENCIES",
+  "REVIEW NOTES FOR DECK OFFICERS (BOOK)",
+]) {
+  assert.equal(isPopularDeckPath(deckName), true, `${deckName} should be Popular`);
+  assert.equal(
+    isPopularDeckPath(`Parent Folder::${deckName.toLocaleLowerCase()}`),
+    true,
+    `${deckName} should match when nested and differently cased`,
+  );
+}
+assert.match(
+  appCore,
+  /const popularBadge = isPopularDeckPath\(subj\)\s*\?\s*renderDeckBadge\("Popular", "fa-fire"\)/,
+  "deck cards should render matching popular paths with the fire-icon Popular badge.",
+);
 assert.ok(
   appCore.includes("group bg-white dark:bg-gray-800 rounded-xl") &&
     appCore.includes("overflow-hidden flex flex-col relative"),

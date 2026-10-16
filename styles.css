@@ -1598,15 +1598,15 @@ button:active:not(:disabled) {
 }
 
 .resource-profile-toggle > img {
-  width: 1.35rem;
-  height: 1.35rem;
+  width: 2.25rem;
+  height: 2.25rem;
 }
 
 .resource-profile-toggle > i {
-  width: 1.75rem;
-  height: 1.75rem;
-  font-size: 1.35rem;
-  line-height: 1.75rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  font-size: 1.75rem;
+  line-height: 2.25rem;
 }
 
 .resource-profile-toggle:hover,
@@ -2442,8 +2442,37 @@ button:active:not(:disabled) {
   box-sizing: border-box;
   overflow-x: auto;
   overflow-y: visible;
+  scrollbar-color: #94a3b8 #f1f5f9;
+  scrollbar-width: thin;
   border: 1px solid #e2e8f0;
   border-radius: 0.55rem;
+}
+
+.resource-dashboard-table-scroll::-webkit-scrollbar {
+  height: 0.55rem;
+}
+
+.resource-dashboard-table-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.resource-dashboard-table-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid #f1f5f9;
+  border-radius: 999px;
+  background: #94a3b8;
+}
+
+.resource-dashboard-popular-icon {
+  margin-left: 0.25rem;
+  color: #ea580c;
+  font-size: 0.8em;
+  vertical-align: 0.05em;
+}
+
+.resource-dashboard-table-frame {
+  width: max-content;
+  min-width: 100%;
+  overflow: clip;
 }
 
 .resource-dashboard-table {
@@ -2608,6 +2637,23 @@ button:active:not(:disabled) {
 .dark .resource-dashboard-table th,
 .dark .resource-dashboard-table td {
   border-color: #334155;
+}
+
+.dark .resource-dashboard-table-scroll {
+  scrollbar-color: #64748b #1e293b;
+}
+
+.dark .resource-dashboard-table-scroll::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+.dark .resource-dashboard-table-scroll::-webkit-scrollbar-thumb {
+  border-color: #1e293b;
+  background: #64748b;
+}
+
+.dark .resource-dashboard-popular-icon {
+  color: #fb923c;
 }
 
 .dark .resource-dashboard-table thead tr::before,

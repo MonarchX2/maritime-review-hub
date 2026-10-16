@@ -1,5 +1,13 @@
 # Changelog
 
+## 26.10.16-40 - 2026-10-16
+
+### Improved
+- Show Popular badges on General Knowledge, BSMT Competencies, and Review Notes for Deck Officers decks.
+- Keep unavailable Student Portal filter choices visible but disabled, and omit empty table columns.
+- Show horizontal table scrolling only when populated columns exceed the dashboard width while preserving full-width row and header decorations.
+- Enlarge the Profile avatar and remove redundant approval and sign-in loading status indicators.
+
 ## 26.10.16-39 - 2026-10-16
 
 ### Fixed

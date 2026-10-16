@@ -140,6 +140,11 @@ assert.match(
   /id="resource-dashboard-profile-picture"[^>]*hidden/,
   "the header Profile button should have a hidden image that can show the signed-in account photo",
 );
+assert.match(
+  resourceStyles,
+  /\.resource-profile-toggle > img\s*\{\s*width:\s*2\.25rem;\s*height:\s*2\.25rem;\s*\}[\s\S]*?\.resource-profile-toggle > i\s*\{\s*width:\s*2\.25rem;\s*height:\s*2\.25rem;/,
+  "the header profile photo and fallback icon should share the larger size",
+);
 assert.doesNotMatch(
   index,
   /resource-reviewer-device-id|resource-reviewer-copy-device-id/,
@@ -212,8 +217,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /hasCategoryFilter = \["MODULES", "REVIEWERS"\]\.includes\(\s*resourceDashboardActiveTab,\s*\)[\s\S]*?availableCategories = new Set\([\s\S]*?button\.disabled = !hasCategoryFilter \|\| !categoryAvailable/,
-  "the category filter should disable unsupported categories and all choices on Syllabus",
+  /const showCategoryFilter =\s*hasCategoryFilter \|\| resourceDashboardActiveTab === "SYLLABUS"[\s\S]*?button\.disabled = !hasCategoryFilter \|\| !categoryAvailable/,
+  "unavailable category choices should remain visible and disabled",
 );
 assert.match(
   appCore,
@@ -222,8 +227,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /columnIndex === selectedPhaseColumnIndex[\s\S]*?if \(selectedPhaseColumnIndex === undefined\) return false;[\s\S]*?if \(!phaseValue && !isResourceDashboardLink\(phaseLink\)\) return false/,
+  /if \(selectedPhaseColumnIndex === undefined\) return false;[\s\S]*?if \(!phaseValue && !isResourceDashboardLink\(phaseLink\)\) return false/,
   "a selected phase should show only its column and rows containing that phase resource",
+);
+assert.match(
+  appCore,
+  /visibleColumnIndices =\s*hasCategoryFilter && resourceDashboardSelectedCategory !== "all"[\s\S]*?columnIndex === selectedPhaseColumnIndex/,
+  "a selected phase should hide the other phase columns",
 );
 assert.doesNotMatch(
   index,
@@ -277,12 +287,12 @@ assert.match(
 );
 assert.match(
   fs.readFileSync("styles.css", "utf8"),
-  /\.resource-dashboard-table\s*\{[^}]*width:\s*max-content;[^}]*margin-inline:\s*auto;[\s\S]*?\.resource-dashboard-table thead tr::before,\s*\.resource-dashboard-table tbody tr::before\s*\{[^}]*inset:\s*0 -100vw;[^}]*border-bottom:\s*1px solid/,
-  "table content should stay centered while generated row lines extend across the full frame",
+  /\.resource-dashboard-table-frame\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*100%;[^}]*overflow:\s*clip;[\s\S]*?\.resource-dashboard-table\s*\{[^}]*width:\s*max-content;[^}]*margin-inline:\s*auto;[\s\S]*?\.resource-dashboard-table thead tr::before,\s*\.resource-dashboard-table tbody tr::before\s*\{[^}]*inset:\s*0 -100vw;[^}]*border-bottom:\s*1px solid/,
+  "decorative row overflow should be clipped separately without stretching table columns",
 );
 assert.match(
   appCore,
-  /const nonEmptyRows = tab\.rows[\s\S]*?tab\.columns\.some\(\(_, columnIndex\) => \{[\s\S]*?displayValue !== "" \|\| isResourceDashboardLink\(linkUrl\)[\s\S]*?const populatedColumnIndices = tab\.columns[\s\S]*?nonEmptyRows\.some\(/,
+  /const hasCellValue = \(values, rowIndex, columnIndex\) =>[\s\S]*?displayValue !== "" \|\| isResourceDashboardLink\(linkUrl\)[\s\S]*?const nonEmptyRows = tab\.rows[\s\S]*?resourceColumnIndices\.some\(\(columnIndex\) =>\s*hasCellValue\(values, rowIndex, columnIndex\)[\s\S]*?const populatedColumnIndices = tab\.columns[\s\S]*?visibleRows\.some\(\(\{ values, rowIndex \}\) =>\s*hasCellValue\(values, rowIndex, columnIndex\)/,
   "dashboard rendering should omit rows and columns with no displayed values or resource links",
 );
 assert.match(
@@ -332,8 +342,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;[\s\S]*?\.resource-dashboard-table\s*\{[^}]*width:\s*max-content;[^}]*margin-inline:\s*auto;[\s\S]*?\.resource-dashboard-table thead tr::before,\s*\.resource-dashboard-table tbody tr::before\s*\{[^}]*inset:\s*0 -100vw;[^}]*border-bottom:\s*1px solid/,
-  "row lines and backgrounds should fill the full frame while table content stays centered",
+  /\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;[\s\S]*?\.resource-dashboard-table-frame\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*100%;[^}]*overflow:\s*clip;[\s\S]*?\.resource-dashboard-table\s*\{[^}]*width:\s*max-content;[^}]*margin-inline:\s*auto;[\s\S]*?\.resource-dashboard-table thead tr::before,\s*\.resource-dashboard-table tbody tr::before\s*\{[^}]*inset:\s*0 -100vw;[^}]*border-bottom:\s*1px solid/,
+  "the table frame should clip decorative overflow while actual columns control scrolling",
 );
 assert.match(
   appCore,
@@ -353,7 +363,7 @@ assert.match(
 assert.match(
   resourceStyles,
   /\.resource-dashboard-table thead tr::after\s*\{[^}]*z-index:\s*2;[^}]*right:\s*-100vw;[^}]*bottom:\s*0;[^}]*left:\s*-100vw;[^}]*border-bottom:\s*1px solid/,
-  "the table header divider should be drawn visibly across the full dashboard frame",
+  "the table header divider should retain its full-frame decoration",
 );
 assert.doesNotMatch(
   resourceStyles,

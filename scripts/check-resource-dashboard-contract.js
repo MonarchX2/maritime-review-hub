@@ -102,8 +102,18 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(approved\) \{[\s\S]*?Reviewer access approved\. Preparing your resources[\s\S]*?void loadReviewerDashboard\(\)\.then\(\(loaded\) => \{/,
-  "approved reviewer data should be prefetched while the profile view is open",
+  /if \(approved\) \{[\s\S]*?Preparing your resources…[\s\S]*?void loadReviewerDashboard\(\)\.then\(\(loaded\) => \{[\s\S]*?authStatus\.textContent = loaded\s*\? ""\s*:\s*"Resources could not be preloaded/,
+  "approved reviewer data should preload without a persistent approval message",
+);
+assert.match(
+  appCore,
+  /if \(reviewerAuthCheckPending\) \{\s*authStatus\?\.removeAttribute\("aria-busy"\);\s*setReviewerNavigationBusy\(true\);[\s\S]*?globalScope\.google\.accounts\.id\.prompt/,
+  "the Google sign-in instruction should not show a loading spinner while the navigation remains busy",
+);
+assert.doesNotMatch(
+  appCore,
+  /Reviewer access approved/,
+  "the Profile view should not show an approval status message",
 );
 assert.match(
   appCore,
@@ -186,13 +196,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /resourceDashboardSelectedCategory = "all"[\s\S]*?hasCategoryFilter = \["MODULES", "REVIEWERS"\]\.includes\(\s*resourceDashboardActiveTab,\s*\)[\s\S]*?showCategoryFilter =\s*hasCategoryFilter \|\| resourceDashboardActiveTab === "SYLLABUS"[\s\S]*?availableCategories = new Set\([\s\S]*?button\.disabled = !hasCategoryFilter \|\| !categoryAvailable[\s\S]*?button\.setAttribute\([\s\S]*?"aria-disabled"[\s\S]*?button\.dataset\.category === resourceDashboardSelectedCategory[\s\S]*?button\.setAttribute\("aria-pressed", String\(selected\)\)/,
-  "Modules and Reviewers should share an enabled category filter, while Syllabus shows it disabled",
+  /availableCategories = new Set\([\s\S]*?showCategoryFilter =\s*hasCategoryFilter \|\| resourceDashboardActiveTab === "SYLLABUS"[\s\S]*?button\.disabled = !hasCategoryFilter \|\| !categoryAvailable[\s\S]*?button\.setAttribute\("aria-pressed", String\(selected\)\)/,
+  "unavailable category choices should remain visible and disabled",
 );
 assert.match(
   appCore,
   /yearFilterContainer\.hidden = !hasTermFilter && !showCategoryFilter[\s\S]*?semesterFilterContainer\.hidden = !hasTermFilter && !showCategoryFilter[\s\S]*?filterContainer\.hidden =\s*!showCategoryFilter && !hasTermFilter/,
-  "the category filter should remain available on Syllabus, Modules, and Reviewers",
+  "term filter controls should remain available and disable missing values",
 );
 assert.match(
   appCore,
@@ -252,7 +262,7 @@ assert.match(
 assert.match(
   appCore,
   /const options = sortedValues\.map\(\(value\) => \(\{\s*value,\s*label:\s*value,\s*\}\)\)[\s\S]*?options\.unshift\(\{\s*value:\s*"all",\s*label:\s*"All"\s*\}\)[\s\S]*?button\.dataset\.filterValue = value[\s\S]*?button\.disabled =\s*disabled \|\| \(value !== "all" && !values\.has\(value\)\)[\s\S]*?control\.replaceChildren\(\.\.\.buttons\)/,
-  "the year and semester segmented controls should populate available and disabled values with All",
+  "the year and semester segmented controls should keep unavailable values disabled alongside All",
 );
 assert.match(
   appCore,
@@ -341,8 +351,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-topbar \.resource-profile-toggle\s*\{\s*margin-left:\s*auto;[\s\S]*?\.resource-profile-toggle\s*\{[^}]*display:\s*inline-grid;[^}]*justify-items:\s*center;[\s\S]*?\.resource-profile-toggle > img\s*\{[^}]*width:\s*1\.35rem;[\s\S]*?\.resource-profile-toggle > i\s*\{[^}]*width:\s*1\.75rem;[^}]*height:\s*1\.75rem;[^}]*font-size:\s*1\.35rem;[\s\S]*?\.resource-profile-toggle:hover,\s*\.resource-profile-toggle\.is-active\s*\{[^}]*border-color:\s*transparent;[^}]*color:\s*inherit;[^}]*background:\s*transparent;/,
-  "the Profile control should be right aligned with an enlarged icon and unchanged picture sizing",
+  /\.resource-dashboard-topbar \.resource-profile-toggle\s*\{\s*margin-left:\s*auto;[\s\S]*?\.resource-profile-toggle\s*\{[^}]*display:\s*inline-grid;[^}]*justify-items:\s*center;[\s\S]*?\.resource-profile-toggle > img\s*\{[^}]*width:\s*2\.25rem;[^}]*height:\s*2\.25rem;[\s\S]*?\.resource-profile-toggle > i\s*\{[^}]*width:\s*2\.25rem;[^}]*height:\s*2\.25rem;[^}]*font-size:\s*1\.75rem;[^}]*line-height:\s*2\.25rem;[\s\S]*?\.resource-profile-toggle:hover,\s*\.resource-profile-toggle\.is-active\s*\{[^}]*border-color:\s*transparent;[^}]*color:\s*inherit;[^}]*background:\s*transparent;/,
+  "the Profile control should be right aligned and both profile images should use the enlarged size",
 );
 assert.match(
   resourceStyles,
@@ -366,7 +376,7 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-layout\s*\{[^}]*width:\s*min\(100%,\s*40rem\);[^}]*max-width:\s*100%;[\s\S]*?\.resource-portal-shell\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[\s\S]*?\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[\s\S]*?\.resource-dashboard-table\s*\{[^}]*width:\s*max-content;[^}]*margin-inline:\s*auto;[\s\S]*?\.resource-dashboard-table thead tr::before,\s*\.resource-dashboard-table tbody tr::before\s*\{[^}]*inset:\s*0 -100vw;/,
+  /\.resource-dashboard-layout\s*\{[^}]*width:\s*min\(100%,\s*40rem\);[^}]*max-width:\s*100%;[\s\S]*?\.resource-portal-shell\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[\s\S]*?\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[\s\S]*?\.resource-dashboard-table-frame\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*100%;[^}]*overflow:\s*clip;[\s\S]*?\.resource-dashboard-table\s*\{[^}]*width:\s*max-content;[^}]*margin-inline:\s*auto;[\s\S]*?\.resource-dashboard-table thead tr::before,\s*\.resource-dashboard-table tbody tr::before\s*\{[^}]*inset:\s*0 -100vw;/,
   "Resource Dashboard should keep a compact stable maximum width while remaining responsive",
 );
 assert.match(
@@ -766,7 +776,7 @@ assert.match(
 assert.match(
   appCore,
   /\[\.\.\.new Set\(\[\.\.\.fixedValues,\s*\.\.\.values\]\)\][\s\S]*?button\.disabled =\s*disabled \|\| \(value !== "all" && !values\.has\(value\)\)[\s\S]*?\["1", "2", "3"\][\s\S]*?\["1", "2"\]/,
-  "Year and Semester should retain unavailable choices as disabled options",
+  "Year and Semester should keep unavailable choices visible but disabled",
 );
 assert.doesNotMatch(
   appCore,
@@ -804,18 +814,28 @@ assert.match(
 );
 assert.match(
   appCore,
-  /const populatedColumnIndices = tab\.columns[\s\S]*?nonEmptyRows\.some\([\s\S]*?const visibleColumnIndices =[\s\S]*?visibleColumnIndices\.forEach\(\(columnIndex\) => \{[\s\S]*?tableHead\.appendChild\(headerRow\)[\s\S]*?visibleRows\.forEach\(\(\{ values, rowIndex \}\) => \{\s*const row = document\.createElement\("tr"\);\s*visibleColumnIndices\.forEach\(\(index\) => \{/,
-  "dashboard headers and cells should use the same populated and category-filtered columns",
+  /const visibleRows = nonEmptyRows[\s\S]*?const populatedColumnIndices = tab\.columns[\s\S]*?visibleRows\.some\([\s\S]*?const visibleColumnIndices =[\s\S]*?visibleColumnIndices\.forEach\(\(columnIndex\) => \{[\s\S]*?tableHead\.appendChild\(headerRow\)[\s\S]*?visibleRows\.forEach\(\(\{ values, rowIndex \}\) => \{\s*const row = document\.createElement\("tr"\);\s*visibleColumnIndices\.forEach\(\(index\) => \{/,
+  "dashboard headers and cells should use columns populated after the active filters",
 );
 assert.match(
   appCore,
-  /const nonEmptyRows = tab\.rows[\s\S]*?tab\.columns\.some\(\(_, columnIndex\) => \{[\s\S]*?isResourceDashboardLink\(linkUrl\)/,
-  "dashboard rows containing resource links should not be treated as empty",
+  /const resourceColumnIndices =[\s\S]*?const nonEmptyRows = tab\.rows[\s\S]*?resourceColumnIndices\.some\(\(columnIndex\) =>\s*hasCellValue\(values, rowIndex, columnIndex\)/,
+  "dashboard rows and term options should include only rows with resources",
+);
+assert.match(
+  appCore,
+  /resourceDashboardSelectedCategory !== "all" &&\s*!availableCategories\.has\(resourceDashboardSelectedCategory\)[\s\S]*?resourceDashboardSelectedCategory = "all"/,
+  "an unavailable phase should not remain selected after its resources disappear",
 );
 assert.match(
   appCore,
   /columnName === "course" \|\| columnName === "year"[\s\S]*?resource-dashboard-column-\$\{columnName\}/,
   "dashboard cells and headers should identify the Course and Year columns",
+);
+assert.match(
+  appCore,
+  /"GENERAL KNOWLEDGE",\s*"BSMT COMPETENCIES",\s*"REVIEW NOTES FOR DECK OFFICERS \(BOOK\)"[\s\S]*?fa-fire resource-dashboard-popular-icon/,
+  "the three popular Student Portal resources should show a fire icon",
 );
 assert.match(
   appCore,

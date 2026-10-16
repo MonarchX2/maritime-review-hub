@@ -1856,7 +1856,18 @@
       const popularDeckPaths = new Set([
         "BSMT 3.1 - ALPHA (Finals)",
         "Mock Exams",
-      ]);
+        "GENERAL KNOWLEDGE",
+        "BSMT COMPETENCIES",
+        "REVIEW NOTES FOR DECK OFFICERS (BOOK)",
+      ].map((path) => path.toLocaleLowerCase()));
+      const isPopularDeckPath = (path) =>
+        popularDeckPaths.has(
+          String(path || "")
+            .split("::")
+            .pop()
+            .trim()
+            .toLocaleLowerCase(),
+        );
       const pinnedDecks = new Set(
         Array.isArray(state.prefs.pinnedDecks)
           ? state.prefs.pinnedDecks.filter((entry) => typeof entry === "string")
@@ -1872,7 +1883,6 @@
       const isLockedListingEntry = (entry, path) =>
         Boolean(entry.node?._data?.Locked) ||
         isDeckLocked([...path, entry.key].join("::"));
-      const isPopularDeckPath = (path) => popularDeckPaths.has(path);
       const keys = Object.keys(currentNode)
         .map((key) => {
           const node = currentNode[key];
@@ -6519,22 +6529,52 @@
         indexes[phase] = index;
       return indexes;
     }, {});
+    const resourceColumnIndices =
+      Object.keys(phaseColumnIndexes).length > 0
+        ? Object.values(phaseColumnIndexes)
+        : tab.columns
+            .map((column, index) => ({
+              index,
+              name: String(column).trim().toLocaleLowerCase(),
+            }))
+            .filter(
+              ({ name }) =>
+                !["year", "semester", "course"].includes(name),
+            )
+            .map(({ index }) => index);
+    const hasCellValue = (values, rowIndex, columnIndex) => {
+      const displayValue = String(values[columnIndex] ?? "").trim();
+      const linkUrl = String(
+        tab.links?.[rowIndex]?.[columnIndex] || displayValue,
+      );
+      return displayValue !== "" || isResourceDashboardLink(linkUrl);
+    };
+    const nonEmptyRows = tab.rows
+      .map((values, rowIndex) => ({ values, rowIndex }))
+      .filter(({ values, rowIndex }) =>
+        resourceColumnIndices.some((columnIndex) =>
+          hasCellValue(values, rowIndex, columnIndex),
+        ),
+      );
     const hasCategoryFilter = ["MODULES", "REVIEWERS"].includes(
       resourceDashboardActiveTab,
     );
-    const showCategoryFilter =
-      hasCategoryFilter || resourceDashboardActiveTab === "SYLLABUS";
     const availableCategories = new Set(
       Object.entries(phaseColumnIndexes)
         .filter(([, columnIndex]) =>
-          tab.rows.some((values, rowIndex) => {
-            const value = String(values[columnIndex] || "").trim();
-            const link = String(tab.links?.[rowIndex]?.[columnIndex] || value);
-            return value !== "" || isResourceDashboardLink(link);
-          }),
+          nonEmptyRows.some(({ values, rowIndex }) =>
+            hasCellValue(values, rowIndex, columnIndex),
+          ),
         )
         .map(([category]) => category),
     );
+    const showCategoryFilter =
+      hasCategoryFilter || resourceDashboardActiveTab === "SYLLABUS";
+    if (
+      resourceDashboardSelectedCategory !== "all" &&
+      !availableCategories.has(resourceDashboardSelectedCategory)
+    )
+      resourceDashboardSelectedCategory = "all";
     if (categoryFilterContainer)
       categoryFilterContainer.hidden = !showCategoryFilter;
     if (categoryFilterControl)
@@ -6554,6 +6594,20 @@
           button.setAttribute("aria-pressed", String(selected));
           button.classList.toggle("is-active", selected);
         });
+    const termValues = new Set();
+    if (yearColumnIndex >= 0) {
+      nonEmptyRows.forEach(({ values }) => {
+        const yearValue = String(values[yearColumnIndex] || "").trim();
+        const combinedTerm = /^(\d+)\s*[./-]\s*(\d+)$/.exec(yearValue);
+        const year = combinedTerm ? combinedTerm[1] : yearValue;
+        const semester = combinedTerm
+          ? combinedTerm[2]
+          : semesterColumnIndex >= 0
+            ? String(values[semesterColumnIndex] || "").trim()
+            : "";
+        if (year && semester) termValues.add(`${year}.${semester}`);
+      });
+    }
     const hasTermFilter = yearColumnIndex >= 0;
     const yearFilterContainer = yearFilterControl?.closest(
       ".resource-dashboard-control",
@@ -6568,20 +6622,6 @@
     if (filterContainer)
       filterContainer.hidden =
         !showCategoryFilter && !hasTermFilter;
-    const termValues = new Set();
-    if (hasTermFilter) {
-      tab.rows.forEach((values) => {
-        const yearValue = String(values[yearColumnIndex] || "").trim();
-        const combinedTerm = /^(\d+)\s*[./-]\s*(\d+)$/.exec(yearValue);
-        const year = combinedTerm ? combinedTerm[1] : yearValue;
-        const semester = combinedTerm
-          ? combinedTerm[2]
-          : semesterColumnIndex >= 0
-            ? String(values[semesterColumnIndex] || "").trim()
-            : "";
-        if (year && semester) termValues.add(`${year}.${semester}`);
-      });
-    }
     const populateTermOptions = (
       control,
       values,
@@ -6707,40 +6747,10 @@
       );
     }
 
-    const nonEmptyRows = tab.rows
-      .map((values, rowIndex) => ({ values, rowIndex }))
-      .filter(({ values, rowIndex }) =>
-        tab.columns.some((_, columnIndex) => {
-          const displayValue = String(values[columnIndex] ?? "").trim();
-          const linkUrl = String(
-            tab.links?.[rowIndex]?.[columnIndex] || displayValue,
-          );
-          return displayValue !== "" || isResourceDashboardLink(linkUrl);
-        }),
-      );
-    const populatedColumnIndices = tab.columns
-      .map((_, columnIndex) => columnIndex)
-      .filter((columnIndex) =>
-        nonEmptyRows.some(({ values, rowIndex }) => {
-          const displayValue = String(values[columnIndex] ?? "").trim();
-          const linkUrl = String(
-            tab.links?.[rowIndex]?.[columnIndex] || displayValue,
-          );
-          return displayValue !== "" || isResourceDashboardLink(linkUrl);
-        }),
-      );
     const selectedPhaseColumnIndex =
       !hasCategoryFilter || resourceDashboardSelectedCategory === "all"
         ? -1
         : phaseColumnIndexes[resourceDashboardSelectedCategory];
-    const visibleColumnIndices =
-      hasCategoryFilter && resourceDashboardSelectedCategory !== "all"
-        ? populatedColumnIndices.filter(
-            (columnIndex) =>
-              !Object.values(phaseColumnIndexes).includes(columnIndex) ||
-              columnIndex === selectedPhaseColumnIndex,
-          )
-        : populatedColumnIndices;
     const visibleRows = nonEmptyRows
       .filter(({ values, rowIndex }) => {
         if (
@@ -6772,6 +6782,21 @@
             semester === resourceDashboardSelectedSemester)
         );
       });
+    const populatedColumnIndices = tab.columns
+      .map((_, columnIndex) => columnIndex)
+      .filter((columnIndex) =>
+        visibleRows.some(({ values, rowIndex }) =>
+          hasCellValue(values, rowIndex, columnIndex),
+        ),
+      );
+    const visibleColumnIndices =
+      hasCategoryFilter && resourceDashboardSelectedCategory !== "all"
+        ? populatedColumnIndices.filter(
+            (columnIndex) =>
+              !Object.values(phaseColumnIndexes).includes(columnIndex) ||
+              columnIndex === selectedPhaseColumnIndex,
+          )
+        : populatedColumnIndices;
 
     tableHead.replaceChildren();
     tableBody.replaceChildren();
@@ -6859,6 +6884,23 @@
           cell.appendChild(link);
         } else {
           cell.textContent = value;
+          if (
+            columnName === "course" &&
+            [
+              "GENERAL KNOWLEDGE",
+              "BSMT COMPETENCIES",
+              "REVIEW NOTES FOR DECK OFFICERS (BOOK)",
+            ].includes(value.trim().toLocaleUpperCase())
+          ) {
+            const popularIcon = createResourceDashboardElement(
+              "i",
+              "fa-solid fa-fire resource-dashboard-popular-icon",
+            );
+            popularIcon.title = "Popular";
+            popularIcon.setAttribute("role", "img");
+            popularIcon.setAttribute("aria-label", "Popular");
+            cell.append(" ", popularIcon);
+          }
         }
         row.appendChild(cell);
       });
@@ -7218,7 +7260,7 @@
         reviewerAuthCheckPending =
           !hasExplicitReviewerSignOut() && !getStoredReviewerSessionId();
         if (reviewerAuthCheckPending) {
-          authStatus?.setAttribute("aria-busy", "true");
+          authStatus?.removeAttribute("aria-busy");
           setReviewerNavigationBusy(true);
           globalScope.google.accounts.id.prompt((notification) => {
             const promptFinished =
@@ -7586,7 +7628,7 @@
       });
     }
     const messages = {
-      TRUE: "Reviewer access approved.",
+      TRUE: "",
       FALSE: "Awaiting administrator approval.",
       DENIED: "Invalid credentials. Correct your name, then resubmit.",
       NOT_FOUND: "Enter your name to request Reviewer access.",
@@ -7751,15 +7793,15 @@
           preparingReviewerResources = true;
           if (authStatus) {
             authStatus.textContent =
-              "Reviewer access approved. Preparing your resources…";
+                "Preparing your resources…";
             authStatus.setAttribute("aria-busy", "true");
           }
           void loadReviewerDashboard().then((loaded) => {
             if (reviewerSessionId !== sessionId) return;
             if (authStatus) {
               authStatus.textContent = loaded
-                ? "Reviewer access approved."
-                : "Reviewer access approved, but resources could not be preloaded. Open Reviewers to retry.";
+                ? ""
+                : "Resources could not be preloaded. Open Reviewers to retry.";
               authStatus.removeAttribute("aria-busy");
             }
           });
