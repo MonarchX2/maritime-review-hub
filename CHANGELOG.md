@@ -1,5 +1,18 @@
 # Changelog
 
+## 26.10.16-29 - 2026-10-16
+
+### Added
+- Let signed-in users edit their profile name; any actual change returns Reviewer access to pending administrator approval.
+
+### Fixed
+- Hide the Google sign-in control after authentication and keep approval status visible without duplicate Profile copy.
+
+### Changed
+- Simplify Profile guidance and use Google FedCM/automatic account selection after refresh without storing ID tokens.
+- Serve Modules, Syllabus, and Reviewer snapshots from short-lived backend caches, and avoid opening the account spreadsheet for sign-in configuration.
+- Keep file-click logs while removing redundant dashboard-load log writes and disabling per-request Apps Script tracing by default.
+
 ## 26.10.16-28 - 2026-10-16
 
 ### Fixed

@@ -560,7 +560,7 @@
       allowed: ["type", "fileId", "appVersion"],
     },
     get_resource_dashboard: {
-      required: [],
+      required: ["eventId"],
       allowed: ["type", "version", "idToken", "eventId", "appVersion"],
     },
   });

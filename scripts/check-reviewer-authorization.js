@@ -10,6 +10,8 @@ const oldDeviceId = "01234567-89ab-4cde-8fab-0123456789ab";
 let tokenClaims = {};
 let tokenFetchFailures = 0;
 let spreadsheetTimeZone = "";
+let spreadsheetOpenCount = 0;
+let reviewerDriveLookupCount = 0;
 const accountRows = [
   [
     "Email",
@@ -211,8 +213,38 @@ const context = {
   },
   SpreadsheetApp: {
     openById(id) {
+      spreadsheetOpenCount += 1;
       assert.equal(id, spreadsheetId);
       return spreadsheet;
+    },
+  },
+  DriveApp: {
+    getFolderById(id) {
+      assert.equal(id, "1cP2FBOW-Jryu9eknJgDjUZcxx9qwC22Z");
+      return {
+        getFilesByName(name) {
+          assert.equal(name, "reviewers_combined.json");
+          reviewerDriveLookupCount += 1;
+          let hasFile = true;
+          return {
+            hasNext: () => hasFile,
+            next: () => {
+              hasFile = false;
+              return {
+                getId: () => "reviewer-index-file",
+                getLastUpdated: () => new Date(1000),
+                getBlob: () => ({
+                  getDataAsString: () =>
+                    JSON.stringify({
+                      b: "https://drive.google.com/open?id=",
+                      d: {},
+                    }),
+                }),
+              };
+            },
+          };
+        },
+      };
     },
   },
   LockService: {
@@ -338,9 +370,15 @@ assert.equal(
 );
 properties.set("MRH_GOOGLE_OAUTH_CLIENT_ID", clientId);
 properties.set("MRH_ACCOUNTS_SPREADSHEET_ID", spreadsheetId);
+const spreadsheetOpensBeforeConfig = spreadsheetOpenCount;
 assert.equal(
   post({ type: "get_reviewer_auth_config" }).enabled,
   true,
+);
+assert.equal(
+  spreadsheetOpenCount,
+  spreadsheetOpensBeforeConfig,
+  "fetching sign-in configuration should not open the account spreadsheet",
 );
 context.initializeMRHAccountsSpreadsheet();
 assert.deepEqual(
@@ -509,10 +547,37 @@ const duplicatePending = post({
   firstName: "Name",
 });
 assert.equal(duplicatePending.accountStatus, "FALSE");
+assert.deepEqual(
+  Array.from(accountRows.find((row) => row[0] === "new-reviewer@example.com")),
+  ["new-reviewer@example.com", "Changed", "Name", "", "FALSE"],
+  "a pending user can edit their name while remaining unapproved",
+);
 assert.equal(
   accountRows.filter((row) => row[0] === "new-reviewer@example.com").length,
   1,
   "repeat pending submissions must not duplicate account rows",
+);
+const pendingProfileEdit = post({
+  type: "request_reviewer_enrollment",
+  idToken: "new-user-token",
+  eventId: eventId("a"),
+  lastName: "Dela Cruz",
+  firstName: "Maria",
+  middleInitial: "Q",
+});
+assert.equal(
+  pendingProfileEdit.status,
+  "success",
+  JSON.stringify(pendingProfileEdit),
+);
+assert.deepEqual(
+  [
+    pendingProfileEdit.accountStatus,
+    pendingProfileEdit.profileUpdated,
+    accountRows.find((row) => row[0] === "new-reviewer@example.com")[3],
+  ],
+  ["FALSE", true, "Q"],
+  "a pending user may edit their saved name without gaining access",
 );
 
 const newUserRow = accountRows.findIndex(
@@ -566,7 +631,77 @@ tokenClaims = validClaims();
 const existingReviewerRow = accountRows.findIndex(
   (row) => row[0] === "reviewer@example.com",
 );
+cacheValues.clear();
+const unchangedApprovedProfile = post({
+  type: "request_reviewer_enrollment",
+  idToken: "approved-token",
+  eventId: eventId("b"),
+  lastName: "Reviewer",
+  firstName: "Rita",
+  middleInitial: "A",
+});
+assert.equal(
+  unchangedApprovedProfile.accountStatus,
+  "TRUE",
+  "submitting an unchanged approved profile must preserve approval",
+);
+const approvedProfileEdit = post({
+  type: "request_reviewer_enrollment",
+  idToken: "approved-token",
+  eventId: eventId("c"),
+  lastName: "Updated",
+  firstName: "Rita",
+  middleInitial: "A",
+});
+assert.deepEqual(
+  [
+    approvedProfileEdit.accountStatus,
+    approvedProfileEdit.profileUpdated,
+    accountRows[existingReviewerRow][1],
+    accountRows[existingReviewerRow][4],
+  ],
+  ["FALSE", true, "Updated", "FALSE"],
+  "changing an approved user's name must save the edit and revoke access pending approval",
+);
+assert.equal(
+  post({
+    type: "get_reviewer_dashboard",
+    idToken: "approved-token",
+    eventId: eventId("d"),
+  }).code,
+  "ACCOUNT_PENDING",
+  "an edited name must immediately lose reviewer access",
+);
+accountRows[existingReviewerRow][4] = "TRUE";
+cacheValues.clear();
+assert.equal(
+  post({
+    type: "get_reviewer_account_status",
+    idToken: "approved-token",
+  }).accountStatus,
+  "TRUE",
+  "administrator approval should restore access after an edited profile is confirmed",
+);
+const reviewerDashboardRequest = () =>
+  post({
+    type: "get_reviewer_dashboard",
+    idToken: "approved-token",
+    eventId: eventId("e"),
+  });
+const reviewerDashboard = reviewerDashboardRequest();
+assert.deepEqual(
+  [reviewerDashboard.status, reviewerDashboard.tab.columns[0]],
+  ["success", "Year"],
+  "an approved account should receive the reviewer payload",
+);
+reviewerDashboardRequest();
+assert.equal(
+  reviewerDriveLookupCount,
+  1,
+  "authorized reviewer payload cache hits should skip Drive metadata lookups",
+);
 accountRows[existingReviewerRow][4] = "FALSE";
+cacheValues.clear();
 assert.equal(
   post({
     type: "get_reviewer_account_status",
@@ -585,6 +720,7 @@ assert.equal(
   "revoked approval must stop protected access",
 );
 accountRows[existingReviewerRow][4] = "DENIED";
+cacheValues.clear();
 assert.equal(accountRows[existingReviewerRow][4], "DENIED");
 assert.equal(
   context.findMRHAccount_("reviewer@example.com").accountStatus,

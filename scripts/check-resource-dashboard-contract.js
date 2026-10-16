@@ -162,6 +162,11 @@ assert.match(
 );
 assert.match(
   resourceStyles,
+  /#resource-reviewer-signin-button\[hidden\],\s*\.resource-reviewer-signout\[hidden\]\s*\{\s*display:\s*none;/,
+  "the sign-in and account action controls should respect their hidden state",
+);
+assert.match(
+  resourceStyles,
   /\.resource-profile-card\s*\{[^}]*display:\s*grid;[^}]*gap:\s*1\.25rem;[\s\S]*?\.resource-reviewer-enrollment\s*\{[^}]*display:\s*grid;[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*gap:\s*1rem;[\s\S]*?\.resource-reviewer-enrollment input\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;/,
   "Reviewer name fields should stack in a full-width, overflow-safe grid",
 );
@@ -197,6 +202,11 @@ assert.match(
 );
 assert.match(
   appCore,
+  /use_fedcm_for_prompt:\s*true[\s\S]*?itp_support:\s*true/,
+  "Google should reauthenticate returning users through FedCM where available",
+);
+assert.match(
+  appCore,
   /function setExplicitReviewerSignOut\(signedOut\)[\s\S]*?localStorage\.setItem\(\s*REVIEWER_EXPLICIT_SIGNOUT_KEY,\s*"true",?\s*\)[\s\S]*?localStorage\.removeItem\(REVIEWER_EXPLICIT_SIGNOUT_KEY\)/,
   "explicit sign-out preference should persist across reloads and clear on a subsequent sign-in",
 );
@@ -219,6 +229,21 @@ assert.match(
   appCore,
   /function populateReviewerProfile\(response\)[\s\S]*?profileName\.textContent = displayName \|\| email[\s\S]*?profileEmail\.textContent = email[\s\S]*?image\.src = pictureUrl/,
   "successful sign-in should populate the profile picture, name, and email",
+);
+assert.match(
+  appCore,
+  /function openReviewerProfileEditor\(\)[\s\S]*?function closeReviewerProfileEditor\(\)[\s\S]*?dataset\.savedValue[\s\S]*?response\.profileUpdated/,
+  "users should be able to edit and cancel profile-name changes",
+);
+assert.match(
+  appCore,
+  /profileUpdated && authStatus[\s\S]*?Name updated\. Reviewer access is locked until approval\./,
+  "a saved name edit should clearly indicate that Reviewer access needs approval again",
+);
+assert.match(
+  appCore,
+  /DENIED:\s*"Invalid credentials\. Correct your name, then resubmit\."/,
+  "denied users should see the requested invalid-credentials message",
 );
 assert.match(
   indexHtml,
@@ -503,7 +528,7 @@ assert.match(
 );
 assert.match(
   network,
-  /get_resource_dashboard:\s*\{\s*required:\s*\[\],\s*allowed:\s*\["type",\s*"version",\s*"idToken",\s*"eventId",\s*"appVersion"\]/,
+  /get_resource_dashboard:\s*\{\s*required:\s*\["eventId"\],\s*allowed:\s*\["type",\s*"version",\s*"idToken",\s*"eventId",\s*"appVersion"\]/,
   "dashboard requests should support cached versions and event-level logging",
 );
 assert.match(

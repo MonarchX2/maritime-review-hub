@@ -63,8 +63,18 @@ assert.doesNotMatch(
 );
 assert.match(
   index,
-  /resource-profile-form-note[\s\S]*?Dela Cruz[\s\S]*?Maria[\s\S]*?P\./,
-  "profile should make middle initial optional and explain correct capitalization with an example",
+  /resource-profile-form-note[\s\S]*?correct capitalization[\s\S]*?Maria[\s\S]*?Dela Cruz/,
+  "profile should explain correct capitalization with a concise example",
+);
+assert.match(
+  index,
+  /id="resource-reviewer-edit-profile"[\s\S]*?Edit name/,
+  "approved and pending users should have a name-edit control",
+);
+assert.match(
+  index,
+  /id="resource-reviewer-cancel-edit"[\s\S]*?Cancel/,
+  "the profile editor should allow users to cancel unsaved changes",
 );
 assert.match(
   index,
@@ -242,6 +252,16 @@ assert.match(
   "the backend should read dashboard indexes from their Drive export folder",
 );
 assert.match(
+  dashboardHandler,
+  /mrh_resource_dashboard_latest_v1[\s\S]*?return jsonResponse\(parsedLatestDashboard\)/,
+  "the backend should serve a fresh dashboard snapshot without Drive metadata lookups",
+);
+assert.match(
+  backend,
+  /function handleGetReviewerDashboardRequest\(data\)[\s\S]*?mrh_reviewer_dashboard_latest_v1[\s\S]*?return jsonResponse\(\{[\s\S]*?tab: parsedLatestReviewerTab/,
+  "the reviewer endpoint should authorize each request before serving a cached payload",
+);
+assert.match(
   backend,
   /links\.push\(rowLinks\)[\s\S]*?linkTitles\.push\(rowTitles\)/,
   "the dashboard adapter should preserve indexed resource links and filenames",
@@ -310,6 +330,8 @@ assert.doesNotMatch(
 );
 
 let indexReadCount = 0;
+let dashboardDriveLookupCount = 0;
+let dashboardCacheClock = 0;
 const dashboardIndexModifiedTimes = {
   "modules_combined.json": 1000,
   "reviewers_combined.json": 2000,
@@ -408,13 +430,27 @@ const context = {
   },
   CacheService: {
     getScriptCache: () => ({
-      get: (key) => dashboardCacheValues.get(key) || null,
-      put: (key, value) => dashboardCacheValues.set(key, value),
+      get(key) {
+        const entry = dashboardCacheValues.get(key);
+        if (!entry) return null;
+        if (entry.expiresAt <= dashboardCacheClock) {
+          dashboardCacheValues.delete(key);
+          return null;
+        }
+        return entry.value;
+      },
+      put(key, value, ttlSeconds) {
+        dashboardCacheValues.set(key, {
+          value,
+          expiresAt: dashboardCacheClock + (ttlSeconds || 60) * 1000,
+        });
+      },
       remove: (key) => dashboardCacheValues.delete(key),
     }),
   },
   DriveApp: {
     getFolderById(id) {
+      dashboardDriveLookupCount += 1;
       assert.equal(id, "1cP2FBOW-Jryu9eknJgDjUZcxx9qwC22Z");
       return {
         getFilesByName(name) {
@@ -567,7 +603,12 @@ assert.equal(
 assert.equal(
   indexReadCount,
   2,
-  "a shared server cache should avoid rereading unchanged dashboard index contents",
+  "the latest dashboard snapshot should avoid rereading index contents",
+);
+assert.equal(
+  dashboardDriveLookupCount,
+  1,
+  "a cached dashboard snapshot should avoid another Drive metadata lookup",
 );
 
 const unchangedDashboard = JSON.parse(
@@ -590,8 +631,14 @@ assert.equal(
   2,
   "unchanged dashboard indexes should not be parsed or returned again",
 );
+assert.equal(
+  dashboardDriveLookupCount,
+  1,
+  "unchanged dashboard versions should be served without a Drive lookup",
+);
 
 dashboardIndexModifiedTimes["reviewers_combined.json"] += 1;
+dashboardCacheClock += 61000;
 const updatedDashboard = JSON.parse(
   context
     .doPost({
@@ -612,6 +659,11 @@ assert.equal(
   indexReadCount,
   4,
   "updated dashboard indexes should cause the complete dashboard to refresh",
+);
+assert.equal(
+  dashboardDriveLookupCount,
+  2,
+  "expired snapshots should recheck Drive metadata for updates",
 );
 
 const disabledListing = JSON.parse(

@@ -19,7 +19,10 @@ and verified email, then requires the matching email and `Active=TRUE` on
 every reviewer request. Missing or invalid configuration fails closed.
 The profile form requires last and first names; middle initial is optional.
 Users are asked to check spelling and capitalization before saving (for
-example, `Dela Cruz`, `Maria`, `P.`).
+example, `Dela Cruz`, `Maria`, `P.`). A user may edit a saved name; if any
+name field changes, the backend saves it and resets `Active` to `FALSE` until
+an administrator confirms the edited profile. Submitting the same name does
+not remove existing approval.
 
 The verified identity token exists only in page memory and is sent to the
 backend for each protected request; it is not stored in browser storage.
@@ -73,9 +76,8 @@ To initialize sign-in and access logging:
    from `REVIEWERS` to `SIGN-IN`, converts ISO timestamps to Philippine local
    time, and removes exact duplicate log rows. Conflicting names, approval
    states, or worksheet headers stop setup before data rows are changed.
-   The `SCOPES` tab lists
-   required Apps Script OAuth scopes and their purposes; it is refreshed when
-   the Profile screen checks sign-in configuration. Keep the spreadsheet
+   The `SCOPES` tab lists required Apps Script OAuth scopes and their purposes;
+   it is refreshed when the initializer runs. Keep the spreadsheet
    private to administrators.
 5. On first sign-in, a user submits `Last Name`, `First Name`, and optional
    `Middle Initial`. The backend verifies the Google identity and saves one
@@ -94,7 +96,8 @@ To initialize sign-in and access logging:
 7. Test sign-in with a Google account. A new account can use Reviewers only
    after an administrator sets `Active` to `TRUE`. While a user remains
    signed in, the website checks approval about every five seconds and locks
-   Reviewer access when the spreadsheet status changes. New access-log
+   Reviewer access when the spreadsheet status changes. A short-lived account
+   lookup cache may delay a status change by a few seconds. New access-log
    timestamps display in Philippine local time (`Asia/Manila`).
 
 If Apps Script asks for OAuth scopes to be entered manually, add one scope per
@@ -123,21 +126,22 @@ external-request permission by running the initializer above, then retry. The
 backend uses Google's token-info service with a secondary Google endpoint if
 the primary is temporarily unavailable.
 
-Successful sign-ins are appended to the `SIGN-IN` tab with a timestamp, email,
-device ID, name fields, and event type. Reviewer dashboard access and specific
-reviewer resource clicks are recorded in `REVIEWERS`; module dashboard access
-and module file/folder clicks are recorded in `MODULE`; syllabus file clicks
-are recorded in `SYLLABUS`. A click's `Event` value includes the category,
-resource name, and Drive ID (for example,
+Successful sign-ins are appended to the `SIGN-IN` tab with a Philippine-local
+timestamp, email, name fields, and event type; no device identity is stored.
+Specific reviewer resource clicks are recorded in `REVIEWERS`; approved module
+dashboard access and module file/folder clicks are recorded in `MODULE`;
+syllabus file clicks are recorded in `SYLLABUS`. A click's `Event` value
+includes the category, resource name, and Drive ID (for example,
 `FILE_CLICK:MODULES:Module 1.pdf:012345678901234567890`). Syllabus and module
-resources remain public, so their clicks can be recorded with a blank email
-and the existing browser device ID (when available). Reviewer clicks include
-the verified account and require the same authorization as reviewer resource
-access. The `SCOPES` tab documents required backend OAuth scopes and is
-refreshed when the initializer runs. `Active` does not revoke access; remove
-the account row to block a previously enrolled email/device pair. Google token
-verification results are cached by token hash for at most five minutes; the
-raw token is not stored in the sheet or cache key.
+resources remain public, so their clicks can be recorded with a blank email.
+Reviewer clicks include the verified account and require the same
+authorization as reviewer resource access. The `SCOPES` tab documents required
+backend OAuth scopes and is refreshed when the initializer runs. Changing
+`Active` from `TRUE` to `FALSE` or `DENIED` blocks reviewer access after the
+short account-cache window and the next status poll; removing the account row
+also blocks access. Google token verification results are cached by token hash
+for at most five minutes; the raw token is not stored in the sheet or cache
+key.
 
 The spreadsheet log is suitable for moderate usage, not unlimited traffic:
 Google Apps Script execution and Sheets API quotas still apply. Appends use the

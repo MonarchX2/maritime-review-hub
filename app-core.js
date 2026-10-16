@@ -6003,6 +6003,7 @@
   let reviewerAuthorizedEmail = "";
   let reviewerPendingEnrollmentToken = "";
   let reviewerProfilePictureUrl = "";
+  let reviewerProfileEditing = false;
   let reviewerDashboardRequestGeneration = 0;
   let reviewerStatusPollTimer = null;
   let reviewerStatusPollInFlight = false;
@@ -6020,9 +6021,8 @@
       .find((entry) =>
         entry.startsWith(`${REVIEWER_EXPLICIT_SIGNOUT_COOKIE}=`),
       );
-    if (signOutCookie)
-      return signOutCookie.slice(REVIEWER_EXPLICIT_SIGNOUT_COOKIE.length + 1) ===
-        "true";
+    if (signOutCookie === `${REVIEWER_EXPLICIT_SIGNOUT_COOKIE}=true`)
+      return true;
     try {
       if (
         globalScope.localStorage.getItem(REVIEWER_EXPLICIT_SIGNOUT_KEY) ===
@@ -6032,11 +6032,7 @@
     } catch (error) {
       // The first-party cookie remains available when local storage is blocked.
     }
-    return String(globalScope.document?.cookie || "")
-      .split("; ")
-      .some(
-        (entry) => entry === `${REVIEWER_EXPLICIT_SIGNOUT_COOKIE}=true`,
-      );
+    return false;
   }
 
   function setExplicitReviewerSignOut(signedOut) {
@@ -6178,7 +6174,7 @@
 
     if (resourceDashboardData) {
       renderResourceDashboardTab();
-      if (reviewerIdentityToken)
+      if (reviewerIdentityToken && tabName === "MODULES")
         void logModuleDashboardAccess();
       return true;
     }
@@ -6543,6 +6539,50 @@
       signoutButton.addEventListener("click", signOutReviewer);
       signoutButton.dataset.initialized = "true";
     }
+    const editProfileButton = document.getElementById(
+      "resource-reviewer-edit-profile",
+    );
+    if (editProfileButton && !editProfileButton.dataset.initialized) {
+      editProfileButton.addEventListener("click", openReviewerProfileEditor);
+      editProfileButton.dataset.initialized = "true";
+    }
+    const cancelEditButton = document.getElementById(
+      "resource-reviewer-cancel-edit",
+    );
+    if (cancelEditButton && !cancelEditButton.dataset.initialized) {
+      cancelEditButton.addEventListener("click", closeReviewerProfileEditor);
+      cancelEditButton.dataset.initialized = "true";
+    }
+  }
+
+  function openReviewerProfileEditor() {
+    const form = document.getElementById("resource-reviewer-enrollment-form");
+    const cancelButton = document.getElementById(
+      "resource-reviewer-cancel-edit",
+    );
+    const submitButton = form?.querySelector('button[type="submit"]');
+    if (!form) return;
+    reviewerProfileEditing = true;
+    form.hidden = false;
+    if (cancelButton) cancelButton.hidden = false;
+    if (submitButton) submitButton.textContent = "Save changes for approval";
+    document.getElementById("resource-reviewer-first-name")?.focus();
+  }
+
+  function closeReviewerProfileEditor() {
+    const form = document.getElementById("resource-reviewer-enrollment-form");
+    const cancelButton = document.getElementById(
+      "resource-reviewer-cancel-edit",
+    );
+    const submitButton = form?.querySelector('button[type="submit"]');
+    if (!form) return;
+    reviewerProfileEditing = false;
+    form.hidden = true;
+    if (cancelButton) cancelButton.hidden = true;
+    if (submitButton) submitButton.textContent = "Submit for administrator review";
+    form.querySelectorAll("input").forEach((input) => {
+      input.value = input.dataset.savedValue || "";
+    });
   }
 
   async function initializeReviewerAuth() {
@@ -6619,6 +6659,8 @@
           },
           auto_select: !hasExplicitReviewerSignOut(),
           cancel_on_tap_outside: true,
+          use_fedcm_for_prompt: true,
+          itp_support: true,
         });
         if (signInButton) {
           signInButton.replaceChildren();
@@ -6774,9 +6816,14 @@
     }
     const accountStatus = response.accountStatus;
     const authStatus = document.getElementById("resource-reviewer-auth-status");
-    const approvalStatus = document.getElementById("resource-profile-approval-status");
     const form = document.getElementById("resource-reviewer-enrollment-form");
     const formButton = form?.querySelector('button[type="submit"]');
+    const editProfileButton = document.getElementById(
+      "resource-reviewer-edit-profile",
+    );
+    const cancelEditButton = document.getElementById(
+      "resource-reviewer-cancel-edit",
+    );
     const signInButton = document.getElementById(
       "resource-reviewer-signin-button",
     );
@@ -6803,6 +6850,7 @@
       clearReviewerResourceRows();
     }
     populateReviewerProfile(response);
+    reviewerProfileEditing = false;
     setReviewerAccessEnabled(accountStatus === "TRUE");
     if (signInButton) signInButton.hidden = true;
     if (signoutButton) signoutButton.hidden = false;
@@ -6810,11 +6858,16 @@
       form.hidden = !(
         accountStatus === "NOT_FOUND" || accountStatus === "DENIED"
       );
+    if (editProfileButton)
+      editProfileButton.hidden = !["TRUE", "FALSE"].includes(accountStatus);
+    if (cancelEditButton) cancelEditButton.hidden = true;
     if (formButton)
       formButton.textContent =
         accountStatus === "DENIED"
           ? "Correct details and resubmit"
-          : "Submit for administrator review";
+          : response.profileUpdated
+            ? "Save changes for approval"
+            : "Submit for administrator review";
     if (accountStatus === "NOT_FOUND") {
       Object.values(inputs).forEach((input) => {
         if (input) input.value = "";
@@ -6825,17 +6878,19 @@
       if (inputs.middleInitial)
         inputs.middleInitial.value = response.middleInitial || "";
     }
+    Object.values(inputs).forEach((input) => {
+      if (input) input.dataset.savedValue = input.value;
+    });
     const messages = {
-      TRUE: "Approved. Reviewer resources are now available.",
-      FALSE:
-        "Your profile is waiting for administrator review. Reviewer access stays disabled until Active is set to TRUE.",
-      DENIED:
-        "Invalid credentials. Please input your correct and proper name, then submit the corrected details for review.",
-      NOT_FOUND:
-        "Enter your correct and proper name. An administrator will review your details before enabling Reviewer access.",
+      TRUE: "Reviewer access approved.",
+      FALSE: "Awaiting administrator approval.",
+      DENIED: "Invalid credentials. Correct your name, then resubmit.",
+      NOT_FOUND: "Enter your name to request Reviewer access.",
     };
     if (authStatus) authStatus.textContent = messages[accountStatus];
-    if (approvalStatus) approvalStatus.textContent = messages[accountStatus];
+    if (response.profileUpdated && authStatus)
+      authStatus.textContent =
+        "Name updated. Reviewer access is locked until approval.";
     return accountStatus === "TRUE";
   }
 
@@ -6944,7 +6999,9 @@
       "resource-reviewer-auth-status",
     );
     const submitButton = form.querySelector('button[type="submit"]');
-    if (!reviewerPendingEnrollmentToken) {
+    const enrollmentToken =
+      reviewerPendingEnrollmentToken || reviewerIdentityToken;
+    if (!enrollmentToken) {
       if (authStatus)
         authStatus.textContent =
           "Sign in with Google before submitting your profile.";
@@ -6960,7 +7017,6 @@
       return false;
     }
     if (submitButton) submitButton.disabled = true;
-    const enrollmentToken = reviewerPendingEnrollmentToken;
     if (authStatus)
       authStatus.textContent =
         "Submitting your profile for administrator review...";
@@ -6985,7 +7041,12 @@
             "The profile request was not saved as pending.",
         );
       applyReviewerAccountStatus(
-        { ...response, picture: reviewerProfilePictureUrl },
+        {
+          ...response,
+          picture: reviewerProfilePictureUrl,
+          profileUpdated:
+            reviewerProfileEditing && response.accountStatus === "FALSE",
+        },
         enrollmentToken,
       );
       scheduleReviewerStatusPolling(enrollmentToken);

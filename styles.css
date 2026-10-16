@@ -1615,10 +1615,8 @@ button:active:not(:disabled) {
 }
 
 .resource-profile-heading h2,
-.resource-profile-heading p,
 .resource-profile-name,
-.resource-profile-email,
-.resource-profile-approval-note {
+.resource-profile-email {
   margin: 0;
 }
 
@@ -1628,9 +1626,7 @@ button:active:not(:disabled) {
   font-weight: 700;
 }
 
-.resource-profile-heading p,
-.resource-profile-status,
-.resource-profile-approval-note {
+.resource-profile-status {
   color: #64748b;
   font-size: var(--resource-dashboard-font-small);
 }
@@ -1644,6 +1640,11 @@ button:active:not(:disabled) {
   display: flex;
   justify-content: center;
   min-height: 2.5rem;
+}
+
+#resource-reviewer-signin-button[hidden],
+.resource-reviewer-signout[hidden] {
+  display: none;
 }
 
 .resource-profile-account-details {
@@ -1780,6 +1781,24 @@ button:active:not(:disabled) {
   font: inherit;
   text-align: center;
   white-space: normal;
+}
+
+.resource-reviewer-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--resource-dashboard-space);
+  min-width: 0;
+}
+
+.resource-reviewer-form-actions button[hidden] {
+  display: none;
+}
+
+.resource-reviewer-form-actions .resource-reviewer-cancel {
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  background: #fff;
 }
 
 .resource-dashboard-filters {
@@ -2366,10 +2385,8 @@ button:active:not(:disabled) {
 }
 
 .dark .resource-profile-heading > i,
-.dark .resource-profile-heading p,
 .dark .resource-profile-status,
-.dark .resource-profile-email,
-.dark .resource-profile-approval-note {
+.dark .resource-profile-email {
   color: #94a3b8;
 }
 
