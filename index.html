@@ -623,6 +623,25 @@
               <span>Return</span>
             </button>
             <span class="resource-dashboard-title">Resource Dashboard</span>
+            <button
+              type="button"
+              id="resource-dashboard-profile-nav"
+              class="resource-profile-toggle is-active"
+              onclick="openResourceDashboardTab('PROFILE')"
+              aria-label="Profile"
+              title="Profile"
+              aria-current="page"
+            >
+              <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
+              <img
+                id="resource-dashboard-profile-picture"
+                alt=""
+                aria-hidden="true"
+                referrerpolicy="no-referrer"
+                hidden
+              />
+              <span class="sr-only">Profile</span>
+            </button>
           </div>
           <div class="resource-portal-shell">
             <aside class="resource-portal-sidebar" aria-label="Dashboard tabs">
@@ -659,25 +678,6 @@
                   class="fa-solid fa-lock resource-dashboard-lock-icon"
                   aria-hidden="true"
                 ></i>
-              </button>
-              <button
-                type="button"
-                id="resource-dashboard-profile-nav"
-                class="resource-profile-toggle is-active"
-                onclick="openResourceDashboardTab('PROFILE')"
-                aria-label="Profile"
-                title="Profile"
-                aria-current="page"
-              >
-                <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
-                <img
-                  id="resource-dashboard-profile-picture"
-                  alt=""
-                  aria-hidden="true"
-                  referrerpolicy="no-referrer"
-                  hidden
-                />
-                <span class="sr-only">Profile</span>
               </button>
             </aside>
 

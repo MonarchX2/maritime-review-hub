@@ -232,8 +232,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-profile-toggle\s*\{[^}]*margin-left:\s*auto;[^}]*border-radius:\s*9999px;/,
-  "the Profile icon button should align to the far right of the tab header",
+  /\.resource-dashboard-topbar \.resource-profile-toggle\s*\{\s*margin-left:\s*auto;/,
+  "the Profile icon button should align to the far right of the title bar",
 );
 assert.match(
   resourceStyles,

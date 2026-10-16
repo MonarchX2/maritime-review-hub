@@ -1412,6 +1412,10 @@ button:active:not(:disabled) {
   font-weight: 700;
 }
 
+.resource-dashboard-topbar .resource-profile-toggle {
+  margin-left: auto;
+}
+
 .resource-portal-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1448,7 +1452,6 @@ button:active:not(:disabled) {
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  margin-left: auto;
   border: 1px solid transparent;
   border-radius: 9999px;
   color: #64748b;

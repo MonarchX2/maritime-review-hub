@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-35 - 2026-10-16
+
+### Changed
+- Place the Profile settings button at the right side of the Resource Dashboard title bar.
+
 ## 26.10.16-34 - 2026-10-16
 
 ### Changed

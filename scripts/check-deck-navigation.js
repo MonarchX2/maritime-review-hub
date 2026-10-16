@@ -196,8 +196,8 @@ assert.match(
 );
 assert.match(
   indexSource,
-  /id="resource-dashboard-profile-nav"[\s\S]*?is-active[\s\S]*?aria-current="page"[\s\S]*?id="resource-dashboard-content" hidden[\s\S]*?id="resource-dashboard-profile"[\s\S]*?resource-profile-screen/,
-  "the Resource Dashboard should open on Profile instead of Modules",
+  /class="resource-dashboard-topbar"[\s\S]*?resource-dashboard-title">Resource Dashboard[\s\S]*?id="resource-dashboard-profile-nav"[\s\S]*?is-active[\s\S]*?aria-current="page"[\s\S]*?id="resource-dashboard-content" hidden[\s\S]*?id="resource-dashboard-profile"[\s\S]*?resource-profile-screen/,
+  "the Resource Dashboard should open on Profile and keep the Profile control beside the title",
 );
 assert.match(
   deckNavSource,

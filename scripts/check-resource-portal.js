@@ -35,8 +35,13 @@ assert.match(
 );
 assert.match(
   index,
-  /<aside class="resource-portal-sidebar"[\s\S]*?id="resource-dashboard-reviewers-nav"[\s\S]*?id="resource-dashboard-profile-nav"[^>]*onclick="openResourceDashboardTab\('PROFILE'\)"[^>]*aria-label="Profile"[\s\S]*?<\/aside>/,
-  "the Syllabus/Modules/Reviewers header should include a right-aligned Profile section button",
+  /class="resource-dashboard-topbar"[\s\S]*?resource-dashboard-title">Resource Dashboard[\s\S]*?id="resource-dashboard-profile-nav"[^>]*onclick="openResourceDashboardTab\('PROFILE'\)"[^>]*aria-label="Profile"[\s\S]*?<\/button>\s*<\/div>\s*<div class="resource-portal-shell">/,
+  "the Profile button should sit to the right of the Resource Dashboard title, outside the resource tabs",
+);
+assert.match(
+  index,
+  /<aside class="resource-portal-sidebar"[\s\S]*?id="resource-dashboard-reviewers-nav"[\s\S]*?<\/aside>/,
+  "the resource tabs should remain grouped in their own navigation row",
 );
 assert.doesNotMatch(
   index.slice(
