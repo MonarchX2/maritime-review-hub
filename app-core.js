@@ -5856,6 +5856,7 @@
         }
 
         bindUi();
+        initializeStudentPortalWelcome();
         applyThemeFromPrefs();
         renderSkeleton();
         installReviewerSignOutStorageListener();
@@ -6010,9 +6011,13 @@
   const REVIEWER_EXPLICIT_SIGNOUT_COOKIE = "mrh_reviewer_explicit_signout_v1";
   const REVIEWER_SESSION_STORAGE_KEY = "mrh_reviewer_session_v1";
   const REVIEWER_PROFILE_CACHE_KEY = "mrh_reviewer_profile_v1";
+  const STUDENT_PORTAL_WELCOME_HIDDEN_KEY =
+    "mrh_student_portal_welcome_hidden_v1";
   const REVIEWER_PROFILE_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
   const RESOURCE_DASHBOARD_CACHE_KEY = "resource_dashboard_cache_v1";
   const RESOURCE_DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 30000;
+  let studentPortalWelcomeNameObserver = null;
+  let studentPortalWelcomeNameResizeHandler = null;
   let resourceDashboardAutoRefreshTimer = null;
   let resourceDashboardAutoRefreshEventsInstalled = false;
   let resourceDashboardLastRefreshAt = 0;
@@ -7914,6 +7919,175 @@
     }
   }
 
+  function setStudentPortalWelcomeHidden(hidden, persist = false) {
+    const welcome = document.getElementById("student-portal-welcome");
+    const toggle = document.getElementById("student-portal-welcome-toggle");
+    if (!welcome || !toggle) return;
+    welcome.hidden = hidden;
+    toggle.setAttribute("aria-expanded", String(!hidden));
+    toggle.innerHTML = hidden
+      ? '<i class="fa-solid fa-eye" aria-hidden="true"></i><span>Show Welcome Banner</span>'
+      : '<i class="fa-solid fa-eye-slash" aria-hidden="true"></i><span>Hide Welcome Banner</span>';
+    updateStudentPortalWelcomeLayout();
+    if (!persist) return;
+    try {
+      if (hidden)
+        globalScope.localStorage.setItem(
+          STUDENT_PORTAL_WELCOME_HIDDEN_KEY,
+          "true",
+        );
+      else
+        globalScope.localStorage.removeItem(
+          STUDENT_PORTAL_WELCOME_HIDDEN_KEY,
+        );
+    } catch (error) {
+      (globalScope.DebugUtils || console).error(
+        "Unable to save the Student Portal welcome visibility preference.",
+        error,
+      );
+    }
+  }
+
+  function updateStudentPortalWelcomeName() {
+    const heading = document.getElementById("student-portal-welcome-name");
+    if (!heading) return;
+    const fullName = heading.dataset.fullName || "Guest";
+    const lastName = heading.dataset.lastName || fullName;
+    const fullText = `Welcome, ${fullName}.`;
+    heading.textContent = fullText;
+    heading.setAttribute("aria-label", fullText);
+    if (heading.scrollWidth > heading.clientWidth && lastName !== fullName) {
+      heading.textContent = `Welcome, ${lastName}.`;
+    }
+  }
+
+  function updateStudentPortalWelcomeLayout() {
+    const welcome = document.getElementById("student-portal-welcome");
+    const container = document.querySelector(
+      ".student-portal-welcome-container",
+    );
+    const portal = document.querySelector(".student-portal-deck");
+    if (!welcome || !container || !portal || welcome.hidden) return;
+    const welcomeRect = welcome.getBoundingClientRect();
+    const portalRect = portal.getBoundingClientRect();
+    const overlapsVertically =
+      welcomeRect.top < portalRect.bottom &&
+      portalRect.top < welcomeRect.bottom;
+    const isSideBySide =
+      overlapsVertically &&
+      (welcomeRect.right <= portalRect.left ||
+        portalRect.right <= welcomeRect.left);
+    container.classList.toggle("is-stacked", !isSideBySide);
+  }
+
+  function initializeStudentPortalWelcome() {
+    const toggle = document.getElementById("student-portal-welcome-toggle");
+    if (!toggle || toggle.dataset.initialized) return;
+    let hidden = false;
+    try {
+      hidden =
+        globalScope.localStorage.getItem(
+          STUDENT_PORTAL_WELCOME_HIDDEN_KEY,
+        ) === "true";
+    } catch (error) {
+      (globalScope.DebugUtils || console).error(
+        "Unable to read the Student Portal welcome visibility preference.",
+        error,
+      );
+    }
+    setStudentPortalWelcomeHidden(hidden);
+    toggle.addEventListener("click", () => {
+      setStudentPortalWelcomeHidden(
+        !document.getElementById("student-portal-welcome")?.hidden,
+        true,
+      );
+    });
+    toggle.dataset.initialized = "true";
+    const welcome = document.getElementById("student-portal-welcome");
+    const container = document.querySelector(
+      ".student-portal-welcome-container",
+    );
+    const portal = document.querySelector(".student-portal-deck");
+    if (
+      welcome &&
+      container &&
+      portal &&
+      typeof globalScope.ResizeObserver === "function"
+    ) {
+      studentPortalWelcomeNameObserver?.disconnect();
+      studentPortalWelcomeNameObserver = new globalScope.ResizeObserver(
+        updateStudentPortalWelcome,
+      );
+      [welcome, container, portal].forEach((element) =>
+        studentPortalWelcomeNameObserver.observe(element),
+      );
+    } else if (!studentPortalWelcomeNameResizeHandler) {
+      studentPortalWelcomeNameResizeHandler = () => {
+        updateStudentPortalWelcomeLayout();
+        updateStudentPortalWelcomeName();
+      };
+      globalScope.addEventListener(
+        "resize",
+        studentPortalWelcomeNameResizeHandler,
+      );
+    }
+    const welcomeName = document.getElementById("student-portal-welcome-name");
+    if (welcomeName) {
+      studentPortalWelcomeNameObserver?.observe(welcomeName);
+    }
+    updateStudentPortalWelcome();
+  }
+
+  function updateStudentPortalWelcome() {
+    updateStudentPortalWelcomeLayout();
+    updateStudentPortalWelcomeName();
+  }
+
+  function renderStudentPortalWelcome(
+    name,
+    email,
+    pictureUrl = "",
+    lastName = "",
+  ) {
+    const welcomeName = document.getElementById("student-portal-welcome-name");
+    const welcomeEmail = document.getElementById(
+      "student-portal-welcome-email",
+    );
+    const welcomeSignIn = document.getElementById(
+      "student-portal-welcome-signin",
+    );
+    const welcomeSignInHint = document.getElementById(
+      "student-portal-welcome-signin-hint",
+    );
+    const welcomePicture = document.getElementById(
+      "student-portal-welcome-picture",
+    );
+    const welcomeIcon = document.getElementById("student-portal-welcome-icon");
+    if (welcomeName) {
+      welcomeName.dataset.fullName = name || "Guest";
+      welcomeName.dataset.lastName = lastName || name || "Guest";
+      updateStudentPortalWelcomeName();
+    }
+    const isSignedIn = Boolean(email);
+    if (welcomeEmail) {
+      welcomeEmail.textContent = email;
+      welcomeEmail.hidden = !isSignedIn;
+    }
+    if (welcomeSignIn) welcomeSignIn.hidden = isSignedIn;
+    if (welcomeSignInHint) welcomeSignInHint.hidden = isSignedIn;
+    if (welcomePicture) {
+      welcomePicture.onerror = () => {
+        welcomePicture.hidden = true;
+        welcomePicture.removeAttribute("src");
+        if (welcomeIcon) welcomeIcon.hidden = false;
+      };
+      welcomePicture.hidden = !pictureUrl;
+      if (pictureUrl) welcomePicture.src = pictureUrl;
+      else welcomePicture.removeAttribute("src");
+    }
+    if (welcomeIcon) welcomeIcon.hidden = Boolean(pictureUrl);
+  }
+
   function populateReviewerProfile(response) {
     const email = String(response.email || "");
     const profileDetails = document.getElementById(
@@ -7946,6 +8120,12 @@
     renderReviewerProfileAccessStatus(response.accountStatus);
     const pictureUrl = getReviewerProfilePictureUrl(response.picture);
     reviewerProfilePictureUrl = pictureUrl;
+    renderStudentPortalWelcome(
+      displayName || email,
+      email,
+      pictureUrl,
+      response.lastName,
+    );
     [profilePicture, headerProfilePicture].forEach((image) => {
       if (!image) return;
       image.onerror = () => {
@@ -8551,6 +8731,7 @@
       headerProfilePicture.removeAttribute("src");
     }
     if (headerProfileIcon) headerProfileIcon.hidden = false;
+    renderStudentPortalWelcome("", "");
     setReviewerAuthStatus("Use Google to sign in and request access.");
     document
       .getElementById("resource-portal-status")

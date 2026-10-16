@@ -1,9 +1,22 @@
 # Changelog
 
+## 26.10.16-51 - 2026-10-16
+
+### Improved
+
+- Add a responsive Student Portal welcome banner with profile details, adjustable
+  visibility, and a saved show/hide preference.
+- Center the banner when it stacks above the portal card, shorten long names
+  when needed, and refine dashboard spacing.
+
 ## 26.10.16-50 - 2026-10-16
 
 ### Improved
 
+- Add an account-aware welcome panel beside the Student Portal entry on the
+  dashboard, center it whenever it stacks above the portal entry, allow its
+  visibility choice to persist, show full names when they fit and last names
+  when space is short, and clarify its Syllabus, Modules, and Reviewers subtitle.
 - Shorten the reviewer enrollment action to `Submit`.
 - Add Date and Time account-creation columns to `ACCOUNTS`, populate the first
   available blank account row, and preserve creation times when profiles change.

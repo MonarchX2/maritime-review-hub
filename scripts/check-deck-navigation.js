@@ -351,6 +351,51 @@ assert.match(
   /<section id="view-dashboard"[^>]*>\s*<div class="student-portal-deck-grid">[\s\S]*?<button[\s\S]*?class="student-portal-deck deck-card"[\s\S]*?onclick="navigate\('resources'\)"[\s\S]*?aria-label="Open Student Portal"[\s\S]*?<span class="student-portal-deck-title">STUDENT PORTAL<\/span>[\s\S]*?<\/button>[\s\S]*?<\/div>\s*<div\s+id="deck-not-found-notice"/,
   "the Student Portal deck should be the first item at the top of the dashboard",
 );
+assert.match(
+  indexSource,
+  /id="student-portal-welcome-name"[\s\S]*?aria-label="Welcome, Guest\."[\s\S]*?>\s*Welcome, Guest\.\s*<\/h1>[\s\S]*?<a\s+id="student-portal-welcome-signin"[\s\S]*?class="student-portal-welcome-signin"[\s\S]*?onclick="navigate\('resources'\); return false;"[\s\S]*?>\s*Sign in<\/a\s*>[\s\S]*?id="student-portal-welcome-email"/,
+  "the dashboard should show the Guest welcome with a Sign in link to the portal",
+);
+assert.match(
+  indexSource,
+  /id="student-portal-welcome-picture"[\s\S]*?<span class="student-portal-deck-description">\s*Syllabus, Modules, and Reviewers/,
+  "the dashboard should show a profile picture and requested Student Portal subtitle",
+);
+assert.match(
+  indexSource,
+  /id="student-portal-welcome-toggle"[^>]*aria-controls="student-portal-welcome"[^>]*aria-expanded="true"/,
+  "the welcome banner should provide an accessible show/hide control",
+);
+assert.match(
+  appCoreSource,
+  /STUDENT_PORTAL_WELCOME_HIDDEN_KEY[\s\S]*?function setStudentPortalWelcomeHidden\(hidden, persist = false\)[\s\S]*?localStorage\.setItem\([\s\S]*?function initializeStudentPortalWelcome\(\)[\s\S]*?localStorage\.getItem\(/,
+  "the welcome banner visibility choice should persist across reloads",
+);
+assert.match(
+  appCoreSource,
+  /function updateStudentPortalWelcomeLayout\(\)[\s\S]*?getBoundingClientRect\(\)[\s\S]*?overlapsVertically[\s\S]*?container\.classList\.toggle\("is-stacked", !isSideBySide\)/,
+  "welcome centering should respond to whether the portal and banner actually share a row",
+);
+assert.match(
+  stylesSource,
+  /\.student-portal-welcome-container\.is-stacked \.student-portal-welcome\s*\{[^}]*flex-direction:\s*column;[^}]*gap:\s*0\.5rem;[^}]*padding-bottom:\s*0;[^}]*text-align:\s*center;[\s\S]*?\.student-portal-welcome-container\.is-stacked \.student-portal-welcome-avatar\s*\{[^}]*width:\s*7rem;[^}]*height:\s*7rem;/,
+  "a stacked welcome profile should be centered with reduced spacing before its visibility control",
+);
+assert.match(
+  appCoreSource,
+  /Show Welcome Banner/,
+  "the hidden-banner action should say Show Welcome Banner",
+);
+assert.match(
+  appCoreSource,
+  /function updateStudentPortalWelcomeName\(\)[\s\S]*?heading\.scrollWidth > heading\.clientWidth[\s\S]*?heading\.textContent = `Welcome, \$\{lastName\}\.`[\s\S]*?function renderStudentPortalWelcome\([\s\S]*?lastName = ""[\s\S]*?response\.lastName/,
+  "the welcome heading should use the full name when it fits and the last name when space is short",
+);
+assert.match(
+  stylesSource,
+  /\.student-portal-welcome-copy h1\s*\{[^}]*width:\s*100%;[^}]*white-space:\s*nowrap;/,
+  "the welcome name should stay on one line so its available space can be measured",
+);
 assert.doesNotMatch(
   indexSource,
   /<span class="student-portal-deck-action"[^>]*>[\s\S]*?Open portal/,
@@ -358,13 +403,28 @@ assert.doesNotMatch(
 );
 assert.match(
   stylesSource,
-  /\.student-portal-deck-grid\s*\{[^}]*display:\s*grid;[^}]*gap:\s*1rem;[^}]*margin-block:\s*1rem;[\s\S]*?\.student-portal-deck\s*\{[^}]*width:\s*100%;[^}]*gap:\s*0\.75rem;[^}]*padding:\s*0\.75rem 1rem;[\s\S]*?background:\s*#fff;[\s\S]*?\.student-portal-deck-icon\s*\{[^}]*width:\s*2\.5rem;[^}]*height:\s*2\.5rem;[\s\S]*?\.dark \.student-portal-deck\s*\{[\s\S]*?background:\s*#1f2937;/,
+  /\.student-portal-deck-grid\s*\{[^}]*display:\s*grid;[^}]*gap:\s*1rem;[^}]*margin-block:\s*-0\.5rem 1rem;[\s\S]*?\.student-portal-deck\s*\{[^}]*width:\s*100%;[^}]*gap:\s*0\.75rem;[^}]*padding:\s*0\.75rem 1rem;[\s\S]*?background:\s*#fff;[\s\S]*?\.student-portal-deck-icon\s*\{[^}]*width:\s*2\.5rem;[^}]*height:\s*2\.5rem;[\s\S]*?\.dark \.student-portal-deck\s*\{[\s\S]*?background:\s*#1f2937;/,
   "the Student Portal deck should use compact spacing and match the dashboard's neutral light and dark styling",
+);
+assert.match(
+  stylesSource,
+  /@media \(min-width: 48rem\)\s*\{\s*\.student-portal-deck-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;[^}]*gap:\s*0\.5rem;[\s\S]*?\.student-portal-deck\s*\{[^}]*width:\s*fit-content;[^}]*flex-direction:\s*row-reverse;[^}]*justify-self:\s*end;/,
+  "the wide-screen portal button should right-align with its icon on the right and reduced spacing",
+);
+assert.match(
+  stylesSource,
+  /@media \(min-width: 48rem\)\s*\{\s*\.student-portal-deck-grid\s*\{[^}]*margin-top:\s*-1\.5rem;/,
+  "the wide-screen Student Portal row should reduce the main-content top gap",
 );
 assert.doesNotMatch(
   stylesSource.match(/\.student-portal-deck\s*\{([^}]*)\}/)?.[1] ?? "",
   /min-height:\s*8rem/,
   "the Student Portal deck should grow to its content instead of retaining excess minimum height",
+);
+assert.match(
+  stylesSource.match(/\.student-portal-deck\s*\{([^}]*)\}/)?.[1] ?? "",
+  /align-self:\s*center;/,
+  "the Student Portal background should size to its own content instead of stretching with the welcome toggle",
 );
 assert.match(
   appCoreSource,
