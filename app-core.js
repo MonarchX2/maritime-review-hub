@@ -6002,6 +6002,7 @@
   let reviewerIdentityToken = "";
   let reviewerAuthorizedEmail = "";
   let reviewerPendingEnrollmentToken = "";
+  let reviewerAuthGeneration = 0;
   let reviewerProfilePictureUrl = "";
   let reviewerProfileEditing = false;
   let reviewerDashboardRequestGeneration = 0;
@@ -6120,6 +6121,20 @@
     ].join("-");
   }
 
+  const resourceDashboardHelp = {
+    SYLLABUS:
+      "Choose a syllabus link to open its course PDF. When available, use Year and Semester to narrow the list.",
+    MODULES:
+      "Open a course folder or resource from the table. When available, narrow by Year and Semester; use Category to choose an exam phase. All shows every available phase.",
+    REVIEWERS:
+      "Sign in with an approved Google account to access reviewer resources. New accounts need administrator approval. Use Category to show all materials or one exam phase.",
+  };
+
+  function updateResourceDashboardHelp(tabName) {
+    const help = document.getElementById("resource-dashboard-help");
+    if (help) help.textContent = resourceDashboardHelp[tabName] || "";
+  }
+
   function openResourceDashboardTab(tabName) {
     if (!["MODULES", "REVIEWERS", "SYLLABUS", "PROFILE"].includes(tabName))
       return false;
@@ -6135,6 +6150,7 @@
     }
 
     resourceDashboardActiveTab = tabName;
+    updateResourceDashboardHelp(tabName);
     const modulesNav = document.getElementById(
       "resource-dashboard-modules-nav",
     );
@@ -6240,6 +6256,7 @@
 
   function renderResourceDashboardTab() {
     const tab = resourceDashboardData?.[resourceDashboardActiveTab];
+    updateResourceDashboardHelp(resourceDashboardActiveTab);
     const status = document.getElementById("resource-portal-status");
     const tableHead = document.getElementById(
       "resource-dashboard-table-head",
@@ -6463,7 +6480,7 @@
 
     visibleRows.forEach(({ values, rowIndex }) => {
       const row = document.createElement("tr");
-      populatedColumnIndices.forEach((index) => {
+      visibleColumnIndices.forEach((index) => {
         const column = tab.columns[index];
         const cell = document.createElement("td");
         const columnName = String(column).trim().toLowerCase();
@@ -6712,6 +6729,14 @@
         globalScope.google.accounts.id.initialize({
           client_id: reviewerAuthConfig.clientId,
           callback: (credentialResponse) => {
+            const credential =
+              typeof credentialResponse?.credential === "string"
+                ? credentialResponse.credential.trim()
+                : "";
+            if (!credential) {
+              void completeReviewerSignIn("");
+              return;
+            }
             try {
               setExplicitReviewerSignOut(false);
             } catch (error) {
@@ -6720,7 +6745,7 @@
                 error,
               );
             }
-            void completeReviewerSignIn(credentialResponse?.credential || "");
+            void completeReviewerSignIn(credential);
           },
           auto_select: !hasExplicitReviewerSignOut(),
           button_auto_select: !hasExplicitReviewerSignOut(),
@@ -6976,14 +7001,18 @@
   function scheduleReviewerStatusPolling(idToken) {
     stopReviewerStatusPolling();
     if (!idToken) return;
+    const authGeneration = reviewerAuthGeneration;
     reviewerStatusPollTimer = globalScope.setTimeout(async () => {
       reviewerStatusPollTimer = null;
       if (
-        reviewerStatusPollInFlight ||
+        authGeneration !== reviewerAuthGeneration ||
         (idToken !== reviewerPendingEnrollmentToken &&
           idToken !== reviewerIdentityToken)
-      )
+      ) return;
+      if (reviewerStatusPollInFlight) {
+        scheduleReviewerStatusPolling(idToken);
         return;
+      }
       reviewerStatusPollInFlight = true;
       try {
         let response = await globalScope.AppNetwork.callBackend(
@@ -6991,12 +7020,14 @@
           { timeoutMs: 15000, maxRetries: 0 },
         );
         if (
-          idToken !== reviewerPendingEnrollmentToken &&
-          idToken !== reviewerIdentityToken
+          authGeneration !== reviewerAuthGeneration ||
+          (idToken !== reviewerPendingEnrollmentToken &&
+            idToken !== reviewerIdentityToken)
         )
           return;
         applyReviewerAccountStatus(response, idToken, true);
       } catch (error) {
+        if (authGeneration !== reviewerAuthGeneration) return;
         const authStatus = document.getElementById("resource-reviewer-auth-status");
         if (error?.code === "UNAUTHORIZED") {
           signOutReviewer(false);
@@ -7022,8 +7053,9 @@
       } finally {
         reviewerStatusPollInFlight = false;
         if (
-          idToken === reviewerPendingEnrollmentToken ||
-          idToken === reviewerIdentityToken
+          authGeneration === reviewerAuthGeneration &&
+          (idToken === reviewerPendingEnrollmentToken ||
+            idToken === reviewerIdentityToken)
         )
           scheduleReviewerStatusPolling(idToken);
       }
@@ -7040,6 +7072,7 @@
           "Google sign-in did not return a credential.";
       return false;
     }
+    const authGeneration = ++reviewerAuthGeneration;
     stopReviewerStatusPolling();
     reviewerIdentityToken = "";
     reviewerAuthorizedEmail = "";
@@ -7054,10 +7087,16 @@
         { type: "verify_reviewer_access", idToken, eventId: createResourceEventId() },
         { timeoutMs: 30000, maxRetries: 0 },
       );
+      if (
+        authGeneration !== reviewerAuthGeneration ||
+        reviewerPendingEnrollmentToken !== idToken
+      )
+        return false;
       const approved = applyReviewerAccountStatus(response, idToken);
       scheduleReviewerStatusPolling(idToken);
       return approved;
     } catch (error) {
+      if (authGeneration !== reviewerAuthGeneration) return false;
       signOutReviewer(false);
       if (authStatus)
         authStatus.textContent = String(
@@ -7095,6 +7134,8 @@
         authStatus.textContent = "Enter your last name and first name.";
       return false;
     }
+    const authGeneration = ++reviewerAuthGeneration;
+    stopReviewerStatusPolling();
     if (submitButton) submitButton.disabled = true;
     if (authStatus)
       authStatus.textContent =
@@ -7111,6 +7152,12 @@
         },
         { timeoutMs: 30000, maxRetries: 0 },
       );
+      if (
+        authGeneration !== reviewerAuthGeneration ||
+        (enrollmentToken !== reviewerPendingEnrollmentToken &&
+          enrollmentToken !== reviewerIdentityToken)
+      )
+        return false;
       if (
         response?.status !== "success" ||
         !["FALSE", "TRUE"].includes(response.accountStatus)
@@ -7131,6 +7178,7 @@
       scheduleReviewerStatusPolling(enrollmentToken);
       return true;
     } catch (error) {
+      if (authGeneration !== reviewerAuthGeneration) return false;
       if (authStatus)
         authStatus.textContent =
           "Unable to submit account details: " +
@@ -7142,6 +7190,12 @@
       return false;
     } finally {
       if (submitButton) submitButton.disabled = false;
+      if (
+        authGeneration === reviewerAuthGeneration &&
+        (enrollmentToken === reviewerPendingEnrollmentToken ||
+          enrollmentToken === reviewerIdentityToken)
+      )
+        scheduleReviewerStatusPolling(enrollmentToken);
     }
   }
 
@@ -7172,6 +7226,7 @@
   }
 
   function signOutReviewer(explicit = true) {
+    reviewerAuthGeneration += 1;
     let signOutPreferenceSaved = true;
     if (explicit) {
       try {

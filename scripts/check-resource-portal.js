@@ -18,6 +18,11 @@ assert.match(
   /id="resource-dashboard-reviewers-nav"[^>]*onclick="openResourceDashboardTab\('REVIEWERS'\)"[^>]*aria-label="Reviewers — sign in with Google"[^>]*title="Sign in with Google to access reviewer resources"[\s\S]*?id="resource-dashboard-reviewers-lock"/,
   "the Reviewers tab should remain clickable and direct signed-out users to Profile",
 );
+assert.match(
+  index,
+  /id="resource-dashboard-reviewers-nav"[\s\S]*?<i class="fa-solid fa-clipboard-check" aria-hidden="true"><\/i>/,
+  "the Reviewers tab should use a clear review-material icon",
+);
 assert.doesNotMatch(
   index.match(/id="resource-dashboard-reviewers-nav"[^>]*>/)?.[0] || "",
   /\baria-disabled\b|\bdisabled\b/,
@@ -93,7 +98,7 @@ assert.match(
 );
 assert.match(
   index,
-  /resource-dashboard-table-scroll[\s\S]*?class="resource-dashboard-update-note">[\s\S]*?File updates may be delayed by up to 3 minutes/,
+  /resource-dashboard-table-scroll[\s\S]*?class="resource-dashboard-update-note">[\s\S]*?Changes in Google Drive may take up to 3 minutes to appear\.\s*Refresh to check for updates\./,
   "the dashboard should show a centered bottom note inside the card explaining file update delays",
 );
 assert.match(

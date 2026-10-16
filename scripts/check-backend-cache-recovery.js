@@ -23,7 +23,23 @@ const context = {
     },
   },
 };
-const currentClientVersion = "mrh-release-26.10.15-16";
+const currentReleaseVersion = fs
+  .readFileSync("CHANGELOG.md", "utf8")
+  .match(/^## (\d+\.\d+\.\d+-\d+) - /m)?.[1];
+const backendSource = fs.readFileSync("backend/main.js", "utf8");
+const minimumReleaseVersion = backendSource.match(
+  /const MINIMUM_SUPPORTED_CLIENT_VERSION = "([^"]+)";/,
+)?.[1];
+assert.ok(currentReleaseVersion, "the current release must be listed in CHANGELOG.md");
+assert.ok(minimumReleaseVersion, "the backend must define a minimum client release");
+const minimumReleaseParts = /^(\d+\.\d+\.\d+)-(\d+)$/.exec(
+  minimumReleaseVersion,
+);
+assert.ok(minimumReleaseParts, "the backend minimum must be a date-based release");
+const belowMinimumReleaseVersion = `${minimumReleaseParts[1]}-${
+  Number(minimumReleaseParts[2]) - 1
+}`;
+const currentClientVersion = `mrh-release-${currentReleaseVersion}`;
 vm.createContext(context);
 vm.runInContext(
   fs.readFileSync("backend/main.js", "utf8"),
@@ -39,27 +55,24 @@ assert.equal(
 assert.equal(
   context.isSupportedClientVersion(currentClientVersion),
   true,
-  "the current source release must pass the backend version gate",
+  "the current changelog release must pass the backend version gate",
 );
 assert.equal(
-  context.isSupportedClientVersion("mrh-26.10.15-16-89f6603f02cb"),
+  context.isSupportedClientVersion(
+    `mrh-${currentReleaseVersion}-89f6603f02cb`,
+  ),
   true,
-  "the requested deployed release must pass the backend version gate",
+  "the current deployed release with a commit suffix must pass the backend version gate",
 );
 assert.equal(
-  context.isSupportedClientVersion("mrh-26.10.16-1-c1c3af44770c"),
-  true,
-  "a later date-based release must pass the backend version gate",
-);
-assert.equal(
-  context.isSupportedClientVersion("mrh-26.10.15-14-89f6603f02cb"),
+  context.isSupportedClientVersion(`mrh-${minimumReleaseVersion}`),
   true,
   "the minimum supported release must pass the backend version gate",
 );
 assert.equal(
-  context.isSupportedClientVersion("mrh-26.10.15-13-89f6603f02cb"),
+  context.isSupportedClientVersion(`mrh-${belowMinimumReleaseVersion}`),
   false,
-  "releases below the minimum must be rejected by the backend version gate",
+  "the immediately preceding date-based release must be rejected",
 );
 assert.equal(
   context.isSupportedClientVersion(""),

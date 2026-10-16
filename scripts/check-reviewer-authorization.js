@@ -497,6 +497,53 @@ assert.equal(
   "an administrator-approved account should be authorized",
 );
 
+tokenClaims = {
+  ...validClaims(),
+  aud: "another-client.apps.googleusercontent.com",
+};
+assert.equal(
+  post(
+    authRequest("verify_reviewer_access", "wrong-audience-token", eventId("f")),
+  ).code,
+  "UNAUTHORIZED",
+  "Google credentials for another OAuth client must be rejected",
+);
+tokenClaims = { ...validClaims(), iss: "https://attacker.example.com" };
+assert.equal(
+  post(
+    authRequest("verify_reviewer_access", "wrong-issuer-token", eventId("f")),
+  ).code,
+  "UNAUTHORIZED",
+  "Google credentials from an unexpected issuer must be rejected",
+);
+tokenClaims = { ...validClaims(), email_verified: "false" };
+assert.equal(
+  post(
+    authRequest("verify_reviewer_access", "unverified-email-token", eventId("f")),
+  ).code,
+  "UNAUTHORIZED",
+  "Google credentials without a verified email must be rejected",
+);
+tokenClaims = {
+  ...validClaims(),
+  exp: String(Math.floor(Date.now() / 1000) - 1),
+};
+assert.equal(
+  post(
+    authRequest("verify_reviewer_access", "expired-google-token", eventId("f")),
+  ).code,
+  "UNAUTHORIZED",
+  "expired Google credentials must be rejected",
+);
+tokenClaims = null;
+assert.equal(
+  post(
+    authRequest("verify_reviewer_access", "malformed-google-response-token", eventId("f")),
+  ).code,
+  "AUTH_PROVIDER_UNAVAILABLE",
+  "malformed successful responses from Google must be reported as provider failures",
+);
+
 tokenClaims = validClaims("new-reviewer@example.com");
 const notFound = post(
   authRequest("verify_reviewer_access", "new-user-token", eventId("2")),
@@ -827,6 +874,16 @@ assert.equal(
   }).accountStatus,
   "NOT_FOUND",
   "the alternate Google token-info endpoint should recover from an outage",
+);
+tokenClaims = validClaims("unavailable@example.com");
+tokenFetchFailures = 2;
+assert.equal(
+  post({
+    type: "get_reviewer_account_status",
+    idToken: "provider-unavailable-token",
+  }).code,
+  "AUTH_PROVIDER_UNAVAILABLE",
+  "temporary outages at both Google verification endpoints must fail explicitly",
 );
 
 console.log("Reviewer authorization and approval lifecycle checks passed.");

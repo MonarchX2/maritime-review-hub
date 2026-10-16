@@ -1430,9 +1430,11 @@ button:active:not(:disabled) {
 .resource-portal-sidebar {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--resource-dashboard-space-wide);
   min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
   padding: var(--resource-dashboard-space) 1rem;
   border-bottom: 1px solid #e2e8f0;
   color: #334155;
@@ -1512,6 +1514,7 @@ button:active:not(:disabled) {
 
 .resource-portal-nav-item {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   gap: var(--resource-dashboard-space);
@@ -1527,6 +1530,7 @@ button:active:not(:disabled) {
   font-size: var(--resource-dashboard-font);
   font-weight: 600;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .resource-dashboard-return {
@@ -1801,6 +1805,18 @@ button:active:not(:disabled) {
   background: #fff;
 }
 
+.resource-dashboard-help {
+  margin: 0 0 var(--resource-dashboard-space-wide);
+  border-left: 3px solid #94a3b8;
+  border-radius: 0.25rem;
+  padding: var(--resource-dashboard-space-wide) 1rem;
+  color: #475569;
+  background: #f8fafc;
+  font-size: var(--resource-dashboard-font-small);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .resource-dashboard-filters {
   display: flex;
   min-width: 0;
@@ -1838,7 +1854,7 @@ button:active:not(:disabled) {
 }
 
 #resource-dashboard-filter-category {
-  width: 8.5rem;
+  width: 7.25rem;
 }
 
 .resource-dashboard-control input,
@@ -2150,7 +2166,7 @@ button:active:not(:disabled) {
   width: max-content;
   white-space: nowrap;
   border-bottom: 1px solid #e2e8f0;
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 0.5rem;
   vertical-align: middle;
 }
 
@@ -2606,8 +2622,9 @@ button:active:not(:disabled) {
   .resource-portal-sidebar {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: var(--resource-dashboard-space);
+    overflow-x: auto;
     padding: var(--resource-dashboard-space) var(--resource-dashboard-space-wide);
   }
 

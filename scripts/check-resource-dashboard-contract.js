@@ -72,6 +72,31 @@ assert.match(
 );
 assert.match(
   appCore,
+  /let reviewerAuthGeneration = 0;[\s\S]*?async function completeReviewerSignIn\(idToken\)[\s\S]*?const authGeneration = \+\+reviewerAuthGeneration;[\s\S]*?authGeneration !== reviewerAuthGeneration[\s\S]*?reviewerPendingEnrollmentToken !== idToken[\s\S]*?applyReviewerAccountStatus\(response, idToken\)/,
+  "out-of-order sign-in responses must not replace the currently selected Google account",
+);
+assert.match(
+  appCore,
+  /function scheduleReviewerStatusPolling\(idToken\)[\s\S]*?const authGeneration = reviewerAuthGeneration;[\s\S]*?authGeneration !== reviewerAuthGeneration[\s\S]*?scheduleReviewerStatusPolling\(idToken\);[\s\S]*?applyReviewerAccountStatus\(response, idToken, true\)/,
+  "approval polling should ignore stale auth responses and reschedule if another check is in flight",
+);
+assert.match(
+  appCore,
+  /async function requestReviewerEnrollment\(event\)[\s\S]*?const authGeneration = \+\+reviewerAuthGeneration;\s*stopReviewerStatusPolling\(\)[\s\S]*?authGeneration !== reviewerAuthGeneration[\s\S]*?applyReviewerAccountStatus\([\s\S]*?finally \{[\s\S]*?scheduleReviewerStatusPolling\(enrollmentToken\)/,
+  "profile submission should invalidate stale approval polls and resume polling after completion",
+);
+assert.match(
+  appCore,
+  /function signOutReviewer\(explicit = true\) \{\s*reviewerAuthGeneration \+= 1;/,
+  "sign-out should invalidate outstanding sign-in and profile requests",
+);
+assert.match(
+  appCore,
+  /callback: \(credentialResponse\) => \{\s*const credential =[\s\S]*?if \(!credential\) \{\s*void completeReviewerSignIn\(""\);\s*return;\s*\}[\s\S]*?setExplicitReviewerSignOut\(false\)[\s\S]*?completeReviewerSignIn\(credential\)/,
+  "the Google callback should only clear saved sign-out state after receiving a credential",
+);
+assert.match(
+  appCore,
   /async function requestReviewerEnrollment\(event\)[\s\S]*?type: "request_reviewer_enrollment"[\s\S]*?!\["FALSE", "TRUE"\]\.includes\(response\.accountStatus\)/,
   "new and corrected profiles should be submitted pending administrator review",
 );
@@ -146,6 +171,26 @@ assert.match(
   "the category dropdown should offer All, PRELIMS, MIDTERMS, and FINALS",
 );
 assert.match(
+  indexHtml,
+  /id="resource-dashboard-help"[\s\S]*?class="resource-dashboard-help"[\s\S]*?aria-describedby="resource-dashboard-help"/,
+  "dashboard filters should be associated with a visible contextual explanation",
+);
+assert.match(
+  appCore,
+  /const resourceDashboardHelp = \{[\s\S]*?SYLLABUS:[\s\S]*?MODULES:[\s\S]*?REVIEWERS:[\s\S]*?function updateResourceDashboardHelp\(tabName\)[\s\S]*?help\.textContent = resourceDashboardHelp\[tabName\] \|\| ""/,
+  "each resource tab should display its own short usage explanation",
+);
+assert.match(
+  appCore,
+  /resourceDashboardActiveTab = tabName;\s*updateResourceDashboardHelp\(tabName\)/,
+  "switching dashboard tabs should immediately update the usage explanation",
+);
+assert.match(
+  indexHtml,
+  /Reviewer access requires administrator approval[\s\S]*?change your name, access is paused until the updated details\s*are approved/,
+  "the Profile screen should explain reviewer approval and name-edit behavior",
+);
+assert.match(
   appCore,
   /resourceDashboardSelectedYear = populateTermOptions\([\s\S]*?"3",\s*true,\s*\)/,
   "the year filter should support an all-levels selection",
@@ -182,7 +227,7 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /#resource-dashboard-filter-category\s*\{\s*width:\s*8\.5rem;/,
+  /#resource-dashboard-filter-category\s*\{\s*width:\s*7\.25rem;/,
   "the category dropdown should be wide enough to display phase labels",
 );
 assert.match(
@@ -443,8 +488,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /const populatedColumnIndices = tab\.columns[\s\S]*?nonEmptyRows\.some\([\s\S]*?const visibleColumnIndices =[\s\S]*?visibleColumnIndices\.forEach\(\(columnIndex\) => \{[\s\S]*?tableHead\.appendChild\(headerRow\)/,
-  "dashboard headers should omit columns that are empty across the dataset",
+  /const populatedColumnIndices = tab\.columns[\s\S]*?nonEmptyRows\.some\([\s\S]*?const visibleColumnIndices =[\s\S]*?visibleColumnIndices\.forEach\(\(columnIndex\) => \{[\s\S]*?tableHead\.appendChild\(headerRow\)[\s\S]*?visibleRows\.forEach\(\(\{ values, rowIndex \}\) => \{\s*const row = document\.createElement\("tr"\);\s*visibleColumnIndices\.forEach\(\(index\) => \{/,
+  "dashboard headers and cells should use the same populated and category-filtered columns",
 );
 assert.match(
   appCore,
@@ -513,6 +558,11 @@ assert.match(
 );
 assert.match(
   resourceStyles,
+  /\.resource-dashboard-help\s*\{[^}]*border-left:\s*3px solid #94a3b8;[^}]*font-size:\s*var\(--resource-dashboard-font-small\);[^}]*line-height:\s*1\.5;/,
+  "contextual dashboard notes should be readable but visually restrained",
+);
+assert.match(
+  resourceStyles,
   /\.resource-dashboard-layout\s*\{[\s\S]*?--resource-dashboard-space-tight:\s*0\.25rem;[\s\S]*?--resource-dashboard-space:\s*0\.5rem;[\s\S]*?--resource-dashboard-space-wide:\s*0\.75rem;/,
   "the Resource Dashboard should define a consistent spacing scale",
 );
@@ -533,8 +583,18 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-table th,\s*\.resource-dashboard-table td\s*\{[^}]*padding:\s*0\.75rem 1rem;/,
-  "dashboard table cells should have equal, consistent spacing",
+  /\.resource-portal-sidebar\s*\{[^}]*flex-wrap:\s*nowrap;[^}]*overflow-x:\s*auto;/,
+  "dashboard tabs should remain on one horizontally scrollable row",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-nav-item\s*\{[^}]*flex:\s*0 0 auto;[^}]*white-space:\s*nowrap;/,
+  "dashboard tab labels should not shrink or wrap on small screens",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-table th,\s*\.resource-dashboard-table td\s*\{[^}]*padding:\s*0\.75rem 0\.5rem;/,
+  "dashboard table cells should keep comfortable row spacing with compact column spacing",
 );
 assert.match(
   resourceStyles,

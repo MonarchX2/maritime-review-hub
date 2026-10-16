@@ -1,5 +1,16 @@
 # Changelog
 
+## 26.10.16-34 - 2026-10-16
+
+### Changed
+- Add contextual usage notes and filter explanations throughout the Resource Dashboard.
+- Make the Category filter more compact and hide phase columns that are not selected.
+- Reduce horizontal spacing between resource table columns.
+- Keep Resource Dashboard tabs on one row on small screens, with horizontal scrolling when needed.
+- Use a clipboard-check icon for the Reviewers tab.
+- Ignore stale Google sign-in, approval-poll, and profile-submission responses after account state changes.
+- Return a clear provider-unavailable response when Google returns malformed token data.
+
 ## 26.10.16-33 - 2026-10-16
 
 ### Fixed

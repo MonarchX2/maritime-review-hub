@@ -652,7 +652,7 @@
                 aria-label="Reviewers — sign in with Google"
                 title="Sign in with Google to access reviewer resources"
               >
-                <i class="fa-solid fa-note-sticky" aria-hidden="true"></i>
+                <i class="fa-solid fa-clipboard-check" aria-hidden="true"></i>
                 Reviewers
                 <i
                   id="resource-dashboard-reviewers-lock"
@@ -686,17 +686,30 @@
               aria-label="Resource dashboard"
             >
               <div id="resource-dashboard-content" hidden>
+                <p
+                  id="resource-dashboard-help"
+                  class="resource-dashboard-help"
+                  role="note"
+                ></p>
                 <div class="resource-portal-toolbar">
                   <div class="resource-dashboard-filters">
                     <label class="resource-dashboard-control">
                       <span>Year</span>
-                      <select id="resource-dashboard-filter-year">
+                      <select
+                        id="resource-dashboard-filter-year"
+                        aria-describedby="resource-dashboard-help"
+                        title="Show resources for a year level, or choose All."
+                      >
                         <option value="3">3</option>
                       </select>
                     </label>
                     <label class="resource-dashboard-control">
                       <span>Semester</span>
-                      <select id="resource-dashboard-filter-semester">
+                      <select
+                        id="resource-dashboard-filter-semester"
+                        aria-describedby="resource-dashboard-help"
+                        title="Show resources from a semester, or choose All."
+                      >
                         <option value="1">1</option>
                       </select>
                     </label>
@@ -706,7 +719,11 @@
                       hidden
                     >
                       <span>Category</span>
-                      <select id="resource-dashboard-filter-category">
+                      <select
+                        id="resource-dashboard-filter-category"
+                        aria-describedby="resource-dashboard-help"
+                        title="Show resources from all exam phases or one selected phase."
+                      >
                         <option value="all">All</option>
                         <option value="PRELIMS">PRELIMS</option>
                         <option value="MIDTERMS">MIDTERMS</option>
@@ -737,7 +754,8 @@
                   </table>
                 </div>
                 <p class="resource-dashboard-update-note">
-                  File updates may be delayed by up to 3 minutes.
+                  Changes in Google Drive may take up to 3 minutes to appear.
+                  Refresh to check for updates.
                 </p>
               </div>
               <section
@@ -752,6 +770,11 @@
                       <h2>Profile</h2>
                     </div>
                   </div>
+                  <p class="resource-profile-form-note">
+                    Reviewer access requires administrator approval. If you
+                    change your name, access is paused until the updated details
+                    are approved.
+                  </p>
                   <p
                     id="resource-reviewer-auth-status"
                     class="resource-profile-status"
