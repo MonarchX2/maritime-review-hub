@@ -1,5 +1,16 @@
 # Changelog
 
+## 26.10.16-24 - 2026-10-16
+
+### Added
+- Require administrator approval before reviewer resources are available; pending users stay locked, and denied users can correct their name and resubmit.
+- Refresh account approval while users are signed in so spreadsheet changes take effect without a page reload.
+
+### Changed
+- Remove device identity from account matching, access-log columns, and frontend requests; migrate and deduplicate legacy account/log rows during spreadsheet setup.
+- Format new access-log timestamps in Philippine local time and use targeted account lookups for status checks.
+- Open the Resource Dashboard on Profile and confirm before exiting it.
+
 ## 26.10.16-23 - 2026-10-16
 
 ### Fixed

@@ -52,18 +52,8 @@ assert.doesNotMatch(
 );
 assert.match(
   appCore,
-  /async function recoverReviewerDeviceIdentity\(idToken\)[\s\S]*?const deviceIdentity = getResourceDeviceIdentity\(\)[\s\S]*?deviceIdentity \? \{ deviceIdentity \} : \{\}[\s\S]*?response\.deviceIdentity !== deviceIdentity[\s\S]*?completeReviewerSignIn\(idToken, true\)/,
-  "a verified existing account should register and use this browser's persistent device identity",
-);
-assert.doesNotMatch(
-  appCore,
-  /function updateResourceDeviceIdentityDisplay|resource-reviewer-device-id|resource-reviewer-copy-device-id/,
-  "frontend code must not display or copy the device ID",
-);
-assert.match(
-  appCore,
-  /async function completeReviewerSignIn[\s\S]*?const deviceIdentity = getResourceDeviceIdentity\(\)[\s\S]*?recoverReviewerDeviceIdentity\(idToken\)/,
-  "sign-in should use the current browser's persistent ID and register a new one after a storage reset",
+  /function applyReviewerAccountStatus\(response, idToken\)[\s\S]*?accountStatus === "TRUE"[\s\S]*?reviewerIdentityToken = idToken[\s\S]*?accountStatus === "NOT_FOUND" \|\| accountStatus === "DENIED"/,
+  "only TRUE accounts should receive reviewer access, while denied and new users can submit profile details",
 );
 assert.match(
   appCore,
@@ -72,13 +62,18 @@ assert.match(
 );
 assert.match(
   appCore,
-  /async function loadResourceDashboard\(\)[\s\S]*?const deviceIdentity = getResourceDeviceIdentity\(false\)[\s\S]*?type: "get_resource_dashboard",\s*\.\.\.\(deviceIdentity \? \{ deviceIdentity \} : \{\}\)/,
-  "opening the public dashboard must not create a device identity as a side effect",
+  /function scheduleReviewerStatusPolling\(idToken\)[\s\S]*?type: "get_reviewer_account_status"[\s\S]*?REVIEWER_STATUS_POLL_INTERVAL_MS/,
+  "the page should poll the server so administrator approval changes take effect while open",
 );
 assert.match(
   appCore,
-  /async function requestReviewerEnrollment\(event\)[\s\S]*?deviceIdentity: getResourceDeviceIdentity\(\)/,
-  "a device identity should only be created after a new user submits an enrollment request",
+  /async function requestReviewerEnrollment\(event\)[\s\S]*?type: "request_reviewer_enrollment"[\s\S]*?!\["FALSE", "TRUE"\]\.includes\(response\.accountStatus\)/,
+  "new and corrected profiles should be submitted pending administrator review",
+);
+assert.doesNotMatch(
+  appCore,
+  /deviceIdentity|getResourceDeviceIdentity/,
+  "frontend requests and state should no longer use device identity",
 );
 assert.match(
   appCore,
@@ -212,8 +207,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /profileName\.textContent = profileDisplayName[\s\S]*?profileEmail\.textContent = response\.email[\s\S]*?response\.picture[\s\S]*?return openResourceDashboardTab\("PROFILE"\)/,
-  "successful sign-in should populate the profile picture, name, and email and remain in Profile",
+  /function populateReviewerProfile\(response\)[\s\S]*?profileName\.textContent = displayName \|\| email[\s\S]*?profileEmail\.textContent = email[\s\S]*?image\.src = pictureUrl/,
+  "successful sign-in should populate the profile picture, name, and email",
 );
 assert.match(
   indexHtml,
@@ -227,7 +222,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /headerProfilePicture[\s\S]*?headerProfilePicture\.src = pictureUrl[\s\S]*?headerProfileIcon\.hidden = Boolean\(pictureUrl\)[\s\S]*?function signOutReviewer[\s\S]*?headerProfilePicture\.removeAttribute\("src"\)/,
+  /function populateReviewerProfile\(response\)[\s\S]*?headerProfilePicture[\s\S]*?image\.src = pictureUrl[\s\S]*?headerProfileIcon\.hidden = Boolean\(pictureUrl\)[\s\S]*?function signOutReviewer[\s\S]*?headerProfilePicture\.removeAttribute\("src"\)/,
   "the header Profile icon should show the signed-in user's picture and clear it on sign-out",
 );
 assert.match(
@@ -408,7 +403,7 @@ assert.match(
 );
 assert.match(
   network,
-  /log_resource_file_click:\s*\{\s*required:\s*\["resourceArea",\s*"fileName",\s*"fileId"\]/,
+  /log_resource_file_click:\s*\{\s*required:\s*\["eventId",\s*"resourceArea",\s*"fileName",\s*"fileId"\]/,
   "file click logging requests should validate the category, resource name, and Drive ID",
 );
 assert.match(
@@ -498,13 +493,18 @@ assert.match(
 );
 assert.match(
   network,
-  /get_resource_dashboard:\s*\{\s*required:\s*\[\],\s*allowed:\s*\["type",\s*"version",\s*"idToken",\s*"deviceIdentity",\s*"appVersion"\]/,
-  "the backend request validator should allow cached versions and optional module-access identity",
+  /get_resource_dashboard:\s*\{\s*required:\s*\[\],\s*allowed:\s*\["type",\s*"version",\s*"idToken",\s*"eventId",\s*"appVersion"\]/,
+  "dashboard requests should support cached versions and event-level logging",
 );
 assert.match(
   network,
-  /log_module_access:\s*\{\s*required:\s*\["idToken",\s*"deviceIdentity"\]/,
-  "module access logging should require both a verified identity token and device identity",
+  /log_module_access:\s*\{\s*required:\s*\["idToken",\s*"eventId"\]/,
+  "module access logging should require verified identity and a unique event ID",
+);
+assert.match(
+  network,
+  /get_reviewer_account_status:\s*\{\s*required:\s*\["idToken"\]/,
+  "the client should have an authenticated account-status polling endpoint",
 );
 assert.match(
   network,

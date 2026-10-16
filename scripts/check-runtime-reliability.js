@@ -391,8 +391,7 @@ async function checkBackendErrorHandling() {
     "private-resource preview requests should include only the file ID and app version",
   );
 
-  const reviewerDeviceIdentity =
-    "01234567-89ab-4cde-8fab-0123456789ab";
+  const reviewerEventId = "12345678-1234-4123-8123-123456789abc";
   await network.callBackend(
     { type: "get_reviewer_auth_config" },
     { maxRetries: 0 },
@@ -405,34 +404,34 @@ async function checkBackendErrorHandling() {
     {
       type: "verify_reviewer_access",
       idToken: "test-google-id-token",
-      deviceIdentity: reviewerDeviceIdentity,
+      eventId: reviewerEventId,
     },
     { maxRetries: 0 },
   );
   assert.deepEqual(JSON.parse(lastPostBody), {
     type: "verify_reviewer_access",
     idToken: "test-google-id-token",
-    deviceIdentity: reviewerDeviceIdentity,
+    eventId: reviewerEventId,
     appVersion: networkContext.__MRH_APP__.version,
   });
   await network.callBackend(
     {
       type: "log_module_access",
       idToken: "test-google-id-token",
-      deviceIdentity: reviewerDeviceIdentity,
+      eventId: reviewerEventId,
     },
     { maxRetries: 0 },
   );
   assert.deepEqual(JSON.parse(lastPostBody), {
     type: "log_module_access",
     idToken: "test-google-id-token",
-    deviceIdentity: reviewerDeviceIdentity,
+    eventId: reviewerEventId,
     appVersion: networkContext.__MRH_APP__.version,
   });
   await network.callBackend(
     {
       type: "get_resource_dashboard",
-      deviceIdentity: reviewerDeviceIdentity,
+      eventId: reviewerEventId,
       idToken: "test-google-id-token",
       version: "dashboard-version",
     },
@@ -440,7 +439,7 @@ async function checkBackendErrorHandling() {
   );
   assert.deepEqual(JSON.parse(lastPostBody), {
     type: "get_resource_dashboard",
-    deviceIdentity: reviewerDeviceIdentity,
+    eventId: reviewerEventId,
     idToken: "test-google-id-token",
     version: "dashboard-version",
     appVersion: networkContext.__MRH_APP__.version,
@@ -450,12 +449,12 @@ async function checkBackendErrorHandling() {
       {
         type: "verify_reviewer_access",
         idToken: "test-google-id-token",
-        deviceIdentity: "not-a-uuid",
+        eventId: "not-a-uuid",
       },
       { maxRetries: 0 },
     ),
-    /Backend field 'deviceIdentity' must be a UUID/,
-    "malformed device identities should be rejected before sending a request",
+    /Backend field 'eventId' must be a UUID/,
+    "malformed event IDs should be rejected before sending a request",
   );
 
   networkContext.fetch = async () =>

@@ -5,15 +5,49 @@ const vm = require("node:vm");
 
 const properties = new Map();
 const cacheValues = new Map();
-const accountHeaders = [
-  "Email",
-  "Device Identity",
-  "Last Name",
-  "First Name",
-  "Middle Initial",
-  "Active",
+const spreadsheetId = "1234567890123456789012345678901234567890123";
+const oldDeviceId = "01234567-89ab-4cde-8fab-0123456789ab";
+let tokenClaims = {};
+let tokenFetchFailures = 0;
+let spreadsheetTimeZone = "";
+const accountRows = [
+  [
+    "Email",
+    "Device Identity",
+    "Last Name",
+    "First Name",
+    "Middle Initial",
+    "Active",
+  ],
+  ["reviewer@example.com", oldDeviceId, "Reviewer", "Rita", "A", "TRUE"],
 ];
-const logHeaders = [
+const legacyAccountRows = [
+  [
+    "Email",
+    "Device Identity",
+    "Last Name",
+    "First Name",
+    "Middle Initial",
+    "Active",
+  ],
+  [
+    "REVIEWER@example.com",
+    oldDeviceId.toUpperCase(),
+    "Reviewer",
+    "Rita",
+    "A",
+    "TRUE",
+  ],
+  [
+    "second-reviewer@example.com",
+    "11234567-89ab-4cde-8fab-0123456789ab",
+    "Second",
+    "Rae",
+    "",
+    "FALSE",
+  ],
+];
+const oldLogHeaders = [
   "Timestamp",
   "Email",
   "Device Identity",
@@ -22,146 +56,137 @@ const logHeaders = [
   "Middle Initial",
   "Event",
 ];
-const deviceIdentity = "01234567-89ab-4cde-8fab-0123456789ab";
-let accountRows = [
-  accountHeaders,
+const currentLogHeaders = [
+  "Timestamp",
+  "Email",
+  "Last Name",
+  "First Name",
+  "Middle Initial",
+  "Event",
+];
+const reviewerLogs = [
+  oldLogHeaders,
   [
+    "2026-10-01T08:00:00.000Z",
     "reviewer@example.com",
-    deviceIdentity,
+    oldDeviceId,
     "Reviewer",
     "Rita",
     "A",
-    "TRUE",
+    "SIGN_IN:TRUE",
+  ],
+  [
+    "2026-10-01 16:01:00",
+    "reviewer@example.com",
+    oldDeviceId,
+    "Reviewer",
+    "Rita",
+    "A",
+    "ACCESS",
   ],
 ];
-const legacyAccountRows = [
-  accountHeaders,
-  [
-    "REVIEWER@example.com",
-    deviceIdentity.toUpperCase(),
-    "Reviewer",
-    "Rita",
-    "A",
-    "TRUE",
-  ],
-  [
-    "second-reviewer@example.com",
-    "51234567-89ab-4cde-8fab-0123456789ab",
-    "Second",
-    "Rae",
-    "",
-    "TRUE",
-  ],
-  [
-    "reviewer@example.com",
-    "61234567-89ab-4cde-8fab-0123456789ab",
-    "Reviewer",
-    "Rita",
-    "A",
-    "TRUE",
-  ],
-];
-let tokenClaims = {};
-let tokenStatus = 200;
-let tokenFetchCount = 0;
-let tokenFetchFailures = 0;
-let tokenFetchErrorMessage = "";
 const appendedRows = {
   SYLLABUS: [],
   MODULE: [],
   REVIEWERS: [],
   "SIGN-IN": [],
 };
-const scopesRows = [];
-const logSheetRows = {
-  SYLLABUS: [],
-  MODULE: [logHeaders],
-  REVIEWERS: [
-    logHeaders,
-    [
-      "2026-10-01T08:00:00.000Z",
-      "reviewer@example.com",
-      deviceIdentity,
-      "Reviewer",
-      "Rita",
-      "A",
-      "SIGN_IN",
-    ],
-    [
-      "2026-10-01T08:01:00.000Z",
-      "reviewer@example.com",
-      deviceIdentity,
-      "Reviewer",
-      "Rita",
-      "A",
-      "ACCESS",
-    ],
-  ],
-  "SIGN-IN": [],
-};
-let failLogWrites = false;
 
-function createSheet(headers, getRows) {
-  const sheet = {
-    getLastRow: () => getRows().length,
-    setName(name) {
-      const oldName = Object.keys(sheets).find((key) => sheets[key] === sheet);
-      if (oldName) delete sheets[oldName];
-      sheets[name] = sheet;
-      return sheet;
-    },
-    deleteRows(startRow, count) {
-      getRows().splice(startRow - 1, count);
-    },
+function createSheet(rows) {
+  return {
+    getLastRow: () => rows.length,
+    getLastColumn: () =>
+      rows.reduce((count, row) => Math.max(count, row.length), 0),
     getRange(startRow, startColumn, rowCount, columnCount) {
       return {
         getDisplayValues() {
-          return getRows()
-            .slice(startRow - 1, startRow - 1 + rowCount)
-            .map((row) =>
-              row.slice(startColumn - 1, startColumn - 1 + columnCount),
-            );
+          return Array.from({ length: rowCount }, (_, rowIndex) =>
+            Array.from({ length: columnCount }, (_, columnIndex) =>
+              String(
+                rows[startRow - 1 + rowIndex]?.[
+                  startColumn - 1 + columnIndex
+                ] ?? "",
+              ),
+            ),
+          );
+        },
+        createTextFinder(searchText) {
+          let ignoreCase = false;
+          let entireCell = false;
+          const finder = {
+            matchCase(value) {
+              ignoreCase = !value;
+              return finder;
+            },
+            matchEntireCell(value) {
+              entireCell = value;
+              return finder;
+            },
+            findAll() {
+              const expected = ignoreCase
+                ? String(searchText).toLowerCase()
+                : String(searchText);
+              return rows
+                .slice(startRow - 1, startRow - 1 + rowCount)
+                .flatMap((row, index) => {
+                  const actual = String(row[startColumn - 1] ?? "");
+                  const candidate = ignoreCase
+                    ? actual.toLowerCase()
+                    : actual;
+                  const matches = entireCell
+                    ? candidate === expected
+                    : candidate.includes(expected);
+                  return matches
+                    ? [{ getRow: () => startRow + index }]
+                    : [];
+                });
+            },
+          };
+          return finder;
         },
         setValues(values) {
           values.forEach((valueRow, rowIndex) => {
             const targetIndex = startRow - 1 + rowIndex;
-            if (!getRows()[targetIndex]) getRows()[targetIndex] = [];
+            if (!rows[targetIndex]) rows[targetIndex] = [];
             valueRow.forEach((value, columnIndex) => {
-              getRows()[targetIndex][startColumn - 1 + columnIndex] = value;
+              rows[targetIndex][startColumn - 1 + columnIndex] = value;
             });
           });
         },
+        clearContent() {
+          rows.splice(startRow - 1, rowCount);
+        },
+        setNumberFormat() {},
       };
     },
+    deleteRows(startRow, count) {
+      rows.splice(startRow - 1, count);
+    },
   };
-  return sheet;
 }
 
 const sheets = {
-  ACCOUNTS: createSheet(accountHeaders, () => accountRows),
-  Accounts: createSheet(accountHeaders, () => legacyAccountRows),
-  MODULE: createSheet(logHeaders, () => logSheetRows.MODULE),
-  REVIEWERS: createSheet(logHeaders, () => logSheetRows.REVIEWERS),
-  SCOPES: createSheet([], () => scopesRows),
+  ACCOUNTS: createSheet(accountRows),
+  Accounts: createSheet(legacyAccountRows),
+  SYLLABUS: createSheet([currentLogHeaders]),
+  MODULE: createSheet([currentLogHeaders]),
+  REVIEWERS: createSheet(reviewerLogs),
 };
-const spreadsheetId = "1234567890123456789012345678901234567890123";
 const spreadsheet = {
   getId: () => spreadsheetId,
   getUrl: () => `https://docs.google.com/spreadsheets/d/${spreadsheetId}`,
   getSheetByName: (name) => sheets[name] || null,
   insertSheet(name) {
-    const rows =
-      name === "SCOPES"
-        ? scopesRows
-        : name === "ACCOUNTS"
-          ? accountRows
-          : logSheetRows[name] || [];
-    sheets[name] = createSheet([], () => rows);
+    const rows = name === "ACCOUNTS" ? accountRows : [];
+    sheets[name] = createSheet(rows);
     return sheets[name];
   },
   deleteSheet(sheet) {
     const name = Object.keys(sheets).find((key) => sheets[key] === sheet);
     if (name) delete sheets[name];
+  },
+  setSpreadsheetTimeZone(timeZone) {
+    spreadsheetTimeZone = timeZone;
   },
 };
 
@@ -201,15 +226,15 @@ const context = {
       Values: {
         append(resource, id, range, options) {
           assert.equal(id, spreadsheetId);
-          const category = range.split("!")[0];
           assert.equal(options.valueInputOption, "RAW");
-          if (category === "ACCOUNTS") {
-            accountRows.push(...resource.values);
-          } else {
-            assert.ok(appendedRows[category]);
-            if (failLogWrites) throw new Error("simulated log quota failure");
-            appendedRows[category].push(...resource.values);
-            logSheetRows[category].push(...resource.values);
+          const sheetName = range.split("!")[0];
+          if (sheetName === "ACCOUNTS") accountRows.push(...resource.values);
+          else {
+            assert.ok(appendedRows[sheetName], `unexpected log sheet ${sheetName}`);
+            appendedRows[sheetName].push(...resource.values);
+            const targetRows =
+              sheetName === "REVIEWERS" ? reviewerLogs : null;
+            if (targetRows) targetRows.push(...resource.values);
           }
           return { updates: { updatedRows: resource.values.length } };
         },
@@ -228,21 +253,27 @@ const context = {
     base64Encode(value) {
       return Buffer.from(value).toString("base64");
     },
+    formatDate(date, timeZone, format) {
+      assert.equal(timeZone, "Asia/Manila");
+      assert.equal(format, "yyyy-MM-dd HH:mm:ss");
+      return new Date(
+        new Date(date).getTime() + 8 * 60 * 60 * 1000,
+      )
+        .toISOString()
+        .slice(0, 19)
+        .replace("T", " ");
+    },
   },
   UrlFetchApp: {
     fetch(url, options) {
-      tokenFetchCount += 1;
-      assert.match(
-        url,
-        /^https:\/\/(?:oauth2\.googleapis\.com\/tokeninfo|www\.googleapis\.com\/oauth2\/v3\/tokeninfo)\?id_token=/,
-      );
+      assert.match(url, /^https:\/\/(?:oauth2\.googleapis\.com\/tokeninfo|www\.googleapis\.com\/oauth2\/v3\/tokeninfo)\?id_token=/);
       assert.equal(options.muteHttpExceptions, true);
       if (tokenFetchFailures > 0) {
         tokenFetchFailures -= 1;
-        throw new Error(tokenFetchErrorMessage || "simulated endpoint outage");
+        throw new Error("simulated endpoint outage");
       }
       return {
-        getResponseCode: () => tokenStatus,
+        getResponseCode: () => 200,
         getContentText: () => JSON.stringify(tokenClaims),
       };
     },
@@ -260,22 +291,20 @@ const context = {
   },
 };
 vm.createContext(context);
-vm.runInContext(
-  fs.readFileSync("backend/main.js", "utf8"),
-  context,
-  { filename: "backend/main.js" },
-);
+vm.runInContext(fs.readFileSync("backend/main.js", "utf8"), context, {
+  filename: "backend/main.js",
+});
 
 const clientId = "1234567890-example.apps.googleusercontent.com";
-const validClaims = (email = "reviewer@example.com") => ({
+const appVersion = "mrh-release-26.10.16-24";
+const validClaims = (email) => ({
   aud: clientId,
   iss: "https://accounts.google.com",
   exp: String(Math.floor(Date.now() / 1000) + 300),
-  email,
+  email: email || "reviewer@example.com",
   email_verified: "true",
   picture: "https://lh3.googleusercontent.com/a/example-profile",
 });
-const appVersion = "mrh-release-26.10.15-29";
 const post = (data) =>
   JSON.parse(
     context
@@ -286,10 +315,12 @@ const post = (data) =>
       })
       .getContent(),
   );
-const authRequest = (type, idToken) => ({
+const eventId = (digit) =>
+  `${digit}1234567-89ab-4cde-8fab-0123456789ab`;
+const authRequest = (type, idToken, id) => ({
   type,
   idToken,
-  deviceIdentity,
+  eventId: id || eventId("0"),
 });
 
 assert.equal(
@@ -297,471 +328,300 @@ assert.equal(
   "FEATURE_DISABLED",
   "authorization must fail closed until configured",
 );
-assert.equal(tokenFetchCount, 0);
-
+assert.equal(
+  post({
+    type: "verify_reviewer_access",
+    idToken: "missing-event-id",
+  }).code,
+  "BAD_REQUEST",
+  "the backend should require an event ID so auth events can be deduplicated",
+);
 properties.set("MRH_GOOGLE_OAUTH_CLIENT_ID", clientId);
 properties.set("MRH_ACCOUNTS_SPREADSHEET_ID", spreadsheetId);
-const config = post({ type: "get_reviewer_auth_config" });
-assert.equal(config.enabled, true);
-assert.equal(config.clientId, clientId);
-assert.equal(Object.hasOwn(config, "allowedEmails"), false);
 assert.equal(
-  context.initializeMRHAccountsSpreadsheet().spreadsheetId,
-  spreadsheetId,
-  "account setup should migrate and initialize account, sign-in, access-log, and scope worksheets",
-);
-assert.equal(sheets.ACCOUNTS !== undefined, true);
-assert.deepEqual(
-  Array.from(logSheetRows.SYLLABUS[0]),
-  logHeaders,
-  "account setup should create the syllabus file-click log worksheet",
-);
-assert.equal(sheets.Accounts, undefined, "the legacy account worksheet should be removed after merging");
-assert.equal(
-  accountRows.length,
-  4,
-  "legacy account rows should merge without duplicating accounts and allow multiple devices",
-);
-assert.equal(accountRows[2][0], "second-reviewer@example.com");
-assert.equal(accountRows[3][0], "reviewer@example.com");
-assert.equal(accountRows[3][1], "61234567-89ab-4cde-8fab-0123456789ab");
-assert.equal(sheets["SIGN-IN"] !== undefined, true);
-assert.equal(
-  logSheetRows["SIGN-IN"].length,
-  2,
-  "setup should move legacy sign-in rows out of REVIEWERS",
-);
-assert.equal(
-  logSheetRows.REVIEWERS.length,
-  2,
-  "setup should retain reviewer-access rows while migrating sign-ins",
+  post({ type: "get_reviewer_auth_config" }).enabled,
+  true,
 );
 context.initializeMRHAccountsSpreadsheet();
+assert.deepEqual(
+  Array.from(accountRows[0]),
+  ["Email", "Last Name", "First Name", "Middle Initial", "Active"],
+  "account setup should remove the legacy device identity column",
+);
 assert.equal(
-  logSheetRows["SIGN-IN"].length,
-  2,
-  "re-running setup should not duplicate migrated sign-in history",
+  accountRows.length,
+  3,
+  "account setup should consolidate matching email rows without duplicates",
+);
+assert.deepEqual(Array.from(accountRows[1]), [
+  "reviewer@example.com",
+  "Reviewer",
+  "Rita",
+  "A",
+  "TRUE",
+]);
+assert.equal(accountRows[2][0], "second-reviewer@example.com");
+assert.equal(sheets.Accounts, undefined);
+assert.equal(spreadsheetTimeZone, "Asia/Manila");
+assert.deepEqual(Array.from(reviewerLogs[0]), currentLogHeaders);
+assert.equal(
+  reviewerLogs.some((row) => String(row[5] || "").startsWith("SIGN_IN")),
+  false,
+  "legacy sign-in events should be moved out of REVIEWERS",
+);
+assert.equal(
+  appendedRows["SIGN-IN"].length,
+  1,
+  "setup should migrate legacy sign-in history",
+);
+assert.equal(
+  appendedRows["SIGN-IN"][0].length,
+  currentLogHeaders.length,
+  "migrated logs must omit device identity values",
+);
+assert.equal(
+  appendedRows["SIGN-IN"][0][0],
+  "2026-10-01 16:00:00",
+  "historical UTC timestamps should be migrated to Philippine local time",
+);
+assert.equal(
+  sheets.SCOPES !== undefined,
+  true,
+  "setup should create the OAuth scope-monitoring worksheet",
+);
+const accountRowsBeforeConflict = accountRows.map((row) => Array.from(row));
+const reviewerLogsBeforeConflict = reviewerLogs.map((row) => Array.from(row));
+accountRows.push([
+  "reviewer@example.com",
+  "Conflicting",
+  "Rita",
+  "A",
+  "TRUE",
+]);
+assert.throws(
+  () => context.initializeMRHAccountsSpreadsheet(),
+  /conflicting names/,
+  "conflicting duplicate account data should stop setup before changing sheets",
+);
+accountRows.pop();
+assert.deepEqual(
+  accountRows.map((row) => Array.from(row)),
+  accountRowsBeforeConflict,
+  "failed account migration preflight must preserve all account rows",
 );
 assert.deepEqual(
-  scopesRows[0],
-  ["OAuth Scope", "Purpose", "Configured In"],
-  "setup should create a scope-monitoring worksheet",
-);
-assert.equal(
-  scopesRows.some(
-    (row) =>
-      row[0] === "https://www.googleapis.com/auth/script.external_request",
-  ),
-  true,
-  "the scope worksheet should list token-verification access",
+  reviewerLogs.map((row) => Array.from(row)),
+  reviewerLogsBeforeConflict,
+  "failed account migration preflight must not partially rewrite access logs",
 );
 
 tokenClaims = validClaims();
-const allowed = post(authRequest("verify_reviewer_access", "signed-token-1"));
+const approved = post(
+  authRequest("verify_reviewer_access", "approved-token", eventId("1")),
+);
 assert.deepEqual(
   {
-    status: allowed.status,
-    email: allowed.email,
-    firstName: allowed.firstName,
-    middleInitial: allowed.middleInitial,
-    lastName: allowed.lastName,
-    picture: allowed.picture,
+    status: approved.status,
+    accountStatus: approved.accountStatus,
+    email: approved.email,
+    firstName: approved.firstName,
+    middleInitial: approved.middleInitial,
+    lastName: approved.lastName,
   },
   {
     status: "success",
+    accountStatus: "TRUE",
     email: "reviewer@example.com",
     firstName: "Rita",
     middleInitial: "A",
     lastName: "Reviewer",
-    picture: "https://lh3.googleusercontent.com/a/example-profile",
   },
 );
-assert.equal(tokenFetchCount, 1);
-assert.equal(appendedRows["SIGN-IN"][0][6], "SIGN_IN");
+assert.equal(appendedRows["SIGN-IN"][1][5], "SIGN_IN:TRUE");
+assert.equal(appendedRows["SIGN-IN"][1].length, 6);
+const beforeStatusCheck = appendedRows["SIGN-IN"].length;
 assert.equal(
-  post(authRequest("verify_reviewer_access", "signed-token-1")).status,
-  "success",
+  post({
+    type: "get_reviewer_account_status",
+    idToken: "approved-token",
+  }).accountStatus,
+  "TRUE",
 );
-assert.equal(tokenFetchCount, 1, "verified Google tokens should be briefly cached");
-assert.equal(appendedRows["SIGN-IN"][1][6], "SIGN_IN");
+assert.equal(
+  appendedRows["SIGN-IN"].length,
+  beforeStatusCheck,
+  "status polling should not create duplicate sign-in events",
+);
+assert.equal(
+  context.authorizeReviewerRequest_({ idToken: "approved-token" }).account
+    .accountStatus,
+  "TRUE",
+  "an administrator-approved account should be authorized",
+);
+
+tokenClaims = validClaims("new-reviewer@example.com");
+const notFound = post(
+  authRequest("verify_reviewer_access", "new-user-token", eventId("2")),
+);
+assert.equal(notFound.accountStatus, "NOT_FOUND");
+const submission = post({
+  type: "request_reviewer_enrollment",
+  idToken: "new-user-token",
+  eventId: eventId("3"),
+  lastName: "Dela Cruz",
+  firstName: "Maria",
+  middleInitial: "P",
+});
+assert.deepEqual(
+  [submission.status, submission.accountStatus, submission.active],
+  ["success", "FALSE", false],
+  "new enrollment must start pending and not grant access",
+);
+assert.deepEqual(Array.from(accountRows.at(-1)), [
+  "new-reviewer@example.com",
+  "Dela Cruz",
+  "Maria",
+  "P",
+  "FALSE",
+]);
+assert.equal(
+  post({
+    type: "log_module_access",
+    idToken: "new-user-token",
+    eventId: eventId("4"),
+  }).code,
+  "ACCOUNT_PENDING",
+  "pending users must not access protected modules",
+);
+assert.equal(
+  post({
+    type: "get_reviewer_account_status",
+    idToken: "new-user-token",
+  }).accountStatus,
+  "FALSE",
+  "pending status should be visible to polling",
+);
+const duplicatePending = post({
+  type: "request_reviewer_enrollment",
+  idToken: "new-user-token",
+  eventId: eventId("5"),
+  lastName: "Changed",
+  firstName: "Name",
+});
+assert.equal(duplicatePending.accountStatus, "FALSE");
+assert.equal(
+  accountRows.filter((row) => row[0] === "new-reviewer@example.com").length,
+  1,
+  "repeat pending submissions must not duplicate account rows",
+);
+
+const newUserRow = accountRows.findIndex(
+  (row) => row[0] === "new-reviewer@example.com",
+);
+accountRows[newUserRow][4] = "DENIED";
+cacheValues.clear();
+assert.equal(
+  post({
+    type: "get_reviewer_account_status",
+    idToken: "new-user-token",
+  }).accountStatus,
+  "DENIED",
+  "polling should observe administrator denial without stale account caching",
+);
+assert.equal(
+  post({
+    type: "get_reviewer_dashboard",
+    idToken: "new-user-token",
+    eventId: eventId("6"),
+  }).code,
+  "ACCOUNT_DENIED",
+  "denied users must not access reviewer resources",
+);
+const deniedSubmission = post({
+  type: "request_reviewer_enrollment",
+  idToken: "new-user-token",
+  eventId: eventId("7"),
+  lastName: "Dela Cruz",
+  firstName: "Maria",
+  middleInitial: "",
+});
+assert.equal(deniedSubmission.accountStatus, "FALSE");
+assert.deepEqual(Array.from(accountRows[newUserRow]), [
+  "new-reviewer@example.com",
+  "Dela Cruz",
+  "Maria",
+  "",
+  "FALSE",
+]);
+assert.equal(
+  post({
+    type: "get_reviewer_account_status",
+    idToken: "new-user-token",
+  }).accountStatus,
+  "FALSE",
+  "a corrected denied profile must return to pending review",
+);
 
 tokenClaims = validClaims();
+const existingReviewerRow = accountRows.findIndex(
+  (row) => row[0] === "reviewer@example.com",
+);
+accountRows[existingReviewerRow][4] = "FALSE";
+assert.equal(
+  post({
+    type: "get_reviewer_account_status",
+    idToken: "approved-token",
+  }).accountStatus,
+  "FALSE",
+  "polling should promptly observe an administrator changing approval to FALSE",
+);
+assert.equal(
+  post({
+    type: "log_module_access",
+    idToken: "approved-token",
+    eventId: eventId("9"),
+  }).code,
+  "ACCOUNT_PENDING",
+  "revoked approval must stop protected access",
+);
+accountRows[existingReviewerRow][4] = "DENIED";
+assert.equal(accountRows[existingReviewerRow][4], "DENIED");
+assert.equal(
+  context.findMRHAccount_("reviewer@example.com").accountStatus,
+  "DENIED",
+);
+assert.equal(
+  post({
+    type: "verify_reviewer_access",
+    idToken: "approved-token",
+    eventId: eventId("8"),
+  }).accountStatus,
+  "DENIED",
+);
+
+const allLogRows = Object.values(appendedRows).flat();
+assert.equal(
+  allLogRows.every((row) => row.length === currentLogHeaders.length),
+  true,
+  "new account and resource logs must not contain device identity columns",
+);
+assert.equal(
+  allLogRows
+    .filter((row) => row[0] !== "2026-10-01 16:00:00")
+    .every((row) => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(row[0])),
+  true,
+  "new access-log timestamps should be formatted in Philippine local time",
+);
+
+tokenClaims = validClaims("fallback@example.com");
 tokenFetchFailures = 1;
 assert.equal(
-  post(authRequest("verify_reviewer_access", "fallback-endpoint-token")).status,
-  "success",
-  "the alternate Google token-info endpoint should recover from a primary endpoint outage",
-);
-assert.equal(tokenFetchFailures, 0);
-
-tokenFetchErrorMessage = "Authorization required for UrlFetchApp.fetch";
-tokenFetchFailures = 2;
-assert.equal(
-  post(authRequest("verify_reviewer_access", "missing-external-scope")).code,
-  "AUTH_PERMISSION_REQUIRED",
-  "missing external-request authorization should be reported distinctly",
-);
-tokenFetchErrorMessage =
-  "Wala kang pahintulot. Mga kinakailangang pahintulot: https://www.googleapis.com/auth/script.external_request";
-tokenFetchFailures = 2;
-assert.equal(
-  post(authRequest("verify_reviewer_access", "localized-missing-scope")).code,
-  "AUTH_PERMISSION_REQUIRED",
-  "the missing external-request scope should be recognized from localized Apps Script errors",
-);
-tokenFetchErrorMessage = "";
-
-tokenClaims = { ...validClaims(), aud: "attacker-client.apps.googleusercontent.com" };
-assert.equal(
-  post(authRequest("verify_reviewer_access", "wrong-audience")).code,
-  "UNAUTHORIZED",
-);
-tokenClaims = {
-  ...validClaims(),
-  exp: String(Math.floor(Date.now() / 1000) - 1),
-};
-assert.equal(
-  post(authRequest("verify_reviewer_access", "expired")).code,
-  "UNAUTHORIZED",
-);
-tokenClaims = { ...validClaims(), email_verified: "false" };
-assert.equal(
-  post(authRequest("verify_reviewer_access", "unverified-email")).code,
-  "UNAUTHORIZED",
-);
-tokenClaims = { ...validClaims(), iss: "attacker.example.com" };
-assert.equal(
-  post(authRequest("verify_reviewer_access", "wrong-issuer")).code,
-  "UNAUTHORIZED",
-);
-tokenClaims = {
-  ...validClaims(),
-  picture: "https://attacker.example/profile.png",
-};
-const untrustedPicture = post(
-  authRequest("verify_reviewer_access", "untrusted-profile-picture"),
-);
-assert.equal(
-  untrustedPicture.picture,
-  "",
-  "profile pictures must only be returned from trusted Google-hosted URLs",
-);
-tokenClaims = validClaims("unlisted@example.com");
-assert.equal(
-  post(authRequest("verify_reviewer_access", "unlisted-account")).code,
-  "FORBIDDEN",
-  "an active spreadsheet account must match both verified email and device ID",
-);
-const unregisteredRecovery = post({
-  type: "request_reviewer_enrollment",
-  idToken: "unlisted-recovery",
-  deviceIdentity: "31234567-89ab-4cde-8fab-0123456789ab",
-});
-assert.equal(unregisteredRecovery.status, "success");
-assert.equal(unregisteredRecovery.requiresEnrollment, true);
-tokenClaims = validClaims("new-reviewer@example.com");
-const enrollment = post({
-  type: "request_reviewer_enrollment",
-  idToken: "new-reviewer-token",
-  deviceIdentity: "11234567-89ab-4cde-8fab-0123456789ab",
-  lastName: "New",
-  firstName: "Reviewer",
-  middleInitial: "B",
-});
-assert.deepEqual(
-  {
-    status: enrollment.status,
-    active: enrollment.active,
-    existing: enrollment.existing,
-    deviceIdentity: enrollment.deviceIdentity,
-    row: Array.from(accountRows[accountRows.length - 1]),
-  },
-  {
-    status: "success",
-    active: true,
-    existing: false,
-    deviceIdentity: "11234567-89ab-4cde-8fab-0123456789ab",
-    row: [
-      "new-reviewer@example.com",
-      "11234567-89ab-4cde-8fab-0123456789ab",
-      "New",
-      "Reviewer",
-      "B",
-      "TRUE",
-    ],
-  },
-  "new Google-authenticated accounts should be enabled immediately",
-);
-const duplicateEnrollment = post({
-  type: "request_reviewer_enrollment",
-  idToken: "new-reviewer-token",
-  deviceIdentity: "21234567-89ab-4cde-8fab-0123456789ab",
-  lastName: "Changed",
-  firstName: "Name",
-});
-assert.equal(duplicateEnrollment.existing, true);
-assert.equal(duplicateEnrollment.active, true);
-assert.equal(
-  duplicateEnrollment.deviceIdentity,
-  "21234567-89ab-4cde-8fab-0123456789ab",
-  "a new browser should retain its own device identity when registered for an existing account",
-);
-assert.deepEqual(
-  Array.from(accountRows[accountRows.length - 1]),
-  [
-    "new-reviewer@example.com",
-    "21234567-89ab-4cde-8fab-0123456789ab",
-    "New",
-    "Reviewer",
-    "B",
-    "TRUE",
-  ],
-  "additional devices should inherit the existing profile without requiring profile edits",
-);
-assert.equal(accountRows.length, 6, "an additional device should add a distinct account row");
-const sameDeviceEnrollment = post({
-  type: "request_reviewer_enrollment",
-  idToken: "new-reviewer-token",
-  deviceIdentity: "21234567-89ab-4cde-8fab-0123456789ab",
-  lastName: "Changed",
-  firstName: "Name",
-});
-assert.equal(sameDeviceEnrollment.status, "success");
-assert.equal(accountRows.length, 6, "repeating enrollment on a device must not duplicate its row");
-tokenClaims = validClaims("other-reviewer@example.com");
-assert.equal(
   post({
-    type: "request_reviewer_enrollment",
-    idToken: "other-reviewer-token",
-    deviceIdentity: "21234567-89ab-4cde-8fab-0123456789ab",
-    lastName: "Other",
-    firstName: "Reviewer",
-  }).code,
-  "DEVICE_CONFLICT",
-  "a device identity already assigned to another account must be rejected",
-);
-tokenClaims = validClaims("reviewer@example.com");
-const recoveredDevice = post({
-  type: "request_reviewer_enrollment",
-  idToken: "reviewer-recovery",
-  deviceIdentity: "41234567-89ab-4cde-8fab-0123456789ab",
-});
-assert.equal(recoveredDevice.status, "success");
-assert.equal(recoveredDevice.active, true);
-assert.equal(recoveredDevice.existing, true);
-assert.equal(
-  recoveredDevice.deviceIdentity,
-  "41234567-89ab-4cde-8fab-0123456789ab",
-  "a fresh browser identity should be registered as a separate device for the account",
-);
-assert.equal(accountRows.length, 7);
-accountRows[3][2] = "Conflicting";
-assert.equal(
-  post({
-    type: "request_reviewer_enrollment",
-    idToken: "reviewer-recovery",
-    deviceIdentity: "71234567-89ab-4cde-8fab-0123456789ab",
-  }).code,
-  "ACCOUNT_CONFLICT",
-  "inconsistent saved profile details across devices should fail safely",
-);
-accountRows[3][2] = "Reviewer";
-assert.equal(accountRows.length, 7);
-tokenClaims = validClaims("reviewer@example.com");
-assert.equal(
-  post({ type: "verify_reviewer_access", idToken: "missing-device" }).code,
-  "UNAUTHORIZED",
-);
-assert.equal(
-  post({
-    ...authRequest("verify_reviewer_access", "wrong-device"),
-    deviceIdentity: "11234567-89ab-4cde-8fab-0123456789ab",
-  }).code,
-  "FORBIDDEN",
-  "a registered email must still match the registered device identity",
-);
-accountRows[1][5] = "FALSE";
-cacheValues.clear();
-assert.equal(
-  post(authRequest("verify_reviewer_access", "inactive-account")).status,
-  "success",
-  "a Google-authenticated account should not be denied because its legacy Active flag is false",
-);
-assert.equal(accountRows[1][5], "TRUE");
-cacheValues.clear();
-appendedRows.REVIEWERS.length = 0;
-appendedRows["SIGN-IN"].length = 0;
-
-let reviewerIndexReadCount = 0;
-context.DriveApp = {
-  getFolderById: () => ({
-    getFilesByName: () => ({
-      hasNext: () => true,
-      next: () => {
-        reviewerIndexReadCount += 1;
-        return {
-          getId: () => "reviewer-index-id",
-          getLastUpdated: () => new Date(2000),
-          getBlob: () => ({ getDataAsString: () => "{}" }),
-        };
-      },
-    }),
-  }),
-};
-context.getResourceDashboardCombinedIndex = () => ({ reviewerIndex: true });
-context.buildResourceDashboardTab = (_name, index) => ({
-  columns: ["Year"],
-  rows: [["3"]],
-  sourceIndex: index.reviewerIndex,
-});
-tokenClaims = validClaims("unlisted@example.com");
-assert.equal(
-  post(authRequest("get_reviewer_dashboard", "not-allowlisted")).code,
-  "FORBIDDEN",
-);
-assert.equal(
-  reviewerIndexReadCount,
-  0,
-  "unauthorized requests must not read the protected reviewer index",
+    type: "get_reviewer_account_status",
+    idToken: "fallback-endpoint-token",
+  }).accountStatus,
+  "NOT_FOUND",
+  "the alternate Google token-info endpoint should recover from an outage",
 );
 
-tokenClaims = validClaims();
-const reviewerDashboard = post(
-  authRequest("get_reviewer_dashboard", "signed-token-1"),
-);
-assert.equal(reviewerDashboard.status, "success");
-assert.equal(reviewerDashboard.email, "reviewer@example.com");
-assert.equal(reviewerDashboard.tab.sourceIndex, true);
-assert.equal(appendedRows.REVIEWERS.length, 1);
-assert.deepEqual(Array.from(appendedRows.REVIEWERS[0].slice(1)), [
-  "reviewer@example.com",
-  deviceIdentity,
-  "Reviewer",
-  "Rita",
-  "A",
-  "ACCESS",
-]);
-failLogWrites = true;
-assert.equal(
-  post(authRequest("get_reviewer_dashboard", "signed-token-1")).code,
-  "SERVER_ERROR",
-  "reviewer data must not be returned when its access log cannot be recorded",
-);
-failLogWrites = false;
-
-assert.equal(
-  post(authRequest("log_module_access", "signed-token-1")).status,
-  "success",
-);
-assert.equal(appendedRows.MODULE.length, 1);
-assert.equal(
-  post({
-    type: "log_resource_file_click",
-    resourceArea: "SYLLABUS",
-    fileName: "Course\nSyllabus|PDF",
-    fileId: "012345678901234567890",
-  }).status,
-  "success",
-);
-assert.equal(appendedRows.SYLLABUS.length, 1);
-assert.equal(appendedRows.SYLLABUS[0][1], "");
-assert.equal(
-  appendedRows.SYLLABUS[0][6],
-  "FILE_CLICK:SYLLABUS:Course Syllabus PDF:012345678901234567890",
-  "syllabus clicks should record a normalized filename and Drive file ID",
-);
-assert.equal(
-  post({
-    type: "log_resource_file_click",
-    resourceArea: "MODULES",
-    fileName: "Module 1.pdf",
-    fileId: "112345678901234567890",
-    deviceIdentity,
-  }).status,
-  "success",
-);
-assert.equal(appendedRows.MODULE.length, 2);
-assert.equal(
-  appendedRows.MODULE[1][6],
-  "FILE_CLICK:MODULES:Module 1.pdf:112345678901234567890",
-);
-assert.equal(
-  post({
-    type: "log_resource_file_click",
-    resourceArea: "REVIEWERS",
-    fileName: "Reviewer file.pdf",
-    fileId: "212345678901234567890",
-  }).code,
-  "UNAUTHORIZED",
-  "reviewer file clicks must require account authorization",
-);
-assert.equal(
-  post({
-    ...authRequest("log_resource_file_click", "signed-token-1"),
-    resourceArea: "REVIEWERS",
-    fileName: "Reviewer file.pdf",
-    fileId: "212345678901234567890",
-  }).status,
-  "success",
-);
-assert.equal(
-  appendedRows.REVIEWERS.at(-1)[6],
-  "FILE_CLICK:REVIEWERS:Reviewer file.pdf:212345678901234567890",
-);
-assert.equal(
-  post({
-    type: "log_resource_file_click",
-    resourceArea: "MODULE",
-    fileName: "Invalid area",
-    fileId: "012345678901234567890",
-  }).code,
-  "BAD_REQUEST",
-);
-assert.equal(
-  post({
-    type: "log_resource_file_click",
-    resourceArea: "MODULES",
-    fileName: "Invalid file id",
-    fileId: "not-valid",
-  }).code,
-  "BAD_REQUEST",
-);
-
-assert.equal(
-  context.recordResourceDashboardAccess_({
-    deviceIdentity,
-  }),
-  null,
-);
-assert.equal(appendedRows.MODULE.length, 3);
-assert.equal(appendedRows.MODULE[2][1], "");
-assert.equal(appendedRows.MODULE[2][6], "ANONYMOUS_ACCESS");
-
-tokenStatus = 503;
-const providerFailure = post(
-  authRequest("verify_reviewer_access", "provider-failure"),
-);
-assert.equal(
-  providerFailure.code,
-  "AUTH_PROVIDER_UNAVAILABLE",
-  "Google verification outages must not authorize users after both endpoints fail",
-);
-assert.equal(providerFailure.verificationFailure, "HTTP_503");
-tokenStatus = 200;
-tokenFetchFailures = 2;
-tokenFetchErrorMessage = "Failed URL token id_token=secret-token-value";
-const fetchFailure = post(
-  authRequest("verify_reviewer_access", "fetch-failure"),
-);
-assert.equal(fetchFailure.verificationFailure, "FETCH_EXCEPTION");
-assert.equal(fetchFailure.verificationDiagnostic.includes("secret-token-value"), false);
-tokenFetchErrorMessage = "";
-
-properties.set("MRH_ACCOUNTS_SPREADSHEET_ID", "");
-assert.equal(
-  post(authRequest("verify_reviewer_access", "disabled")).code,
-  "FEATURE_DISABLED",
-  "missing account spreadsheet configuration must disable sign-in",
-);
-
-console.log("Reviewer account authorization and access logging checks passed.");
+console.log("Reviewer authorization and approval lifecycle checks passed.");

@@ -638,9 +638,8 @@
               <button
                 type="button"
                 id="resource-dashboard-modules-nav"
-                class="resource-portal-nav-item is-active"
+                class="resource-portal-nav-item"
                 onclick="openResourceDashboardTab('MODULES')"
-                aria-current="page"
               >
                 <i class="fa-solid fa-folder" aria-hidden="true"></i>
                 Modules
@@ -664,10 +663,11 @@
               <button
                 type="button"
                 id="resource-dashboard-profile-nav"
-                class="resource-profile-toggle"
+                class="resource-profile-toggle is-active"
                 onclick="openResourceDashboardTab('PROFILE')"
                 aria-label="Profile"
                 title="Profile"
+                aria-current="page"
               >
                 <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
                 <img
@@ -685,7 +685,7 @@
               class="resource-portal-browser resource-dashboard-browser"
               aria-label="Resource dashboard"
             >
-              <div id="resource-dashboard-content">
+              <div id="resource-dashboard-content" hidden>
                 <div class="resource-portal-toolbar">
                   <div class="resource-dashboard-filters">
                     <label class="resource-dashboard-control">
@@ -731,14 +731,13 @@
                 id="resource-dashboard-profile"
                 class="resource-profile-screen"
                 aria-label="Profile settings"
-                hidden
               >
                 <div class="resource-profile-card">
                   <div class="resource-profile-heading">
                     <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
                     <div>
                       <h2>Profile</h2>
-                      <p>Sign in or manage your reviewer account.</p>
+                      <p>Account and Reviewer access status.</p>
                     </div>
                   </div>
                   <p
@@ -747,7 +746,7 @@
                     role="status"
                     aria-live="polite"
                   >
-                    Sign in with Google. First-time sign-in asks for your name; access is immediate.
+                    Sign in with Google to request Reviewer access.
                   </p>
                   <div id="resource-reviewer-signin-button"></div>
                   <form
@@ -756,9 +755,11 @@
                     hidden
                   >
                     <p class="resource-profile-form-note">
-                      Please check that your details are correct and capitalized
-                      as you want them displayed. Example: Last Name: Dela Cruz;
-                      First Name: Maria; Middle Initial: P.
+                      Enter your correct name exactly as it should appear and
+                      use proper capitalization. Example: Last Name: Dela Cruz;
+                      First Name: Maria; Middle Initial: P. An administrator
+                      must approve your profile before Reviewer resources are
+                      available.
                     </p>
                     <label>
                       <span>Last Name</span>
@@ -766,6 +767,7 @@
                         id="resource-reviewer-last-name"
                         name="lastName"
                         autocomplete="family-name"
+                        autocapitalize="words"
                         maxlength="100"
                         required
                       />
@@ -776,6 +778,7 @@
                         id="resource-reviewer-first-name"
                         name="firstName"
                         autocomplete="given-name"
+                        autocapitalize="words"
                         maxlength="100"
                         required
                       />
@@ -786,10 +789,11 @@
                         id="resource-reviewer-middle-initial"
                         name="middleInitial"
                         autocomplete="additional-name"
+                        autocapitalize="characters"
                         maxlength="10"
                       />
                     </label>
-                    <button type="submit">Create profile and continue</button>
+                    <button type="submit">Submit for administrator review</button>
                   </form>
                   <div
                     id="resource-profile-account-details"
@@ -811,8 +815,14 @@
                     </div>
                     <p id="resource-profile-name" class="resource-profile-name"></p>
                     <p id="resource-profile-email" class="resource-profile-email"></p>
+                    <p
+                      id="resource-profile-approval-status"
+                      class="resource-profile-approval-note"
+                      role="status"
+                      aria-live="polite"
+                    ></p>
                     <p class="resource-profile-approval-note">
-                      This Google account is used to access approved reviewer resources.
+                      Reviewer access is available only when the administrator sets Active to TRUE.
                     </p>
                     <button
                       type="button"

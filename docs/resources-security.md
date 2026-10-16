@@ -8,18 +8,18 @@ classifies resources; it does not authorize anyone to access them.
 Reviewer access uses Google sign-in from the Resource Dashboard's Profile
 section; the site does not create a separate password. The Profile section
 shows the registered name, verified Google profile picture, and email after
-sign-in, provides sign-out, and
-lets a first-time user add their name. Any Google account with a verified
-sign-in can use the reviewer resources after its name and stable browser device
-identity are recorded in the `ACCOUNTS` worksheet in the `MRH_Accounts`
-spreadsheet. New accounts are enabled immediately; the legacy `Active` field
-does not block sign-in. The backend checks the token's audience, issuer,
-expiry, and verified email, then requires the matching email and device
-identity on every reviewer request. Missing or invalid configuration fails
-closed.
-The first-time profile form requires last and first names; middle initial is
-optional. Users are asked to check spelling and capitalization before saving
-(for example, `Dela Cruz`, `Maria`, `P.`).
+sign-in, provides sign-out, and lets a verified user submit or correct their
+name. Any Google account with a verified sign-in can request reviewer access
+by submitting a name to the `ACCOUNTS`
+worksheet in the `MRH_Accounts` spreadsheet. New requests begin with
+`Active=FALSE` and are not authorized until an administrator changes the value
+to `TRUE`. `DENIED` blocks reviewer access and lets the user correct and
+resubmit their name. The backend checks the token's audience, issuer, expiry,
+and verified email, then requires the matching email and `Active=TRUE` on
+every reviewer request. Missing or invalid configuration fails closed.
+The profile form requires last and first names; middle initial is optional.
+Users are asked to check spelling and capitalization before saving (for
+example, `Dela Cruz`, `Maria`, `P.`).
 
 The verified identity token exists only in page memory and is sent to the
 backend for each protected request; it is not stored in browser storage.
@@ -30,22 +30,6 @@ again clears that preference. Automatic sign-in depends on Google's browser
 session and consent state, so a user may need to click the sign-in button
 again. Reviewer dashboard data is kept only in page memory and cleared on
 sign-out or page reload. The public dashboard does not return reviewer rows.
-
-Each browser installation keeps a random UUID in local storage and a long-lived
-first-party cookie; it is never displayed in the interface. `ACCOUNTS` stores
-one row for each email/device pair, allowing the same Google account to sign
-in from multiple browsers or devices. A recognized email signing in with a
-new browser UUID adds a device row using the existing profile details. The ID
-is not silently replaced when the two saved copies conflict or are damaged.
-The device ID is an enrollment and audit identifier, not a secret or
-independent proof of identity.
-
-A website cannot read an immutable hardware identifier. Clearing both local
-storage and cookies causes that browser to generate a new UUID; on a verified
-sign-in, the new UUID is registered as an additional device for an existing
-account. Switching accounts or using another browser/device likewise has a
-separate UUID. The UUID is not cryptographically bound to physical hardware,
-and must not be treated as tamper-proof or used as an authentication factor.
 
 Google Drive permissions are not changed by the dashboard. Anyone who can open
 a linked file can copy or capture its contents. Ensure reviewer files are not
@@ -58,12 +42,14 @@ The Apps Script web app remains anonymously callable and executes Drive
 operations as its owner. The protected reviewer endpoint therefore does not
 trust a browser-supplied email: it verifies the Google ID token with Google's
 token information endpoint, checks that the token was issued for the configured
-OAuth client, then checks the verified email and device against the
-`ACCOUNTS` worksheet. Any verified Google account can create a profile and is
-enabled immediately; `Active` is retained as a legacy informational field and
-is set to `TRUE` at sign-in. The OAuth client ID and spreadsheet ID are
-configuration, not credentials. The spreadsheet remains administrator-managed
-and must not be exposed as a public editable document.
+OAuth client, then checks the verified email and approval status in the
+`ACCOUNTS` worksheet. A new verified account is added with `Active=FALSE`;
+only an administrator can grant reviewer access by setting `Active=TRUE`.
+Setting `Active=DENIED` rejects the profile and asks the user to correct and
+resubmit their name. The page polls for status changes while the user remains
+signed in. The OAuth client ID and spreadsheet ID are configuration, not
+credentials. The spreadsheet remains administrator-managed and must not be
+exposed as a public editable document.
 
 To initialize sign-in and access logging:
 
@@ -74,35 +60,42 @@ To initialize sign-in and access logging:
 3. In Apps Script **Project Settings → Script Properties**, set
    `MRH_GOOGLE_OAUTH_CLIENT_ID` to the OAuth web client ID and
    `MRH_ACCOUNTS_SPREADSHEET_ID` to the spreadsheet ID.
-4. In the Apps Script editor, run `initializeMRHAccountsSpreadsheet()` once
-   and approve the requested Sheets and external-request permissions. It
+4. After updating the Apps Script source, run
+   `initializeMRHAccountsSpreadsheet()` once and approve the requested Sheets
+   and external-request permissions. It
    creates the `ACCOUNTS`, `SYLLABUS`, `MODULE`, `REVIEWERS`, `SIGN-IN`, and
    `SCOPES` tabs
-   and headers without replacing existing account or log rows. It renames the
-   existing `Accounts` tab to `ACCOUNTS`; if both account tabs exist, it merges
-   nonconflicting records and removes the old tab. Conflicting account rows
-   stop setup without deleting either copy and must be resolved manually.
-   Setup also moves existing `SIGN_IN` entries from `REVIEWERS` to `SIGN-IN`.
+   and headers. It renames the existing `Accounts` tab to `ACCOUNTS`; if both
+   account tabs exist, it consolidates duplicate emails only when the names
+   and approval states agree. Conflicting account rows stop setup and must be
+   resolved manually. Setup removes legacy device-identity columns and values
+   from account and access-log worksheets, moves existing `SIGN_IN` entries
+   from `REVIEWERS` to `SIGN-IN`, converts ISO timestamps to Philippine local
+   time, and removes exact duplicate log rows. Conflicting names, approval
+   states, or worksheet headers stop setup before data rows are changed.
    The `SCOPES` tab lists
    required Apps Script OAuth scopes and their purposes; it is refreshed when
    the Profile screen checks sign-in configuration. Keep the spreadsheet
    private to administrators.
 5. On first sign-in, a user submits `Last Name`, `First Name`, and optional
-   `Middle Initial`. The backend verifies the Google identity and saves the
-   name, email, browser UUID, and `Active=TRUE` immediately. The exact account
-   columns are `Email`, `Device Identity`, `Last Name`, `First Name`,
-   `Middle Initial`, and `Active`. There is one row per email/device pair;
-   additional devices for an existing email are registered after Google
-   sign-in using that account's saved profile. Do not manually copy a device
-   ID between devices.
+   `Middle Initial`. The backend verifies the Google identity and saves one
+   account row per verified email with `Active=FALSE`. Reviewer resources stay
+   locked until an administrator changes `Active` to `TRUE`. Set `Active` to
+   `DENIED` to reject a profile; the user sees “Invalid credentials,” can
+   correct their name, and resubmit it for review, which returns the account
+   to `FALSE`. The exact account columns are `Email`, `Last Name`,
+   `First Name`, `Middle Initial`, and `Active`.
 6. Enable the Apps Script Advanced Google service **Google Sheets API v4**
    (the project manifest declares this service; enable the Google Sheets API
    in the linked Cloud project if prompted), and deploy a new web-app version.
    If scopes are added or consent is revoked later, run
    `initializeMRHAccountsSpreadsheet()` again from the Apps Script editor and
    approve the requested permissions as the deployment owner.
-7. Test sign-in with a Google account. A new account can use Reviewers as soon
-   as its profile is saved.
+7. Test sign-in with a Google account. A new account can use Reviewers only
+   after an administrator sets `Active` to `TRUE`. While a user remains
+   signed in, the website checks approval about every five seconds and locks
+   Reviewer access when the spreadsheet status changes. New access-log
+   timestamps display in Philippine local time (`Asia/Manila`).
 
 If Apps Script asks for OAuth scopes to be entered manually, add one scope per
 line in the Apps Script project manifest's `oauthScopes` array:

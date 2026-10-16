@@ -43,8 +43,8 @@ assert.doesNotMatch(
 );
 assert.match(
   index,
-  /id="resource-dashboard-content"[\s\S]*?id="resource-dashboard-profile"[^>]*class="resource-profile-screen"[^>]*aria-label="Profile settings"[^>]*hidden[\s\S]*?resource-reviewer-auth-status[\s\S]*?resource-reviewer-signin-button[\s\S]*?resource-reviewer-enrollment-form[\s\S]*?resource-profile-account-details[\s\S]*?resource-profile-name[\s\S]*?resource-profile-email[\s\S]*?resource-reviewer-signout/,
-  "Profile should show login/enrollment when signed out and account details/sign-out when signed in",
+  /id="resource-dashboard-content" hidden[\s\S]*?id="resource-dashboard-profile"[^>]*class="resource-profile-screen"[^>]*aria-label="Profile settings"(?![^>]*hidden)[\s\S]*?resource-reviewer-auth-status[\s\S]*?resource-reviewer-signin-button[\s\S]*?resource-reviewer-enrollment-form[\s\S]*?resource-profile-account-details[\s\S]*?resource-profile-name[\s\S]*?resource-profile-email[\s\S]*?resource-reviewer-signout/,
+  "Profile should be the initial dashboard view and show login/enrollment or account controls",
 );
 assert.match(
   index,
@@ -103,7 +103,7 @@ assert.match(
 );
 assert.doesNotMatch(
   index,
-  /My Files|Reviewer access|resource-portal-preview|resource-portal-items|resource-portal-access-screen|resource-dashboard-search|Open spreadsheet|docs\.google\.com\/spreadsheets/,
+  /My Files|resource-portal-preview|resource-portal-items|resource-portal-access-screen|resource-dashboard-search|Open spreadsheet|docs\.google\.com\/spreadsheets/,
   "the dashboard should not expose Drive controls, search, or a link back to its source",
 );
 assert.match(
@@ -298,7 +298,7 @@ assert.match(
 );
 assert.match(
   deckNavigation,
-  /if \(viewId === "resources"\) \{\s*Promise\.resolve\(globalScope\.loadResourceDashboard\?\.\(\)\)\.catch/,
+  /if \(viewId === "resources"\) \{[\s\S]*?Promise\.resolve\(globalScope\.loadResourceDashboard\?\.\(\)\)\.catch/,
   "opening Resources should load the dashboard without blocking navigation",
 );
 assert.doesNotMatch(
@@ -390,6 +390,12 @@ const context = {
   Math,
   Date,
   Logger: { log() {} },
+  PropertiesService: {
+    getScriptProperties: () => ({
+      getProperty: () => "",
+      setProperty() {},
+    }),
+  },
   Utilities: {
     DigestAlgorithm: { SHA_256: "SHA_256" },
     Charset: { UTF_8: "UTF_8" },
@@ -546,7 +552,8 @@ const routedDashboard = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "get_resource_dashboard",
-          appVersion: "mrh-release-26.10.15-15",
+          eventId: "12345678-1234-4123-8123-123456789abc",
+          appVersion: "mrh-release-26.10.16-24",
         }),
       },
     })
@@ -569,8 +576,9 @@ const unchangedDashboard = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "get_resource_dashboard",
+          eventId: "22345678-1234-4123-8123-123456789abc",
           version: routedDashboard.version,
-          appVersion: "mrh-release-26.10.15-15",
+          appVersion: "mrh-release-26.10.16-24",
         }),
       },
     })
@@ -590,8 +598,9 @@ const updatedDashboard = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "get_resource_dashboard",
+          eventId: "32345678-1234-4123-8123-123456789abc",
           version: routedDashboard.version,
-          appVersion: "mrh-release-26.10.15-15",
+          appVersion: "mrh-release-26.10.16-24",
         }),
       },
     })
@@ -611,7 +620,7 @@ const disabledListing = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "list_public_resources",
-          appVersion: "mrh-release-26.10.15-15",
+          appVersion: "mrh-release-26.10.16-24",
         }),
       },
     })
@@ -628,7 +637,7 @@ const disabledPreview = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "get_resource_preview",
-          appVersion: "mrh-release-26.10.15-15",
+          appVersion: "mrh-release-26.10.16-24",
         }),
       },
     })

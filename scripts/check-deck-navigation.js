@@ -11,6 +11,8 @@ const modalCoreSource = fs.readFileSync("ui-modal-core.js", "utf8");
 const stylesSource = fs.readFileSync("styles.css", "utf8");
 const indexSource = fs.readFileSync("index.html", "utf8");
 const textUtils = require("../text-utils.js");
+const confirmationRequests = [];
+let confirmationResult = true;
 
 const protectedDeckName = "Maritime Safety";
 const scrambledDeckName = textUtils.scrambleWords(protectedDeckName);
@@ -191,6 +193,21 @@ assert.match(
   indexSource,
   /id="resource-dashboard-return"[\s\S]*?Return to main menu/,
   "the Resource Dashboard should provide a return-to-main-menu control",
+);
+assert.match(
+  indexSource,
+  /id="resource-dashboard-profile-nav"[\s\S]*?is-active[\s\S]*?aria-current="page"[\s\S]*?id="resource-dashboard-content" hidden[\s\S]*?id="resource-dashboard-profile"[\s\S]*?resource-profile-screen/,
+  "the Resource Dashboard should open on Profile instead of Modules",
+);
+assert.match(
+  deckNavSource,
+  /confirmNavigationAwayFromResourceDashboard[\s\S]*?Are you sure you want to exit the Resource Dashboard\?[\s\S]*?requestConfirmation\(message, title\)[\s\S]*?currentView\?\.id === "view-resources"[\s\S]*?confirmNavigationAwayFromResourceDashboard/,
+  "leaving the Resource Dashboard should ask for confirmation",
+);
+assert.doesNotMatch(
+  indexSource,
+  /Sign in or manage your reviewer account|A reviewer profile must be approved by an administrator/,
+  "Profile should not repeat the account/sign-in instructions",
 );
 assert.match(
   indexSource,
@@ -619,7 +636,14 @@ const context = {
     navigationUrlUpdates.push({ path: [...path], options });
   },
   getNavigationPathFromUrl: () => [],
-  requestConfirmation: async () => true,
+  requestConfirmation: async (message, title) => {
+    confirmationRequests.push({ message, title });
+    return confirmationResult;
+  },
+  openResourceDashboardTab(tabName) {
+    this.resourceDashboardDefaultTab = tabName;
+  },
+  loadResourceDashboard: async () => true,
   saveSessionProgress() {},
   saveState: async () => true,
   renderCategoryProgressNow(options) {
@@ -689,10 +713,31 @@ async function checkConcurrentNavigation() {
 
   await context.module.exports.navigate("resources");
   assert.equal(
+    context.resourceDashboardDefaultTab,
+    "PROFILE",
+    "entering the Resource Dashboard should select Profile by default",
+  );
+  assert.equal(
     navigationUrlUpdates.at(-1).path.join("/"),
     "resources",
     "opening Resources should set its dedicated navigation route",
   );
+  confirmationResult = false;
+  assert.equal(
+    await context.module.exports.navigate("dashboard"),
+    false,
+    "cancelling the Resource Dashboard exit should keep the user in it",
+  );
+  assert.equal(
+    views.get("view-resources").isActive(),
+    true,
+    "the Resource Dashboard should remain visible after exit is cancelled",
+  );
+  assert.deepEqual(confirmationRequests.at(-1), {
+    message: "Are you sure you want to exit the Resource Dashboard?",
+    title: "Exit Resource Dashboard",
+  });
+  confirmationResult = true;
   await context.module.exports.navigate("dashboard");
   assert.equal(
     navigationUrlUpdates.at(-1).path.join("::"),

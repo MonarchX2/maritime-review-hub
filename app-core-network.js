@@ -498,15 +498,19 @@
   const REQUEST_SCHEMAS = Object.freeze({
     get_reviewer_auth_config: { required: [], allowed: ["type", "appVersion"] },
     verify_reviewer_access: {
-      required: ["idToken", "deviceIdentity"],
-      allowed: ["type", "idToken", "deviceIdentity", "appVersion"],
+      required: ["idToken", "eventId"],
+      allowed: ["type", "idToken", "eventId", "appVersion"],
+    },
+    get_reviewer_account_status: {
+      required: ["idToken"],
+      allowed: ["type", "idToken", "appVersion"],
     },
     request_reviewer_enrollment: {
-      required: ["idToken"],
+      required: ["idToken", "eventId"],
       allowed: [
         "type",
         "idToken",
-        "deviceIdentity",
+        "eventId",
         "lastName",
         "firstName",
         "middleInitial",
@@ -514,22 +518,22 @@
       ],
     },
     get_reviewer_dashboard: {
-      required: ["idToken", "deviceIdentity"],
-      allowed: ["type", "idToken", "deviceIdentity", "appVersion"],
+      required: ["idToken", "eventId"],
+      allowed: ["type", "idToken", "eventId", "appVersion"],
     },
     log_module_access: {
-      required: ["idToken", "deviceIdentity"],
-      allowed: ["type", "idToken", "deviceIdentity", "appVersion"],
+      required: ["idToken", "eventId"],
+      allowed: ["type", "idToken", "eventId", "appVersion"],
     },
     log_resource_file_click: {
-      required: ["resourceArea", "fileName", "fileId"],
+      required: ["eventId", "resourceArea", "fileName", "fileId"],
       allowed: [
         "type",
+        "eventId",
         "resourceArea",
         "fileName",
         "fileId",
         "idToken",
-        "deviceIdentity",
         "appVersion",
       ],
     },
@@ -557,7 +561,7 @@
     },
     get_resource_dashboard: {
       required: [],
-      allowed: ["type", "version", "idToken", "deviceIdentity", "appVersion"],
+      allowed: ["type", "version", "idToken", "eventId", "appVersion"],
     },
   });
 
@@ -570,7 +574,7 @@
     folderId: 200,
     fileId: 200,
     idToken: 8192,
-    deviceIdentity: 36,
+    eventId: 36,
     lastName: 100,
     firstName: 100,
     middleInitial: 10,
@@ -679,12 +683,12 @@
     }
 
     if (
-      payload.deviceIdentity !== undefined &&
+      payload.eventId !== undefined &&
       !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-        payload.deviceIdentity,
+        payload.eventId,
       )
     ) {
-      throw new Error("Backend field 'deviceIdentity' must be a UUID.");
+      throw new Error("Backend field 'eventId' must be a UUID.");
     }
     if (
       payload.middleInitial !== undefined &&

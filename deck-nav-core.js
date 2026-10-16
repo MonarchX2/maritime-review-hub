@@ -54,7 +54,17 @@
     if (typeof globalScope.requestConfirmation === "function") {
       return Boolean(await globalScope.requestConfirmation(message, title));
     }
+    return typeof globalScope.confirm === "function"
+      ? Boolean(globalScope.confirm(message))
+      : false;
+  }
 
+  async function confirmNavigationAwayFromResourceDashboard() {
+    const message = "Are you sure you want to exit the Resource Dashboard?";
+    const title = "Exit Resource Dashboard";
+    if (typeof globalScope.requestConfirmation === "function") {
+      return Boolean(await globalScope.requestConfirmation(message, title));
+    }
     return typeof globalScope.confirm === "function"
       ? Boolean(globalScope.confirm(message))
       : false;
@@ -72,6 +82,14 @@
   async function performNavigation(viewId) {
     const viewElement = document.getElementById(`view-${viewId}`);
     if (!viewElement) return false;
+    const currentView = document.querySelector(".view-section.active");
+
+    if (
+      currentView?.id === "view-resources" &&
+      viewId !== "resources" &&
+      !(await confirmNavigationAwayFromResourceDashboard())
+    )
+      return false;
 
     if (
       state.session.active &&
@@ -89,7 +107,6 @@
       await saveState();
     }
 
-    const currentView = document.querySelector(".view-section.active");
     const leavingDeckReview =
       currentView?.id === "view-deck-review" && viewId !== "deck-review";
     const leavingSessionView =
@@ -138,6 +155,8 @@
     if (!returningToDashboard) globalScope.updateDashboard();
     if (viewId === "stats") globalScope.renderCharts();
     if (viewId === "resources") {
+      if (currentView?.id !== "view-resources")
+        globalScope.openResourceDashboardTab?.("PROFILE");
       Promise.resolve(globalScope.loadResourceDashboard?.()).catch((error) => {
         logger.error("Unable to load the Resource Dashboard.", error);
       });
