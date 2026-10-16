@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-25 - 2026-10-16
+
+### Fixed
+- Keep cached deck access enabled when the backend confirms the cached summary is already current.
+
 ## 26.10.16-24 - 2026-10-16
 
 ### Added

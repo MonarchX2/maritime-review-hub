@@ -12,6 +12,7 @@
    * @property {() => boolean} hasActiveSession
    * @property {() => boolean} isImmediateUpdateMode
    * @property {(value: boolean) => void} setSyncConnected
+   * @property {() => boolean} [markInitialSyncCompleteFromCache]
    * @property {(value: boolean) => void} setColdStart
    * @property {(summary: unknown) => unknown} normalizeSummaryData
    * @property {() => string} readStoredSyncStatusTimestamp
@@ -182,6 +183,9 @@
     const setConnected = (value) => {
       connected = Boolean(value);
       options.setSyncConnected(connected);
+      if (connected && isCached()) {
+        options.markInitialSyncCompleteFromCache?.();
+      }
     };
     const setIsColdStart = (value) => {
       coldStart = Boolean(value);

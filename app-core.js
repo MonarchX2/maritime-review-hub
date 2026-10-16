@@ -762,6 +762,17 @@
       setSyncConnected: (value) => {
         syncConnected = value;
       },
+      markInitialSyncCompleteFromCache: () => {
+        if (
+          isInitialSyncComplete ||
+          !Array.isArray(state.categorySummary) ||
+          state.categorySummary.length === 0
+        )
+          return false;
+        isInitialSyncComplete = true;
+        renderCategoryProgress();
+        return true;
+      },
       setColdStart: (value) => {
         isColdStart = value;
       },

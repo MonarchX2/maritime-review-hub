@@ -124,6 +124,81 @@ async function main() {
 
   controller.cleanup();
   assert.equal(timerCallbacks.size, 0);
+
+  const cachedState = {
+    categorySummary: [
+      {
+        Subject: "COLREGS",
+        QuestionCount: 1,
+        PayloadVersion: "b".repeat(64),
+      },
+    ],
+  };
+  let initialSyncComplete = false;
+  let categoryProgressRenders = 0;
+  const renderCachedCategoryProgress = () => {
+    categoryProgressRenders += 1;
+  };
+  const cachedController = context.SyncCore.createController({
+    state: cachedState,
+    lifecycle: context.LifecycleUtils,
+    appConfig: { backendPayloadSchemaVersion: 2, syncIntervalMs: 60000 },
+    network: {
+      async getDeckSyncSnapshot(options) {
+        assert.equal(options.since, storedTimestamp);
+        return {
+          status: "ok",
+          payloadSchemaVersion: 2,
+          syncTimestamp: storedTimestamp,
+          notModified: true,
+        };
+      },
+      async getSyncStatus() {
+        throw new Error("Fast sync should not issue a separate status request.");
+      },
+      async getDeckSummary() {
+        throw new Error("Fast sync should not issue a separate summary request.");
+      },
+    },
+    logger: { warn() {}, error() {}, info() {} },
+    isLeader: () => true,
+    hasActiveSession: () => false,
+    isImmediateUpdateMode: () => true,
+    setSyncConnected() {},
+    markInitialSyncCompleteFromCache() {
+      if (
+        initialSyncComplete ||
+        !Array.isArray(cachedState.categorySummary) ||
+        cachedState.categorySummary.length === 0
+      )
+        return false;
+      initialSyncComplete = true;
+      renderCachedCategoryProgress();
+      return true;
+    },
+    setColdStart() {},
+    normalizeSummaryData: (summary) => summary,
+    readStoredSyncStatusTimestamp: () => storedTimestamp,
+    persistSyncStatusTimestamp() {},
+    persistSummaryData: async () => true,
+    applySummaryData() {
+      assert.fail("An unchanged cached summary must not be reapplied.");
+    },
+    setAccessMetadata() {},
+    sanitizeDeletedDeckReferences() {},
+    updateSyncStatus() {},
+    setGlobalLoadingState() {},
+    hideConnectionStatusAfterDelay() {},
+    renderCategoryProgress: renderCachedCategoryProgress,
+    showColdStartNotification() {},
+    getSummarySignature: (summary) => JSON.stringify(summary),
+    async refreshPendingPayloads() {},
+  });
+  await cachedController.optimizedBackgroundSync();
+  assert.equal(initialSyncComplete, true);
+  assert.equal(categoryProgressRenders, 1);
+  cachedController.cleanup();
+  assert.equal(timerCallbacks.size, 0);
   console.log("Fast sync snapshot checks passed.");
 }
 
