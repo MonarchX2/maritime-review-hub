@@ -7,7 +7,8 @@ classifies resources; it does not authorize anyone to access them.
 
 Reviewer access uses Google sign-in from the Resource Dashboard's Profile
 section; the site does not create a separate password. The Profile section
-shows the verified account name and email after sign-in, provides sign-out, and
+shows the registered name, verified Google profile picture, and email after
+sign-in, provides sign-out, and
 lets a first-time user add their name. Any Google account with a verified
 sign-in can use the reviewer resources after its name and stable browser device
 identity are recorded in the `Accounts` worksheet in the `MRH_Accounts`

@@ -198,6 +198,7 @@ const validClaims = (email = "reviewer@example.com") => ({
   exp: String(Math.floor(Date.now() / 1000) + 300),
   email,
   email_verified: "true",
+  picture: "https://lh3.googleusercontent.com/a/example-profile",
 });
 const appVersion = "mrh-release-26.10.15-29";
 const post = (data) =>
@@ -257,6 +258,7 @@ assert.deepEqual(
     firstName: allowed.firstName,
     middleInitial: allowed.middleInitial,
     lastName: allowed.lastName,
+    picture: allowed.picture,
   },
   {
     status: "success",
@@ -264,6 +266,7 @@ assert.deepEqual(
     firstName: "Rita",
     middleInitial: "A",
     lastName: "Reviewer",
+    picture: "https://lh3.googleusercontent.com/a/example-profile",
   },
 );
 assert.equal(tokenFetchCount, 1);
@@ -323,6 +326,18 @@ tokenClaims = { ...validClaims(), iss: "attacker.example.com" };
 assert.equal(
   post(authRequest("verify_reviewer_access", "wrong-issuer")).code,
   "UNAUTHORIZED",
+);
+tokenClaims = {
+  ...validClaims(),
+  picture: "https://attacker.example/profile.png",
+};
+const untrustedPicture = post(
+  authRequest("verify_reviewer_access", "untrusted-profile-picture"),
+);
+assert.equal(
+  untrustedPicture.picture,
+  "",
+  "profile pictures must only be returned from trusted Google-hosted URLs",
 );
 tokenClaims = validClaims("unlisted@example.com");
 assert.equal(

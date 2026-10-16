@@ -1632,16 +1632,17 @@ button:active:not(:disabled) {
 
 #resource-reviewer-signin-button {
   display: flex;
-  justify-content: flex-start;
+  justify-content: center;
   min-height: 2.5rem;
 }
 
 .resource-profile-account-details {
   display: grid;
-  justify-items: start;
+  justify-items: center;
   gap: var(--resource-dashboard-space);
   border-top: 1px solid #e2e8f0;
   padding-top: 1rem;
+  text-align: center;
 }
 
 .resource-profile-account-details[hidden] {
@@ -1652,6 +1653,34 @@ button:active:not(:disabled) {
   color: #1e293b;
   font-size: 1rem;
   font-weight: 700;
+}
+
+.resource-profile-avatar {
+  display: grid;
+  width: 5rem;
+  height: 5rem;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid #dbe3ed;
+  border-radius: 50%;
+  color: #64748b;
+  background: #f1f5f9;
+  font-size: 4.5rem;
+}
+
+.resource-profile-avatar i {
+  line-height: 1;
+}
+
+.resource-profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.resource-profile-avatar img[hidden],
+.resource-profile-avatar-fallback[hidden] {
+  display: none;
 }
 
 .resource-profile-email {
@@ -2317,6 +2346,12 @@ button:active:not(:disabled) {
 
 .dark .resource-profile-account-details {
   border-color: #334155;
+}
+
+.dark .resource-profile-avatar {
+  border-color: #475569;
+  color: #94a3b8;
+  background: #1e293b;
 }
 
 .dark .resource-reviewer-signout {

@@ -6671,6 +6671,12 @@
       );
       const profileName = document.getElementById("resource-profile-name");
       const profileEmail = document.getElementById("resource-profile-email");
+      const profilePicture = document.getElementById(
+        "resource-profile-picture",
+      );
+      const profilePictureFallback = document.getElementById(
+        "resource-profile-avatar-fallback",
+      );
       const profileDisplayName =
         [
           response.firstName,
@@ -6681,6 +6687,23 @@
           .join(" ") || response.email;
       if (profileName) profileName.textContent = profileDisplayName;
       if (profileEmail) profileEmail.textContent = response.email;
+      const pictureUrl =
+        typeof response.picture === "string" &&
+        /^https:\/\/lh[3-6]\.googleusercontent\.com\//.test(response.picture)
+          ? response.picture
+          : "";
+      if (profilePicture) {
+        profilePicture.onerror = () => {
+          profilePicture.hidden = true;
+          profilePicture.removeAttribute("src");
+          if (profilePictureFallback) profilePictureFallback.hidden = false;
+        };
+        profilePicture.hidden = !pictureUrl;
+        if (pictureUrl) profilePicture.src = pictureUrl;
+        else profilePicture.removeAttribute("src");
+      }
+      if (profilePictureFallback)
+        profilePictureFallback.hidden = Boolean(pictureUrl);
       if (profileDetails) profileDetails.hidden = false;
       const enrollmentForm = document.getElementById(
         "resource-reviewer-enrollment-form",

@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-16 - 2026-10-16
+
+### Changed
+- Center Google sign-in and show the signed-in profile picture above the account name and email.
+
 ## 26.10.16-15 - 2026-10-16
 
 ### Changed

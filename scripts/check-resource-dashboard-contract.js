@@ -5,6 +5,7 @@ const appCore = fs.readFileSync("app-core.js", "utf8");
 const network = fs.readFileSync("app-core-network.js", "utf8");
 const indexHtml = fs.readFileSync("index.html", "utf8");
 const resourceStyles = fs.readFileSync("styles.css", "utf8");
+const backend = fs.readFileSync("backend/main.js", "utf8");
 
 assert.doesNotMatch(
   indexHtml,
@@ -118,8 +119,13 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-profile-screen\s*\{[^}]*max-width:[\s\S]*?\.resource-profile-card\s*\{[^}]*border-radius:[\s\S]*?\.resource-profile-account-details\[hidden\]\s*\{\s*display:\s*none;/,
-  "Profile should have a dedicated account settings screen",
+  /#resource-reviewer-signin-button\s*\{[^}]*justify-content:\s*center;/,
+  "Google sign-in should be horizontally centered",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-profile-account-details\s*\{[^}]*justify-items:\s*center;[\s\S]*?\.resource-profile-avatar\s*\{[^}]*border-radius:\s*50%;/,
+  "Profile should center the sign-in control and show a circular account avatar",
 );
 assert.match(
   appCore,
@@ -133,8 +139,23 @@ assert.match(
 );
 assert.match(
   appCore,
-  /resource-profile-account-details[\s\S]*?profileName\.textContent = profileDisplayName[\s\S]*?profileEmail\.textContent = response\.email[\s\S]*?return openResourceDashboardTab\("PROFILE"\)/,
-  "successful sign-in should populate account details and remain in Profile",
+  /profileName\.textContent = profileDisplayName[\s\S]*?profileEmail\.textContent = response\.email[\s\S]*?response\.picture[\s\S]*?return openResourceDashboardTab\("PROFILE"\)/,
+  "successful sign-in should populate the profile picture, name, and email and remain in Profile",
+);
+assert.match(
+  indexHtml,
+  /id="resource-profile-avatar-fallback"[\s\S]*?id="resource-profile-picture"[^>]*alt="Profile picture"[\s\S]*?id="resource-profile-name"[\s\S]*?id="resource-profile-email"/,
+  "the Profile screen should render its avatar, name, and email in order",
+);
+assert.match(
+  backend,
+  /function getVerifiedGooglePicture_[\s\S]*?lh\[3-6\]/,
+  "profile-picture URLs should be restricted to Google-hosted image URLs",
+);
+assert.match(
+  backend,
+  /picture: authorization\.picture/,
+  "only a Google-verified and Google-hosted profile picture should be sent to the frontend",
 );
 assert.match(
   appCore,
