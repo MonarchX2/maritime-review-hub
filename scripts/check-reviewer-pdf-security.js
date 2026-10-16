@@ -113,6 +113,21 @@ assert.match(
   "the worker must use bounded, on-demand triggers instead of polling continuously",
 );
 assert.match(
+  frontend,
+  /const deadline = Date\.now\(\) \+ 9 \* 60 \* 1000/,
+  "the browser must allow time for stale processing claims to be recovered before timing out",
+);
+assert.match(
+  backend,
+  /Number\(job\.processingAt \|\| 0\) < (?:now|Date\.now\(\)) - 6\.5 \* 60 \* 1000/,
+  "the browser download deadline must exceed the worker's stale-claim recovery window",
+);
+assert.match(
+  backend,
+  /const REVIEWER_PDF_JOB_TTL_MS = 10 \* 60 \* 1000/,
+  "the browser deadline must remain below the server-side PDF job expiry",
+);
+assert.match(
   backend,
   /async function processReviewerPdfQueue\(\w+\)[\s\S]*?await handleGetReviewerPdfRequest\([\s\S]*?listReviewerPdfPermissions_\([\s\S]*?PDF_OUTPUT_NOT_PRIVATE/,
   "the background worker must await watermarking and reject non-private derivatives",

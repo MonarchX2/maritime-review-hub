@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.10.22 - 2026-10-17
+
+### Fixed
+
+- Allow PDF downloads enough time for the backend to recover and rerun a stale
+  processing job before the browser reports a timeout.
+
 ## 26.10.21 - 2026-10-17
 
 ### Fixed

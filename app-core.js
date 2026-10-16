@@ -9696,7 +9696,7 @@
           },
           { timeoutMs: 60000, maxRetries: 0 },
         );
-        const deadline = Date.now() + 5 * 60 * 1000;
+        const deadline = Date.now() + 9 * 60 * 1000;
         let pollDelayMs = 1800;
         if (response?.status !== "pending")
           throw new Error(
