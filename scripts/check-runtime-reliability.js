@@ -130,6 +130,15 @@ const networkContext = {
     },
   },
 };
+const networkDiagnostics = [];
+networkContext.DebugUtils = {
+  createDebugLogger() {
+    return {
+      warn: (...args) => networkDiagnostics.push(args),
+      error: (...args) => networkDiagnostics.push(args),
+    };
+  },
+};
 networkContext.MRH_CONFIG = { databaseUrl: "https://example.test/backend" };
 networkContext.__MRH_APP__ = { version: "mrh-release-10.15.26-6" };
 networkContext.__MRH_APP_BASE_PATH = "/mrh/";
@@ -349,6 +358,129 @@ async function checkBackendErrorHandling() {
     JSON.parse(lastPostBody).appVersion,
     networkContext.__MRH_APP__.version,
     "every POST request must include the running app version",
+  );
+  let dashboardAttempts = 0;
+  const dashboardCorrelationId = "12345678-1234-4123-8123-123456789abc";
+  networkContext.fetch = async (input, options) => {
+    dashboardAttempts += 1;
+    assert.equal(input, "https://example.test/backend");
+    assert.equal(options.redirect, "follow");
+    if (dashboardAttempts === 1) {
+      return {
+        ok: true,
+        status: 200,
+        redirected: true,
+        url: "https://script.googleusercontent.com/macros/echo",
+        async text() {
+          return JSON.stringify({
+            status: "error",
+            code: "SERVER_ERROR",
+            message: "Server error.",
+            correlationId: dashboardCorrelationId,
+          });
+        },
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      redirected: true,
+      url: "https://script.googleusercontent.com/macros/echo",
+      async text() {
+        return JSON.stringify({ status: "success", tab: { rows: [] } });
+      },
+    };
+  };
+  const recoveredDashboard = await network.callBackend(
+    {
+      type: "get_reviewer_dashboard",
+      eventId: "12345678-1234-4123-8123-123456789abc",
+      idToken: "sensitive-token-do-not-log",
+      sessionId: "sensitive-session-do-not-log",
+    },
+    {
+      maxRetries: 2,
+      baseRetryDelayMs: 0,
+      maxRetryDelayMs: 0,
+    },
+  );
+  assert.equal(recoveredDashboard.status, "success");
+  assert.equal(
+    dashboardAttempts,
+    2,
+    "a read-only dashboard request should recover from one transient server error",
+  );
+  const diagnosticLogText = JSON.stringify(networkDiagnostics);
+  assert.match(diagnosticLogText, new RegExp(dashboardCorrelationId));
+  assert.match(diagnosticLogText, /get_reviewer_dashboard/);
+  assert.doesNotMatch(
+    diagnosticLogText,
+    /sensitive-token|sensitive-session/,
+    "network diagnostics must not include access tokens or session IDs",
+  );
+
+  let notFoundAttempts = 0;
+  networkContext.fetch = async () => {
+    notFoundAttempts += 1;
+    return {
+      ok: false,
+      status: 404,
+      redirected: true,
+      url: "https://script.googleusercontent.com/macros/echo",
+      async text() {
+        return JSON.stringify({
+          status: "error",
+          code: "NOT_FOUND",
+          message: "Dashboard index not found.",
+        });
+      },
+    };
+  };
+  await assert.rejects(
+    network.callBackend(
+      {
+        type: "get_reviewer_dashboard",
+        eventId: "22345678-1234-4123-8123-123456789abc",
+        idToken: "sensitive-token-do-not-log",
+        sessionId: "sensitive-session-do-not-log",
+      },
+      { maxRetries: 2, baseRetryDelayMs: 0, maxRetryDelayMs: 0 },
+    ),
+    (error) => error.status === 404 && error.code === "NOT_FOUND",
+  );
+  assert.equal(
+    notFoundAttempts,
+    1,
+    "permanent dashboard 404 responses must fail explicitly without retrying",
+  );
+  networkContext.fetch = async () => ({
+    ok: false,
+    status: 404,
+    redirected: true,
+    url: "https://script.googleusercontent.com/macros/echo",
+    async text() {
+      return "<html>private-session-do-not-show</html>";
+    },
+  });
+  await assert.rejects(
+    network.callBackend(
+      {
+        type: "get_reviewer_dashboard",
+        eventId: "32345678-1234-4123-8123-123456789abc",
+        idToken: "sensitive-token-do-not-log",
+        sessionId: "sensitive-session-do-not-log",
+      },
+      { maxRetries: 2, baseRetryDelayMs: 0, maxRetryDelayMs: 0 },
+    ),
+    (error) =>
+      error.status === 404 &&
+      error.code === "NON_JSON_RESPONSE" &&
+      error.message === "Backend returned a non-JSON response.",
+  );
+  assert.doesNotMatch(
+    JSON.stringify(networkDiagnostics),
+    /private-session-do-not-show|sensitive-token|sensitive-session/,
+    "non-JSON 404 diagnostics must not expose response bodies or credentials",
   );
 
   fetchCount = 0;

@@ -124,7 +124,7 @@ async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
               size: fontSize,
               font: font,
               color: PDFLib.rgb(0.24, 0.24, 0.24),
-              opacity: 0.24,
+              opacity: 0.18,
               rotate: PDFLib.degrees(-28),
             });
           });

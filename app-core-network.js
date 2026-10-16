@@ -804,6 +804,13 @@
     error.status = statusCode || (response.ok ? 0 : response.status);
     error.code = result?.code || "HTTP_ERROR";
     error.payload = result;
+    error.correlationId =
+      typeof result?.correlationId === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        result.correlationId,
+      )
+        ? result.correlationId
+        : "";
     error.isBackendError = true;
     return error;
   }
@@ -814,17 +821,18 @@
     if (!trimmed) {
       const emptyError = new Error("Backend returned an empty response body.");
       emptyError.status = response.status;
+      emptyError.code = "EMPTY_RESPONSE";
       throw emptyError;
     }
     try {
       return JSON.parse(trimmed);
     } catch (error) {
-      const preview = trimmed.replace(/\s+/g, " ").slice(0, 240);
       const parseError = new Error(
-        `Invalid backend JSON response: ${preview || "empty or non-JSON body"}`,
+        "Backend returned a non-JSON response.",
       );
       parseError.cause = error;
       parseError.status = response.status;
+      parseError.code = "NON_JSON_RESPONSE";
       throw parseError;
     }
   }
@@ -892,30 +900,50 @@
 
     return defaultConnectionPool.request(
       async () => {
-        const response = await fetchWithTimeout(
-          url,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "text/plain;charset=utf-8",
-              Accept: "application/json",
-              ...(options.headers || {}),
+        let response = null;
+        try {
+          response = await fetchWithTimeout(
+            url,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "text/plain;charset=utf-8",
+                Accept: "application/json",
+                ...(options.headers || {}),
+              },
+              body: JSON.stringify(versionedPayload),
+              redirect: "follow",
+              cache: "no-store",
+              keepalive: true,
+              signal: options.signal,
             },
-            body: JSON.stringify(versionedPayload),
-            redirect: "follow",
-            cache: "no-store",
-            keepalive: true,
-            signal: options.signal,
-          },
-          Number(options.timeoutMs) > 0
-            ? Number(options.timeoutMs)
-            : DEFAULT_TIMEOUT_MS,
-        );
+            Number(options.timeoutMs) > 0
+              ? Number(options.timeoutMs)
+              : DEFAULT_TIMEOUT_MS,
+          );
 
-        const result = await parseJsonResponse(response);
-        const backendError = getBackendError(result, response);
-        if (backendError) await processBackendError(backendError);
-        return result;
+          const result = await parseJsonResponse(response);
+          const backendError = getBackendError(result, response);
+          if (backendError) await processBackendError(backendError);
+          return result;
+        } catch (error) {
+          const responseHost =
+            String(response?.url || "").match(/^https?:\/\/([^/:?#]+)/i)?.[1] ||
+            "";
+          networkLogger.warn("Backend request failed", {
+            requestType: String(payload.type || "unknown")
+              .replace(/[^A-Za-z0-9_]/g, "")
+              .slice(0, 64),
+            status: Number(response?.status || error?.status) || 0,
+            redirected: Boolean(response?.redirected),
+            responseHost: responseHost,
+            code: String(error?.code || "NETWORK_ERROR")
+              .replace(/[^A-Za-z0-9_]/g, "")
+              .slice(0, 40),
+            correlationId: error?.correlationId || "",
+          });
+          throw error;
+        }
       },
       {
         maxRetries: Number(

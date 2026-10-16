@@ -245,3 +245,100 @@ test("processes a synthetic 20-page PDF and records local workload metrics", asy
     appsScriptMemoryBytes: null,
   }));
 });
+
+test("benchmarks maximum-page and maximum-input PDF workloads locally", async () => {
+  const runtime = createRuntime();
+  const identity = {
+    fullName: "Capacity Test",
+    email: "capacity.test@example.com",
+  };
+  const pageSource = await buildPdf(
+    runtime,
+    Array.from({ length: runtime.MRH_REVIEWER_PDF_MAX_PAGES }, (_, index) =>
+      index % 2 === 0 ? [612, 792] : [792, 612],
+    ),
+    10000,
+  );
+  assert.ok(pageSource.length < runtime.MRH_REVIEWER_PDF_MAX_BYTES);
+  const pageStartedAt = performance.now();
+  const pageResult = await runtime.watermarkReviewerPdfBytes_(
+    Array.from(pageSource, (byte) => (byte > 127 ? byte - 256 : byte)),
+    identity,
+  );
+  const pageVerification = await runtime.verifyReviewerPdfWatermarks_(
+    pageResult.bytes,
+    identity,
+  );
+  const pageElapsedMs = performance.now() - pageStartedAt;
+  assert.equal(pageResult.pageCount, runtime.MRH_REVIEWER_PDF_MAX_PAGES);
+  assert.equal(
+    pageVerification.pagesWithWatermarks,
+    runtime.MRH_REVIEWER_PDF_MAX_PAGES,
+  );
+  assert.ok(pageResult.bytes.length <= runtime.MRH_REVIEWER_PDF_MAX_OUTPUT_BYTES);
+
+  const smallSource = await buildPdf(runtime, [[612, 792]]);
+  const maxInput = new Uint8Array(runtime.MRH_REVIEWER_PDF_MAX_BYTES);
+  maxInput.set(smallSource);
+  maxInput.fill(0x20, smallSource.length);
+  const inputStartedAt = performance.now();
+  const inputResult = await runtime.watermarkReviewerPdfBytes_(
+    Array.from(maxInput, (byte) => (byte > 127 ? byte - 256 : byte)),
+    identity,
+  );
+  const inputVerification = await runtime.verifyReviewerPdfWatermarks_(
+    inputResult.bytes,
+    identity,
+  );
+  const inputElapsedMs = performance.now() - inputStartedAt;
+  assert.equal(inputResult.pageCount, 1);
+  assert.equal(inputVerification.pagesWithWatermarks, 1);
+  assert.ok(inputResult.bytes.length <= runtime.MRH_REVIEWER_PDF_MAX_OUTPUT_BYTES);
+  console.log(JSON.stringify({
+    test: "maximum PDF workloads",
+    maximumPages: runtime.MRH_REVIEWER_PDF_MAX_PAGES,
+    pageCaseSourceBytes: pageSource.length,
+    pageCaseOutputBytes: pageResult.bytes.length,
+    pageCaseElapsedMs: Math.round(pageElapsedMs),
+    maximumInputBytes: maxInput.length,
+    maxInputOutputBytes: inputResult.bytes.length,
+    maxInputElapsedMs: Math.round(inputElapsedMs),
+    processMemoryBytes: process.memoryUsage().heapUsed,
+    appsScriptMemoryBytes: null,
+    environment: "local Node VM; not an Apps Script execution measurement",
+  }));
+});
+
+test("measures a small concurrent PDF batch without changing worker concurrency", async () => {
+  const runtime = createRuntime();
+  const identity = {
+    fullName: "Concurrent Test",
+    email: "concurrent.test@example.com",
+  };
+  const sources = await Promise.all(
+    Array.from({ length: 3 }, () => buildPdf(runtime, [[612, 792], [792, 612]])),
+  );
+  const startedAt = performance.now();
+  const results = await Promise.all(
+    sources.map((source) =>
+      runtime.watermarkReviewerPdfBytes_(
+        Array.from(source, (byte) => (byte > 127 ? byte - 256 : byte)),
+        identity,
+      ),
+    ),
+  );
+  const elapsedMs = performance.now() - startedAt;
+  assert.deepEqual(
+    results.map((result) => result.pageCount),
+    [2, 2, 2],
+  );
+  console.log(JSON.stringify({
+    test: "local concurrent PDF batch",
+    requests: results.length,
+    totalPages: results.reduce((total, result) => total + result.pageCount, 0),
+    elapsedMs: Math.round(elapsedMs),
+    processMemoryBytes: process.memoryUsage().heapUsed,
+    appsScriptMemoryBytes: null,
+    environment: "local Node VM; no production Apps Script concurrency claim",
+  }));
+});

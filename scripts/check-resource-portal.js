@@ -251,8 +251,8 @@ assert.ok(
 );
 assert.match(
   appCore,
-  /if \(reviewerSessionRestorePending\) \{\s*if \(lockedPanel\) lockedPanel\.hidden = true;[\s\S]*?showReviewerDashboardLoading\(true\)/,
-  "session restoration should never display the Locked panel alongside Loading",
+  /reviewerSessionRestorePending && !hasAuthorizedSessionCache\) \{\s*if \(lockedPanel\) lockedPanel\.hidden = true;[\s\S]*?showReviewerDashboardLoading\(true\)/,
+  "session restoration without cached rows should never display the Locked panel alongside Loading",
 );
 assert.match(
   appCore,

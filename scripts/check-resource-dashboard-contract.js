@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 
 const appCore = fs.readFileSync("app-core.js", "utf8");
+const appConfig = fs.readFileSync("app-config.js", "utf8");
 const network = fs.readFileSync("app-core-network.js", "utf8");
 const indexHtml = fs.readFileSync("index.html", "utf8");
 const resourceStyles = fs.readFileSync("styles.css", "utf8");
@@ -64,6 +65,31 @@ assert.match(
   appCore,
   /async function loadReviewerDashboard\(\{ refresh = false \} = \{\}\)[\s\S]*?const silentRefresh = refresh && hasExistingReviewerRows[\s\S]*?if \(!silentRefresh\)\s*showReviewerDashboardLoading\(!hasExistingReviewerRows\)[\s\S]*?backendRequest = globalScope\.AppNetwork\.callBackend\([\s\S]*?await backendRequest/,
   "Reviewer initial loads should show Loading while background refreshes preserve existing rows and status",
+);
+assert.match(
+  appCore,
+  /type: "get_reviewer_dashboard"[\s\S]*?timeoutMs: 15000,[\s\S]*?maxRetries: 2,[\s\S]*?baseRetryDelayMs: 300,[\s\S]*?maxRetryDelayMs: 1500/,
+  "read-only dashboard requests should retry transient failures with a bounded short backoff",
+);
+assert.match(
+  appConfig,
+  /https:\/\/script\.google\.com\/macros\/s\/AKfycbyM7L_Fam7UT8iRrCVy09ktV5VPPJxMLF2in6kwUewUJJ-La-BYd8okAsPVC8Tkcaw\/exec/,
+  "frontend configuration should target the verified production Apps Script deployment",
+);
+assert.match(
+  network,
+  /redirect:\s*"follow"/,
+  "Apps Script POST requests must follow Google ContentService redirects",
+);
+assert.match(
+  network,
+  /error\.correlationId\s*=/,
+  "backend correlation IDs should be carried on structured errors",
+);
+assert.doesNotMatch(
+  network,
+  /Invalid backend JSON response:\s*\$\{preview/,
+  "non-JSON backend responses must not leak arbitrary response content in user-facing errors",
 );
 assert.match(
   appCore,
@@ -205,12 +231,22 @@ assert.match(
 assert.match(
   appCore,
   /function getStoredReviewerDashboard\(email\)[\s\S]*?sessionStorage\.getItem\(REVIEWER_DASHBOARD_CACHE_KEY\)[\s\S]*?cachedEmail !== String\(email \|\| ""\)\.trim\(\)\.toLowerCase\(\)[\s\S]*?REVIEWER_DASHBOARD_CACHE_MAX_AGE_MS/,
-  "instant dashboard rows must come only from a fresh current-tab cache for the authenticated account",
+  "instant dashboard rows must come only from a fresh current-tab cache for the same account",
 );
 assert.match(
   appCore,
-  /reviewerAccountStatus === "TRUE"[\s\S]*?getStoredReviewerDashboard\(reviewerAuthorizedEmail\)[\s\S]*?renderResourceDashboardTab\(\)[\s\S]*?type: "get_reviewer_dashboard"/,
-  "approved users should see cached rows immediately while the server refreshes them",
+  /function restoreStoredReviewerDashboard\(email\)[\s\S]*?getStoredReviewerDashboard\(email\)[\s\S]*?reviewerDashboardLoadedForEmail = reviewerAuthorizedEmail/,
+  "cached dashboard rows should be hydrated before session restoration completes",
+);
+assert.match(
+  appCore,
+  /hasAuthorizedSessionCache[\s\S]*?reviewerSessionRestorePending && !hasAuthorizedSessionCache[\s\S]*?if \(!hasAuthorizedSessionCache\)/,
+  "the approved account's cached table should remain visible while its session is refreshed",
+);
+assert.match(
+  appCore,
+  /if \(hasCachedDashboard\) renderResourceDashboardTab\(\);\s*else showReviewerDashboardLoading\(true\)/,
+  "session restoration should not clear a cached table into a loading screen",
 );
 assert.match(
   appCore,
@@ -219,13 +255,23 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function renderReviewerPdfWatermark\(fullName, email\)[\s\S]*?Array\.from\(\{ length: 20 \}/,
-  "online PDF preview should show a compact 20-stamp identity overlay",
+  /function renderReviewerPdfWatermark\(fullName, email\)[\s\S]*?Array\.from\(\{ length: 10 \}/,
+  "online PDF preview should show ten two-line identity stamps",
 );
 assert.match(
   resourceStyles,
-  /\.resource-portal-preview-watermark\s*\{[^}]*grid-template:\s*repeat\(5,\s*1fr\)\s*\/\s*repeat\(4,\s*1fr\)/,
-  "online PDF identity stamps should use a compact five-by-four grid",
+  /\.resource-portal-preview-watermark\s*\{[^}]*grid-template:\s*repeat\(5,\s*1fr\)\s*\/\s*repeat\(2,\s*1fr\)/,
+  "online PDF identity stamps should match the PDF's two-column, five-row grid",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-preview-watermark span\s*\{[^}]*color:\s*rgb\(51 65 85 \/ 18%\)/,
+  "online preview watermarks should use the reduced 18 percent opacity",
+);
+assert.match(
+  fs.readFileSync("backend/ReviewerPdf.gs", "utf8"),
+  /opacity:\s*0\.18/,
+  "generated PDF watermarks should use the reduced 18 percent opacity",
 );
 assert.match(
   resourceStyles,
@@ -339,8 +385,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /reviewerSessionRestorePending\) \{\s*if \(lockedPanel\) lockedPanel\.hidden = true;[\s\S]*?showReviewerDashboardLoading\(true\);\s*return true;/,
-  "a saved session being restored should show only Loading and never the Locked panel",
+  /reviewerSessionRestorePending && !hasAuthorizedSessionCache\) \{\s*if \(lockedPanel\) lockedPanel\.hidden = true;[\s\S]*?showReviewerDashboardLoading\(true\);\s*return true;/,
+  "a saved session without a valid cached dashboard should show Loading and never the Locked panel",
 );
 assert.match(
   appCore,

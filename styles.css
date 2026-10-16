@@ -1695,7 +1695,7 @@ button:active:not(:disabled) {
   z-index: 1;
   inset: 0;
   display: grid;
-  grid-template: repeat(5, 1fr) / repeat(4, 1fr);
+  grid-template: repeat(5, 1fr) / repeat(2, 1fr);
   overflow: hidden;
   pointer-events: none;
   user-select: none;
@@ -1704,7 +1704,7 @@ button:active:not(:disabled) {
 .resource-portal-preview-watermark span {
   display: grid;
   place-items: center;
-  color: rgb(51 65 85 / 24%);
+  color: rgb(51 65 85 / 18%);
   font-size: clamp(0.48rem, 0.8vw, 0.78rem);
   font-weight: 700;
   line-height: 1.15;

@@ -5,6 +5,13 @@ const vm = require("node:vm");
 
 const properties = new Map();
 const cacheValues = new Map();
+const cacheExpirations = new Map();
+const backendLogs = [];
+let cacheNowMs = 0;
+function clearTestCache() {
+  cacheValues.clear();
+  cacheExpirations.clear();
+}
 const spreadsheetId = "1234567890123456789012345678901234567890123";
 const oldDeviceId = "01234567-89ab-4cde-8fab-0123456789ab";
 let tokenClaims = {};
@@ -235,7 +242,11 @@ const context = {
   JSON,
   Math,
   Date,
-  Logger: { log() {} },
+  Logger: {
+    log(message) {
+      backendLogs.push(String(message));
+    },
+  },
   MailApp: {
     getRemainingDailyQuota: () => 100,
     sendEmail(message) {
@@ -252,12 +263,24 @@ const context = {
   },
   CacheService: {
     getScriptCache: () => ({
-      get: (key) => cacheValues.get(key) || null,
+      get(key) {
+        const expiresAt = cacheExpirations.get(key);
+        if (expiresAt !== undefined && expiresAt <= cacheNowMs) {
+          cacheValues.delete(key);
+          cacheExpirations.delete(key);
+          return null;
+        }
+        return cacheValues.get(key) || null;
+      },
       put: (key, value, ttlSeconds) => {
         accountCacheTtlSeconds = ttlSeconds;
         cacheValues.set(key, value);
+        cacheExpirations.set(key, cacheNowMs + ttlSeconds * 1000);
       },
-      remove: (key) => cacheValues.delete(key),
+      remove(key) {
+        cacheValues.delete(key);
+        cacheExpirations.delete(key);
+      },
     }),
   },
   SpreadsheetApp: {
@@ -492,6 +515,16 @@ const clientId = "1234567890-example.apps.googleusercontent.com";
 const appVersion = JSON.parse(
   fs.readFileSync("version.json", "utf8"),
 ).buildVersion;
+assert.equal(
+  context.isSupportedClientVersion(appVersion),
+  true,
+  "the current local client release must be accepted by the backend",
+);
+assert.equal(
+  context.isSupportedClientVersion("mrh-26.10.19-6be1abf21b37"),
+  true,
+  "the verified production client release must remain compatible with the deployed backend",
+);
 const appsScriptManifest = JSON.parse(
   fs.readFileSync("backend/appsscript.json", "utf8"),
 );
@@ -1054,7 +1087,7 @@ const newUserRow = accountRows.findIndex(
   (row) => row[0] === "new-reviewer@example.com",
 );
 accountRows[newUserRow][4] = "DENIED";
-cacheValues.clear();
+clearTestCache();
 assert.equal(
   post({
     type: "get_reviewer_account_status",
@@ -1083,7 +1116,7 @@ assert.match(
   /^Dear Maritime Review Hub user,[\s\S]*unable to approve[\s\S]*Sincerely,\nMaritime Review Hub$/,
   "denial notifications should use formal language and a branded sender name",
 );
-cacheValues.clear();
+clearTestCache();
 assert.equal(
   post({
     type: "get_reviewer_account_status",
@@ -1191,7 +1224,7 @@ tokenClaims = validClaims();
 const existingReviewerRow = accountRows.findIndex(
   (row) => row[0] === "reviewer@example.com",
 );
-cacheValues.clear();
+clearTestCache();
 const unchangedApprovedProfile = post({
   type: "request_reviewer_enrollment",
   idToken: "approved-token",
@@ -1233,7 +1266,7 @@ assert.equal(
   "an edited name must immediately lose reviewer access",
 );
 accountRows[existingReviewerRow][4] = "TRUE";
-cacheValues.clear();
+clearTestCache();
 assert.equal(
   post({
     type: "get_reviewer_account_status",
@@ -1376,7 +1409,7 @@ assert.deepEqual(
   "syllabus clicks should record their context without storing private Drive IDs",
 );
 accountRows[existingReviewerRow][4] = "FALSE";
-cacheValues.clear();
+clearTestCache();
 assert.equal(
   post({
     type: "get_reviewer_account_status",
@@ -1395,7 +1428,7 @@ assert.equal(
   "revoked approval must stop protected access",
 );
 accountRows[existingReviewerRow][4] = "DENIED";
-cacheValues.clear();
+clearTestCache();
 assert.equal(accountRows[existingReviewerRow][4], "DENIED");
 assert.equal(
   context.findMRHAccount_("reviewer@example.com").accountStatus,
@@ -1410,7 +1443,7 @@ assert.equal(
   "DENIED",
 );
 
-cacheValues.clear();
+clearTestCache();
 post({
   type: "get_reviewer_account_status",
   idToken: "approved-token",
@@ -1443,6 +1476,33 @@ assert.deepEqual(
   Array.from(interveningAccount),
   ["intervening@example.com", "Unchanged", "Account", "", "FALSE"],
   "profile edits must not overwrite another account after sheet rows move",
+);
+
+const originalDashboardHandler = context.handleGetReviewerDashboardRequest;
+context.handleGetReviewerDashboardRequest = () => {
+  throw new Error("private-token@example.com and sensitive-account-data");
+};
+const backendLogCountBeforeFailure = backendLogs.length;
+const failedDashboardResponse = post({
+  type: "get_reviewer_dashboard",
+  eventId: eventId("a"),
+  idToken: "private-id-token-not-for-logs",
+  sessionId: "private-session-not-for-logs",
+});
+context.handleGetReviewerDashboardRequest = originalDashboardHandler;
+assert.equal(failedDashboardResponse.code, "SERVER_ERROR");
+assert.match(
+  failedDashboardResponse.correlationId || "",
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  "server failures should return a safe correlation ID",
+);
+const loggedFailure = backendLogs.slice(backendLogCountBeforeFailure).join("\n");
+assert.match(loggedFailure, /requestType=get_reviewer_dashboard/);
+assert.match(loggedFailure, new RegExp(failedDashboardResponse.correlationId));
+assert.doesNotMatch(
+  loggedFailure,
+  /private-token|private-id-token|private-session|sensitive-account-data/,
+  "backend failure logs must not contain tokens, sessions, account details, or raw error messages",
 );
 
 const allLogRows = Object.values(appendedRows).flat();
@@ -1489,7 +1549,7 @@ const liveAccount = accountRows.find(
 );
 tokenClaims = validClaims("reviewer@example.com");
 liveAccount[4] = "FALSE";
-cacheValues.clear();
+clearTestCache();
 const spreadsheetOpensBeforeStatusPoll = spreadsheetOpenCount;
 assert.equal(
   post({
@@ -1514,10 +1574,26 @@ assert.equal(
 assert.ok(spreadsheetOpensAfterFirstStatusPoll > spreadsheetOpensBeforeStatusPoll);
 assert.equal(
   accountCacheTtlSeconds,
-  5,
+  3,
   "approval status cache should expire quickly even when an account edit trigger is unavailable",
 );
 liveAccount[4] = "TRUE";
+cacheNowMs += 3001;
+const spreadsheetOpensBeforeCacheExpiryPoll = spreadsheetOpenCount;
+assert.equal(
+  post({
+    type: "get_reviewer_account_status",
+    idToken: "fresh-status-token",
+  }).accountStatus,
+  "TRUE",
+  "approval changes must become visible after the short cache expires without relying on an edit trigger",
+);
+assert.equal(
+  spreadsheetOpenCount,
+  spreadsheetOpensBeforeCacheExpiryPoll + 1,
+  "cache expiry should perform one fresh account lookup",
+);
+liveAccount[4] = "FALSE";
 const generationBeforeAccountEdit = context.getMRHAccountCacheGeneration_();
 context.mrhAccountsEdited({
   source: { getId: () => spreadsheetId },
@@ -1539,13 +1615,105 @@ assert.equal(
     type: "get_reviewer_account_status",
     idToken: "fresh-status-token",
   }).accountStatus,
-  "TRUE",
-  "status polling must immediately observe an administrator update after the ACCOUNTS edit trigger invalidates the cache",
+  "FALSE",
+  "status polling must immediately observe an administrator revocation after the ACCOUNTS edit trigger invalidates the cache",
 );
 assert.equal(
   spreadsheetOpenCount,
   spreadsheetOpensBeforeInvalidatedStatusPoll + 1,
   "an ACCOUNTS edit should force exactly one fresh lookup for the next status poll",
 );
-
-console.log("Reviewer authorization and approval lifecycle checks passed.");
+for (const editedColumn of [1, 2, 3, 4, 5, 6, 7]) {
+  const generationBeforeFieldEdit = context.getMRHAccountCacheGeneration_();
+  context.mrhAccountsEdited({
+    source: { getId: () => spreadsheetId },
+    range: {
+      getSheet: () => ({ getName: () => "ACCOUNTS" }),
+      getLastRow: () => 2,
+      getColumn: () => editedColumn,
+      getLastColumn: () => editedColumn,
+    },
+  });
+  assert.notEqual(
+    context.getMRHAccountCacheGeneration_(),
+    generationBeforeFieldEdit,
+    `edits to ACCOUNTS column ${editedColumn} must invalidate cached account data`,
+  );
+}
+const generationBeforeIrrelevantEdit = context.getMRHAccountCacheGeneration_();
+context.mrhAccountsEdited({
+  source: { getId: () => "different-spreadsheet" },
+  range: {
+    getSheet: () => ({ getName: () => "ACCOUNTS" }),
+    getLastRow: () => 2,
+    getColumn: () => 5,
+    getLastColumn: () => 5,
+  },
+});
+context.mrhAccountsEdited({
+  source: { getId: () => spreadsheetId },
+  range: {
+    getSheet: () => ({ getName: () => "OTHER" }),
+    getLastRow: () => 2,
+    getColumn: () => 5,
+    getLastColumn: () => 5,
+  },
+});
+context.mrhAccountsEdited({
+  source: { getId: () => spreadsheetId },
+  range: {
+    getSheet: () => ({ getName: () => "ACCOUNTS" }),
+    getLastRow: () => 1,
+    getColumn: () => 5,
+    getLastColumn: () => 5,
+  },
+});
+assert.equal(
+  context.getMRHAccountCacheGeneration_(),
+  generationBeforeIrrelevantEdit,
+  "unrelated spreadsheets, sheets, and header-only edits must not invalidate account snapshots",
+);
+assert.equal(
+  post({
+    type: "get_reviewer_account_status",
+    idToken: "fresh-status-token",
+  }).accountStatus,
+  "FALSE",
+  "the account cache should be warm before measuring a concurrent polling burst",
+);
+const spreadsheetOpensBeforeConcurrentStatusBurst = spreadsheetOpenCount;
+const burstStartedAt = performance.now();
+Promise.all(
+  Array.from({ length: 32 }, () =>
+    Promise.resolve().then(() =>
+      post({
+        type: "get_reviewer_account_status",
+        idToken: "fresh-status-token",
+      }),
+    ),
+  ),
+).then((statusBurst) => {
+  const statusBurstElapsedMs = performance.now() - burstStartedAt;
+  assert.ok(
+    statusBurst.every((result) => result.accountStatus === "FALSE"),
+    "concurrent status requests must all observe the same authorized state",
+  );
+  assert.equal(
+    spreadsheetOpenCount,
+    spreadsheetOpensBeforeConcurrentStatusBurst,
+    "a burst of status polls should reuse a fresh shared account cache entry",
+  );
+  console.log(
+    JSON.stringify({
+      test: "account status cached request burst",
+      requests: statusBurst.length,
+      elapsedMs: Math.round(statusBurstElapsedMs),
+      additionalSpreadsheetOpens: 0,
+      environment: "local Apps Script API simulation, not production GAS",
+    }),
+  );
+  console.log("Reviewer authorization and approval lifecycle checks passed.");
+}).catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

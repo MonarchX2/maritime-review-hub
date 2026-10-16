@@ -81,6 +81,50 @@ function errorResponse(message, code, details) {
   return jsonResponse(payload);
 }
 
+function createBackendCorrelationId_() {
+  var correlationId =
+    typeof Utilities !== "undefined" &&
+    Utilities &&
+    typeof Utilities.getUuid === "function"
+      ? String(Utilities.getUuid() || "")
+      : "";
+  if (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      correlationId,
+    )
+  )
+    return correlationId;
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+    var r = Math.floor(Math.random() * 16);
+    return (c === "x" ? r : (r & 3) | 8).toString(16);
+  });
+}
+
+function logBackendFailure_(handler, requestType, correlationId, error) {
+  var safeHandler = /^[A-Za-z0-9_]{1,40}$/.test(String(handler || ""))
+    ? String(handler)
+    : "unknown";
+  var safeRequestType = /^[A-Za-z0-9_]{1,64}$/.test(
+    String(requestType || ""),
+  )
+    ? String(requestType)
+    : "unknown";
+  var errorName =
+    error && /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(String(error.name || ""))
+      ? String(error.name)
+      : "Error";
+  Logger.log(
+    "[MRH] failure handler=" +
+      safeHandler +
+      " requestType=" +
+      safeRequestType +
+      " correlationId=" +
+      correlationId +
+      " errorName=" +
+      errorName,
+  );
+}
+
 var RESOURCE_PORTAL_ROOT_FOLDER_ID = "19LoMUsogxTHB5xrI1Gd08NASQv2Zqi6E";
 var RESOURCE_DASHBOARD_INDEX_FOLDER_ID =
   "1cP2FBOW-Jryu9eknJgDjUZcxx9qwC22Z";
@@ -169,7 +213,7 @@ var MRH_RESOURCE_DASHBOARD_CACHE_TTL_SECONDS = 30;
 var MRH_REVIEWER_DASHBOARD_CACHE_TTL_SECONDS = 60;
 var MRH_RESOURCE_DASHBOARD_VERSION_CACHE_TTL_SECONDS = CACHE_TTL_SECONDS;
 var MRH_REVIEWER_DASHBOARD_VERSION_CACHE_TTL_SECONDS = CACHE_TTL_SECONDS;
-var MRH_ACCOUNT_CACHE_TTL_SECONDS = 5;
+var MRH_ACCOUNT_CACHE_TTL_SECONDS = 3;
 var MRH_ACCOUNT_CACHE_GENERATION_PROPERTY = "MRH_ACCOUNT_CACHE_GENERATION";
 var MRH_SPREADSHEET_TIME_ZONE = "Asia/Manila";
 var MRH_LOG_DEDUPE_TTL_SECONDS = 21600;
@@ -5558,12 +5602,15 @@ function doGet(e) {
   try {
     return doGetInternal(e || { parameter: {} });
   } catch (error) {
-    Logger.log("[doGet] " + (error && error.stack ? error.stack : error));
-    return jsonResponse({
-      status: "error",
-      code: "SERVER_ERROR",
-      message: "Service temporarily unavailable.",
-    });
+    var correlationId = createBackendCorrelationId_();
+    logBackendFailure_("doGet", "get", correlationId, error);
+    return errorResponse(
+      "Server error. Reference: " + correlationId + ".",
+      "SERVER_ERROR",
+      {
+        correlationId: correlationId,
+      },
+    );
   }
 }
 
@@ -5811,6 +5858,7 @@ function filterSummaryDataByAccess(summaryJsonString) {
 /* -------------------------------------------------------------------------- */
 
 function doPost(e) {
+  var requestType = "unknown";
   try {
     if (!e || !e.postData || !e.postData.contents)
       return errorResponse("Request body is required.", "BAD_REQUEST");
@@ -5828,7 +5876,7 @@ function doPost(e) {
     var versionError = clientVersionRequired(data.appVersion);
     if (versionError) return versionError;
 
-    var requestType = String(data.type || "unknown");
+    requestType = String(data.type || "unknown");
     if (
       [
         "verify_reviewer_access",
@@ -5907,8 +5955,15 @@ function doPost(e) {
 
     return errorResponse("Unknown request type.", "UNKNOWN_REQUEST");
   } catch (error) {
-    Logger.log("[doPost] " + (error && error.stack ? error.stack : error));
-    return errorResponse("Server error.", "SERVER_ERROR");
+    var correlationId = createBackendCorrelationId_();
+    logBackendFailure_("doPost", requestType, correlationId, error);
+    return errorResponse(
+      "Server error. Reference: " + correlationId + ".",
+      "SERVER_ERROR",
+      {
+        correlationId: correlationId,
+      },
+    );
   }
 }
 

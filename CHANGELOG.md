@@ -1,5 +1,16 @@
 # Changelog
 
+## 26.10.25 - 2026-10-17
+
+### Fixed
+
+- Render the same-account cached Review Materials table immediately on reload
+  while the saved session is verified and refreshed in the background.
+- Match the online preview watermark to the generated PDF's two-column,
+  five-row identity layout and reduce watermark opacity to 18% in both views.
+- Add privacy-safe request correlation IDs and bounded recovery for dashboard
+  loading failures.
+
 ## 26.10.24 - 2026-10-17
 
 ### Fixed

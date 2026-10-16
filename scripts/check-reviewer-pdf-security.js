@@ -199,8 +199,8 @@ assert.match(
 );
 assert.match(
   pdfHelper,
-  /\[0\.25, 0\.75\]\.forEach\(function \(columnFraction\)[\s\S]*?\[0\.12, 0\.31, 0\.5, 0\.69, 0\.88\]\.forEach\(function \(rowFraction\)[\s\S]*?opacity: 0\.24/,
-  "downloaded PDFs should carry ten compact two-line identity watermarks per page",
+  /\[0\.25, 0\.75\]\.forEach\(function \(columnFraction\)[\s\S]*?\[0\.12, 0\.31, 0\.5, 0\.69, 0\.88\]\.forEach\(function \(rowFraction\)[\s\S]*?opacity: 0\.18/,
+  "downloaded PDFs should carry ten compact, reduced-opacity two-line identity watermarks per page",
 );
 assert.match(
   pdfHelper,

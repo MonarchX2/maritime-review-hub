@@ -6248,6 +6248,18 @@
     }
   }
 
+  function restoreStoredReviewerDashboard(email) {
+    const tab = getStoredReviewerDashboard(email);
+    if (!tab) return false;
+    resourceDashboardData = {
+      ...(resourceDashboardData || {}),
+      REVIEWERS: tab,
+    };
+    reviewerAuthorizedEmail = String(email || "").trim();
+    reviewerDashboardLoadedForEmail = reviewerAuthorizedEmail;
+    return true;
+  }
+
   function cacheReviewerDashboard(email, tab) {
     if (
       !email ||
@@ -6595,6 +6607,8 @@
           reviewerAccountStatus = cachedProfile.accountStatus;
           if (reviewerAccountStatus)
             setReviewerAccessEnabled(reviewerAccountStatus === "TRUE");
+          if (reviewerAccountStatus === "TRUE")
+            restoreStoredReviewerDashboard(cachedProfile.email);
           const signInButton = document.getElementById(
             "resource-reviewer-signin-button",
           );
@@ -6671,12 +6685,26 @@
       void logResourceDashboardAction(tabName, "TAB_OPEN");
     if (tabName === "REVIEWERS") {
       if (!reviewerSessionId) {
+        if (!hasExplicitReviewerSignOut()) {
+          const cachedProfile = getStoredReviewerProfile();
+          if (cachedProfile?.accountStatus === "TRUE") {
+            reviewerAccountStatus = cachedProfile.accountStatus;
+            reviewerAuthorizedEmail = cachedProfile.email;
+            restoreStoredReviewerDashboard(cachedProfile.email);
+          }
+        }
         if (
           reviewerSessionRestorePending ||
           (!hasExplicitReviewerSignOut() && getStoredReviewerSessionId())
         ) {
           if (lockedPanel) lockedPanel.hidden = true;
-          showReviewerDashboardLoading(true);
+          if (
+            reviewerDashboardLoadedForEmail?.toLowerCase() ===
+              reviewerAuthorizedEmail.toLowerCase() &&
+            resourceDashboardData?.REVIEWERS
+          )
+            renderResourceDashboardTab();
+          else showReviewerDashboardLoading(true);
           void restoreReviewerSession();
           return true;
         }
@@ -6844,22 +6872,32 @@
       ".resource-dashboard-update-note",
     );
     if (resourceDashboardActiveTab === "REVIEWERS" && !reviewerSessionId) {
-      if (reviewerSessionRestorePending) {
+      const hasAuthorizedSessionCache =
+        !hasExplicitReviewerSignOut() &&
+        Boolean(getStoredReviewerSessionId()) &&
+        reviewerAccountStatus === "TRUE" &&
+        reviewerDashboardLoadedForEmail?.toLowerCase() ===
+          reviewerAuthorizedEmail.toLowerCase() &&
+        Array.isArray(resourceDashboardData?.REVIEWERS?.columns) &&
+        Array.isArray(resourceDashboardData?.REVIEWERS?.rows);
+      if (reviewerSessionRestorePending && !hasAuthorizedSessionCache) {
         if (lockedPanel) lockedPanel.hidden = true;
         if (updateNote) updateNote.hidden = true;
         showReviewerDashboardLoading(true);
         return true;
       }
-      if (lockedPanel) lockedPanel.hidden = false;
-      if (updateNote) updateNote.hidden = true;
-      const filters = document
-        .getElementById("resource-dashboard-filter-year")
-        ?.closest(".resource-dashboard-filters");
-      if (filters) filters.hidden = true;
-      tableHead.replaceChildren();
-      tableBody.replaceChildren();
-      setResourceDashboardStatus("");
-      return true;
+      if (!hasAuthorizedSessionCache) {
+        if (lockedPanel) lockedPanel.hidden = false;
+        if (updateNote) updateNote.hidden = true;
+        const filters = document
+          .getElementById("resource-dashboard-filter-year")
+          ?.closest(".resource-dashboard-filters");
+        if (filters) filters.hidden = true;
+        tableHead.replaceChildren();
+        tableBody.replaceChildren();
+        setResourceDashboardStatus("");
+        return true;
+      }
     }
     if (
       resourceDashboardActiveTab === "REVIEWERS" &&
@@ -8007,8 +8045,15 @@
     if (signInButton) signInButton.hidden = true;
     const authStatus = document.getElementById("resource-reviewer-auth-status");
     authStatus?.removeAttribute("aria-busy");
-    if (resourceDashboardActiveTab === "REVIEWERS")
-      showReviewerDashboardLoading(true);
+    const hasCachedDashboard =
+      reviewerAccountStatus === "TRUE" &&
+      reviewerDashboardLoadedForEmail?.toLowerCase() ===
+        reviewerAuthorizedEmail.toLowerCase() &&
+      Boolean(resourceDashboardData?.REVIEWERS);
+    if (resourceDashboardActiveTab === "REVIEWERS") {
+      if (hasCachedDashboard) renderResourceDashboardTab();
+      else showReviewerDashboardLoading(true);
+    }
 
     const restorePromise = (async () => {
       try {
@@ -9055,7 +9100,12 @@
           sessionId: requestSessionId,
           eventId: createResourceEventId(),
         },
-        { timeoutMs: 30000, maxRetries: 0 },
+        {
+          timeoutMs: 15000,
+          maxRetries: 2,
+          baseRetryDelayMs: 300,
+          maxRetryDelayMs: 1500,
+        },
       );
       reviewerDashboardRequestPromise = backendRequest;
       const response = await backendRequest;
@@ -9133,17 +9183,33 @@
         ) {
           tableHead.replaceChildren();
           tableBody.replaceChildren();
+          const correlationId =
+            typeof error?.correlationId === "string" &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+              error.correlationId,
+            )
+              ? error.correlationId
+              : "";
+          const errorMessage =
+            error?.code === "SERVER_ERROR"
+              ? "The server could not complete the request."
+              : error?.code === "NON_JSON_RESPONSE"
+                ? "The server returned an unexpected response."
+                : String(error?.message || "Request failed.").slice(0, 180);
           setResourceDashboardStatus(
-            `Unable to load review materials: ${String(
-              error?.message || error,
-            )}`,
+            `Unable to load review materials: ${errorMessage}${
+              correlationId ? ` Reference: ${correlationId}.` : ""
+            }`,
           );
         }
       }
-      (globalScope.DebugUtils || console).error(
-        "Unable to load review materials.",
-        error,
-      );
+      (globalScope.DebugUtils || console).error("Unable to load review materials.", {
+        code: String(error?.code || "REQUEST_FAILED")
+          .replace(/[^A-Za-z0-9_]/g, "")
+          .slice(0, 40),
+        status: Number(error?.status) || 0,
+        correlationId: error?.correlationId || "",
+      });
       return false;
     } finally {
       if (reviewerDashboardRequestPromise === backendRequest)
@@ -9797,7 +9863,7 @@
       throw new Error("The PDF preview watermark could not be displayed.");
     const text = `${normalizedName}\n${normalizedEmail}`;
     watermark.replaceChildren(
-      ...Array.from({ length: 20 }, () => {
+      ...Array.from({ length: 10 }, () => {
         const line = document.createElement("span");
         line.textContent = text;
         return line;
