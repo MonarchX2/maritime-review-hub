@@ -7183,10 +7183,13 @@
             link.dataset.logFileName = fileName;
             link.dataset.logFileId = fileId;
             link.dataset.logCourse = rowValue("course");
-            link.dataset.logYear =
-              rowValue("year") || resourceDashboardSelectedYear;
+            const rawYear = rowValue("year") || resourceDashboardSelectedYear;
+            const combinedYear = /^(\d+)\s*[./-]\s*(\d+)$/.exec(rawYear);
+            link.dataset.logYear = combinedYear ? combinedYear[1] : rawYear;
             link.dataset.logSemester =
-              rowValue("semester") || resourceDashboardSelectedSemester;
+              rowValue("semester") ||
+              (combinedYear ? combinedYear[2] : "") ||
+              resourceDashboardSelectedSemester;
             link.dataset.logCategory = resourceCategory;
             link.addEventListener("click", (event) => {
               const clickedLink = event.currentTarget;
@@ -7272,6 +7275,7 @@
         }${tab.truncated ? " (showing the first 2,000)" : ""}`;
       }
     }
+    status.hidden = false;
     status.removeAttribute("aria-busy");
     status.classList?.remove("resource-dashboard-status-stacked");
     return true;

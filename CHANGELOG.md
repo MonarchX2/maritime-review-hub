@@ -1,5 +1,14 @@
 # Changelog
 
+## 26.10.16-49 - 2026-10-16
+
+### Fixed
+
+- Keep the Syllabus and Modules row summary visible when switching away from
+  a loading Reviewer table.
+- Store combined year/semester resource context in the matching Year and
+  Semester log columns, including when migrating existing log rows.
+
 ## 26.10.16-48 - 2026-10-16
 
 ### Fixed

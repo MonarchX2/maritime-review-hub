@@ -870,6 +870,16 @@ assert.match(
 );
 assert.match(
   appCore,
+  /status\.textContent = `\$\{nonEmptyRows\.length\}[\s\S]*?status\.hidden = false;\s*status\.removeAttribute\("aria-busy"\)/,
+  "rendering the Syllabus or Modules summary should show the status after Reviewer loading hid it",
+);
+assert.match(
+  appCore,
+  /const rawYear = rowValue\("year"\) \|\| resourceDashboardSelectedYear;[\s\S]*?const combinedYear = \/\^\(\\d\+\)\\s\*\[\.\/-\]\\s\*\(\\d\+\)\$\//,
+  "resource-click logging should split combined year and semester values before sending them",
+);
+assert.match(
+  appCore,
   /function reconcileResourceDashboardTable\([\s\S]*?currentCell\?\.isEqualNode\(nextCell\)[\s\S]*?currentCell\.replaceWith\(nextCell\)[\s\S]*?currentRows\.get\(rowKey\)/,
   "silent table refreshes should preserve unchanged cells and update only changed cells in stable rows",
 );

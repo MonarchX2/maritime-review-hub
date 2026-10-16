@@ -101,6 +101,15 @@ const reviewerLogs = [
     "A",
     "ACCESS",
   ],
+  [
+    "2026-10-01T08:02:00.000Z",
+    "reviewer@example.com",
+    oldDeviceId,
+    "Reviewer",
+    "Rita",
+    "A.",
+    "ACTION:FILTER_YEAR:3.1",
+  ],
 ];
 const appendedRows = {
   SYLLABUS: [],
@@ -472,6 +481,13 @@ assert.equal(
   reviewerLogs.some((row) => String(row[6] || "").startsWith("SIGN_IN")),
   false,
   "legacy sign-in events should be moved out of REVIEWERS",
+);
+assert.equal(
+  reviewerLogs.some(
+    (row) => row[6] === "FILTER_YEAR" && row[8] === "3" && row[9] === "1",
+  ),
+  true,
+  "legacy combined year/semester activity should migrate into separate columns",
 );
 assert.equal(
   appendedRows["SIGN-IN"].length,
@@ -1093,6 +1109,36 @@ assert.deepEqual(
   Array.from(appendedRows.MODULES.at(-1).slice(6, 11)),
   ["FILTER_YEAR", "NAV6", "3", "2", "FINALS"],
   "resource activity should store event, course, year, semester, and category separately",
+);
+const combinedTermFileLog = post({
+  type: "log_resource_file_click",
+  resourceArea: "MODULES",
+  fileId: "112345678901234567890",
+  fileName: "NAV6 Final Review",
+  course: "NAV6",
+  year: "3.1",
+  eventId: eventId("f"),
+});
+assert.equal(combinedTermFileLog.status, "success");
+assert.deepEqual(
+  Array.from(appendedRows.MODULES.at(-1).slice(6, 10)),
+  ["FILE_CLICK", "NAV6", "3", "1"],
+  "combined year/semester values should be split into their matching log columns",
+);
+assert.equal(
+  appendedRows.MODULES.at(-1)[7],
+  "NAV6",
+  "the Course column should contain the course, not the Event column",
+);
+assert.equal(
+  appendedRows.MODULES.at(-1)[8],
+  "3",
+  "the Year column should contain only the year level",
+);
+assert.equal(
+  appendedRows.MODULES.at(-1)[9],
+  "1",
+  "the Semester column should contain only the semester",
 );
 const syllabusFileLog = post({
   type: "log_resource_file_click",
