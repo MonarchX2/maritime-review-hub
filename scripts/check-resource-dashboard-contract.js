@@ -65,6 +65,16 @@ assert.match(
   /async function loadReviewerDashboard\(\{ refresh = false \} = \{\}\)[\s\S]*?const silentRefresh = refresh && hasExistingReviewerRows[\s\S]*?if \(!silentRefresh\)\s*showReviewerDashboardLoading\(!hasExistingReviewerRows\)[\s\S]*?backendRequest = globalScope\.AppNetwork\.callBackend\([\s\S]*?await backendRequest/,
   "Reviewer initial loads should show Loading while background refreshes preserve existing rows and status",
 );
+assert.match(
+  appCore,
+  /resourceDashboardActiveTab === "REVIEWERS" &&\s*reviewerSessionId &&\s*reviewerDashboardLoadedForEmail\?\.toLowerCase\(\) !==\s*reviewerAuthorizedEmail\.toLowerCase\(\)[\s\S]*?showReviewerDashboardLoading\(true\);\s*return true;/,
+  "Reviewer placeholder data should not render as zero rows while the authorized table request is pending",
+);
+assert.match(
+  appCore,
+  /if \(resourceDashboardActiveTab === "REVIEWERS" && !visibleRows\.length\) \{\s*status\.textContent = nonEmptyRows\.length\s*\?\s*"No reviewer resources match the selected filters\."\s*:\s*"No reviewer resources are currently available\."/,
+  "loaded Reviewer tables without rows should use an explicit empty state instead of a zero-row count",
+);
 assert.doesNotMatch(
   appCore.match(/async function loadReviewerDashboard\([\s\S]*?\n  \}/)?.[0] ||
     "",
@@ -145,6 +155,16 @@ assert.match(
   appCore,
   /function showReviewerDashboardLoading\(clearRows = false\)[\s\S]*?filters\.hidden = false[\s\S]*?categoryFilter\.hidden = false[\s\S]*?setResourceDashboardStatus\("Loading", true, true\)/,
   "the Reviewer loading state should retain all filters and display a stacked generic label",
+);
+assert.match(
+  appCore,
+  /resourceDashboardActiveTab === "REVIEWERS" &&\s*reviewerSessionId &&\s*reviewerDashboardLoadedForEmail\?\.toLowerCase\(\) !==\s*reviewerAuthorizedEmail\.toLowerCase\(\)[\s\S]*?showReviewerDashboardLoading\(true\);\s*return true;/,
+  "an authorized Reviewer tab must stay on Loading and clear placeholder rows until the reviewer table response is loaded",
+);
+assert.match(
+  appCore,
+  /if \(resourceDashboardActiveTab === "REVIEWERS" && !visibleRows\.length\) \{\s*status\.textContent = nonEmptyRows\.length\s*\?\s*"No reviewer resources match the selected filters\."\s*:\s*"No reviewer resources are currently available\."/,
+  "a successfully loaded empty Reviewer table should show an explicit empty state instead of a zero-row count",
 );
 assert.match(
   appCore,
@@ -618,8 +638,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function setReviewerAccessEnabled\(enabled\)[\s\S]*?reviewersNav\.title = enabled[\s\S]*?setReviewerAccessEnabled\(accountStatus === "TRUE"\)[\s\S]*?function signOutReviewer[\s\S]*?reviewersNav\.title = "Reviewer resources"/,
-  "verified approval should update the Reviewer navigation label and sign-out should reset it without an icon",
+  /function setReviewerAccessEnabled\(enabled\)[\s\S]*?reviewersNav\.disabled = !enabled[\s\S]*?reviewersNav\.title = enabled[\s\S]*?setReviewerAccessEnabled\(accountStatus === "TRUE"\)[\s\S]*?function signOutReviewer[\s\S]*?reviewersNav\.disabled = false[\s\S]*?reviewersNav\.title = "Reviewer resources"/,
+  "approved status should unlock Reviewer navigation and sign-out should restore the signed-out navigation state",
 );
 assert.match(
   appCore,

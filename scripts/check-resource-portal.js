@@ -125,7 +125,7 @@ assert.doesNotMatch(
 );
 assert.match(
   index,
-  /id="resource-dashboard-content" hidden[\s\S]*?id="resource-dashboard-profile"[^>]*class="resource-profile-screen"[^>]*aria-label="Profile settings"(?![^>]*hidden)[\s\S]*?resource-reviewer-auth-status[\s\S]*?resource-reviewer-signin-button[\s\S]*?resource-reviewer-enrollment-form[\s\S]*?resource-profile-account-details[\s\S]*?resource-profile-name[\s\S]*?resource-profile-email[\s\S]*?resource-reviewer-signout/,
+  /id="resource-dashboard-content" hidden[\s\S]*?id="resource-dashboard-profile"[^>]*class="resource-profile-screen"[^>]*aria-label="Profile settings"(?![^>]*hidden)[\s\S]*?resource-reviewer-auth-status[\s\S]*?resource-reviewer-signin-button[\s\S]*?resource-profile-account-details[\s\S]*?resource-profile-name[\s\S]*?resource-profile-email[\s\S]*?resource-reviewer-signout[\s\S]*?resource-reviewer-enrollment-form/,
   "Profile should remain the signed-out fallback with login/enrollment controls",
 );
 assert.doesNotMatch(
@@ -137,6 +137,11 @@ assert.match(
   index,
   /resource-reviewer-enrollment-form[\s\S]*?name="lastName"[\s\S]*?name="firstName"[\s\S]*?name="middleInitial"/,
   "the sign-in panel should collect the names needed for new account enrollment",
+);
+assert.ok(
+  index.indexOf('id="resource-reviewer-enrollment-form"') >
+    index.indexOf('id="resource-profile-account-details"'),
+  "all name-entry fields should render below the profile details",
 );
 assert.match(
   index,
@@ -183,6 +188,16 @@ assert.match(
   appCore,
   /function capitalizeReviewerName\(value\)[\s\S]*?toLocaleLowerCase\(\)[\s\S]*?function normalizeReviewerNameInput\(input\)[\s\S]*?capitalizeReviewerName\(input\.value\)/,
   "first and last names should autocapitalize as the user types",
+);
+assert.match(
+  appCore,
+  /function initializeReviewerEnrollmentInputs\(\)[\s\S]*?resource-reviewer-last-name[\s\S]*?resource-reviewer-first-name[\s\S]*?addEventListener\("input", \(\) => normalizeReviewerNameInput\(input\)\)[\s\S]*?function openReviewerProfileEditor[\s\S]*?async function initializeReviewerAuth\(\) \{\s*initializeReviewerEnrollmentInputs\(\);\s*if \(reviewerAuthConfigPromise\)/,
+  "profile name capitalization handlers should initialize as soon as the Profile tab opens, before auth configuration resolves",
+);
+assert.match(
+  appCore,
+  /if \(tabName === "PROFILE"\) \{\s*void initializeReviewerAuth\(\);/,
+  "opening Profile should initialize live name capitalization immediately",
 );
 assert.match(
   appCore,
@@ -263,8 +278,18 @@ assert.match(
 );
 assert.match(
   appCore,
-  /editProfileButton\.hidden = accountStatus !== "FALSE"/,
-  "approved profiles should not show the Edit button",
+  /editProfileButton\.hidden = accountStatus !== "DENIED"/,
+  "pending and approved profiles should not show the Edit button",
+);
+assert.match(
+  appCore,
+  /function setReviewerAccessEnabled\(enabled\)[\s\S]*?reviewersNav\.disabled = !enabled;[\s\S]*?reviewersNav\.setAttribute\("aria-disabled", "true"\)/,
+  "Reviewer navigation should be disabled for users without approved access",
+);
+assert.match(
+  appCore,
+  /if \(\s*tabName === "REVIEWERS" &&\s*\["FALSE", "DENIED", "NOT_FOUND"\]\.includes\(reviewerAccountStatus\)\s*\)\s*tabName = "PROFILE";/,
+  "programmatic Reviewer navigation should be blocked when access is pending or denied",
 );
 assert.match(
   index,

@@ -1,5 +1,15 @@
 # Changelog
 
+## 26.10.16-46 - 2026-10-16
+
+### Improved
+
+- Send formal reviewer status emails with Maritime Review Hub as the displayed
+  sender name.
+- Keep the Reviewer dashboard on Loading until its authorized table response
+  arrives, and show a clear empty state when the loaded data has no resources.
+- Place profile enrollment and correction forms below the profile details.
+
 ## 26.10.16-45 - 2026-10-16
 
 ### Maintenance

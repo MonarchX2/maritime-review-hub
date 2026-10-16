@@ -838,6 +838,57 @@
                   >
                     Retry verification
                   </button>
+                  <div
+                    id="resource-profile-account-details"
+                    class="resource-profile-account-details"
+                    hidden
+                  >
+                    <div class="resource-profile-avatar">
+                      <i
+                        id="resource-profile-avatar-fallback"
+                        class="fa-solid fa-circle-user"
+                        aria-hidden="true"
+                      ></i>
+                      <img
+                        id="resource-profile-picture"
+                        alt="Profile picture"
+                        referrerpolicy="no-referrer"
+                        hidden
+                      />
+                    </div>
+                    <p
+                      id="resource-profile-name"
+                      class="resource-profile-name"
+                    ></p>
+                    <p
+                      id="resource-profile-email"
+                      class="resource-profile-email"
+                    ></p>
+                    <div
+                      id="resource-profile-access-status"
+                      class="resource-profile-access-status"
+                      role="status"
+                      aria-live="polite"
+                      hidden
+                    ></div>
+                    <button
+                      type="button"
+                      id="resource-reviewer-signout"
+                      class="resource-profile-signout-button"
+                    >
+                      Sign out
+                    </button>
+                    <div class="resource-profile-actions">
+                      <button
+                        type="button"
+                        id="resource-reviewer-edit-profile"
+                        class="resource-reviewer-signout resource-profile-edit-button"
+                        hidden
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  </div>
                   <form
                     id="resource-reviewer-enrollment-form"
                     class="resource-reviewer-enrollment"
@@ -898,57 +949,6 @@
                       </button>
                     </div>
                   </form>
-                  <div
-                    id="resource-profile-account-details"
-                    class="resource-profile-account-details"
-                    hidden
-                  >
-                    <div class="resource-profile-avatar">
-                      <i
-                        id="resource-profile-avatar-fallback"
-                        class="fa-solid fa-circle-user"
-                        aria-hidden="true"
-                      ></i>
-                      <img
-                        id="resource-profile-picture"
-                        alt="Profile picture"
-                        referrerpolicy="no-referrer"
-                        hidden
-                      />
-                    </div>
-                    <p
-                      id="resource-profile-name"
-                      class="resource-profile-name"
-                    ></p>
-                    <p
-                      id="resource-profile-email"
-                      class="resource-profile-email"
-                    ></p>
-                    <div
-                      id="resource-profile-access-status"
-                      class="resource-profile-access-status"
-                      role="status"
-                      aria-live="polite"
-                      hidden
-                    ></div>
-                    <button
-                      type="button"
-                      id="resource-reviewer-signout"
-                      class="resource-profile-signout-button"
-                    >
-                      Sign out
-                    </button>
-                    <div class="resource-profile-actions">
-                      <button
-                        type="button"
-                        id="resource-reviewer-edit-profile"
-                        class="resource-reviewer-signout resource-profile-edit-button"
-                        hidden
-                      >
-                        Edit
-                      </button>
-                    </div>
-                  </div>
                 </div>
               </section>
             </section>

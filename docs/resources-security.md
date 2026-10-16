@@ -32,6 +32,10 @@ an administrator grants or denies access. A user may edit a saved name; if any
 name field changes, the backend saves it and resets `Active` to `FALSE` until
 an administrator confirms the edited profile. Submitting the same name does
 not remove existing approval.
+Reviewer notification emails use the display name “Maritime Review Hub” and
+formal status-specific messages. Apps Script sends these messages from the
+authorized script owner's account; sending from a separate address requires
+configuring and authorizing that address as a Gmail alias.
 
 Google ID tokens are used only to establish a session and are not written to
 browser storage. After validating the Google token, Apps Script creates a

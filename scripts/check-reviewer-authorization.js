@@ -735,11 +735,21 @@ assert.equal(
   "a new enrollment should email the verified address that access is pending",
 );
 assert.deepEqual(
-  [sentReviewerEmails[0]?.to, sentReviewerEmails[0]?.subject],
+  [
+    sentReviewerEmails[0]?.to,
+    sentReviewerEmails[0]?.subject,
+    sentReviewerEmails[0]?.name,
+  ],
   [
     "new-reviewer@example.com",
     "Maritime Review Hub reviewer access pending",
+    "Maritime Review Hub",
   ],
+);
+assert.match(
+  sentReviewerEmails[0]?.body || "",
+  /^Dear Reviewer,[\s\S]*pending administrator review[\s\S]*Sincerely,\nMaritime Review Hub$/,
+  "pending notifications should use a formal message and the Maritime Review Hub sender name",
 );
 const duplicatePending = post({
   type: "request_reviewer_enrollment",
@@ -801,13 +811,20 @@ assert.deepEqual(
     sentReviewerEmails.length,
     sentReviewerEmails[1]?.to,
     sentReviewerEmails[1]?.subject,
+    sentReviewerEmails[1]?.name,
   ],
   [
     2,
     "new-reviewer@example.com",
     "Maritime Review Hub reviewer access denied",
+    "Maritime Review Hub",
   ],
   "an administrator denial should email the verified account once",
+);
+assert.match(
+  sentReviewerEmails[1]?.body || "",
+  /^Dear Reviewer,[\s\S]*unable to approve[\s\S]*Sincerely,\nMaritime Review Hub$/,
+  "denial notifications should use formal language and a branded sender name",
 );
 cacheValues.clear();
 assert.equal(
@@ -967,13 +984,20 @@ assert.deepEqual(
     sentReviewerEmails.length,
     sentReviewerEmails.at(-1)?.to,
     sentReviewerEmails.at(-1)?.subject,
+    sentReviewerEmails.at(-1)?.name,
   ],
   [
     6,
     "reviewer@example.com",
     "Maritime Review Hub reviewer access granted",
+    "Maritime Review Hub",
   ],
   "an administrator grant should email the verified account",
+);
+assert.match(
+  sentReviewerEmails.at(-1)?.body || "",
+  /^Dear Reviewer,[\s\S]*access request has been approved[\s\S]*Sincerely,\nMaritime Review Hub$/,
+  "approval notifications should use formal language and a branded sender name",
 );
 const reviewerDashboardRequest = () =>
   post({

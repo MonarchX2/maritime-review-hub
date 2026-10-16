@@ -5988,6 +5988,7 @@
   let reviewerAuthCheckPending = false;
   let reviewerSessionId = "";
   let reviewerAuthorizedEmail = "";
+  let reviewerAccountStatus = "";
   let reviewerPendingEnrollmentSessionId = "";
   let reviewerDashboardLoadedForEmail = "";
   let reviewerAuthGeneration = 0;
@@ -6415,6 +6416,9 @@
         const cachedProfile = getStoredReviewerProfile();
         if (cachedProfile) {
           populateReviewerProfile(cachedProfile);
+          reviewerAccountStatus = cachedProfile.accountStatus;
+          if (reviewerAccountStatus)
+            setReviewerAccessEnabled(reviewerAccountStatus === "TRUE");
           const signInButton = document.getElementById(
             "resource-reviewer-signin-button",
           );
@@ -6428,6 +6432,11 @@
     }
     if (!["MODULES", "REVIEWERS", "SYLLABUS", "PROFILE"].includes(tabName))
       return false;
+    if (
+      tabName === "REVIEWERS" &&
+      ["FALSE", "DENIED", "NOT_FOUND"].includes(reviewerAccountStatus)
+    )
+      tabName = "PROFILE";
 
     resourceDashboardActiveTab = tabName;
     const modulesNav = document.getElementById(
@@ -6617,6 +6626,16 @@
       tableHead.replaceChildren();
       tableBody.replaceChildren();
       setResourceDashboardStatus("");
+      return true;
+    }
+    if (
+      resourceDashboardActiveTab === "REVIEWERS" &&
+      reviewerSessionId &&
+      reviewerDashboardLoadedForEmail?.toLowerCase() !==
+        reviewerAuthorizedEmail.toLowerCase()
+    ) {
+      if (lockedPanel) lockedPanel.hidden = true;
+      showReviewerDashboardLoading(true);
       return true;
     }
     if (!tab) return false;
@@ -7046,13 +7065,19 @@
             ? `${selectedYearName} Year`
             : `Year Level ${resourceDashboardSelectedYear} (all semesters)`
           : `Year Level ${resourceDashboardSelectedYear}.${resourceDashboardSelectedSemester}`;
-    status.textContent = hasTermFilter
-      ? `Showing ${visibleRows.length} of ${nonEmptyRows.length} rows for ${selectedTerm}.${
-          tab.truncated ? " (first 2,000 loaded)" : ""
-        }`
-      : `${nonEmptyRows.length} ${
-          nonEmptyRows.length === 1 ? "row" : "rows"
-        }${tab.truncated ? " (showing the first 2,000)" : ""}`;
+    if (resourceDashboardActiveTab === "REVIEWERS" && !visibleRows.length) {
+      status.textContent = nonEmptyRows.length
+        ? "No reviewer resources match the selected filters."
+        : "No reviewer resources are currently available.";
+    } else {
+      status.textContent = hasTermFilter
+        ? `Showing ${visibleRows.length} of ${nonEmptyRows.length} rows for ${selectedTerm}.${
+            tab.truncated ? " (first 2,000 loaded)" : ""
+          }`
+        : `${nonEmptyRows.length} ${
+            nonEmptyRows.length === 1 ? "row" : "rows"
+          }${tab.truncated ? " (showing the first 2,000)" : ""}`;
+    }
     status.removeAttribute("aria-busy");
     status.classList?.remove("resource-dashboard-status-stacked");
     return true;
@@ -7168,26 +7193,6 @@
       cancelEditButton.addEventListener("click", closeReviewerProfileEditor);
       cancelEditButton.dataset.initialized = "true";
     }
-    [
-      document.getElementById("resource-reviewer-last-name"),
-      document.getElementById("resource-reviewer-first-name"),
-    ].forEach((input) => {
-      if (!input || input.dataset.nameCapitalizationInitialized) return;
-      input.addEventListener("input", () => normalizeReviewerNameInput(input));
-      input.dataset.nameCapitalizationInitialized = "true";
-    });
-    const middleInitialInput = document.getElementById(
-      "resource-reviewer-middle-initial",
-    );
-    if (
-      middleInitialInput &&
-      !middleInitialInput.dataset.middleInitialInitialized
-    ) {
-      middleInitialInput.addEventListener("input", (event) =>
-        normalizeReviewerMiddleInitialInput(middleInitialInput, event),
-      );
-      middleInitialInput.dataset.middleInitialInitialized = "true";
-    }
   }
 
   function capitalizeReviewerName(value) {
@@ -7242,6 +7247,29 @@
         : normalized;
   }
 
+  function initializeReviewerEnrollmentInputs() {
+    [
+      document.getElementById("resource-reviewer-last-name"),
+      document.getElementById("resource-reviewer-first-name"),
+    ].forEach((input) => {
+      if (!input || input.dataset.nameCapitalizationInitialized) return;
+      input.addEventListener("input", () => normalizeReviewerNameInput(input));
+      input.dataset.nameCapitalizationInitialized = "true";
+    });
+    const middleInitialInput = document.getElementById(
+      "resource-reviewer-middle-initial",
+    );
+    if (
+      middleInitialInput &&
+      !middleInitialInput.dataset.middleInitialInitialized
+    ) {
+      middleInitialInput.addEventListener("input", (event) =>
+        normalizeReviewerMiddleInitialInput(middleInitialInput, event),
+      );
+      middleInitialInput.dataset.middleInitialInitialized = "true";
+    }
+  }
+
   function openReviewerProfileEditor() {
     const form = document.getElementById("resource-reviewer-enrollment-form");
     const cancelButton = document.getElementById(
@@ -7282,6 +7310,7 @@
   }
 
   async function initializeReviewerAuth() {
+    initializeReviewerEnrollmentInputs();
     if (reviewerAuthConfigPromise) return reviewerAuthConfigPromise;
     installReviewerSignOutStorageListener();
     if (
@@ -7608,11 +7637,16 @@
       "resource-dashboard-reviewers-nav",
     );
     if (reviewersNav) {
-      reviewersNav.removeAttribute("aria-disabled");
-      reviewersNav.setAttribute("aria-label", "Reviewers");
+      reviewersNav.disabled = !enabled;
+      if (enabled) reviewersNav.removeAttribute("aria-disabled");
+      else reviewersNav.setAttribute("aria-disabled", "true");
       reviewersNav.title = enabled
         ? "Open reviewer resources"
-        : "Sign in to request access";
+        : reviewerAccountStatus === "DENIED"
+          ? "Reviewer access denied"
+          : reviewerAccountStatus === "FALSE"
+            ? "Reviewer access pending"
+            : "Reviewer access not granted";
     }
   }
 
@@ -7745,6 +7779,7 @@
       );
     }
     const accountStatus = response.accountStatus;
+    reviewerAccountStatus = accountStatus;
     cacheReviewerProfile(response);
     const authStatus = document.getElementById("resource-reviewer-auth-status");
     authStatus?.removeAttribute("aria-busy");
@@ -7816,7 +7851,8 @@
         form.hidden = !(
           accountStatus === "NOT_FOUND" || accountStatus === "DENIED"
         );
-      if (editProfileButton) editProfileButton.hidden = accountStatus !== "FALSE";
+      if (editProfileButton)
+        editProfileButton.hidden = accountStatus !== "DENIED";
       if (cancelEditButton) cancelEditButton.hidden = true;
       if (formButton)
         formButton.textContent =
@@ -8236,6 +8272,7 @@
       signOutPreferenceSaved =
         clearStoredReviewerSession() && signOutPreferenceSaved;
     reviewerAuthorizedEmail = "";
+    reviewerAccountStatus = "";
     reviewerDashboardLoadedForEmail = "";
     reviewerProfilePictureUrl = "";
     clearStoredReviewerProfile();
@@ -8256,8 +8293,8 @@
       "resource-dashboard-reviewers-nav",
     );
     if (reviewersNav) {
+      reviewersNav.disabled = false;
       reviewersNav.removeAttribute("aria-disabled");
-      reviewersNav.setAttribute("aria-label", "Reviewers");
       reviewersNav.title = "Reviewer resources";
     }
     const signInButton = document.getElementById(
