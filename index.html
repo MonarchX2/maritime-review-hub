@@ -649,14 +649,18 @@
                 type="button"
                 id="resource-dashboard-reviewers-nav"
                 class="resource-portal-nav-item"
-                aria-label="Reviewers — sign in with an approved Google account"
-                title="Sign in with an approved Google account"
+                aria-label="Reviewers — sign in with Google"
+                title="Sign in with Google to access reviewer resources"
                 disabled
                 aria-disabled="true"
               >
                 <i class="fa-solid fa-note-sticky" aria-hidden="true"></i>
                 Reviewers
-                <i class="fa-solid fa-lock resource-dashboard-lock-icon" aria-hidden="true"></i>
+                <i
+                  id="resource-dashboard-reviewers-lock"
+                  class="fa-solid fa-lock resource-dashboard-lock-icon"
+                  aria-hidden="true"
+                ></i>
               </button>
               <button
                 type="button"
@@ -737,7 +741,7 @@
                     role="status"
                     aria-live="polite"
                   >
-                    Sign in with your Google account. New accounts require administrator approval.
+                    Sign in with Google. First-time sign-in asks for your name; access is immediate.
                   </p>
                   <div id="resource-reviewer-signin-button"></div>
                   <form
@@ -774,7 +778,7 @@
                         maxlength="10"
                       />
                     </label>
-                    <button type="submit">Request account access</button>
+                    <button type="submit">Create profile and continue</button>
                   </form>
                   <div
                     id="resource-profile-account-details"

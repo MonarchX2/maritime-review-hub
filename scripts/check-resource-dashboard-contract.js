@@ -123,8 +123,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /script\.src = "https:\/\/accounts\.google\.com\/gsi\/client\?hl=en"[\s\S]*?renderButton\(signInButton,\s*\{[\s\S]*?locale:\s*"en"/,
-  "the Google sign-in interface should request English explicitly",
+  /script\.src = "https:\/\/accounts\.google\.com\/gsi\/client\?hl=en"[\s\S]*?renderButton\(signInButton,\s*\{[\s\S]*?theme:\s*"filled_blue"[\s\S]*?shape:\s*"rectangular"[\s\S]*?width:\s*280[\s\S]*?locale:\s*"en"/,
+  "the Google sign-in button should use the site's blue theme, compact rectangular shape, and English",
 );
 assert.match(
   appCore,
@@ -135,6 +135,11 @@ assert.match(
   appCore,
   /resource-profile-account-details[\s\S]*?profileName\.textContent = profileDisplayName[\s\S]*?profileEmail\.textContent = response\.email[\s\S]*?return openResourceDashboardTab\("PROFILE"\)/,
   "successful sign-in should populate account details and remain in Profile",
+);
+assert.match(
+  appCore,
+  /reviewersNav\.disabled = false[\s\S]*?reviewersLock\.hidden = true[\s\S]*?function signOutReviewer[\s\S]*?reviewersLock\.hidden = false/,
+  "sign-in should unlock reviewer resources and sign-out should restore the lock",
 );
 assert.match(
   indexHtml,

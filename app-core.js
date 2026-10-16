@@ -6544,16 +6544,18 @@
           signInButton.replaceChildren();
           globalScope.google.accounts.id.renderButton(signInButton, {
             type: "standard",
-            theme: "outline",
+            theme: "filled_blue",
             size: "large",
             text: "signin_with",
             shape: "rectangular",
+            logo_alignment: "left",
+            width: 280,
             locale: "en",
           });
         }
         if (authStatus)
           authStatus.textContent =
-            "Sign in with your Google account. New accounts require administrator approval.";
+            "Sign in with Google. First-time sign-in asks for your name; access is immediate.";
         return true;
       } catch (error) {
         reviewerAuthConfigPromise = null;
@@ -6600,7 +6602,7 @@
       if (signInButton) signInButton.hidden = true;
       if (authStatus)
         authStatus.textContent =
-          "This Google account is not registered yet. Submit an access request; an administrator must approve it.";
+          "Complete your profile once to register this account. Access is immediate after saving.";
       return false;
     }
     if (typeof response.deviceIdentity !== "string" ||
@@ -6614,7 +6616,7 @@
       reviewerPendingEnrollmentToken = "";
       if (authStatus)
         authStatus.textContent =
-          "Your account request is on file and awaiting administrator approval.";
+          "Your profile is saved. Sign in again to continue.";
       return false;
     }
     return true;
@@ -6628,7 +6630,7 @@
       if (authStatus) authStatus.textContent = "Google sign-in did not return a credential.";
       return false;
     }
-    if (authStatus) authStatus.textContent = "Checking approved account…";
+    if (authStatus) authStatus.textContent = "Signing you in…";
     try {
       let deviceIdentity = getResourceDeviceIdentity(false);
       if (!deviceIdentity) {
@@ -6657,7 +6659,13 @@
       if (reviewersNav) {
         reviewersNav.disabled = false;
         reviewersNav.setAttribute("aria-disabled", "false");
+        reviewersNav.setAttribute("aria-label", "Reviewers");
+        reviewersNav.title = "Open reviewer resources";
       }
+      const reviewersLock = document.getElementById(
+        "resource-dashboard-reviewers-lock",
+      );
+      if (reviewersLock) reviewersLock.hidden = true;
       const profileDetails = document.getElementById(
         "resource-profile-account-details",
       );
@@ -6779,8 +6787,8 @@
       if (signInButton) signInButton.hidden = false;
       if (authStatus)
         authStatus.textContent = response.existing
-          ? "Your access request is already on file and awaiting administrator approval."
-          : "Your access request was submitted. An administrator must approve it before you can sign in.";
+          ? "Profile found. Sign in again to continue."
+          : "Your profile was saved. Sign in again to continue.";
       return true;
     } catch (error) {
       if (authStatus)
@@ -6843,7 +6851,16 @@
     if (reviewersNav) {
       reviewersNav.disabled = true;
       reviewersNav.setAttribute("aria-disabled", "true");
+      reviewersNav.setAttribute(
+        "aria-label",
+        "Reviewers — sign in with Google",
+      );
+      reviewersNav.title = "Sign in with Google to access reviewer resources";
     }
+    const reviewersLock = document.getElementById(
+      "resource-dashboard-reviewers-lock",
+    );
+    if (reviewersLock) reviewersLock.hidden = false;
     const signInButton = document.getElementById(
       "resource-reviewer-signin-button",
     );

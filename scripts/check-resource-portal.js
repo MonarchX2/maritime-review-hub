@@ -15,8 +15,8 @@ assert.match(
 );
 assert.match(
   index,
-  /id="resource-dashboard-reviewers-nav"[^>]*aria-label="Reviewers — sign in with an approved Google account"[^>]*title="Sign in with an approved Google account"[^>]*disabled[^>]*aria-disabled="true"[\s\S]*?fa-lock/,
-  "the Reviewers tab should remain locked until an approved account signs in",
+  /id="resource-dashboard-reviewers-nav"[^>]*aria-label="Reviewers — sign in with Google"[^>]*title="Sign in with Google to access reviewer resources"[^>]*disabled[^>]*aria-disabled="true"[\s\S]*?id="resource-dashboard-reviewers-lock"/,
+  "the Reviewers tab should require Google sign-in",
 );
 assert.match(
   index,

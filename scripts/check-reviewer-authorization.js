@@ -40,6 +40,7 @@ let tokenFetchCount = 0;
 let tokenFetchFailures = 0;
 let tokenFetchErrorMessage = "";
 const appendedRows = { MODULE: [], REVIEWERS: [] };
+const scopesRows = [];
 let failLogWrites = false;
 
 function createSheet(headers, getRows) {
@@ -55,11 +56,13 @@ function createSheet(headers, getRows) {
             );
         },
         setValues(values) {
-          getRows().splice(
-            startRow - 1,
-            values.length,
-            ...values.map((row) => [...row]),
-          );
+          values.forEach((valueRow, rowIndex) => {
+            const targetIndex = startRow - 1 + rowIndex;
+            if (!getRows()[targetIndex]) getRows()[targetIndex] = [];
+            valueRow.forEach((value, columnIndex) => {
+              getRows()[targetIndex][startColumn - 1 + columnIndex] = value;
+            });
+          });
         },
       };
     },
@@ -70,12 +73,22 @@ const sheets = {
   Accounts: createSheet(accountHeaders, () => accountRows),
   MODULE: createSheet(logHeaders, () => [logHeaders]),
   REVIEWERS: createSheet(logHeaders, () => [logHeaders]),
+  SCOPES: createSheet([], () => scopesRows),
 };
 const spreadsheetId = "1234567890123456789012345678901234567890123";
 const spreadsheet = {
   getId: () => spreadsheetId,
   getUrl: () => `https://docs.google.com/spreadsheets/d/${spreadsheetId}`,
   getSheetByName: (name) => sheets[name] || null,
+  insertSheet(name) {
+    if (name === "SCOPES") {
+      sheets[name] = createSheet([], () => scopesRows);
+    } else {
+      const rows = [];
+      sheets[name] = createSheet([], () => rows);
+    }
+    return sheets[name];
+  },
 };
 
 const context = {
@@ -219,7 +232,20 @@ assert.equal(Object.hasOwn(config, "allowedEmails"), false);
 assert.equal(
   context.initializeMRHAccountsSpreadsheet().spreadsheetId,
   spreadsheetId,
-  "account setup should recognize the pre-created Accounts, MODULE, and REVIEWERS tabs",
+  "account setup should initialize account, access-log, and scope worksheets",
+);
+assert.deepEqual(
+  scopesRows[0],
+  ["OAuth Scope", "Purpose", "Configured In"],
+  "setup should create a scope-monitoring worksheet",
+);
+assert.equal(
+  scopesRows.some(
+    (row) =>
+      row[0] === "https://www.googleapis.com/auth/script.external_request",
+  ),
+  true,
+  "the scope worksheet should list token-verification access",
 );
 
 tokenClaims = validClaims();
@@ -241,11 +267,13 @@ assert.deepEqual(
   },
 );
 assert.equal(tokenFetchCount, 1);
+assert.equal(appendedRows.REVIEWERS[0][6], "SIGN_IN");
 assert.equal(
   post(authRequest("verify_reviewer_access", "signed-token-1")).status,
   "success",
 );
 assert.equal(tokenFetchCount, 1, "verified Google tokens should be briefly cached");
+assert.equal(appendedRows.REVIEWERS[1][6], "SIGN_IN");
 
 tokenClaims = validClaims();
 tokenFetchFailures = 1;
@@ -262,6 +290,14 @@ assert.equal(
   post(authRequest("verify_reviewer_access", "missing-external-scope")).code,
   "AUTH_PERMISSION_REQUIRED",
   "missing external-request authorization should be reported distinctly",
+);
+tokenFetchErrorMessage =
+  "Wala kang pahintulot. Mga kinakailangang pahintulot: https://www.googleapis.com/auth/script.external_request";
+tokenFetchFailures = 2;
+assert.equal(
+  post(authRequest("verify_reviewer_access", "localized-missing-scope")).code,
+  "AUTH_PERMISSION_REQUIRED",
+  "the missing external-request scope should be recognized from localized Apps Script errors",
 );
 tokenFetchErrorMessage = "";
 
@@ -320,7 +356,7 @@ assert.deepEqual(
   },
   {
     status: "success",
-    active: false,
+    active: true,
     existing: false,
     deviceIdentity: "11234567-89ab-4cde-8fab-0123456789ab",
     row: [
@@ -329,10 +365,10 @@ assert.deepEqual(
       "New",
       "Reviewer",
       "B",
-      "FALSE",
+      "TRUE",
     ],
   },
-  "new accounts must be recorded as pending and never self-activated",
+  "new Google-authenticated accounts should be enabled immediately",
 );
 const duplicateEnrollment = post({
   type: "request_reviewer_enrollment",
@@ -342,7 +378,7 @@ const duplicateEnrollment = post({
   firstName: "Name",
 });
 assert.equal(duplicateEnrollment.existing, true);
-assert.equal(duplicateEnrollment.active, false);
+assert.equal(duplicateEnrollment.active, true);
 assert.equal(
   duplicateEnrollment.deviceIdentity,
   "11234567-89ab-4cde-8fab-0123456789ab",
@@ -379,12 +415,13 @@ assert.equal(
 accountRows[1][5] = "FALSE";
 cacheValues.clear();
 assert.equal(
-  post(authRequest("verify_reviewer_access", "inactive-account")).code,
-  "FORBIDDEN",
-  "inactive account rows must not authorize a user",
+  post(authRequest("verify_reviewer_access", "inactive-account")).status,
+  "success",
+  "a Google-authenticated account should not be denied because its legacy Active flag is false",
 );
-accountRows[1][5] = "TRUE";
+assert.equal(accountRows[1][5], "TRUE");
 cacheValues.clear();
+appendedRows.REVIEWERS.length = 0;
 
 let reviewerIndexReadCount = 0;
 context.DriveApp = {
@@ -460,11 +497,24 @@ assert.equal(appendedRows.MODULE[1][1], "");
 assert.equal(appendedRows.MODULE[1][6], "ANONYMOUS_ACCESS");
 
 tokenStatus = 503;
+const providerFailure = post(
+  authRequest("verify_reviewer_access", "provider-failure"),
+);
 assert.equal(
-  post(authRequest("verify_reviewer_access", "provider-failure")).code,
+  providerFailure.code,
   "AUTH_PROVIDER_UNAVAILABLE",
   "Google verification outages must not authorize users after both endpoints fail",
 );
+assert.equal(providerFailure.verificationFailure, "HTTP_503");
+tokenStatus = 200;
+tokenFetchFailures = 2;
+tokenFetchErrorMessage = "Failed URL token id_token=secret-token-value";
+const fetchFailure = post(
+  authRequest("verify_reviewer_access", "fetch-failure"),
+);
+assert.equal(fetchFailure.verificationFailure, "FETCH_EXCEPTION");
+assert.equal(fetchFailure.verificationDiagnostic.includes("secret-token-value"), false);
+tokenFetchErrorMessage = "";
 
 properties.set("MRH_ACCOUNTS_SPREADSHEET_ID", "");
 assert.equal(

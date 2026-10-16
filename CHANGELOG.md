@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.16-15 - 2026-10-16
+
+### Changed
+- Allow every verified Google account to access reviewer resources after profile enrollment, and log each sign-in and reviewer access.
+- Record required Apps Script OAuth scopes in the `SCOPES` worksheet and style the Google sign-in button to match the dashboard.
+
 ## 26.10.16-12 - 2026-10-16
 
 ### Changed

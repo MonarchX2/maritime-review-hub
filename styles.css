@@ -1631,6 +1631,8 @@ button:active:not(:disabled) {
 }
 
 #resource-reviewer-signin-button {
+  display: flex;
+  justify-content: flex-start;
   min-height: 2.5rem;
 }
 

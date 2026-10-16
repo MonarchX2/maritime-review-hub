@@ -8,14 +8,14 @@ classifies resources; it does not authorize anyone to access them.
 Reviewer access uses Google sign-in from the Resource Dashboard's Profile
 section; the site does not create a separate password. The Profile section
 shows the verified account name and email after sign-in, provides sign-out, and
-lets a new user request access. A user who is not yet registered can submit their
-name and device ID after Google sign-in. The backend verifies the Google ID
-token and adds a **pending, inactive** row to the `Accounts` worksheet in the
-`MRH_Accounts` spreadsheet. An administrator must set `Active` to `TRUE`
-before access is granted. The backend checks the token's audience, issuer,
-expiry, and verified email, then requires an active spreadsheet row matching
-both the email and device identity on every reviewer request. Missing or
-invalid configuration fails closed.
+lets a first-time user add their name. Any Google account with a verified
+sign-in can use the reviewer resources after its name and stable browser device
+identity are recorded in the `Accounts` worksheet in the `MRH_Accounts`
+spreadsheet. New accounts are enabled immediately; the legacy `Active` field
+does not block sign-in. The backend checks the token's audience, issuer,
+expiry, and verified email, then requires the matching email and device
+identity on every reviewer request. Missing or invalid configuration fails
+closed.
 
 The approved identity token exists only in page memory and is sent to the
 backend for each protected request. Reviewer dashboard data is also kept only
@@ -50,9 +50,11 @@ operations as its owner. The protected reviewer endpoint therefore does not
 trust a browser-supplied email: it verifies the Google ID token with Google's
 token information endpoint, checks that the token was issued for the configured
 OAuth client, then checks the verified email and device against the
-administrator-managed `Accounts` worksheet. The OAuth client ID and spreadsheet
-ID are configuration, not credentials. The spreadsheet remains
-administrator-managed and must not be exposed as a public editable document.
+`Accounts` worksheet. Any verified Google account can create a profile and is
+enabled immediately; `Active` is retained as a legacy informational field and
+is set to `TRUE` at sign-in. The OAuth client ID and spreadsheet ID are
+configuration, not credentials. The spreadsheet remains administrator-managed
+and must not be exposed as a public editable document.
 
 To initialize sign-in and access logging:
 
@@ -64,43 +66,62 @@ To initialize sign-in and access logging:
    `MRH_GOOGLE_OAUTH_CLIENT_ID` to the OAuth web client ID and
    `MRH_ACCOUNTS_SPREADSHEET_ID` to the spreadsheet ID.
 4. In the Apps Script editor, run `initializeMRHAccountsSpreadsheet()` once
-   and approve its Sheets access. It creates the `Accounts`, `MODULE`, and
-   `REVIEWERS` tabs and headers without replacing existing rows. Keep the
-   spreadsheet private to administrators.
-5. The first time an unregistered user signs in, they submit `Last Name`,
-   `First Name`, and optional `Middle Initial`. The site sends the verified
-   Google identity and internal device ID to the backend, which creates a pending row
-   with `Active=FALSE`. Verify the name and email, then set `Active` to `TRUE`
-   in `Accounts` to authorize the user. The exact columns are `Email`,
-   `Device Identity`, `Last Name`, `First Name`, `Middle Initial`, and
-   `Active`. There should be one row per email; do not manually create another
-   device ID for an existing account.
+   and approve the requested Sheets and external-request permissions. It
+   creates the `Accounts`, `MODULE`, `REVIEWERS`, and `SCOPES` tabs and headers
+   without replacing existing account or log rows. The `SCOPES` tab lists
+   required Apps Script OAuth scopes and their purposes; it is refreshed when
+   the Profile screen checks sign-in configuration. Keep the spreadsheet
+   private to administrators.
+5. On first sign-in, a user submits `Last Name`, `First Name`, and optional
+   `Middle Initial`. The backend verifies the Google identity and saves the
+   name, email, stable internal device ID, and `Active=TRUE` immediately. The
+   exact account columns are `Email`, `Device Identity`, `Last Name`,
+   `First Name`, `Middle Initial`, and `Active`. There should be one row per
+   email; do not manually create another device ID for an existing account.
 6. Enable the Apps Script Advanced Google service **Google Sheets API v4**
    (the project manifest declares this service; enable the Google Sheets API
-   in the linked Cloud project if prompted), deploy a new web-app version, and
-   authorize the external-request and Sheets scopes. If the external-request
-   scope is added or consent is revoked later, run
+   in the linked Cloud project if prompted), and deploy a new web-app version.
+   If scopes are added or consent is revoked later, run
    `initializeMRHAccountsSpreadsheet()` again from the Apps Script editor and
    approve the requested permissions as the deployment owner.
-7. Test sign-in from a registered account/device and from an unregistered
-   email/device. Only the registered pair should be allowed to open Reviewers.
+7. Test sign-in with a Google account. A new account can use Reviewers as soon
+   as its profile is saved.
+
+If Apps Script asks for OAuth scopes to be entered manually, add one scope per
+line in the Apps Script project manifest's `oauthScopes` array:
+
+```text
+https://www.googleapis.com/auth/drive
+https://www.googleapis.com/auth/spreadsheets
+https://www.googleapis.com/auth/script.external_request
+https://www.googleapis.com/auth/script.scriptapp
+https://www.googleapis.com/auth/script.storage
+```
+
+These are backend Apps Script permissions, not scopes to add to the website's
+Google sign-in client. The website only requests Google identity for sign-in.
+The required outbound-verification permission is
+`https://www.googleapis.com/auth/script.external_request`. After adding or
+changing scopes in the manifest, save the project, run
+`initializeMRHAccountsSpreadsheet()` from the Apps Script editor, and approve
+the new permission prompt as the deployment owner.
 
 The auth-config response only confirms that the OAuth client and spreadsheet
-IDs are present; it does not test Google token verification. If sign-in reaches
-"Checking approved account" and then reports that verification is temporarily
-unavailable, confirm the deployment owner's external-request permission by
-running the initializer above, then retry. The backend uses Google's token-info
-service with a secondary Google endpoint if the primary is temporarily
-unavailable.
+IDs are present; it does not test Google token verification. If sign-in reports
+that verification is temporarily unavailable, confirm the deployment owner's
+external-request permission by running the initializer above, then retry. The
+backend uses Google's token-info service with a secondary Google endpoint if
+the primary is temporarily unavailable.
 
-Successful access is appended to the `MODULE` or `REVIEWERS` tab with a
-timestamp, email, device ID, name fields, and event type. Anonymous module
-dashboard requests are recorded with a blank email and the browser device ID;
-the module dashboard remains public. Reviewer rows are logged only after
-server-side account authorization succeeds. Removing an account or setting
-`Active` to false takes effect after the account cache expires (at most 30
-seconds). Google token verification results are cached by token hash for at
-most five minutes; the raw token is not stored in the sheet or cache key.
+Successful sign-ins and reviewer dashboard access are appended to the
+`REVIEWERS` tab with a timestamp, email, device ID, name fields, and event
+type. Module access is recorded in the `MODULE` tab. Anonymous module dashboard
+requests are recorded with a blank email and the browser device ID; the module
+dashboard remains public. The `SCOPES` tab documents required backend OAuth
+scopes and is refreshed when the initializer runs. `Active` does not revoke
+access; remove the account row to block a previously enrolled email/device
+pair. Google token verification results are cached by token hash for at most
+five minutes; the raw token is not stored in the sheet or cache key.
 
 The spreadsheet log is suitable for moderate usage, not unlimited traffic:
 Google Apps Script execution and Sheets API quotas still apply. Appends use the
