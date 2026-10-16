@@ -15,8 +15,8 @@ assert.match(
 );
 assert.match(
   index,
-  /id="resource-dashboard-reviewers-nav"[^>]*aria-label="Reviewers — sign in with Google"[^>]*title="Sign in with Google to access reviewer resources"[^>]*disabled[^>]*aria-disabled="true"[\s\S]*?id="resource-dashboard-reviewers-lock"/,
-  "the Reviewers tab should require Google sign-in",
+  /id="resource-dashboard-reviewers-nav"[^>]*onclick="openResourceDashboardTab\('REVIEWERS'\)"[^>]*aria-label="Reviewers — sign in with Google"[^>]*title="Sign in with Google to access reviewer resources"[^>]*disabled[^>]*aria-disabled="true"[\s\S]*?id="resource-dashboard-reviewers-lock"/,
+  "the Reviewers tab should open its view when enabled and require Google sign-in",
 );
 assert.match(
   index,
@@ -45,6 +45,26 @@ assert.match(
   index,
   /resource-reviewer-enrollment-form[\s\S]*?name="lastName"[\s\S]*?name="firstName"[\s\S]*?name="middleInitial"/,
   "the sign-in panel should collect the names needed for new account enrollment",
+);
+assert.match(
+  index,
+  /Middle Initial \(optional\)/,
+  "profile should make the middle initial optional",
+);
+assert.doesNotMatch(
+  index.match(/id="resource-reviewer-middle-initial"[\s\S]*?\/>/)?.[0] || "",
+  /\brequired\b/,
+  "the middle initial input must not be required",
+);
+assert.match(
+  index,
+  /resource-profile-form-note[\s\S]*?Dela Cruz[\s\S]*?Maria[\s\S]*?P\./,
+  "profile should make middle initial optional and explain correct capitalization with an example",
+);
+assert.match(
+  index,
+  /id="resource-dashboard-profile-picture"[^>]*hidden/,
+  "the header Profile button should have a hidden image that can show the signed-in account photo",
 );
 assert.doesNotMatch(
   index,

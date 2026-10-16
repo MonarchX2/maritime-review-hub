@@ -6677,6 +6677,12 @@
       const profilePictureFallback = document.getElementById(
         "resource-profile-avatar-fallback",
       );
+      const headerProfilePicture = document.getElementById(
+        "resource-dashboard-profile-picture",
+      );
+      const headerProfileIcon = document.querySelector(
+        "#resource-dashboard-profile-nav > i",
+      );
       const profileDisplayName =
         [
           response.firstName,
@@ -6704,6 +6710,17 @@
       }
       if (profilePictureFallback)
         profilePictureFallback.hidden = Boolean(pictureUrl);
+      if (headerProfilePicture) {
+        headerProfilePicture.onerror = () => {
+          headerProfilePicture.hidden = true;
+          headerProfilePicture.removeAttribute("src");
+          if (headerProfileIcon) headerProfileIcon.hidden = false;
+        };
+        headerProfilePicture.hidden = !pictureUrl;
+        if (pictureUrl) headerProfilePicture.src = pictureUrl;
+        else headerProfilePicture.removeAttribute("src");
+      }
+      if (headerProfileIcon) headerProfileIcon.hidden = Boolean(pictureUrl);
       if (profileDetails) profileDetails.hidden = false;
       const enrollmentForm = document.getElementById(
         "resource-reviewer-enrollment-form",
@@ -6900,6 +6917,26 @@
       "resource-profile-account-details",
     );
     if (profileDetails) profileDetails.hidden = true;
+    const profilePicture = document.getElementById("resource-profile-picture");
+    const profilePictureFallback = document.getElementById(
+      "resource-profile-avatar-fallback",
+    );
+    if (profilePicture) {
+      profilePicture.hidden = true;
+      profilePicture.removeAttribute("src");
+    }
+    if (profilePictureFallback) profilePictureFallback.hidden = false;
+    const headerProfilePicture = document.getElementById(
+      "resource-dashboard-profile-picture",
+    );
+    const headerProfileIcon = document.querySelector(
+      "#resource-dashboard-profile-nav > i",
+    );
+    if (headerProfilePicture) {
+      headerProfilePicture.hidden = true;
+      headerProfilePicture.removeAttribute("src");
+    }
+    if (headerProfileIcon) headerProfileIcon.hidden = false;
     const authStatus = document.getElementById(
       "resource-reviewer-auth-status",
     );

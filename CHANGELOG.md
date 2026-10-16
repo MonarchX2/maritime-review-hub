@@ -1,5 +1,13 @@
 # Changelog
 
+## 26.10.16-18 - 2026-10-16
+
+### Fixed
+- Make the Reviewers tab clickable after sign-in and show the signed-in profile picture in the header Profile button.
+
+### Changed
+- Improve Profile form spacing, mark Middle Initial optional, and show a name-capitalization example.
+
 ## 26.10.16-16 - 2026-10-16
 
 ### Changed

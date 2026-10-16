@@ -17,6 +17,9 @@ does not block sign-in. The backend checks the token's audience, issuer,
 expiry, and verified email, then requires the matching email and device
 identity on every reviewer request. Missing or invalid configuration fails
 closed.
+The first-time profile form requires last and first names; middle initial is
+optional. Users are asked to check spelling and capitalization before saving
+(for example, `Dela Cruz`, `Maria`, `P.`).
 
 The approved identity token exists only in page memory and is sent to the
 backend for each protected request. Reviewer dashboard data is also kept only

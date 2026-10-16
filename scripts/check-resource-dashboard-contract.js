@@ -152,6 +152,11 @@ assert.match(
   "sign-in should unlock reviewer resources and sign-out should restore the lock",
 );
 assert.match(
+  appCore,
+  /headerProfilePicture[\s\S]*?headerProfilePicture\.src = pictureUrl[\s\S]*?headerProfileIcon\.hidden = Boolean\(pictureUrl\)[\s\S]*?function signOutReviewer[\s\S]*?headerProfilePicture\.removeAttribute\("src"\)/,
+  "the header Profile icon should show the signed-in user's picture and clear it on sign-out",
+);
+assert.match(
   indexHtml,
   /http-equiv="Content-Security-Policy"[\s\S]*?style-src[^"]*https:\/\/accounts\.google\.com/,
   "the Content Security Policy should allow the Google sign-in stylesheet",

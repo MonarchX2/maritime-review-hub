@@ -649,6 +649,7 @@
                 type="button"
                 id="resource-dashboard-reviewers-nav"
                 class="resource-portal-nav-item"
+                onclick="openResourceDashboardTab('REVIEWERS')"
                 aria-label="Reviewers — sign in with Google"
                 title="Sign in with Google to access reviewer resources"
                 disabled
@@ -671,6 +672,13 @@
                 title="Profile"
               >
                 <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
+                <img
+                  id="resource-dashboard-profile-picture"
+                  alt=""
+                  aria-hidden="true"
+                  referrerpolicy="no-referrer"
+                  hidden
+                />
                 <span class="sr-only">Profile</span>
               </button>
             </aside>
@@ -749,6 +757,11 @@
                     class="resource-reviewer-enrollment"
                     hidden
                   >
+                    <p class="resource-profile-form-note">
+                      Please check that your details are correct and capitalized
+                      as you want them displayed. Example: Last Name: Dela Cruz;
+                      First Name: Maria; Middle Initial: P.
+                    </p>
                     <label>
                       <span>Last Name</span>
                       <input
@@ -770,7 +783,7 @@
                       />
                     </label>
                     <label>
-                      <span>Middle Initial</span>
+                      <span>Middle Initial (optional)</span>
                       <input
                         id="resource-reviewer-middle-initial"
                         name="middleInitial"
