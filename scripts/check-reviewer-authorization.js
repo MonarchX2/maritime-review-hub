@@ -643,6 +643,28 @@ assert.equal(
   "protected reviewer authorization should accept the validated application session",
 );
 assert.equal(
+  context.authorizeReviewerPdfRequest_({ sessionId: approved.sessionId })
+    .account.rawAccountStatus,
+  "TRUE",
+  "Reviewer PDF authorization must read the exact Active value from ACCOUNTS",
+);
+const originalApprovedStatus = accountRows[1][4];
+accountRows[1][4] = "YES";
+assert.equal(
+  context.findMRHAccount_("reviewer@example.com", true).rawAccountStatus,
+  "YES",
+  "the fresh account lookup must retain the original Active cell value",
+);
+const pdfAliasAuthorization = context.authorizeReviewerPdfRequest_({
+  sessionId: approved.sessionId,
+});
+assert.equal(
+  JSON.parse(pdfAliasAuthorization.error.getContent()).code,
+  "ACCOUNT_PENDING",
+  JSON.stringify(pdfAliasAuthorization),
+);
+accountRows[1][4] = originalApprovedStatus;
+assert.equal(
   post({ type: "sign_out_reviewer", sessionId: approved.sessionId }).status,
   "success",
   "explicit sign-out should revoke the application session server-side",

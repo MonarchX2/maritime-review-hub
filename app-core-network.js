@@ -541,6 +541,10 @@
         "appVersion",
       ],
     },
+    get_reviewer_pdf_job: {
+      required: ["sessionId", "eventId", "jobId"],
+      allowed: ["type", "sessionId", "eventId", "jobId", "appVersion"],
+    },
     log_module_access: {
       required: ["eventId"],
       allowed: ["type", "idToken", "sessionId", "eventId", "appVersion"],

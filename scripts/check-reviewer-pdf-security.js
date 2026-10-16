@@ -23,24 +23,32 @@ const publicDashboardHandler =
   backend.match(
     /function handleGetResourceDashboardRequest\(cachedVersion\) \{[\s\S]*?\n\}/,
   )?.[0] || "";
+const reviewerPreview = frontend.match(
+  /async function previewResourceFile\([\s\S]*?\n  \}/,
+)?.[0] || "";
 
 assert.match(
   backend,
-  /function handleGetReviewerPdfRequest\(data\)[\s\S]*?authorizeReviewerRequest_\(data, true\)/,
+  /function authorizeReviewerPdfRequest_\(data\)[\s\S]*?authorizeReviewerRequest_\(data, true\)/,
   "each protected PDF request must recheck the account without the short cache",
 );
 assert.match(
   backend,
-  /function handleGetReviewerPdfRequest\(data\)[\s\S]*?getReviewerPdfIndexEntries_\(\)[\s\S]*?getReviewerPdfDriveHierarchy_\(fileId\)[\s\S]*?ROOT_FOLDER_ID/,
-  "the handler must verify current Reviewer-index membership and root ancestry",
+  /function handleGetReviewerPdfRequest\(data, expectedSourceVersion\)[\s\S]*?getReviewerPdfSource_\(fileId\)[\s\S]*?expectedSourceVersion !== source\.sourceVersion[\s\S]*?sourceAfterProcessing\.sourceVersion !== source\.sourceVersion/,
+  "the handler must validate current index membership, source version, and root ancestry",
 );
 assert.match(
   backend,
-  /function handleGetReviewerPdfRequest\(data\)[\s\S]*?await verifyReviewerPdfWatermarks_\([\s\S]*?mimeType: "application\/pdf"[\s\S]*?data: Utilities\.base64Encode\(outputBytes\)/,
+  /function getReviewerPdfSource_\(fileId\)[\s\S]*?getReviewerPdfIndexEntries_\(\)[\s\S]*?getReviewerPdfDriveHierarchy_\(fileId\)[\s\S]*?hierarchy\.insideRoot/,
+  "source validation must check authoritative index membership and root ancestry",
+);
+assert.match(
+  backend,
+  /function handleGetReviewerPdfRequest\(data, expectedSourceVersion\)[\s\S]*?await verifyReviewerPdfWatermarks_\([\s\S]*?mimeType: "application\/pdf"[\s\S]*?sourceVersion: source\.sourceVersion[\s\S]*?data: Utilities\.base64Encode\(outputBytes\)/,
   "only a derivative verified page-by-page may be returned",
 );
 const protectedPdfHandler = backend.match(
-  /async function handleGetReviewerPdfRequest\(data\) \{[\s\S]*?\n\}/,
+  /async function handleGetReviewerPdfRequest\(data, expectedSourceVersion\) \{[\s\S]*?\n\}/,
 )?.[0] || "";
 assert.doesNotMatch(
   protectedPdfHandler,
@@ -49,8 +57,48 @@ assert.doesNotMatch(
 );
 assert.match(
   backend,
-  /if \(requestType === "get_reviewer_pdf"\)\s*return errorResponse\([\s\S]*?PDF_RUNTIME_UNVERIFIED/,
-  "the web-app route must fail closed until its async PDF path is proven compatible",
+  /if \(requestType === "get_reviewer_pdf"\)\s*return enqueueReviewerPdfRequest_\(data\)/,
+  "the web-app route must enqueue work instead of returning an async response",
+);
+assert.match(
+  backend,
+  /function setupReviewerPdfDelivery\(\)[\s\S]*?REVIEWER_PDF_WORKER_READY_PROPERTY[\s\S]*?scheduleReviewerPdfWorkerLocked_\(\)[\s\S]*?function enqueueReviewerPdfRequest_\([\s\S]*?authorizeReviewerPdfRequest_\(data\)/,
+  "PDF jobs must run through an on-demand trigger after explicit setup and fresh authorization",
+);
+assert.match(
+  backend,
+  /function enqueueReviewerPdfRequest_\(data\)[\s\S]*?authorizeReviewerPdfRequest_\(data\)[\s\S]*?if \(!reviewerPdfQueueConfigured_\(\)\)/,
+  "every PDF enqueue must authorize the reviewer before disclosing processor configuration",
+);
+assert.match(
+  backend,
+  /function scheduleReviewerPdfWorkerLocked_\([\s\S]*?\.after\(delay\)\s*\.create\(\)/,
+  "the worker must use bounded, on-demand triggers instead of polling continuously",
+);
+assert.match(
+  backend,
+  /async function processReviewerPdfQueue\(\w+\)[\s\S]*?await handleGetReviewerPdfRequest\([\s\S]*?listReviewerPdfPermissions_\([\s\S]*?PDF_OUTPUT_NOT_PRIVATE/,
+  "the background worker must await watermarking and reject non-private derivatives",
+);
+assert.match(
+  backend,
+  /function getReviewerPdfJobStatus_\([\s\S]*?authorizeReviewerPdfRequest_\(data\)[\s\S]*?job\.sessionId !== String\(data\.sessionId[\s\S]*?getReviewerPdfSource_\(job\.fileId\)[\s\S]*?currentSource\.sourceVersion !== job\.sourceVersion[\s\S]*?Utilities\.base64Encode\(outputBytes\)/,
+  "polling must reauthorize and revalidate the index, source version, and session before returning the derivative",
+);
+assert.match(
+  backend,
+  /function authorizeReviewerPdfRequest_\(data\)[\s\S]*?authorizeReviewerRequest_\(data, true\)[\s\S]*?rawAccountStatus !== "TRUE"/,
+  "PDF authorization must require the exact stored Active value TRUE, not a normalized alias",
+);
+assert.match(
+  backend,
+  /function getReviewerPdfIndexEntries_\(\)[\s\S]*?indexFile\.getLastUpdated\(\)\.getTime\(\)[\s\S]*?CacheService\.getScriptCache\(\)[\s\S]*?getResourceDashboardCombinedIndex/,
+  "index entries should be cached by authoritative Drive file version, not rescanned from JSON on every request",
+);
+assert.match(
+  backend,
+  /var isDryRun = dryRun !== false[\s\S]*?if \(isDryRun\)[\s\S]*?planned: pendingRevocations[\s\S]*?Drive\.Permissions\.delete/,
+  "the separate ACL helper must provide a no-mutation dry run before explicit deletion",
 );
 assert.doesNotMatch(
   backend.match(/function doPost\(e\) \{[\s\S]*?\n\}/)?.[0] || "",
@@ -104,6 +152,11 @@ assert.match(
 );
 assert.match(
   network,
+  /get_reviewer_pdf_job:\s*\{\s*required:\s*\["sessionId",\s*"eventId",\s*"jobId"\]/,
+  "job polling must require a session, correlation ID, and unguessable job ID",
+);
+assert.match(
+  network,
   /cache:\s*"no-store"/,
   "protected backend POST requests must bypass browser caching",
 );
@@ -112,10 +165,55 @@ assert.match(
   /resourceDashboardActiveTab === "REVIEWERS"[\s\S]*?mrh-reviewer-pdf:[\s\S]*?type: "get_reviewer_pdf"[\s\S]*?sessionId: reviewerSessionId/,
   "only the Reviewer tab may route opaque PDF IDs to the protected viewer",
 );
+assert.match(
+  frontend,
+  /type: "get_reviewer_pdf_job"[\s\S]*?sessionId: reviewerSessionId[\s\S]*?jobId/,
+  "the protected viewer must poll its session-bound background job",
+);
 assert.doesNotMatch(
-  frontend.match(/async function previewResourceFile\([\s\S]*?\n  \}/)?.[0] || "",
+  reviewerPreview,
   /window\.open|location\.href|drive\.google\.com/,
   "the PDF viewer must not open or redirect to the original Drive URL",
+);
+assert.match(
+  reviewerPreview,
+  /responseMimeType !== "application\/pdf"[\s\S]*?REVIEWER_PDF_MAX_BASE64_LENGTH/,
+  "Reviewer PDF responses must have the PDF MIME type and stay within the derivative limit",
+);
+assert.match(
+  reviewerPreview,
+  /bytes\.byteLength > REVIEWER_PDF_MAX_OUTPUT_BYTES[\s\S]*?bytes\[0\] !== 0x25[\s\S]*?bytes\[4\] !== 0x2d/,
+  "Reviewer responses must be bounded and begin with a PDF signature before rendering",
+);
+assert.match(
+  reviewerPreview,
+  /reviewerPdfPreviewInFlight\?\.key === reviewerRequestKey[\s\S]*?finally[\s\S]*?reviewerPdfPreviewInFlight === reviewerRequest/,
+  "repeated clicks on one Reviewer PDF must not enqueue duplicate processing jobs",
+);
+assert.match(
+  frontend,
+  /function closeReviewerPdfPreview\(\)[\s\S]*?resourcePortalPreviewIsReviewer[\s\S]*?closeResourcePreview\(\)/,
+  "the currently displayed Reviewer PDF must be cleared independently of non-PDF previews",
+);
+assert.match(
+  frontend,
+  /const accountStatus = response\.accountStatus;\s*if \(accountStatus !== "TRUE"\) closeReviewerPdfPreview\(\)/,
+  "loss of approval must clear the displayed Reviewer PDF",
+);
+assert.match(
+  frontend,
+  /if \(tabName !== "REVIEWERS"\) closeReviewerPdfPreview\(\)/,
+  "leaving the Reviewer tab must release displayed Reviewer PDF content",
+);
+assert.match(
+  frontend,
+  /function signOutReviewer\([\s\S]*?closeReviewerPdfPreview\(\)/,
+  "sign-out must clear the displayed Reviewer PDF and revoke its object URL",
+);
+assert.match(
+  reviewerPreview,
+  /isDefinitivelyInvalidReviewerCredential\(error\)[\s\S]*?signOutReviewer\(false\)/,
+  "an expired or revoked session encountered during PDF delivery must be cleared",
 );
 assert.equal(
   manifest.oauthScopes.includes("https://www.googleapis.com/auth/iam"),
@@ -139,8 +237,8 @@ assert.match(
 );
 assert.match(
   setupGuide,
-  /not a supported\s+return type/,
-  "the setup guide must document the blocked web-app response",
+  /processReviewerPdfQueue[\s\S]*?setupReviewerPdfDelivery/,
+  "the setup guide must document the synchronous polling and trigger setup",
 );
 assert.equal(
   servicePackage.devDependencies?.["pdf-lib"],

@@ -5979,6 +5979,8 @@
   let resourcePortalItemCount = 0;
   let resourcePortalStatusMessage = "";
   let resourcePortalPreviewObjectUrl = "";
+  let resourcePortalPreviewIsReviewer = false;
+  let reviewerPdfPreviewInFlight = null;
   let resourceDashboardData = null;
   let resourceDashboardActiveTab = "PROFILE";
   let resourceDashboardLoadingPromise = null;
@@ -6014,6 +6016,9 @@
   const STUDENT_PORTAL_WELCOME_HIDDEN_KEY =
     "mrh_student_portal_welcome_hidden_v1";
   const REVIEWER_PROFILE_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+  const REVIEWER_PDF_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
+  const REVIEWER_PDF_MAX_BASE64_LENGTH =
+    Math.ceil(REVIEWER_PDF_MAX_OUTPUT_BYTES / 3) * 4;
   const RESOURCE_DASHBOARD_CACHE_KEY = "resource_dashboard_cache_v1";
   const RESOURCE_DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 30000;
   let studentPortalWelcomeNameObserver = null;
@@ -6478,6 +6483,7 @@
     )
       tabName = "PROFILE";
 
+    if (tabName !== "REVIEWERS") closeReviewerPdfPreview();
     resourceDashboardActiveTab = tabName;
     if (tabName !== "REVIEWERS") {
       const status = document.getElementById("resource-portal-status");
@@ -8236,6 +8242,7 @@
       );
     }
     const accountStatus = response.accountStatus;
+    if (accountStatus !== "TRUE") closeReviewerPdfPreview();
     reviewerAccountStatus = accountStatus;
     cacheReviewerProfile(response);
     const authStatus = document.getElementById("resource-reviewer-auth-status");
@@ -8703,6 +8710,7 @@
     reviewerSessionId = "";
     reviewerPendingEnrollmentSessionId = "";
     if (!preserveStoredSession) clearStoredReviewerSession();
+    closeReviewerPdfPreview();
     reviewerAuthorizedEmail = "";
     reviewerAccountStatus = "";
     reviewerDashboardLoadedForEmail = "";
@@ -9452,11 +9460,29 @@
     const frame = document.getElementById("resource-portal-preview-frame");
     const status = document.getElementById("resource-portal-preview-status");
     if (!preview || !title || !frame) return false;
-
-    preview.classList.remove("is-expanded");
+    const closeButton = document.getElementById(
+      "resource-portal-preview-close",
+    );
+    if (closeButton && !closeButton.dataset.initialized) {
+      closeButton.addEventListener("click", closeResourcePreview);
+      closeButton.dataset.initialized = "true";
+    }
     const expandButton = document.getElementById(
       "resource-portal-preview-expand",
     );
+    if (expandButton && !expandButton.dataset.initialized) {
+      expandButton.addEventListener("click", toggleResourceViewer);
+      expandButton.dataset.initialized = "true";
+    }
+    const reviewerRequestKey = reviewer
+      ? `${reviewerSessionId}:${String(fileId || "")}`
+      : "";
+    if (reviewer && reviewerPdfPreviewInFlight?.key === reviewerRequestKey)
+      return false;
+    const reviewerRequest = reviewer ? { key: reviewerRequestKey } : null;
+    if (reviewerRequest) reviewerPdfPreviewInFlight = reviewerRequest;
+
+    preview.classList.remove("is-expanded");
     if (expandButton) {
       expandButton.setAttribute("aria-pressed", "false");
       expandButton.setAttribute("aria-label", "Expand online viewer");
@@ -9469,6 +9495,7 @@
         );
     }
     const previewGeneration = ++resourcePortalPreviewGeneration;
+    resourcePortalPreviewIsReviewer = reviewer;
     if (resourcePortalPreviewObjectUrl) {
       URL.revokeObjectURL(resourcePortalPreviewObjectUrl);
       resourcePortalPreviewObjectUrl = "";
@@ -9487,7 +9514,7 @@
     try {
       if (reviewer && !reviewerSessionId)
         throw new Error("Sign in to an approved Reviewer account to view this PDF.");
-      const response = await globalScope.AppNetwork.callBackend(
+      let response = await globalScope.AppNetwork.callBackend(
         reviewer
           ? {
               type: "get_reviewer_pdf",
@@ -9498,6 +9525,43 @@
           : { type: "get_resource_preview", fileId },
         { timeoutMs: 60000, maxRetries: 0 },
       );
+      if (reviewer && response?.status === "pending") {
+        const jobId = String(response.jobId || "");
+        if (!/^[a-f0-9]{96}$/.test(jobId))
+          throw new Error("The PDF service returned an invalid processing job.");
+        const deadline = Date.now() + 5 * 60 * 1000;
+        let pollDelayMs = 3000;
+        if (status) status.textContent = "Preparing watermarked Reviewer PDF…";
+        while (response.status === "pending") {
+          if (previewGeneration !== resourcePortalPreviewGeneration) return false;
+          if (Date.now() >= deadline)
+            throw new Error(
+              "Reviewer PDF preparation is taking too long. Please try again shortly.",
+            );
+          await new Promise((resolve) => setTimeout(resolve, pollDelayMs));
+          if (previewGeneration !== resourcePortalPreviewGeneration)
+            return false;
+          const remainingTimeMs = deadline - Date.now();
+          if (remainingTimeMs <= 0)
+            throw new Error(
+              "Reviewer PDF preparation is taking too long. Please try again shortly.",
+            );
+          response = await globalScope.AppNetwork.callBackend(
+            {
+              type: "get_reviewer_pdf_job",
+              sessionId: reviewerSessionId,
+              eventId: createResourceEventId(),
+              jobId,
+            },
+            { timeoutMs: Math.min(60000, remainingTimeMs), maxRetries: 0 },
+          );
+          if (Date.now() >= deadline)
+            throw new Error(
+              "Reviewer PDF preparation is taking too long. Please try again shortly.",
+            );
+          pollDelayMs = Math.min(8000, Math.round(pollDelayMs * 1.5));
+        }
+      }
       if (previewGeneration !== resourcePortalPreviewGeneration) return false;
       if (
         response?.status !== "success" ||
@@ -9510,11 +9574,32 @@
         );
       }
 
+      const responseMimeType = String(response.mimeType || "").toLowerCase();
+      if (
+        reviewer &&
+        (responseMimeType !== "application/pdf" ||
+          response.data.length > REVIEWER_PDF_MAX_BASE64_LENGTH)
+      )
+        throw new Error(
+          "The Reviewer PDF service returned an invalid or oversized PDF.",
+        );
       const binary = atob(response.data);
       const bytes = Uint8Array.from(binary, (character) =>
         character.charCodeAt(0),
       );
-      const responseMimeType = String(response.mimeType || "").toLowerCase();
+      if (
+        reviewer &&
+        (bytes.byteLength > REVIEWER_PDF_MAX_OUTPUT_BYTES ||
+          bytes.byteLength < 5 ||
+          bytes[0] !== 0x25 ||
+          bytes[1] !== 0x50 ||
+          bytes[2] !== 0x44 ||
+          bytes[3] !== 0x46 ||
+          bytes[4] !== 0x2d)
+      )
+        throw new Error(
+          "The Reviewer PDF service returned invalid PDF content.",
+        );
       const isSafeInlineType =
         responseMimeType === "application/pdf" ||
         responseMimeType === "text/plain" ||
@@ -9548,6 +9633,54 @@
       return true;
     } catch (error) {
       if (previewGeneration !== resourcePortalPreviewGeneration) return false;
+      if (reviewer && isDefinitivelyInvalidReviewerCredential(error)) {
+        signOutReviewer(false);
+        setReviewerAuthStatus(
+          "Your reviewer session expired or was revoked. Sign in with Google again.",
+        );
+        openResourceDashboardTab("PROFILE");
+        return false;
+      }
+      if (
+        reviewer &&
+        ["ACCOUNT_PENDING", "ACCOUNT_DENIED"].includes(error?.code)
+      ) {
+        const failedSessionId = reviewerSessionId;
+        try {
+          const accountStatus = await globalScope.AppNetwork.callBackend(
+            { type: "get_reviewer_account_status", sessionId: failedSessionId },
+            { timeoutMs: 15000, maxRetries: 0 },
+          );
+          if (
+            previewGeneration !== resourcePortalPreviewGeneration ||
+            failedSessionId !== reviewerSessionId
+          )
+            return false;
+          applyReviewerAccountStatus(accountStatus, failedSessionId);
+          if (accountStatus.accountStatus !== "TRUE") return false;
+          if (status) {
+            status.textContent =
+              "This account is not authorized to view Reviewer PDFs.";
+            status.hidden = false;
+          }
+          return false;
+        } catch (statusError) {
+          if (previewGeneration !== resourcePortalPreviewGeneration)
+            return false;
+          if (isDefinitivelyInvalidReviewerCredential(statusError)) {
+            signOutReviewer(false);
+            setReviewerAuthStatus(
+              "Your reviewer session expired or was revoked. Sign in with Google again.",
+            );
+            openResourceDashboardTab("PROFILE");
+            return false;
+          }
+          (globalScope.DebugUtils || console).error(
+            "Unable to refresh Reviewer approval after PDF access was denied.",
+            statusError,
+          );
+        }
+      }
       if (status) {
         status.textContent = `Unable to load file preview: ${String(
           error?.message || error,
@@ -9559,6 +9692,9 @@
         error,
       );
       return false;
+    } finally {
+      if (reviewerPdfPreviewInFlight === reviewerRequest)
+        reviewerPdfPreviewInFlight = null;
     }
   }
 
@@ -9596,6 +9732,7 @@
 
   function closeResourcePreview() {
     resourcePortalPreviewGeneration += 1;
+    reviewerPdfPreviewInFlight = null;
     const preview = document.getElementById("resource-portal-preview");
     const frame = document.getElementById("resource-portal-preview-frame");
     const status = document.getElementById("resource-portal-preview-status");
@@ -9604,6 +9741,7 @@
       URL.revokeObjectURL(resourcePortalPreviewObjectUrl);
       resourcePortalPreviewObjectUrl = "";
     }
+    resourcePortalPreviewIsReviewer = false;
     if (status) {
       status.textContent = "";
       status.hidden = true;
@@ -9627,6 +9765,10 @@
         icon.classList.add("fa-up-right-and-down-left-from-center");
       }
     }
+  }
+
+  function closeReviewerPdfPreview() {
+    if (resourcePortalPreviewIsReviewer) closeResourcePreview();
   }
 
   async function loadResourcePortalFolder(folderId) {

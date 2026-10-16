@@ -116,45 +116,70 @@ both temporary Drive files were private, and both were trashed. Apps Script
 memory was not observable. This did not use an actual Reviewer PDF or test
 processing at the code's provisional limits.
 
-The existing `/dev` web app was also tested with a Promise-return probe.
-Apps Script rejected it with “The script completed but the returned value is
-not a supported return type.” As a result, the local `get_reviewer_pdf` route
-fails closed with `PDF_RUNTIME_UNVERIFIED`; it does not return a derivative
-and never falls back to the original. The PDF helper and bundle are not
-installed in the remote project. No new deployment was created and version
-152 was not redeployed. No Cloud Run service, third-party processor, public
-temporary copy, or runtime CDN request is part of the local runtime path.
+The existing `/dev` web app was tested with a Promise-return probe and Apps
+Script rejected the returned Promise as unsupported. The local implementation
+therefore keeps `doPost` synchronous: `get_reviewer_pdf` queues an authorized
+request and returns a session-bound job ID; an on-demand installable trigger
+performs the async watermark operation, saves only a private derivative, and
+the authenticated browser polls `get_reviewer_pdf_job` for that derivative.
+Enqueue, processing, and poll recheck the reviewer session and require the
+account's stored Active value to be exactly `TRUE`. Poll also rechecks current
+Reviewer-index membership, Drive MIME type, root ancestry, and source version.
+The index payload is cached by its Drive file ID and last-modified timestamp;
+watermarked derivatives are never cached or reused between users or jobs. The
+queue is capped at three active jobs, records expire after ten minutes, stale
+temporary derivatives are trashed, and the worker rejects derivatives whose
+Drive permissions are not private to the execution owner.
+`setupReviewerPdfDelivery()` must be run by the Apps Script project owner to
+install the worker trigger. No Cloud Run service, third-party processor,
+public temporary copy, or runtime CDN request is part of the local runtime
+path.
+
+The browser renders a Reviewer response only when the authenticated endpoint
+returns `application/pdf`, a PDF signature, and data within the configured
+derivative limit. Repeated clicks for the same session and file do not enqueue
+duplicate jobs. The viewer's object URL is revoked and its frame cleared when
+the user signs out, approval is lost, or the session expires. Non-PDF Reviewer
+resources and MODULES/SYLLABUS previews keep their existing behavior.
 
 The code currently rejects sources over 2 MiB, derivatives over 4 MiB, and
 files over 80 pages. These are implementation guards, not validated Apps
 Script service limits. A 4 MiB derivative expands to at most 5,592,408 base64
 characters (about 5.33 MiB) before JSON; maximum-size and actual
-`ContentService` response behavior remain untested. No production delivery
-claim is made. A supported web-app response path must be designed and
-runtime-validated before enabling Reviewer PDF delivery. MODULES, SYLLABUS,
-and non-PDF REVIEWERS flows remain unchanged.
+`ContentService` response behavior, time-trigger execution/recovery, and
+large derivative delivery remain untested in the actual deployment. No
+production delivery claim is made. Validate the queue, trigger, private output,
+and browser response end-to-end against a test deployment with representative
+Reviewer PDFs before enabling production delivery. MODULES, SYLLABUS, and
+non-PDF REVIEWERS flows remain unchanged.
 Browser POSTs use `cache: "no-store"`; personalized output is not placed in
 shared Apps Script or dashboard caches.
 
-The local bundle, MIT attribution, compatibility tests, and Apps Script proof
-are documented in [the Reviewer PDF setup and test guide](../reviewer-pdf-service/README.md).
-The temporary remote proof files and test scope were removed after testing;
-the remote Apps Script project is restored to its five original source files
-and manifest. Existing deployments were not updated. The separate Drive
-permission audit and revocation functions have not been run against live
-Drive. End-to-end Reviewer PDF delivery is not implemented or production
-ready.
+The local bundle, MIT attribution, compatibility tests, Apps Script proof,
+queue setup, and deployment checklist are documented in
+[the Reviewer PDF setup and test guide](../reviewer-pdf-service/README.md).
+The queue implementation has been synchronized to Apps Script and a separate
+version-154 test deployment was updated. Production version 152 was not
+redeployed. Smoke tests confirmed the test endpoint's auth configuration,
+rejection of a forged Google credential at sign-in, and rejection of a
+fabricated reviewer session before the worker configuration check. The worker
+has not been initialized, and the complete PDF job, browser response, and
+real-account flows remain unverified. The read-only Drive permission audit
+failed with an Apps Script storage `NOT_FOUND` error; no Drive permissions were
+changed. Reviewer PDF delivery is not production-ready until the remaining
+live checks below pass.
 
 The Apps Script editor functions `auditReviewerPdfDrivePermissions()` and
 `applyReviewedReviewerPdfPermissionRevocations()` are separately invoked.
 The first reports permissions for indexed Reviewer PDFs and their ancestor
-folders only; it makes no changes. The apply function requires an explicit
-confirmation string and exact reviewed permission IDs, allows only direct
-permissions on indexed Reviewer PDF files, rejects inherited and
-ancestor-folder permissions (to avoid changing Modules/Syllabus access) and
-configured protected principals, and runs a fresh audit after changes. The
-audit and revocation functions have not been run against live Drive, and no
-permissions have been changed. If exposure is inherited from a shared
+folders only; it makes no changes. The apply function defaults to a dry run and returns exact planned
+file/permission IDs. Applying those reviewed direct PDF permissions requires
+`dryRun=false`, an explicit confirmation string, and exact reviewed permission
+IDs; inherited/ancestor permissions and configured protected principals are
+rejected. A fresh audit runs after changes. Parent-folder permission changes
+are never automated. The audit did not produce a report: the Apps Script
+execution attempt returned a storage `NOT_FOUND` error. The revocation
+function has not been run, and no permissions have been changed. If exposure is inherited from a shared
 ancestor, resolve it without broadening this scope (for example, by reviewing
 whether Reviewer PDFs should move to a separately restricted folder). Do not
 treat the Drive hierarchy as private until administrators review the actual
@@ -215,7 +240,8 @@ To initialize sign-in and access logging:
 7. Enable the Apps Script Advanced Google service **Google Sheets API v4**
    (the project manifest declares this service; enable the Google Sheets API
    in the linked Cloud project if prompted), and deploy a new web-app version.
-   The repository's `backend/` directory is excluded by `.gitignore` and is
+   The repository selectively tracks the Apps Script runtime files under
+   `backend/` while keeping unrelated backend files ignored. These files are
    not published by the GitHub Pages workflow; publish the updated
    `backend/main.js` to the Apps Script project separately before deploying
    the frontend. Existing users will need to complete Google sign-in once to
@@ -298,6 +324,5 @@ The Reviewer PDF watermark is leak deterrence and attribution, not a guarantee
 against screenshots, screen recording, browser developer tools, manual
 copying, or photographing a display. No live Drive ACL audit, Sheets
 authorization test, or real Reviewer-document processing test has been
-performed. The Apps Script PDF helper was exercised on a synthetic test file,
-but the protected web-app route remains disabled because its asynchronous
-result cannot be returned directly from `doPost`.
+performed. The Apps Script PDF helper was exercised on a synthetic test file;
+the protected web-app queue and delivery flow still require live validation.

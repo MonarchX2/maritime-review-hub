@@ -1,4 +1,8 @@
-backend/
+backend/*
+!backend/main.js
+!backend/appsscript.json
+!backend/ReviewerPdf.gs
+!backend/PDFLib.js
 old/
 tests/
 !tests/
@@ -9,4 +13,6 @@ scripts/
 !scripts/frontend-architecture-check.js
 !scripts/browser-performance-check.js
 !scripts/check-resource-portal.js
+!scripts/check-reviewer-authorization.js
+!scripts/check-reviewer-pdf-security.js
 node_modules/

@@ -402,8 +402,18 @@ assert.match(
 );
 assert.doesNotMatch(
   index,
-  /My Files|resource-portal-preview|resource-portal-items|resource-portal-access-screen|resource-dashboard-search|Open spreadsheet|docs\.google\.com\/spreadsheets/,
+  /My Files|resource-portal-items|resource-portal-access-screen|resource-dashboard-search|Open spreadsheet|docs\.google\.com\/spreadsheets/,
   "the dashboard should not expose Drive controls, search, or a link back to its source",
+);
+assert.match(
+  index,
+  /id="resource-dashboard-content"[\s\S]*?id="resource-portal-preview"[^>]*hidden[\s\S]*?id="resource-portal-preview-title"[\s\S]*?id="resource-portal-preview-expand"[\s\S]*?id="resource-portal-preview-close"[\s\S]*?id="resource-portal-preview-status"[\s\S]*?id="resource-portal-preview-frame"[^>]*referrerpolicy="no-referrer"[^>]*hidden/,
+  "the dashboard must contain a hidden, in-site preview with accessible status and close/expand controls",
+);
+assert.doesNotMatch(
+  index.match(/id="resource-portal-preview"[\s\S]*?<\/section>/)?.[0] || "",
+  /https?:\/\/|drive\.google\.com/,
+  "the in-site preview must not contain an original Drive URL or fallback link",
 );
 assert.match(
   index,
@@ -894,6 +904,7 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(backend, context, { filename: "backend/main.js" });
+const readReviewerPdfIndexEntries = context.getReviewerPdfIndexEntries_;
 
 const dashboard = JSON.parse(context.handleGetResourceDashboardRequest().text);
 assert.deepEqual(
@@ -1098,7 +1109,12 @@ context.authorizeReviewerRequest_ = (_data, bypassAccountCache) => {
   );
   context.authorizeReviewerRequest_ = () => ({
     email: "reviewer@example.com",
-    account: { firstName: "Rita", middleInitial: "A.", lastName: "Reviewer" },
+    account: {
+      firstName: "Rita",
+      middleInitial: "A.",
+      lastName: "Reviewer",
+      rawAccountStatus: "TRUE",
+    },
   });
   context.getReviewerPdfIndexEntries_ = () => [
     { fileId: "reviewerPdf_123456", title: "Reviewer.pdf" },
@@ -1265,7 +1281,392 @@ const coldStartSync = JSON.parse(
 assert.equal(coldStartSync.isColdStart, true);
 assert.equal(rebuildTriggerCount, 1);
 
-  console.log("Resource dashboard and disabled Drive portal checks passed.");
+const pdfJobNow = 1000000;
+const pdfJobProperties = new Map();
+const pdfJobPropertyStore = {
+  getProperties: () => Object.fromEntries(pdfJobProperties),
+  getProperty: (key) => pdfJobProperties.get(key) || null,
+  setProperty: (key, value) => pdfJobProperties.set(key, String(value)),
+  deleteProperty: (key) => pdfJobProperties.delete(key),
+};
+const pdfJobPrefix = "MRH_REVIEWER_PDF_JOB_v1_";
+const pdfJobRecord = (jobId, status, options = {}) =>
+  JSON.stringify({
+    jobId,
+    status,
+    expiresAt: options.expiresAt || pdfJobNow + 600000,
+    processingAt: options.processingAt,
+    outputFileId: options.outputFileId,
+  });
+pdfJobProperties.set(
+  "MRH_REVIEWER_PDF_QUEUE_v1",
+  JSON.stringify(["queued-b", "queued-a"]),
+);
+pdfJobProperties.set(pdfJobPrefix + "queued-a", pdfJobRecord("queued-a", "queued"));
+pdfJobProperties.set(pdfJobPrefix + "queued-b", pdfJobRecord("queued-b", "queued"));
+pdfJobProperties.set(
+  pdfJobPrefix + "stale",
+  pdfJobRecord("stale", "processing", {
+    processingAt: pdfJobNow - 7 * 60 * 1000,
+  }),
+);
+pdfJobProperties.set(
+  pdfJobPrefix + "active",
+  pdfJobRecord("active", "processing", {
+    processingAt: pdfJobNow - 2 * 60 * 1000,
+  }),
+);
+pdfJobProperties.set(
+  pdfJobPrefix + "expired",
+  pdfJobRecord("expired", "complete", {
+    expiresAt: pdfJobNow - 1,
+    outputFileId: "expired-output",
+  }),
+);
+const trashedExpiredOutputs = [];
+context.getScriptProps = () => pdfJobPropertyStore;
+context.DriveApp.getFileById = (fileId) => ({
+  setTrashed: (trashed) => trashedExpiredOutputs.push([fileId, trashed]),
+});
+assert.deepEqual(
+  JSON.parse(
+    JSON.stringify(
+      context.cleanReviewerPdfJobs_(pdfJobPropertyStore, pdfJobNow),
+    ),
+  ),
+  ["queued-b", "queued-a", "stale"],
+  "job cleanup preserves FIFO order and recovers only stale worker claims",
+);
+assert.equal(
+  JSON.parse(pdfJobProperties.get(pdfJobPrefix + "stale")).status,
+  "queued",
+);
+assert.equal(
+  JSON.parse(pdfJobProperties.get(pdfJobPrefix + "active")).status,
+  "processing",
+  "a live worker claim must not be requeued",
+);
+assert.equal(pdfJobProperties.has(pdfJobPrefix + "expired"), false);
+assert.deepEqual(trashedExpiredOutputs, [["expired-output", true]]);
+
+context.reviewerPdfQueueConfigured_ = () => true;
+context.reviewerPdfQueueConfigured_ = () => false;
+const originalAuthorizeReviewerPdfRequest =
+  context.authorizeReviewerPdfRequest_;
+context.authorizeReviewerPdfRequest_ = () => ({
+  error: context.errorResponse("Account is pending.", "ACCOUNT_PENDING"),
+});
+assert.equal(
+  JSON.parse(
+    context.enqueueReviewerPdfRequest_({
+      fileId: "reviewerPdf_123456",
+      sessionId: "a".repeat(96),
+    }).text,
+  ).code,
+  "ACCOUNT_PENDING",
+  "an unconfigured worker must not bypass fresh account authorization",
+);
+context.authorizeReviewerPdfRequest_ = originalAuthorizeReviewerPdfRequest;
+context.reviewerPdfQueueConfigured_ = () => true;
+assert.equal(
+  JSON.parse(
+    context.enqueueReviewerPdfRequest_({ fileId: "reviewerPdf_123456" }).text,
+  ).code,
+  "SESSION_INVALID",
+  "PDF jobs cannot be enqueued without a session that can own and poll the job",
+);
+assert.equal(
+  JSON.parse(context.getReviewerPdfJobStatus_({ jobId: "a".repeat(96) }).text)
+    .code,
+  "SESSION_INVALID",
+  "job polling cannot bypass reviewer session authentication",
+);
+
+pdfJobProperties.clear();
+const workerJobId = "b".repeat(96);
+const workerSessionId = "c".repeat(96);
+const workerPdfBytes = [37, 80, 68, 70, 45, 49, 46, 55];
+pdfJobProperties.set(
+  pdfJobPrefix + workerJobId,
+  JSON.stringify({
+    jobId: workerJobId,
+    sessionId: workerSessionId,
+    eventId: "62345678-1234-4123-8123-123456789abc",
+    fileId: "reviewerPdf_123456",
+    sourceVersion: "test-source-version",
+    status: "queued",
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 10 * 60 * 1000,
+  }),
+);
+pdfJobProperties.set(
+  "MRH_REVIEWER_PDF_QUEUE_v1",
+  JSON.stringify([workerJobId]),
+);
+context.MRH_REVIEWER_PDF_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
+let derivativeFile = null;
+context.LockService = {
+  getScriptLock: () => ({
+    tryLock: () => true,
+    releaseLock() {},
+  }),
+};
+context.Utilities.base64Decode = (encoded) =>
+  Array.from(Buffer.from(encoded, "base64"));
+context.Utilities.base64Encode = (bytes) =>
+  Buffer.from(bytes.map((byte) => byte & 255)).toString("base64");
+context.Utilities.newBlob = (bytes, mimeType, name) => ({
+  bytes,
+  mimeType,
+  name,
+});
+context.ContentService.createTextOutput = (text) => ({
+  text,
+  getContent: () => text,
+  setMimeType() {
+    return this;
+  },
+});
+context.handleGetReviewerPdfRequest = async () =>
+  context.ContentService.createTextOutput(
+    JSON.stringify({
+      status: "success",
+      mimeType: "application/pdf",
+      sourceVersion: "test-source-version",
+      data: context.Utilities.base64Encode(workerPdfBytes),
+    }),
+  );
+context.getReviewerPdfSource_ = () => ({
+  entry: { fileId: "reviewerPdf_123456", title: "Reviewer.pdf" },
+  driveFile: { id: "reviewerPdf_123456" },
+  sourceVersion: "test-source-version",
+});
+context.reviewerPdfError_ = (message, code) =>
+  Object.assign(new Error(message), { code, reviewerPdfSafe: true });
+context.DriveApp.createFile = (blob) => {
+  derivativeFile = {
+    id: "private-derivative-id",
+    blob,
+    trashed: false,
+    getId() {
+      return this.id;
+    },
+    setTrashed(value) {
+      this.trashed = value;
+    },
+  };
+  return derivativeFile;
+};
+context.listReviewerPdfPermissions_ = () => [
+  { type: "user", emailAddress: "owner@example.com", role: "owner" },
+];
+context.Session = {
+  getEffectiveUser: () => ({ getEmail: () => "owner@example.com" }),
+};
+const scheduledPdfWorkerDelays = [];
+context.ScriptApp = {
+  getProjectTriggers: () => [],
+  newTrigger: () => ({
+    timeBased() {
+      return this;
+    },
+    after(delayMs) {
+      scheduledPdfWorkerDelays.push(delayMs);
+      return this;
+    },
+    create() {
+      return {};
+    },
+  }),
+};
+await context.processReviewerPdfQueue();
+const completedPdfJob = JSON.parse(
+  pdfJobProperties.get(pdfJobPrefix + workerJobId),
+);
+assert.equal(completedPdfJob.status, "complete", JSON.stringify(completedPdfJob));
+assert.equal(completedPdfJob.outputFileId, "private-derivative-id");
+assert.equal(derivativeFile.blob.mimeType, "application/pdf");
+assert.equal(derivativeFile.blob.name, `MRH Reviewer PDF ${workerJobId}.pdf`);
+assert.equal(
+  scheduledPdfWorkerDelays.length,
+  1,
+  "completed private derivatives must schedule a one-time expiry cleanup",
+);
+
+context.authorizeReviewerRequest_ = () => ({
+  email: "reviewer@example.com",
+  account: {
+    firstName: "Rita",
+    middleInitial: "A.",
+    lastName: "Reviewer",
+    rawAccountStatus: "TRUE",
+  },
+});
+context.DriveApp.getFileById = (fileId) => {
+  assert.equal(fileId, "private-derivative-id");
+  return {
+    isTrashed: () => false,
+    getMimeType: () => "application/pdf",
+    getSize: () => workerPdfBytes.length,
+    getBlob: () => ({ getBytes: () => workerPdfBytes }),
+  };
+};
+const deliveredPdfJob = JSON.parse(
+  context.getReviewerPdfJobStatus_({
+    jobId: workerJobId,
+    sessionId: workerSessionId,
+  }).text,
+);
+assert.equal(deliveredPdfJob.status, "success");
+assert.equal(deliveredPdfJob.mimeType, "application/pdf");
+assert.equal(
+  Buffer.from(deliveredPdfJob.data, "base64").toString("hex"),
+  Buffer.from(workerPdfBytes).toString("hex"),
+  "job polling must return the stored derivative bytes",
+);
+assert.equal(
+  JSON.parse(
+    context.getReviewerPdfJobStatus_({
+      jobId: workerJobId,
+      sessionId: "d".repeat(96),
+    }).text,
+  ).code,
+  "PDF_JOB_NOT_FOUND",
+  "a different authenticated reviewer cannot read another session's job",
+);
+context.getReviewerPdfSource_ = () => ({
+  error: { code: "RESOURCE_NOT_AUTHORIZED", message: "Stale index." },
+});
+assert.equal(
+  JSON.parse(
+    context.getReviewerPdfJobStatus_({
+      jobId: workerJobId,
+      sessionId: workerSessionId,
+    }).text,
+  ).code,
+  "PDF_SOURCE_CHANGED",
+  "polling must deny a completed derivative after its source leaves the authoritative index",
+);
+context.getReviewerPdfSource_ = () => ({
+  entry: { fileId: "reviewerPdf_123456", title: "Reviewer.pdf" },
+  driveFile: { id: "reviewerPdf_123456" },
+  sourceVersion: "different-source-version",
+});
+assert.equal(
+  JSON.parse(
+    context.getReviewerPdfJobStatus_({
+      jobId: workerJobId,
+      sessionId: workerSessionId,
+    }).text,
+  ).code,
+  "PDF_SOURCE_CHANGED",
+  "polling must not deliver a derivative for a changed source version",
+);
+context.getReviewerPdfSource_ = () => ({
+  entry: { fileId: "reviewerPdf_123456", title: "Reviewer.pdf" },
+  driveFile: { id: "reviewerPdf_123456" },
+  sourceVersion: "test-source-version",
+});
+
+const nonPrivateJobId = "e".repeat(96);
+pdfJobProperties.set(
+  pdfJobPrefix + nonPrivateJobId,
+  JSON.stringify({
+    jobId: nonPrivateJobId,
+    sessionId: workerSessionId,
+    eventId: "72345678-1234-4123-8123-123456789abc",
+    fileId: "reviewerPdf_123456",
+    sourceVersion: "test-source-version",
+    status: "queued",
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 10 * 60 * 1000,
+  }),
+);
+pdfJobProperties.set(
+  "MRH_REVIEWER_PDF_QUEUE_v1",
+  JSON.stringify([nonPrivateJobId]),
+);
+context.listReviewerPdfPermissions_ = () => [
+  { type: "user", emailAddress: "other@example.com", role: "writer" },
+];
+await context.processReviewerPdfQueue();
+const rejectedPdfJob = JSON.parse(
+  pdfJobProperties.get(pdfJobPrefix + nonPrivateJobId),
+);
+assert.equal(rejectedPdfJob.status, "failed");
+assert.equal(rejectedPdfJob.code, "PDF_OUTPUT_NOT_PRIVATE");
+assert.equal(
+  derivativeFile.trashed,
+  true,
+  "a derivative that is not private must be trashed and never delivered",
+);
+
+let aclDeleteCount = 0;
+const aclReport = {
+  files: [{
+    id: "reviewerPdf_123456",
+    name: "Reviewer.pdf",
+    mimeType: "application/pdf",
+    insideRoot: true,
+    reviewerTitles: ["Reviewer.pdf"],
+    permissions: [{
+      id: "direct-share",
+      type: "user",
+      role: "writer",
+      emailAddress: "former@example.com",
+      deleted: false,
+      inherited: false,
+      inheritedFrom: [],
+    }],
+  }],
+};
+context.PropertiesService.getScriptProperties = () => ({
+  getProperty: () => "owner@example.com",
+});
+context.auditReviewerPdfDrivePermissions = () => aclReport;
+context.Drive = {
+  Permissions: {
+    delete() {
+      aclDeleteCount += 1;
+    },
+  },
+};
+const aclDryRun = context.applyReviewedReviewerPdfPermissionRevocations(
+  [{ fileId: "reviewerPdf_123456", permissionId: "direct-share" }],
+  "",
+);
+assert.equal(aclDryRun.dryRun, true);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(aclDryRun.planned)),
+  [{ fileId: "reviewerPdf_123456", permissionId: "direct-share" }],
+);
+assert.equal(aclDeleteCount, 0, "ACL dry-run must not change Drive permissions");
+aclReport.files[0].permissions[0].inherited = true;
+assert.throws(
+  () =>
+    context.applyReviewedReviewerPdfPermissionRevocations(
+      [{ fileId: "reviewerPdf_123456", permissionId: "direct-share" }],
+      "",
+    ),
+  /Inherited access must be reviewed/,
+  "the permission helper must never delete inherited folder access",
+);
+assert.equal(aclDeleteCount, 0);
+
+const indexReadsBeforeCacheTest = indexReadCount;
+context.getReviewerPdfIndexEntries_ = readReviewerPdfIndexEntries;
+const cachedPdfIndex = context.getReviewerPdfIndexEntries_();
+const indexReadsAfterFirstPdfIndex = indexReadCount;
+assert.ok(cachedPdfIndex.some((entry) => entry.fileId === "reviewerPdf_123456"));
+assert.equal(indexReadsAfterFirstPdfIndex, indexReadsBeforeCacheTest + 1);
+context.getReviewerPdfIndexEntries_();
+assert.equal(
+  indexReadCount,
+  indexReadsAfterFirstPdfIndex,
+  "a stable authoritative Reviewer index version should be read once from Drive",
+);
+
+  console.log("Resource dashboard and protected PDF queue checks passed.");
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;
