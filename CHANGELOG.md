@@ -1,5 +1,17 @@
 # Changelog
 
+## 26.10.16-47 - 2026-10-16
+
+### Improved
+
+- Show a consistent Google sign-in prompt when signed out and a visible
+  "Signing in..." state while verifying a sign-in.
+- Simplify reviewer profile enrollment by removing the redundant Edit button,
+  uppercasing names as they are typed, and confirming name accuracy before
+  submission.
+- Remove the redundant Year column from Syllabus, Modules, and Reviewer tables
+  while retaining year and semester filtering.
+
 ## 26.10.16-46 - 2026-10-16
 
 ### Improved

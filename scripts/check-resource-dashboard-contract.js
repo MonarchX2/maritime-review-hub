@@ -178,8 +178,28 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(!idToken\) \{\s*setReviewerNavigationBusy\(false\);[\s\S]*?authStatus\?\.removeAttribute\("aria-busy"\);[\s\S]*?Use Google to sign in and request access/,
+  /if \(!idToken\) \{\s*setReviewerNavigationBusy\(false\);[\s\S]*?setReviewerAuthStatus\("Use Google to sign in and request access\."\)/,
   "a credential-less Google callback should clear Reviewer loading states and retain only the approved prompt",
+);
+assert.match(
+  appCore,
+  /function setReviewerAuthStatus\(message, busy = false\)[\s\S]*?status\.textContent = message;[\s\S]*?if \(busy\) status\.setAttribute\("aria-busy", "true"\)/,
+  "Reviewer auth status should expose the existing accessible loading indicator when busy",
+);
+assert.match(
+  appCore,
+  /reviewerVerificationInFlightToken = idToken;\s*setReviewerNavigationBusy\(true\);\s*setReviewerAuthStatus\("Signing in\.\.\.", true\)/,
+  "Google credential verification should immediately display Signing in with a loading state",
+);
+assert.match(
+  appCore,
+  /function signOutReviewer\([\s\S]*?setReviewerAuthStatus\("Use Google to sign in and request access\."\)/,
+  "sign-out should return to the standard Google sign-in prompt",
+);
+assert.doesNotMatch(
+  appCore,
+  /Signed out\. Reviewer data|Signed out here, but|Signed out in another tab\./,
+  "signed-out states should not display redundant signed-out messages",
 );
 const reviewerPromptCallback = appCore.match(
   /globalScope\.google\.accounts\.id\.prompt\(\(notification\) => \{[\s\S]*?\n          \}\);/,
@@ -450,8 +470,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-profile-actions\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*center;[^}]*width:\s*100%;/,
-  "the Profile actions should stay in one flexible row",
+  /\.resource-profile-signout-button\s*\{[^}]*border:\s*0;[^}]*color:\s*#dc2626;[^}]*background:\s*transparent;/,
+  "the Profile sign-out control should be centered red text without a background",
 );
 assert.match(
   resourceStyles,
@@ -918,8 +938,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /columnName === "course" \|\| columnName === "year"[\s\S]*?resource-dashboard-column-\$\{columnName\}/,
-  "dashboard cells and headers should identify the Course and Year columns",
+  /const visibleColumnIndices = categoryColumnIndices\.filter\(\s*\(columnIndex\) => columnIndex !== yearColumnIndex,\s*\);[\s\S]*?visibleColumnIndices\.forEach\(\(columnIndex\) => \{\s*const column = tab\.columns\[columnIndex\]/,
+  "dashboard tables should hide the redundant Year column while preserving its filter data",
 );
 assert.match(
   appCore,
@@ -976,10 +996,10 @@ assert.match(
   /\.resource-dashboard-table td\s*\{[^}]*text-align:\s*center;/,
   "dashboard table cell contents, including Course values, should remain centered",
 );
-assert.match(
+assert.doesNotMatch(
   resourceStyles,
-  /\.resource-dashboard-table \.resource-dashboard-column-year\s*\{[^}]*text-align:\s*center;/,
-  "the dashboard Year column should be center-aligned",
+  /\.resource-dashboard-column-year/,
+  "dashboard styles should not retain a presentation rule for the removed Year column",
 );
 assert.match(
   resourceStyles,

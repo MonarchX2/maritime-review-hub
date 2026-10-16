@@ -143,10 +143,10 @@ assert.ok(
     index.indexOf('id="resource-profile-account-details"'),
   "all name-entry fields should render below the profile details",
 );
-assert.match(
+assert.doesNotMatch(
   index,
-  /resource-reviewer-form-warning[\s\S]*?False information will strictly not be entertained[\s\S]*?ignored and deleted[\s\S]*?verified Google email[\s\S]*?share at least one name part or matching initials/,
-  "the name form should warn against false details and require the matching Google identity",
+  /resource-reviewer-form-warning|False information will strictly not be entertained/,
+  "the name form should not display the false-information warning above the fields",
 );
 assert.match(
   index,
@@ -186,8 +186,20 @@ assert.ok(
 );
 assert.match(
   appCore,
-  /function capitalizeReviewerName\(value\)[\s\S]*?toLocaleLowerCase\(\)[\s\S]*?function normalizeReviewerNameInput\(input\)[\s\S]*?capitalizeReviewerName\(input\.value\)/,
-  "first and last names should autocapitalize as the user types",
+  /function capitalizeReviewerName\(value\) \{\s*return String\(value \|\| ""\)\.toLocaleUpperCase\(\);[\s\S]*?function normalizeReviewerNameInput\(input\)[\s\S]*?capitalizeReviewerName\(input\.value\)/,
+  "first and last names should become fully uppercase as the user types",
+);
+const reviewerNameCapitalizerSource = appCore.match(
+  /function capitalizeReviewerName\(value\) \{[\s\S]*?\n  \}/,
+);
+assert.ok(reviewerNameCapitalizerSource);
+const capitalizeReviewerName = new Function(
+  `${reviewerNameCapitalizerSource[0]}; return capitalizeReviewerName;`,
+)();
+assert.equal(
+  capitalizeReviewerName("mARia anne-marie o'brien"),
+  "MARIA ANNE-MARIE O'BRIEN",
+  "name input should convert every character to uppercase, not title case",
 );
 assert.match(
   appCore,
@@ -273,13 +285,23 @@ assert.doesNotMatch(
 );
 assert.match(
   index,
-  /id="resource-profile-access-status"[^>]*hidden[\s\S]*?id="resource-reviewer-signout"[^>]*class="resource-profile-signout-button"[\s\S]*?Sign out[\s\S]*?class="resource-profile-actions"[\s\S]*?id="resource-reviewer-edit-profile"[^>]*class="[^"]*resource-profile-edit-button"/,
-  "Sign out should be centered below access status and separate from Edit",
+  /id="resource-profile-access-status"[^>]*hidden[\s\S]*?id="resource-reviewer-signout"[^>]*class="resource-profile-signout-button"[\s\S]*?Sign out/,
+  "Sign out should be centered below the access status without a redundant Edit control",
 );
 assert.match(
   appCore,
-  /editProfileButton\.hidden = accountStatus !== "DENIED"/,
-  "pending and approved profiles should not show the Edit button",
+  /accountStatus === "NOT_FOUND" \|\| accountStatus === "DENIED"[\s\S]*?Correct details and submit/,
+  "first-time and denied accounts should use the enrollment form without an Edit button",
+);
+assert.doesNotMatch(
+  index + appCore,
+  /resource-reviewer-edit-profile|resource-profile-edit-button/,
+  "the redundant profile Edit control should be removed",
+);
+assert.match(
+  appCore,
+  /const confirmed = await requestConfirmation\([\s\S]*?False information will strictly not be entertained[\s\S]*?ignored and deleted[\s\S]*?verified Google account and email[\s\S]*?if \(!confirmed\) return false;[\s\S]*?globalScope\.AppNetwork\.callBackend/,
+  "submitting a name should confirm its accuracy and warn against false information before contacting the backend",
 );
 assert.match(
   appCore,
@@ -308,8 +330,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-profile-actions\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*center;[\s\S]*?\.resource-profile-edit-button\s*\{[^}]*background:\s*#16a34a;[\s\S]*?\.resource-profile-signout-button\s*\{[^}]*border:\s*0;[^}]*color:\s*#dc2626;[^}]*background:\s*transparent;/,
-  "Edit should remain a button while Sign out is red text without a background box",
+  /\.resource-profile-signout-button\s*\{[^}]*border:\s*0;[^}]*color:\s*#dc2626;[^}]*background:\s*transparent;/,
+  "Sign out should remain red text without a background box",
 );
 assert.match(
   resourceStyles,
@@ -425,8 +447,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /visibleColumnIndices =\s*hasCategoryFilter && resourceDashboardSelectedCategory !== "all"[\s\S]*?columnIndex === selectedPhaseColumnIndex/,
+  /const categoryColumnIndices =\s*hasCategoryFilter && resourceDashboardSelectedCategory !== "all"[\s\S]*?columnIndex === selectedPhaseColumnIndex[\s\S]*?const visibleColumnIndices = categoryColumnIndices\.filter/,
   "a selected phase should hide the other phase columns",
+);
+assert.match(
+  appCore,
+  /const visibleColumnIndices = categoryColumnIndices\.filter\(\s*\(columnIndex\) => columnIndex !== yearColumnIndex,\s*\)/,
+  "the redundant Year column should be hidden across the syllabus, modules, and reviewers tables",
 );
 assert.doesNotMatch(
   index,

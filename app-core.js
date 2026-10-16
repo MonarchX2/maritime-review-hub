@@ -6208,8 +6208,7 @@
     )
       return;
     signOutReviewer(false);
-    const authStatus = document.getElementById("resource-reviewer-auth-status");
-    if (authStatus) authStatus.textContent = "Signed out in another tab.";
+    setReviewerAuthStatus("Use Google to sign in and request access.");
   }
 
   function installReviewerSignOutStorageListener() {
@@ -6332,6 +6331,14 @@
       "resource-dashboard-status-stacked",
       Boolean(message && busy && stacked),
     );
+    if (busy) status.setAttribute("aria-busy", "true");
+    else status.removeAttribute("aria-busy");
+  }
+
+  function setReviewerAuthStatus(message, busy = false) {
+    const status = document.getElementById("resource-reviewer-auth-status");
+    if (!status) return;
+    status.textContent = message;
     if (busy) status.setAttribute("aria-busy", "true");
     else status.removeAttribute("aria-busy");
   }
@@ -6934,7 +6941,7 @@
           hasCellValue(values, rowIndex, columnIndex),
         ),
       );
-    const visibleColumnIndices =
+    const categoryColumnIndices =
       hasCategoryFilter && resourceDashboardSelectedCategory !== "all"
         ? populatedColumnIndices.filter(
             (columnIndex) =>
@@ -6942,6 +6949,9 @@
               columnIndex === selectedPhaseColumnIndex,
           )
         : populatedColumnIndices;
+    const visibleColumnIndices = categoryColumnIndices.filter(
+      (columnIndex) => columnIndex !== yearColumnIndex,
+    );
 
     tableHead.replaceChildren();
     tableBody.replaceChildren();
@@ -7179,13 +7189,6 @@
       signoutButton.addEventListener("click", signOutReviewer);
       signoutButton.dataset.initialized = "true";
     }
-    const editProfileButton = document.getElementById(
-      "resource-reviewer-edit-profile",
-    );
-    if (editProfileButton && !editProfileButton.dataset.initialized) {
-      editProfileButton.addEventListener("click", openReviewerProfileEditor);
-      editProfileButton.dataset.initialized = "true";
-    }
     const cancelEditButton = document.getElementById(
       "resource-reviewer-cancel-edit",
     );
@@ -7196,12 +7199,7 @@
   }
 
   function capitalizeReviewerName(value) {
-    return String(value || "")
-      .toLocaleLowerCase()
-      .replace(
-        /(^|[\s'’\-])(\p{L})/gu,
-        (_, separator, letter) => `${separator}${letter.toLocaleUpperCase()}`,
-      );
+    return String(value || "").toLocaleUpperCase();
   }
 
   function normalizeReviewerIdentityText(value) {
@@ -7474,12 +7472,13 @@
           }
         }
         if (
-          authStatus &&
           !reviewerSessionRestorePending &&
           !reviewerSessionId &&
           !reviewerPendingEnrollmentSessionId
         )
-          authStatus.textContent = "Use Google to sign in and request access";
+          setReviewerAuthStatus(
+            "Use Google to sign in and request access.",
+          );
         reviewerAuthCheckPending =
           !hasExplicitReviewerSignOut() && !getStoredReviewerSessionId();
         if (reviewerAuthCheckPending) {
@@ -7500,6 +7499,14 @@
               ),
             );
             authStatus?.removeAttribute("aria-busy");
+            if (
+              !reviewerSessionId &&
+              !reviewerPendingEnrollmentSessionId &&
+              resourceDashboardActiveTab === "PROFILE"
+            )
+              setReviewerAuthStatus(
+                "Use Google to sign in and request access.",
+              );
             if (
               !reviewerSessionId &&
               !reviewerPendingEnrollmentSessionId &&
@@ -7788,9 +7795,6 @@
       "resource-profile-account-details",
     );
     const formButton = form?.querySelector('button[type="submit"]');
-    const editProfileButton = document.getElementById(
-      "resource-reviewer-edit-profile",
-    );
     const cancelEditButton = document.getElementById(
       "resource-reviewer-cancel-edit",
     );
@@ -7851,13 +7855,11 @@
         form.hidden = !(
           accountStatus === "NOT_FOUND" || accountStatus === "DENIED"
         );
-      if (editProfileButton)
-        editProfileButton.hidden = accountStatus !== "DENIED";
       if (cancelEditButton) cancelEditButton.hidden = true;
       if (formButton)
         formButton.textContent =
           accountStatus === "DENIED"
-            ? "Correct details and resubmit"
+            ? "Correct details and submit"
             : response.profileUpdated
               ? "Save changes for approval"
               : "Submit for administrator review";
@@ -7959,9 +7961,7 @@
     const authStatus = document.getElementById("resource-reviewer-auth-status");
     if (!idToken) {
       setReviewerNavigationBusy(false);
-      authStatus?.removeAttribute("aria-busy");
-      if (authStatus)
-        authStatus.textContent = "Use Google to sign in and request access.";
+      setReviewerAuthStatus("Use Google to sign in and request access.");
       return false;
     }
     if (reviewerVerificationInFlightToken === idToken) return false;
@@ -7974,6 +7974,7 @@
     reviewerVerificationRetryToken = idToken;
     reviewerVerificationInFlightToken = idToken;
     setReviewerNavigationBusy(true);
+    setReviewerAuthStatus("Signing in...", true);
     const retryButton = document.getElementById(
       "resource-reviewer-retry-verification",
     );
@@ -8027,9 +8028,9 @@
           scheduleReviewerStatusPolling(previousSessionId);
         } else {
           signOutReviewer(false);
-          if (authStatus)
-            authStatus.textContent =
-              "Google sign-in expired or is no longer valid. Sign in with Google again.";
+          setReviewerAuthStatus(
+            "Google sign-in expired or is no longer valid. Sign in with Google again.",
+          );
           promptReviewerReauthentication();
         }
       } else {
@@ -8041,14 +8042,15 @@
           retryButton.hidden = false;
           retryButton.disabled = false;
         }
-        if (authStatus)
-          authStatus.textContent =
-            "Google sign-in could not be verified right now. " +
+        setReviewerAuthStatus(
+          "Google sign-in could not be verified right now. " +
             (previousSessionId ? "Your existing sign-in is retained; " : "") +
-            "retry verification or use Google sign-in again.";
+            "retry verification or use Google sign-in again.",
+        );
         if (previousSessionId) scheduleReviewerStatusPolling(previousSessionId);
       }
-      if (authStatus) authStatus.removeAttribute("aria-busy");
+      if (authGeneration === reviewerAuthGeneration)
+        authStatus?.removeAttribute("aria-busy");
       (globalScope.DebugUtils || console).error(
         "Unable to verify reviewer account approval.",
         error,
@@ -8124,6 +8126,11 @@
           "The signed-in Google email does not appear to match this name. Use an email containing part of your first or last name, or matching initials.";
       return false;
     }
+    const confirmed = await requestConfirmation(
+      "False information will strictly not be entertained and will be ignored and deleted. Confirm that the name entered here is accurate and matches your verified Google account and email before submitting.",
+      "Confirm Your Name",
+    );
+    if (!confirmed) return false;
     const authGeneration = ++reviewerAuthGeneration;
     stopReviewerStatusPolling();
     if (submitButton) submitButton.disabled = true;
@@ -8239,7 +8246,7 @@
         const status = document.getElementById("resource-reviewer-auth-status");
         if (status)
           status.textContent =
-            "Signed out in this browser, but the server could not revoke the session. Try signing out again while online.";
+            "The server could not revoke this session. Try signing out again while online.";
         (globalScope.DebugUtils || console).error(
           "Unable to revoke the reviewer session.",
           error,
@@ -8254,12 +8261,10 @@
     reviewerVerificationRetryToken = "";
     reviewerVerificationRetryAvailable = false;
     if (explicit) reviewerReauthenticationPromptAttempted = false;
-    let signOutPreferenceSaved = true;
     if (explicit) {
       try {
         setExplicitReviewerSignOut(true);
       } catch (error) {
-        signOutPreferenceSaved = false;
         (globalScope.DebugUtils || console).error(
           "Unable to save the explicit reviewer sign-out preference.",
           error,
@@ -8268,9 +8273,7 @@
     }
     reviewerSessionId = "";
     reviewerPendingEnrollmentSessionId = "";
-    if (!preserveStoredSession)
-      signOutPreferenceSaved =
-        clearStoredReviewerSession() && signOutPreferenceSaved;
+    if (!preserveStoredSession) clearStoredReviewerSession();
     reviewerAuthorizedEmail = "";
     reviewerAccountStatus = "";
     reviewerDashboardLoadedForEmail = "";
@@ -8338,12 +8341,7 @@
       headerProfilePicture.removeAttribute("src");
     }
     if (headerProfileIcon) headerProfileIcon.hidden = false;
-    const authStatus = document.getElementById("resource-reviewer-auth-status");
-    if (authStatus)
-      authStatus.textContent = signOutPreferenceSaved
-        ? "Signed out. Reviewer data has been cleared from this page."
-        : "Signed out here, but browser storage could not save the sign-out state. The server revocation request is still being processed.";
-    authStatus?.removeAttribute("aria-busy");
+    setReviewerAuthStatus("Use Google to sign in and request access.");
     document
       .getElementById("resource-portal-status")
       ?.removeAttribute("aria-busy");
