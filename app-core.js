@@ -8069,7 +8069,7 @@
         authStatus.textContent =
           !lastName || !firstName
             ? "Enter your last name and first name."
-            : "Middle Initial must be one letter followed by a period, for example K.";
+            : "Middle Initial must be exactly one letter followed by a period.";
       if (!lastName) lastNameInput?.focus();
       else if (!firstName) firstNameInput?.focus();
       else middleInitialInput?.focus();

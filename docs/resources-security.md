@@ -20,8 +20,9 @@ session and requires the matching email and `Active=TRUE` for each protected
 reviewer request.
 Missing or invalid configuration fails closed.
 The profile form requires last name, first name, and a middle initial formatted
-as one letter followed by a period (for example, `K.`); the browser validates
-this format before sending the request, and the backend validates it again.
+as any single letter followed by a period; for example, `A.`, `M.`, or `Z.`.
+The browser validates this format before sending the request, and the backend
+validates it again.
 Users are warned that false information will not be entertained and will be
 ignored and deleted, and that their verified Google email must share at least one
 meaningful name part or matching initials with the name they submit. This

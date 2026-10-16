@@ -148,6 +148,22 @@ assert.match(
   /Middle Initial[\s\S]*?name="middleInitial"[\s\S]*?maxlength="2"[\s\S]*?pattern="\[A-Za-z\]\\\."[\s\S]*?required/,
   "profile should require a middle initial consisting of one letter and a period",
 );
+const middleInitialPattern = /^[A-Z]\.$/;
+assert.deepEqual(
+  ["A.", "M.", "Z."].map((value) => middleInitialPattern.test(value)),
+  [true, true, true],
+  "the frontend middle-initial format should accept any single letter followed by a period",
+);
+assert.deepEqual(
+  ["K", "KK.", "K.."].map((value) => middleInitialPattern.test(value)),
+  [false, false, false],
+  "the frontend middle-initial format should reject values that are not exactly one letter and a period",
+);
+assert.match(
+  index,
+  /title="Enter exactly one letter followed by a period\."/,
+  "the middle-initial hint should not imply that only one specific letter is accepted",
+);
 const middleInitialNormalizer =
   appCore.match(
     /function normalizeReviewerMiddleInitialInput\(input, event\)[\s\S]*?(?=\n  function openReviewerProfileEditor)/,

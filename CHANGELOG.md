@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.10.16-44 - 2026-10-16
+
+### Improved
+
+- Clarify that a middle initial may be any single letter followed by a period,
+  not one specific initial.
+
 ## 26.10.16-43 - 2026-10-16
 
 ### Fixed
