@@ -521,6 +521,18 @@
       required: ["idToken", "deviceIdentity"],
       allowed: ["type", "idToken", "deviceIdentity", "appVersion"],
     },
+    log_resource_file_click: {
+      required: ["resourceArea", "fileName", "fileId"],
+      allowed: [
+        "type",
+        "resourceArea",
+        "fileName",
+        "fileId",
+        "idToken",
+        "deviceIdentity",
+        "appVersion",
+      ],
+    },
     get_deck: {
       required: ["subject"],
       allowed: ["type", "subject", "password", "page", "limit", "appVersion"],
@@ -551,6 +563,8 @@
 
   const STRING_FIELD_LIMITS = Object.freeze({
     type: 64,
+    resourceArea: 32,
+    fileName: 200,
     subject: 500,
     password: 500,
     folderId: 200,

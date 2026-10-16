@@ -6193,6 +6193,51 @@
     }
   }
 
+  function getResourceDashboardFileId(value) {
+    try {
+      const url = new URL(String(value || ""));
+      if (
+        url.protocol !== "https:" ||
+        !["drive.google.com", "docs.google.com"].includes(url.hostname)
+      )
+        return "";
+      const pathMatch =
+        /\/(?:folders|(?:file|document|spreadsheets|presentation|forms)\/d)\/([^/]+)/.exec(
+          url.pathname,
+        );
+      const fileId = String(url.searchParams.get("id") || pathMatch?.[1] || "");
+      return /^[A-Za-z0-9_-]{10,200}$/.test(fileId) ? fileId : "";
+    } catch {
+      return "";
+    }
+  }
+
+  async function logResourceFileClick(resourceArea, fileName, fileId) {
+    try {
+      const payload = {
+        type: "log_resource_file_click",
+        resourceArea,
+        fileName,
+        fileId,
+      };
+      const deviceIdentity = getResourceDeviceIdentity(false);
+      if (deviceIdentity) payload.deviceIdentity = deviceIdentity;
+      if (resourceArea === "REVIEWERS" && reviewerIdentityToken)
+        payload.idToken = reviewerIdentityToken;
+      await globalScope.AppNetwork.callBackend(payload, {
+        timeoutMs: 15000,
+        maxRetries: 0,
+      });
+      return true;
+    } catch (error) {
+      (globalScope.DebugUtils || console).error(
+        "Unable to record resource file click.",
+        error,
+      );
+      return false;
+    }
+  }
+
   function renderResourceDashboardTab() {
     const tab = resourceDashboardData?.[resourceDashboardActiveTab];
     const status = document.getElementById("resource-portal-status");
@@ -6417,6 +6462,21 @@
             ),
           );
           if (resourceTitle) link.title = isSyllabus ? "PDF" : resourceTitle;
+          const resourceArea =
+            resourceDashboardActiveTab === "MODULES"
+              ? "MODULES"
+              : resourceDashboardActiveTab;
+          const fileId = getResourceDashboardFileId(linkUrl);
+          if (fileId) {
+            const fileName =
+              resourceTitle ||
+              fileTitle ||
+              (isResourceDashboardLink(value) ? "" : value) ||
+              linkLabel;
+            link.addEventListener("click", () => {
+              void logResourceFileClick(resourceArea, fileName, fileId);
+            });
+          }
           cell.appendChild(link);
         } else {
           cell.textContent = value;

@@ -5,6 +5,45 @@ const appCore = fs.readFileSync("app-core.js", "utf8");
 const network = fs.readFileSync("app-core-network.js", "utf8");
 const indexHtml = fs.readFileSync("index.html", "utf8");
 const resourceStyles = fs.readFileSync("styles.css", "utf8");
+const fileIdHelper = appCore.match(
+  /function getResourceDashboardFileId\(value\) \{[\s\S]*?\n  \}/,
+);
+assert.ok(fileIdHelper, "the dashboard should resolve file IDs for click logs");
+const getResourceDashboardFileId = new Function(
+  "URL",
+  `${fileIdHelper[0]}; return getResourceDashboardFileId;`,
+)(URL);
+assert.equal(
+  getResourceDashboardFileId(
+    "https://drive.google.com/file/d/012345678901234567890/view",
+  ),
+  "012345678901234567890",
+);
+assert.equal(
+  getResourceDashboardFileId(
+    "https://docs.google.com/spreadsheets/d/112345678901234567890/edit",
+  ),
+  "112345678901234567890",
+);
+assert.equal(
+  getResourceDashboardFileId(
+    "https://drive.google.com/drive/folders/212345678901234567890",
+  ),
+  "212345678901234567890",
+);
+assert.equal(
+  getResourceDashboardFileId(
+    "https://drive.google.com/open?id=312345678901234567890",
+  ),
+  "312345678901234567890",
+);
+assert.equal(
+  getResourceDashboardFileId(
+    "https://example.com/file/d/012345678901234567890/view",
+  ),
+  "",
+  "click log identity parsing must only accept Google resource URLs",
+);
 
 assert.doesNotMatch(
   indexHtml,
@@ -341,6 +380,21 @@ assert.match(
   appCore,
   /resource-dashboard-link-cell/,
   "dashboard resource buttons should be identifiable for cell alignment",
+);
+assert.match(
+  appCore,
+  /function getResourceDashboardFileId\(value\)[\s\S]*?url\.searchParams\.get\("id"\)[\s\S]*?return \/\^\[A-Za-z0-9_-\]\{10,200\}\$\/\.test\(fileId\)/,
+  "file click logs should use validated Drive IDs from resource links",
+);
+assert.match(
+  appCore,
+  /link\.addEventListener\("click",\s*\(\) => \{\s*void logResourceFileClick\(resourceArea,\s*fileName,\s*fileId\);/,
+  "clicking a syllabus, module, or reviewer resource should log that specific resource",
+);
+assert.match(
+  network,
+  /log_resource_file_click:\s*\{\s*required:\s*\["resourceArea",\s*"fileName",\s*"fileId"\]/,
+  "file click logging requests should validate the category, resource name, and Drive ID",
 );
 assert.match(
   resourceStyles,

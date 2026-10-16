@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.16-22 - 2026-10-16
+
+### Changed
+- Record individual syllabus, module, and reviewer resource clicks with the resource name and Drive ID in their respective log tabs.
+- Create the `SYLLABUS` access-log tab during account spreadsheet setup.
+
 ## 26.10.16-21 - 2026-10-16
 
 ### Fixed

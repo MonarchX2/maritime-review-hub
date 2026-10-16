@@ -11,7 +11,7 @@ shows the registered name, verified Google profile picture, and email after
 sign-in, provides sign-out, and
 lets a first-time user add their name. Any Google account with a verified
 sign-in can use the reviewer resources after its name and stable browser device
-identity are recorded in the `Accounts` worksheet in the `MRH_Accounts`
+identity are recorded in the `ACCOUNTS` worksheet in the `MRH_Accounts`
 spreadsheet. New accounts are enabled immediately; the legacy `Active` field
 does not block sign-in. The backend checks the token's audience, issuer,
 expiry, and verified email, then requires the matching email and device
@@ -56,7 +56,7 @@ operations as its owner. The protected reviewer endpoint therefore does not
 trust a browser-supplied email: it verifies the Google ID token with Google's
 token information endpoint, checks that the token was issued for the configured
 OAuth client, then checks the verified email and device against the
-`Accounts` worksheet. Any verified Google account can create a profile and is
+`ACCOUNTS` worksheet. Any verified Google account can create a profile and is
 enabled immediately; `Active` is retained as a legacy informational field and
 is set to `TRUE` at sign-in. The OAuth client ID and spreadsheet ID are
 configuration, not credentials. The spreadsheet remains administrator-managed
@@ -73,8 +73,14 @@ To initialize sign-in and access logging:
    `MRH_ACCOUNTS_SPREADSHEET_ID` to the spreadsheet ID.
 4. In the Apps Script editor, run `initializeMRHAccountsSpreadsheet()` once
    and approve the requested Sheets and external-request permissions. It
-   creates the `Accounts`, `MODULE`, `REVIEWERS`, and `SCOPES` tabs and headers
-   without replacing existing account or log rows. The `SCOPES` tab lists
+   creates the `ACCOUNTS`, `SYLLABUS`, `MODULE`, `REVIEWERS`, `SIGN-IN`, and
+   `SCOPES` tabs
+   and headers without replacing existing account or log rows. It renames the
+   existing `Accounts` tab to `ACCOUNTS`; if both account tabs exist, it merges
+   nonconflicting records and removes the old tab. Conflicting account rows
+   stop setup without deleting either copy and must be resolved manually.
+   Setup also moves existing `SIGN_IN` entries from `REVIEWERS` to `SIGN-IN`.
+   The `SCOPES` tab lists
    required Apps Script OAuth scopes and their purposes; it is refreshed when
    the Profile screen checks sign-in configuration. Keep the spreadsheet
    private to administrators.
@@ -119,15 +125,21 @@ external-request permission by running the initializer above, then retry. The
 backend uses Google's token-info service with a secondary Google endpoint if
 the primary is temporarily unavailable.
 
-Successful sign-ins and reviewer dashboard access are appended to the
-`REVIEWERS` tab with a timestamp, email, device ID, name fields, and event
-type. Module access is recorded in the `MODULE` tab. Anonymous module dashboard
-requests are recorded with a blank email and the browser device ID; the module
-dashboard remains public. The `SCOPES` tab documents required backend OAuth
-scopes and is refreshed when the initializer runs. `Active` does not revoke
-access; remove the account row to block a previously enrolled email/device
-pair. Google token verification results are cached by token hash for at most
-five minutes; the raw token is not stored in the sheet or cache key.
+Successful sign-ins are appended to the `SIGN-IN` tab with a timestamp, email,
+device ID, name fields, and event type. Reviewer dashboard access and specific
+reviewer resource clicks are recorded in `REVIEWERS`; module dashboard access
+and module file/folder clicks are recorded in `MODULE`; syllabus file clicks
+are recorded in `SYLLABUS`. A click's `Event` value includes the category,
+resource name, and Drive ID (for example,
+`FILE_CLICK:MODULES:Module 1.pdf:012345678901234567890`). Syllabus and module
+resources remain public, so their clicks can be recorded with a blank email
+and the existing browser device ID (when available). Reviewer clicks include
+the verified account and require the same authorization as reviewer resource
+access. The `SCOPES` tab documents required backend OAuth scopes and is
+refreshed when the initializer runs. `Active` does not revoke access; remove
+the account row to block a previously enrolled email/device pair. Google token
+verification results are cached by token hash for at most five minutes; the
+raw token is not stored in the sheet or cache key.
 
 The spreadsheet log is suitable for moderate usage, not unlimited traffic:
 Google Apps Script execution and Sheets API quotas still apply. Appends use the

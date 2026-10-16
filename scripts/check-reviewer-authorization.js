@@ -34,18 +34,77 @@ let accountRows = [
     "TRUE",
   ],
 ];
+const legacyAccountRows = [
+  accountHeaders,
+  [
+    "REVIEWER@example.com",
+    deviceIdentity.toUpperCase(),
+    "Reviewer",
+    "Rita",
+    "A",
+    "TRUE",
+  ],
+  [
+    "second-reviewer@example.com",
+    "51234567-89ab-4cde-8fab-0123456789ab",
+    "Second",
+    "Rae",
+    "",
+    "TRUE",
+  ],
+];
 let tokenClaims = {};
 let tokenStatus = 200;
 let tokenFetchCount = 0;
 let tokenFetchFailures = 0;
 let tokenFetchErrorMessage = "";
-const appendedRows = { MODULE: [], REVIEWERS: [] };
+const appendedRows = {
+  SYLLABUS: [],
+  MODULE: [],
+  REVIEWERS: [],
+  "SIGN-IN": [],
+};
 const scopesRows = [];
+const logSheetRows = {
+  SYLLABUS: [],
+  MODULE: [logHeaders],
+  REVIEWERS: [
+    logHeaders,
+    [
+      "2026-10-01T08:00:00.000Z",
+      "reviewer@example.com",
+      deviceIdentity,
+      "Reviewer",
+      "Rita",
+      "A",
+      "SIGN_IN",
+    ],
+    [
+      "2026-10-01T08:01:00.000Z",
+      "reviewer@example.com",
+      deviceIdentity,
+      "Reviewer",
+      "Rita",
+      "A",
+      "ACCESS",
+    ],
+  ],
+  "SIGN-IN": [],
+};
 let failLogWrites = false;
 
 function createSheet(headers, getRows) {
-  return {
+  const sheet = {
     getLastRow: () => getRows().length,
+    setName(name) {
+      const oldName = Object.keys(sheets).find((key) => sheets[key] === sheet);
+      if (oldName) delete sheets[oldName];
+      sheets[name] = sheet;
+      return sheet;
+    },
+    deleteRows(startRow, count) {
+      getRows().splice(startRow - 1, count);
+    },
     getRange(startRow, startColumn, rowCount, columnCount) {
       return {
         getDisplayValues() {
@@ -67,12 +126,14 @@ function createSheet(headers, getRows) {
       };
     },
   };
+  return sheet;
 }
 
 const sheets = {
-  Accounts: createSheet(accountHeaders, () => accountRows),
-  MODULE: createSheet(logHeaders, () => [logHeaders]),
-  REVIEWERS: createSheet(logHeaders, () => [logHeaders]),
+  ACCOUNTS: createSheet(accountHeaders, () => accountRows),
+  Accounts: createSheet(accountHeaders, () => legacyAccountRows),
+  MODULE: createSheet(logHeaders, () => logSheetRows.MODULE),
+  REVIEWERS: createSheet(logHeaders, () => logSheetRows.REVIEWERS),
   SCOPES: createSheet([], () => scopesRows),
 };
 const spreadsheetId = "1234567890123456789012345678901234567890123";
@@ -81,13 +142,18 @@ const spreadsheet = {
   getUrl: () => `https://docs.google.com/spreadsheets/d/${spreadsheetId}`,
   getSheetByName: (name) => sheets[name] || null,
   insertSheet(name) {
-    if (name === "SCOPES") {
-      sheets[name] = createSheet([], () => scopesRows);
-    } else {
-      const rows = [];
-      sheets[name] = createSheet([], () => rows);
-    }
+    const rows =
+      name === "SCOPES"
+        ? scopesRows
+        : name === "ACCOUNTS"
+          ? accountRows
+          : logSheetRows[name] || [];
+    sheets[name] = createSheet([], () => rows);
     return sheets[name];
+  },
+  deleteSheet(sheet) {
+    const name = Object.keys(sheets).find((key) => sheets[key] === sheet);
+    if (name) delete sheets[name];
   },
 };
 
@@ -129,12 +195,13 @@ const context = {
           assert.equal(id, spreadsheetId);
           const category = range.split("!")[0];
           assert.equal(options.valueInputOption, "RAW");
-          if (category === "Accounts") {
+          if (category === "ACCOUNTS") {
             accountRows.push(...resource.values);
           } else {
             assert.ok(appendedRows[category]);
             if (failLogWrites) throw new Error("simulated log quota failure");
             appendedRows[category].push(...resource.values);
+            logSheetRows[category].push(...resource.values);
           }
           return { updates: { updatedRows: resource.values.length } };
         },
@@ -233,7 +300,33 @@ assert.equal(Object.hasOwn(config, "allowedEmails"), false);
 assert.equal(
   context.initializeMRHAccountsSpreadsheet().spreadsheetId,
   spreadsheetId,
-  "account setup should initialize account, access-log, and scope worksheets",
+  "account setup should migrate and initialize account, sign-in, access-log, and scope worksheets",
+);
+assert.equal(sheets.ACCOUNTS !== undefined, true);
+assert.deepEqual(
+  Array.from(logSheetRows.SYLLABUS[0]),
+  logHeaders,
+  "account setup should create the syllabus file-click log worksheet",
+);
+assert.equal(sheets.Accounts, undefined, "the legacy account worksheet should be removed after merging");
+assert.equal(accountRows.length, 3, "legacy account rows should merge without duplicating matching accounts");
+assert.equal(accountRows[2][0], "second-reviewer@example.com");
+assert.equal(sheets["SIGN-IN"] !== undefined, true);
+assert.equal(
+  logSheetRows["SIGN-IN"].length,
+  2,
+  "setup should move legacy sign-in rows out of REVIEWERS",
+);
+assert.equal(
+  logSheetRows.REVIEWERS.length,
+  2,
+  "setup should retain reviewer-access rows while migrating sign-ins",
+);
+context.initializeMRHAccountsSpreadsheet();
+assert.equal(
+  logSheetRows["SIGN-IN"].length,
+  2,
+  "re-running setup should not duplicate migrated sign-in history",
 );
 assert.deepEqual(
   scopesRows[0],
@@ -270,13 +363,13 @@ assert.deepEqual(
   },
 );
 assert.equal(tokenFetchCount, 1);
-assert.equal(appendedRows.REVIEWERS[0][6], "SIGN_IN");
+assert.equal(appendedRows["SIGN-IN"][0][6], "SIGN_IN");
 assert.equal(
   post(authRequest("verify_reviewer_access", "signed-token-1")).status,
   "success",
 );
 assert.equal(tokenFetchCount, 1, "verified Google tokens should be briefly cached");
-assert.equal(appendedRows.REVIEWERS[1][6], "SIGN_IN");
+assert.equal(appendedRows["SIGN-IN"][1][6], "SIGN_IN");
 
 tokenClaims = validClaims();
 tokenFetchFailures = 1;
@@ -399,7 +492,7 @@ assert.equal(
   "11234567-89ab-4cde-8fab-0123456789ab",
   "re-enrollment must recover the account's stored device identity rather than rotate it",
 );
-assert.equal(accountRows.length, 3, "duplicate email must not add a row");
+assert.equal(accountRows.length, 4, "duplicate email must not add a row");
 tokenClaims = validClaims("reviewer@example.com");
 const recoveredDevice = post({
   type: "request_reviewer_enrollment",
@@ -437,6 +530,7 @@ assert.equal(
 assert.equal(accountRows[1][5], "TRUE");
 cacheValues.clear();
 appendedRows.REVIEWERS.length = 0;
+appendedRows["SIGN-IN"].length = 0;
 
 let reviewerIndexReadCount = 0;
 context.DriveApp = {
@@ -500,6 +594,78 @@ assert.equal(
   "success",
 );
 assert.equal(appendedRows.MODULE.length, 1);
+assert.equal(
+  post({
+    type: "log_resource_file_click",
+    resourceArea: "SYLLABUS",
+    fileName: "Course\nSyllabus|PDF",
+    fileId: "012345678901234567890",
+  }).status,
+  "success",
+);
+assert.equal(appendedRows.SYLLABUS.length, 1);
+assert.equal(appendedRows.SYLLABUS[0][1], "");
+assert.equal(
+  appendedRows.SYLLABUS[0][6],
+  "FILE_CLICK:SYLLABUS:Course Syllabus PDF:012345678901234567890",
+  "syllabus clicks should record a normalized filename and Drive file ID",
+);
+assert.equal(
+  post({
+    type: "log_resource_file_click",
+    resourceArea: "MODULES",
+    fileName: "Module 1.pdf",
+    fileId: "112345678901234567890",
+    deviceIdentity,
+  }).status,
+  "success",
+);
+assert.equal(appendedRows.MODULE.length, 2);
+assert.equal(
+  appendedRows.MODULE[1][6],
+  "FILE_CLICK:MODULES:Module 1.pdf:112345678901234567890",
+);
+assert.equal(
+  post({
+    type: "log_resource_file_click",
+    resourceArea: "REVIEWERS",
+    fileName: "Reviewer file.pdf",
+    fileId: "212345678901234567890",
+  }).code,
+  "UNAUTHORIZED",
+  "reviewer file clicks must require account authorization",
+);
+assert.equal(
+  post({
+    ...authRequest("log_resource_file_click", "signed-token-1"),
+    resourceArea: "REVIEWERS",
+    fileName: "Reviewer file.pdf",
+    fileId: "212345678901234567890",
+  }).status,
+  "success",
+);
+assert.equal(
+  appendedRows.REVIEWERS.at(-1)[6],
+  "FILE_CLICK:REVIEWERS:Reviewer file.pdf:212345678901234567890",
+);
+assert.equal(
+  post({
+    type: "log_resource_file_click",
+    resourceArea: "MODULE",
+    fileName: "Invalid area",
+    fileId: "012345678901234567890",
+  }).code,
+  "BAD_REQUEST",
+);
+assert.equal(
+  post({
+    type: "log_resource_file_click",
+    resourceArea: "MODULES",
+    fileName: "Invalid file id",
+    fileId: "not-valid",
+  }).code,
+  "BAD_REQUEST",
+);
 
 assert.equal(
   context.recordResourceDashboardAccess_({
@@ -507,9 +673,9 @@ assert.equal(
   }),
   null,
 );
-assert.equal(appendedRows.MODULE.length, 2);
-assert.equal(appendedRows.MODULE[1][1], "");
-assert.equal(appendedRows.MODULE[1][6], "ANONYMOUS_ACCESS");
+assert.equal(appendedRows.MODULE.length, 3);
+assert.equal(appendedRows.MODULE[2][1], "");
+assert.equal(appendedRows.MODULE[2][6], "ANONYMOUS_ACCESS");
 
 tokenStatus = 503;
 const providerFailure = post(
