@@ -15,8 +15,8 @@ assert.match(
 );
 assert.match(
   index,
-  /id="resource-dashboard-reviewers-nav"[^>]*onclick="openResourceDashboardTab\('REVIEWERS'\)"[^>]*aria-label="Reviewers — sign in with Google"[^>]*title="Sign in with Google to access reviewer resources"[^>]*disabled[^>]*aria-disabled="true"[\s\S]*?id="resource-dashboard-reviewers-lock"/,
-  "the Reviewers tab should open its view when enabled and require Google sign-in",
+  /id="resource-dashboard-reviewers-nav"[^>]*onclick="openResourceDashboardTab\('REVIEWERS'\)"[^>]*aria-label="Reviewers — sign in with Google"[^>]*title="Sign in with Google to access reviewer resources"[^>]*aria-disabled="true"[\s\S]*?id="resource-dashboard-reviewers-lock"/,
+  "the Reviewers tab should remain clickable and direct signed-out users to Profile",
 );
 assert.match(
   index,

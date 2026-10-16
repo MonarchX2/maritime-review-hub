@@ -6122,7 +6122,16 @@
   function openResourceDashboardTab(tabName) {
     if (!["MODULES", "REVIEWERS", "SYLLABUS", "PROFILE"].includes(tabName))
       return false;
-    if (tabName === "REVIEWERS" && !reviewerIdentityToken) return false;
+    if (tabName === "REVIEWERS" && !reviewerIdentityToken) {
+      openResourceDashboardTab("PROFILE");
+      const authStatus = document.getElementById(
+        "resource-reviewer-auth-status",
+      );
+      if (authStatus)
+        authStatus.textContent =
+          "Sign in with Google to open reviewer resources.";
+      return false;
+    }
 
     resourceDashboardActiveTab = tabName;
     const modulesNav = document.getElementById(
@@ -6537,7 +6546,7 @@
           callback: (credentialResponse) => {
             void completeReviewerSignIn(credentialResponse?.credential || "");
           },
-          auto_select: false,
+          auto_select: true,
           cancel_on_tap_outside: true,
         });
         if (signInButton) {
@@ -6556,6 +6565,7 @@
         if (authStatus)
           authStatus.textContent =
             "Sign in with Google. First-time sign-in asks for your name; access is immediate.";
+        globalScope.google.accounts.id.prompt();
         return true;
       } catch (error) {
         reviewerAuthConfigPromise = null;
@@ -6657,7 +6667,6 @@
         "resource-dashboard-reviewers-nav",
       );
       if (reviewersNav) {
-        reviewersNav.disabled = false;
         reviewersNav.setAttribute("aria-disabled", "false");
         reviewersNav.setAttribute("aria-label", "Reviewers");
         reviewersNav.title = "Open reviewer resources";
@@ -6889,7 +6898,6 @@
       "resource-dashboard-reviewers-nav",
     );
     if (reviewersNav) {
-      reviewersNav.disabled = true;
       reviewersNav.setAttribute("aria-disabled", "true");
       reviewersNav.setAttribute(
         "aria-label",
@@ -7138,6 +7146,7 @@
     if (resourceDashboardLoadingPromise) return resourceDashboardLoadingPromise;
 
     initializeResourceDashboardControls();
+    void initializeReviewerAuth();
     const storage = globalScope.StorageUtils;
     const appVersion = String(globalScope.__MRH_APP__?.version || "").trim();
     let cachedDashboard = null;

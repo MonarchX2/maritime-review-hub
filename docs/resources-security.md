@@ -21,8 +21,10 @@ The first-time profile form requires last and first names; middle initial is
 optional. Users are asked to check spelling and capitalization before saving
 (for example, `Dela Cruz`, `Maria`, `P.`).
 
-The approved identity token exists only in page memory and is sent to the
-backend for each protected request. Reviewer dashboard data is also kept only
+The verified identity token exists only in page memory and is sent to the
+backend for each protected request; it is not stored in browser storage.
+Google Identity Services can offer automatic sign-in again after a refresh if
+the user previously authorized it. Reviewer dashboard data is also kept only
 in page memory and cleared on sign-out or page reload. The public dashboard
 does not return reviewer rows.
 

@@ -123,6 +123,11 @@ assert.match(
 );
 assert.match(
   resourceStyles,
+  /\.resource-profile-card\s*\{[^}]*display:\s*grid;[^}]*gap:\s*1rem;[\s\S]*?\.resource-reviewer-enrollment\s*\{[^}]*flex-direction:\s*column;[^}]*gap:\s*0\.75rem;/,
+  "Profile form sections should have clear, consistent spacing",
+);
+assert.match(
+  resourceStyles,
   /\.resource-profile-account-details\s*\{[^}]*justify-items:\s*center;[\s\S]*?\.resource-profile-avatar\s*\{[^}]*border-radius:\s*50%;/,
   "Profile should center the sign-in control and show a circular account avatar",
 );
@@ -133,8 +138,18 @@ assert.match(
 );
 assert.match(
   appCore,
-  /includes\(tabName\)[\s\S]*?const dashboardContent = document\.getElementById\(\s*"resource-dashboard-content"[\s\S]*?dashboardContent\.hidden = tabName === "PROFILE"[\s\S]*?profileScreen\.hidden = tabName !== "PROFILE"[\s\S]*?if \(tabName === "PROFILE"\) \{\s*void initializeReviewerAuth\(\)/,
-  "selecting Profile should show its dedicated screen and initialize Google sign-in only when opened",
+  /tabName === "REVIEWERS" && !reviewerIdentityToken[\s\S]*?openResourceDashboardTab\("PROFILE"\)[\s\S]*?dashboardContent\.hidden = tabName === "PROFILE"[\s\S]*?profileScreen\.hidden = tabName !== "PROFILE"[\s\S]*?if \(tabName === "PROFILE"\) \{\s*void initializeReviewerAuth\(\)/,
+  "the Reviewers tab should direct signed-out users to the Profile screen",
+);
+assert.match(
+  appCore,
+  /auto_select:\s*true[\s\S]*?google\.accounts\.id\.prompt\(\)/,
+  "returning users should be offered Google automatic sign-in after page refresh without persisting ID tokens",
+);
+assert.match(
+  appCore,
+  /async function loadResourceDashboard\(\)[\s\S]*?initializeResourceDashboardControls\(\);\s*void initializeReviewerAuth\(\);/,
+  "Google re-authentication should initialize when the dashboard loads after refresh",
 );
 assert.match(
   appCore,
@@ -148,8 +163,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /reviewersNav\.disabled = false[\s\S]*?reviewersLock\.hidden = true[\s\S]*?function signOutReviewer[\s\S]*?reviewersLock\.hidden = false/,
-  "sign-in should unlock reviewer resources and sign-out should restore the lock",
+  /reviewersNav\.setAttribute\("aria-disabled", "false"\)[\s\S]*?reviewersLock\.hidden = true[\s\S]*?function signOutReviewer[\s\S]*?reviewersNav\.setAttribute\("aria-disabled", "true"\)[\s\S]*?reviewersLock\.hidden = false/,
+  "sign-in should unlock reviewer resources and sign-out should restore the lock state",
 );
 assert.match(
   appCore,
@@ -259,8 +274,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(!\["MODULES", "REVIEWERS", "SYLLABUS", "PROFILE"\]\.includes\(tabName\)\)[\s\S]*?if \(tabName === "REVIEWERS" && !reviewerIdentityToken\) return false;/,
-  "the dashboard should allow reviewer navigation only after server-verified sign-in",
+  /if \(!\["MODULES", "REVIEWERS", "SYLLABUS", "PROFILE"\]\.includes\(tabName\)\)[\s\S]*?tabName === "REVIEWERS" && !reviewerIdentityToken[\s\S]*?openResourceDashboardTab\("PROFILE"\)[\s\S]*?Sign in with Google to open reviewer resources/,
+  "the Reviewers tab should remain interactive and route unauthenticated users to Profile",
 );
 assert.match(
   appCore,

@@ -3,9 +3,11 @@
 ## 26.10.16-18 - 2026-10-16
 
 ### Fixed
+- Keep the Reviewers tab clickable while signed out and route users to Profile for Google sign-in.
 - Make the Reviewers tab clickable after sign-in and show the signed-in profile picture in the header Profile button.
 
 ### Changed
+- Initialize Google automatic re-authentication on dashboard load without storing ID tokens in browser storage.
 - Improve Profile form spacing, mark Middle Initial optional, and show a name-capitalization example.
 
 ## 26.10.16-16 - 2026-10-16
