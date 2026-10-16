@@ -188,7 +188,7 @@
     }
     if (
       segments.length === 1 &&
-      ["dashboard", "resources"].includes(segments[0].toLowerCase())
+      ["dashboard", "portal", "resources"].includes(segments[0].toLowerCase())
     ) {
       segments[0] = "resources";
     }
@@ -215,7 +215,7 @@
     const basePath = getAppBasePath();
     const routeSegments =
       normalized.length === 1 && normalized[0].toLowerCase() === "resources"
-        ? ["dashboard"]
+        ? ["portal"]
         : normalized;
     const route = routeSegments
       .map((entry) => encodeNavigationSegment(entry.trim()))

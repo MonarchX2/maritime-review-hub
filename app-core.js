@@ -1829,9 +1829,9 @@
       let html = isTree
         ? treeReadabilityNoticeHtml
         : `
-      <div data-deck-breadcrumb class="mt-4 flex flex-nowrap items-center gap-2 mb-5 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto pb-2 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
-        <button onclick="goToPath(-1)" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-2 flex-shrink-0">
-          <i class="fa-solid fa-folder-open text-brand-500"></i> HOME
+      <div data-deck-breadcrumb class="deck-breadcrumb-nav flex flex-nowrap items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-400 overflow-x-auto">
+        <button onclick="goToPath(-1)" aria-label="Home" title="Home" class="deck-breadcrumb-home hover:text-brand-600 dark:hover:text-brand-400 transition-colors">
+          <i class="fa-solid fa-house text-brand-500" aria-hidden="true"></i>
         </button>
         ${state.currentPath
           .map(
@@ -5874,6 +5874,8 @@
         bindUi();
         applyThemeFromPrefs();
         renderSkeleton();
+        installReviewerSignOutStorageListener();
+        void restoreReviewerSession();
 
         __mrhAppReady = true;
         if (typeof window !== "undefined") {
@@ -5999,10 +6001,12 @@
   let resourceDashboardLoadingPromise = null;
   let reviewerAuthConfig = null;
   let reviewerAuthConfigPromise = null;
+  let reviewerSignInButtonResizeHandler = null;
+  let reviewerSignInButtonResizeObserver = null;
   let reviewerAuthCheckPending = false;
-  let reviewerIdentityToken = "";
+  let reviewerSessionId = "";
   let reviewerAuthorizedEmail = "";
-  let reviewerPendingEnrollmentToken = "";
+  let reviewerPendingEnrollmentSessionId = "";
   let reviewerDashboardLoadedForEmail = "";
   let reviewerAuthGeneration = 0;
   let reviewerProfilePictureUrl = "";
@@ -6011,14 +6015,158 @@
   let reviewerDashboardRequestPromise = null;
   let reviewerStatusPollTimer = null;
   let reviewerStatusPollInFlight = false;
+  let reviewerVerificationInFlightToken = "";
+  let reviewerVerificationRetryToken = "";
+  let reviewerVerificationRetryAvailable = false;
+  let reviewerSessionRestorePromise = null;
+  let reviewerSessionRestorePending = false;
+  let reviewerReauthenticationPromptAttempted = false;
+  let reviewerSignOutStorageListenerInstalled = false;
   const REVIEWER_STATUS_POLL_INTERVAL_MS = 5000;
   const REVIEWER_EXPLICIT_SIGNOUT_KEY = "mrh_reviewer_explicit_signout_v1";
   const REVIEWER_EXPLICIT_SIGNOUT_COOKIE =
     "mrh_reviewer_explicit_signout_v1";
+  const REVIEWER_SESSION_STORAGE_KEY = "mrh_reviewer_session_v1";
   const RESOURCE_DASHBOARD_CACHE_KEY = "resource_dashboard_cache_v1";
+  const RESOURCE_DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 30000;
+  let resourceDashboardAutoRefreshTimer = null;
+  let resourceDashboardAutoRefreshEventsInstalled = false;
+  let resourceDashboardLastRefreshAt = 0;
   let resourceDashboardSelectedYear = "3";
-  let resourceDashboardSelectedSemester = "1";
+  let resourceDashboardSelectedSemester = "2";
   let resourceDashboardSelectedCategory = "all";
+
+  function isDefinitivelyInvalidReviewerCredential(error) {
+    return [
+      "UNAUTHORIZED",
+      "SESSION_EXPIRED",
+      "SESSION_INVALID",
+      "SESSION_REVOKED",
+    ].includes(error?.code);
+  }
+
+  function getStoredReviewerSessionId() {
+    try {
+      const sessionId = String(
+        globalScope.localStorage.getItem(REVIEWER_SESSION_STORAGE_KEY) || "",
+      ).trim();
+      return /^[a-f0-9]{96}$/.test(sessionId) ? sessionId : "";
+    } catch (error) {
+      (globalScope.DebugUtils || console).error(
+        "Unable to read the saved reviewer session.",
+        error,
+      );
+      return "";
+    }
+  }
+
+  function saveReviewerSessionId(sessionId) {
+    if (!/^[a-f0-9]{96}$/.test(String(sessionId || "")))
+      throw new Error(
+        "The reviewer sign-in service returned an invalid session.",
+      );
+    globalScope.localStorage.setItem(
+      REVIEWER_SESSION_STORAGE_KEY,
+      sessionId,
+    );
+  }
+
+  function clearStoredReviewerSession() {
+    try {
+      globalScope.localStorage.removeItem(REVIEWER_SESSION_STORAGE_KEY);
+      return true;
+    } catch (error) {
+      (globalScope.DebugUtils || console).error(
+        "Unable to clear the saved reviewer session.",
+        error,
+      );
+      return false;
+    }
+  }
+
+  function promptReviewerReauthentication() {
+    const identityApi = globalScope.google?.accounts?.id;
+    if (
+      reviewerReauthenticationPromptAttempted ||
+      hasExplicitReviewerSignOut() ||
+      typeof identityApi?.prompt !== "function"
+    )
+      return false;
+    reviewerReauthenticationPromptAttempted = true;
+    const authGeneration = reviewerAuthGeneration;
+    try {
+      identityApi.prompt((notification) => {
+        if (authGeneration !== reviewerAuthGeneration) return;
+        const promptFinished =
+          notification?.isNotDisplayed?.() ||
+          notification?.isSkippedMoment?.() ||
+          notification?.isDismissedMoment?.();
+        if (!promptFinished) return;
+        const authStatus = document.getElementById(
+          "resource-reviewer-auth-status",
+        );
+        if (authStatus)
+          authStatus.textContent =
+            "Google sign-in is required. Use the Google sign-in button to continue.";
+      });
+      return true;
+    } catch (error) {
+      (globalScope.DebugUtils || console).error(
+        "Unable to prompt for Google reauthentication.",
+        error,
+      );
+      return false;
+    }
+  }
+
+  function handleReviewerSignOutStorageChange(event) {
+    if (event?.key === REVIEWER_SESSION_STORAGE_KEY) {
+      if (!event.newValue) {
+        if (
+          reviewerSessionId ||
+          reviewerPendingEnrollmentSessionId ||
+          reviewerSessionRestorePending
+        )
+          signOutReviewer(false);
+        return;
+      }
+      if (
+        /^[a-f0-9]{96}$/.test(event.newValue) &&
+        event.newValue !== reviewerSessionId
+      ) {
+        signOutReviewer(false, true);
+        void restoreReviewerSession(event.newValue);
+      }
+      return;
+    }
+    if (
+      event?.key !== REVIEWER_EXPLICIT_SIGNOUT_KEY ||
+      event.newValue !== "true" ||
+      (!reviewerSessionId &&
+        !reviewerPendingEnrollmentSessionId &&
+        !reviewerVerificationRetryToken)
+    )
+      return;
+    signOutReviewer(false);
+    const authStatus = document.getElementById(
+      "resource-reviewer-auth-status",
+    );
+    if (authStatus)
+      authStatus.textContent = "Signed out in another tab.";
+  }
+
+  function installReviewerSignOutStorageListener() {
+    if (
+      reviewerSignOutStorageListenerInstalled ||
+      typeof globalScope.addEventListener !== "function"
+    )
+      return;
+    globalScope.addEventListener(
+      "storage",
+      handleReviewerSignOutStorageChange,
+    );
+    reviewerSignOutStorageListenerInstalled = true;
+  }
 
   function hasExplicitReviewerSignOut() {
     const signOutCookie = String(globalScope.document?.cookie || "")
@@ -6124,58 +6272,27 @@
     ].join("-");
   }
 
-  const resourceDashboardHelp = {
-    SYLLABUS:
-      "Choose a syllabus link to open its course PDF. When available, use Year and Semester to narrow the list.",
-    MODULES:
-      "Open a course folder or resource from the table. When available, narrow by Year and Semester; use Category to choose an exam phase. All shows every available phase.",
-    REVIEWERS:
-      "Sign in with an approved Google account to access reviewer resources. New accounts need administrator approval. Use Category to show all materials or one exam phase.",
-  };
-
-  function updateResourceDashboardHelp(tabName) {
-    const help = document.getElementById("resource-dashboard-help");
-    if (help) help.textContent = resourceDashboardHelp[tabName] || "";
-  }
-
   function setResourceDashboardStatus(message, busy = false) {
     const status = document.getElementById("resource-portal-status");
     if (!status) return;
     status.textContent = message;
+    status.hidden = !message;
     if (busy) status.setAttribute("aria-busy", "true");
     else status.removeAttribute("aria-busy");
   }
 
-  function setReviewerNavigationBusy(busy) {
+  function setReviewerNavigationBusy() {
     const button = document.getElementById(
       "resource-dashboard-reviewers-nav",
     );
-    if (!button) return;
-    if (busy) button.setAttribute("aria-busy", "true");
-    else button.removeAttribute("aria-busy");
+    button?.removeAttribute("aria-busy");
   }
 
   function openResourceDashboardTab(tabName) {
     if (!["MODULES", "REVIEWERS", "SYLLABUS", "PROFILE"].includes(tabName))
       return false;
-    if (
-      tabName === "REVIEWERS" &&
-      !reviewerIdentityToken &&
-      !reviewerPendingEnrollmentToken &&
-      !reviewerAuthCheckPending
-    ) {
-      openResourceDashboardTab("PROFILE");
-      const authStatus = document.getElementById(
-        "resource-reviewer-auth-status",
-      );
-      if (authStatus)
-        authStatus.textContent =
-          "Sign in with Google to open reviewer resources.";
-      return false;
-    }
 
     resourceDashboardActiveTab = tabName;
-    updateResourceDashboardHelp(tabName);
     const modulesNav = document.getElementById(
       "resource-dashboard-modules-nav",
     );
@@ -6206,14 +6323,33 @@
     const profileScreen = document.getElementById(
       "resource-dashboard-profile",
     );
+    const lockedPanel = document.getElementById(
+      "resource-reviewers-locked-panel",
+    );
+    const updateNote = document.querySelector(
+      ".resource-dashboard-update-note",
+    );
     if (dashboardContent) dashboardContent.hidden = tabName === "PROFILE";
     if (profileScreen) profileScreen.hidden = tabName !== "PROFILE";
+    if (lockedPanel) lockedPanel.hidden = tabName !== "REVIEWERS";
+    if (updateNote)
+      updateNote.hidden = tabName === "REVIEWERS" && !reviewerSessionId;
     if (tabName === "PROFILE") {
       void initializeReviewerAuth();
       return true;
     }
     if (tabName === "REVIEWERS") {
-      if (!reviewerIdentityToken) {
+      if (!reviewerSessionId) {
+        if (
+          reviewerSessionRestorePending ||
+          (!hasExplicitReviewerSignOut() && getStoredReviewerSessionId())
+        ) {
+          if (lockedPanel) lockedPanel.hidden = true;
+          setResourceDashboardStatus("Restoring your reviewer session…", true);
+          void restoreReviewerSession();
+          return true;
+        }
+        if (lockedPanel) lockedPanel.hidden = false;
         document
           .getElementById("resource-dashboard-table-head")
           ?.replaceChildren();
@@ -6224,17 +6360,11 @@
           .getElementById("resource-dashboard-filter-year")
           ?.closest(".resource-dashboard-filters");
         if (filters) filters.hidden = true;
-        setReviewerNavigationBusy(
-          Boolean(reviewerPendingEnrollmentToken || reviewerAuthCheckPending),
-        );
-        setResourceDashboardStatus(
-          reviewerPendingEnrollmentToken
-            ? "Verifying your Google sign-in and reviewer approval…"
-            : "Checking your Google sign-in…",
-          true,
-        );
+        setReviewerNavigationBusy(false);
+        setResourceDashboardStatus("");
         return true;
       }
+      if (lockedPanel) lockedPanel.hidden = true;
       if (
         reviewerDashboardLoadedForEmail === reviewerAuthorizedEmail &&
         resourceDashboardData?.REVIEWERS
@@ -6262,7 +6392,7 @@
 
     if (resourceDashboardData) {
       renderResourceDashboardTab();
-      if (reviewerIdentityToken && tabName === "MODULES")
+      if (reviewerSessionId && tabName === "MODULES")
         void logModuleDashboardAccess();
       return true;
     }
@@ -6315,14 +6445,16 @@
         fileName,
         fileId,
       };
-      if (reviewerIdentityToken)
-        payload.idToken = reviewerIdentityToken;
+      if (reviewerSessionId)
+        payload.sessionId = reviewerSessionId;
       await globalScope.AppNetwork.callBackend(payload, {
         timeoutMs: 15000,
         maxRetries: 0,
       });
       return true;
     } catch (error) {
+      if (isDefinitivelyInvalidReviewerCredential(error))
+        signOutReviewer(false);
       (globalScope.DebugUtils || console).error(
         "Unable to record resource file click.",
         error,
@@ -6333,7 +6465,6 @@
 
   function renderResourceDashboardTab() {
     const tab = resourceDashboardData?.[resourceDashboardActiveTab];
-    updateResourceDashboardHelp(resourceDashboardActiveTab);
     const status = document.getElementById("resource-portal-status");
     const tableHead = document.getElementById(
       "resource-dashboard-table-head",
@@ -6341,7 +6472,33 @@
     const tableBody = document.getElementById(
       "resource-dashboard-table-body",
     );
-    if (!tab || !status || !tableHead || !tableBody) return false;
+    if (!status || !tableHead || !tableBody) return false;
+    const lockedPanel = document.getElementById(
+      "resource-reviewers-locked-panel",
+    );
+    const updateNote = document.querySelector(
+      ".resource-dashboard-update-note",
+    );
+    if (
+      resourceDashboardActiveTab === "REVIEWERS" &&
+      !reviewerSessionId
+    ) {
+      if (lockedPanel) lockedPanel.hidden = false;
+      if (updateNote) updateNote.hidden = true;
+      const filters = document
+        .getElementById("resource-dashboard-filter-year")
+        ?.closest(".resource-dashboard-filters");
+      if (filters) filters.hidden = true;
+      tableHead.replaceChildren();
+      tableBody.replaceChildren();
+      setResourceDashboardStatus("");
+      return true;
+    }
+    if (!tab) return false;
+    if (lockedPanel) lockedPanel.hidden = true;
+    if (updateNote)
+      updateNote.hidden =
+        resourceDashboardActiveTab === "REVIEWERS" && !reviewerSessionId;
 
     const yearFilterControl = document.getElementById(
       "resource-dashboard-filter-year",
@@ -6370,25 +6527,55 @@
         indexes[phase] = index;
       return indexes;
     }, {});
-    const showCategoryFilter = ["MODULES", "REVIEWERS"].includes(
+    const hasCategoryFilter = ["MODULES", "REVIEWERS"].includes(
       resourceDashboardActiveTab,
+    );
+    const showCategoryFilter =
+      hasCategoryFilter || resourceDashboardActiveTab === "SYLLABUS";
+    const availableCategories = new Set(
+      Object.entries(phaseColumnIndexes)
+        .filter(([, columnIndex]) =>
+          tab.rows.some((values, rowIndex) => {
+            const value = String(values[columnIndex] || "").trim();
+            const link = String(tab.links?.[rowIndex]?.[columnIndex] || value);
+            return value !== "" || isResourceDashboardLink(link);
+          }),
+        )
+        .map(([category]) => category),
     );
     if (categoryFilterContainer)
       categoryFilterContainer.hidden = !showCategoryFilter;
     if (categoryFilterControl)
-      categoryFilterControl.value = resourceDashboardSelectedCategory;
+      categoryFilterControl
+        .querySelectorAll("[data-category]")
+        .forEach((button) => {
+          const categoryAvailable =
+            button.dataset.category === "all" ||
+            availableCategories.has(button.dataset.category);
+          button.disabled = !hasCategoryFilter || !categoryAvailable;
+          button.setAttribute(
+            "aria-disabled",
+            String(button.disabled),
+          );
+          const selected =
+            button.dataset.category === resourceDashboardSelectedCategory;
+          button.setAttribute("aria-pressed", String(selected));
+          button.classList.toggle("is-active", selected);
+        });
     const hasTermFilter = yearColumnIndex >= 0;
-    if (filterContainer)
-      filterContainer.hidden = !hasTermFilter && !showCategoryFilter;
     const yearFilterContainer = yearFilterControl?.closest(
       ".resource-dashboard-control",
     );
     const semesterFilterContainer = semesterFilterControl?.closest(
       ".resource-dashboard-control",
     );
-    if (yearFilterContainer) yearFilterContainer.hidden = !hasTermFilter;
+    if (yearFilterContainer)
+      yearFilterContainer.hidden = !hasTermFilter && !showCategoryFilter;
     if (semesterFilterContainer)
-      semesterFilterContainer.hidden = !hasTermFilter;
+      semesterFilterContainer.hidden = !hasTermFilter && !showCategoryFilter;
+    if (filterContainer)
+      filterContainer.hidden =
+        !showCategoryFilter && !hasTermFilter;
     const termValues = new Set();
     if (hasTermFilter) {
       tab.rows.forEach((values) => {
@@ -6409,54 +6596,96 @@
       selectedValue,
       fallbackValue,
       includeAll = false,
+      disabled = false,
+      fixedValues = [],
     ) => {
       if (!control) return selectedValue;
-      const sortedValues = [...values].sort((left, right) =>
+      const sortedValues = [...new Set([...fixedValues, ...values])].sort((left, right) =>
         left.localeCompare(right, undefined, { numeric: true }),
       );
       const validSelection =
         selectedValue === "all" && includeAll
           ? selectedValue
-          : sortedValues.includes(selectedValue)
+          : values.has(selectedValue)
             ? selectedValue
-            : sortedValues.includes(fallbackValue)
+            : values.has(fallbackValue)
               ? fallbackValue
               : includeAll
                 ? "all"
-                : sortedValues[0] || "";
-      const options = sortedValues.map((value) => {
-        const option = createResourceDashboardElement("option", "", value);
-        option.value = value;
-        return option;
-      });
-      if (includeAll) {
-        const allOption = createResourceDashboardElement(
-          "option",
-          "",
-          "All",
+                : [...values][0] || "";
+      const options = sortedValues.map((value) => ({
+        value,
+        label: value,
+      }));
+      if (includeAll) options.unshift({ value: "all", label: "All" });
+      const buttons = options.map(({ value, label }) => {
+        const button = createResourceDashboardElement(
+          "button",
+          value === validSelection ? "is-active" : "",
+          label,
         );
-        allOption.value = "all";
-        options.unshift(allOption);
-      }
-      control.replaceChildren(...options);
-      control.value = validSelection;
-      return control.value || validSelection;
+        button.type = "button";
+        button.dataset.filterValue = value;
+        button.setAttribute("aria-pressed", String(value === validSelection));
+        button.disabled =
+          disabled || (value !== "all" && !values.has(value));
+        return button;
+      });
+      control.replaceChildren(...buttons);
+      return validSelection;
     };
     const years = new Set([...termValues].map((term) => term.split(".")[0]));
+    const orderedTerms = [...termValues].sort((left, right) => {
+      const [leftYear, leftSemester] = left.split(".").map(Number);
+      const [rightYear, rightSemester] = right.split(".").map(Number);
+      return leftYear - rightYear || leftSemester - rightSemester;
+    });
+    const preferredTerm = "3.2";
+    const [preferredYear, preferredSemester] = preferredTerm
+      .split(".")
+      .map(Number);
+    const availablePreviousTerms = orderedTerms.filter((term) => {
+      const [year, semester] = term.split(".").map(Number);
+      return (
+        year < preferredYear ||
+        (year === preferredYear && semester <= preferredSemester)
+      );
+    });
+    const defaultTerm =
+      availablePreviousTerms[availablePreviousTerms.length - 1] ||
+      orderedTerms[0] ||
+      "";
+    const defaultYear = defaultTerm.split(".")[0] || "3";
+    if (
+      !termValues.has(preferredTerm) &&
+      resourceDashboardSelectedYear === preferredYear.toString() &&
+      resourceDashboardSelectedSemester === preferredSemester.toString() &&
+      defaultTerm
+    ) {
+      resourceDashboardSelectedYear = defaultYear;
+      resourceDashboardSelectedSemester = defaultTerm.split(".")[1];
+    }
     resourceDashboardSelectedYear = populateTermOptions(
       yearFilterControl,
       years,
       resourceDashboardSelectedYear,
-      "3",
+      defaultYear,
       true,
+      false,
+      ["1", "2", "3"],
     );
     const allYearLevelsSelected = resourceDashboardSelectedYear === "all";
-    if (semesterFilterControl) {
-      semesterFilterControl.disabled = allYearLevelsSelected;
-    }
     if (allYearLevelsSelected) {
       resourceDashboardSelectedSemester = "all";
-      if (semesterFilterControl) semesterFilterControl.value = "all";
+      populateTermOptions(
+        semesterFilterControl,
+        new Set(),
+        "all",
+        "all",
+        true,
+        true,
+        ["1", "2"],
+      );
     } else {
       const semesters = new Set(
         [...termValues]
@@ -6465,12 +6694,24 @@
           )
           .map((term) => term.split(".")[1]),
       );
+      const orderedSemesters = [...semesters].sort((left, right) =>
+        Number(left) - Number(right),
+      );
+      const previousSemesters = orderedSemesters.filter(
+        (semester) => Number(semester) <= preferredSemester,
+      );
+      const fallbackSemester =
+        previousSemesters[previousSemesters.length - 1] ||
+        orderedSemesters[0] ||
+        "all";
       resourceDashboardSelectedSemester = populateTermOptions(
         semesterFilterControl,
         semesters,
         resourceDashboardSelectedSemester,
-        "1",
+        fallbackSemester,
         true,
+        false,
+        ["1", "2"],
       );
     }
 
@@ -6497,11 +6738,11 @@
         }),
       );
     const selectedPhaseColumnIndex =
-      resourceDashboardSelectedCategory === "all"
+      !hasCategoryFilter || resourceDashboardSelectedCategory === "all"
         ? -1
         : phaseColumnIndexes[resourceDashboardSelectedCategory];
     const visibleColumnIndices =
-      showCategoryFilter && resourceDashboardSelectedCategory !== "all"
+      hasCategoryFilter && resourceDashboardSelectedCategory !== "all"
         ? populatedColumnIndices.filter(
             (columnIndex) =>
               !Object.values(phaseColumnIndexes).includes(columnIndex) ||
@@ -6511,7 +6752,7 @@
     const visibleRows = nonEmptyRows
       .filter(({ values, rowIndex }) => {
         if (
-          showCategoryFilter &&
+          hasCategoryFilter &&
           resourceDashboardSelectedCategory !== "all"
         ) {
           if (selectedPhaseColumnIndex === undefined) return false;
@@ -6632,11 +6873,18 @@
       tableBody.appendChild(row);
     });
 
+    const selectedYearName = {
+      "1": "First",
+      "2": "Second",
+      "3": "Third",
+    }[resourceDashboardSelectedYear];
     const selectedTerm =
       resourceDashboardSelectedYear === "all"
         ? "All Year Levels"
         : resourceDashboardSelectedSemester === "all"
-          ? `Year Level ${resourceDashboardSelectedYear} (all semesters)`
+          ? selectedYearName
+            ? `${selectedYearName} Year`
+            : `Year Level ${resourceDashboardSelectedYear} (all semesters)`
           : `Year Level ${resourceDashboardSelectedYear}.${resourceDashboardSelectedSemester}`;
     status.textContent =
       hasTermFilter
@@ -6657,7 +6905,47 @@
     return element;
   }
 
+  function isResourceDashboardVisible() {
+    const view = document.getElementById("view-resources");
+    return (
+      document.visibilityState !== "hidden" &&
+      Boolean(view?.classList.contains("active"))
+    );
+  }
+
+  function refreshResourceDashboardIfNeeded() {
+    if (!isResourceDashboardVisible()) return false;
+    if (
+      Date.now() - resourceDashboardLastRefreshAt <
+      RESOURCE_DASHBOARD_AUTO_REFRESH_INTERVAL_MS
+    )
+      return false;
+    resourceDashboardLastRefreshAt = Date.now();
+    void loadResourceDashboard({ silent: true });
+    return true;
+  }
+
+  function initializeResourceDashboardAutoRefresh() {
+    if (resourceDashboardAutoRefreshTimer === null)
+      resourceDashboardAutoRefreshTimer = globalScope.setInterval(
+        refreshResourceDashboardIfNeeded,
+        RESOURCE_DASHBOARD_AUTO_REFRESH_INTERVAL_MS,
+      );
+    if (resourceDashboardAutoRefreshEventsInstalled) return;
+    document.addEventListener(
+      "visibilitychange",
+      refreshResourceDashboardIfNeeded,
+    );
+    globalScope.addEventListener(
+      "pageshow",
+      refreshResourceDashboardIfNeeded,
+    );
+    globalScope.addEventListener("focus", refreshResourceDashboardIfNeeded);
+    resourceDashboardAutoRefreshEventsInstalled = true;
+  }
+
   function initializeResourceDashboardControls() {
+    initializeResourceDashboardAutoRefresh();
     const yearFilterControl = document.getElementById(
       "resource-dashboard-filter-year",
     );
@@ -6668,8 +6956,11 @@
       "resource-dashboard-filter-category",
     );
     if (yearFilterControl && !yearFilterControl.dataset.initialized) {
-      yearFilterControl.addEventListener("change", () => {
-        resourceDashboardSelectedYear = yearFilterControl.value;
+      yearFilterControl.addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-filter-value]");
+        if (!button || button.disabled || !yearFilterControl.contains(button))
+          return;
+        resourceDashboardSelectedYear = button.dataset.filterValue;
         if (resourceDashboardSelectedYear === "all")
           resourceDashboardSelectedSemester = "all";
         if (resourceDashboardData) renderResourceDashboardTab();
@@ -6677,17 +6968,28 @@
       yearFilterControl.dataset.initialized = "true";
     }
     if (semesterFilterControl && !semesterFilterControl.dataset.initialized) {
-      semesterFilterControl.addEventListener("change", () => {
-        resourceDashboardSelectedSemester = semesterFilterControl.value;
+      semesterFilterControl.addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-filter-value]");
+        if (
+          !button ||
+          button.disabled ||
+          !semesterFilterControl.contains(button)
+        )
+          return;
+        resourceDashboardSelectedSemester = button.dataset.filterValue;
         if (resourceDashboardData) renderResourceDashboardTab();
       });
       semesterFilterControl.dataset.initialized = "true";
     }
     if (categoryFilterControl && !categoryFilterControl.dataset.initialized) {
-      categoryFilterControl.addEventListener("change", () => {
-        resourceDashboardSelectedCategory = categoryFilterControl.value;
-        if (resourceDashboardData) renderResourceDashboardTab();
-      });
+      categoryFilterControl
+        .querySelectorAll("[data-category]")
+        .forEach((button) => {
+          button.addEventListener("click", () => {
+            resourceDashboardSelectedCategory = button.dataset.category;
+            if (resourceDashboardData) renderResourceDashboardTab();
+          });
+        });
       categoryFilterControl.dataset.initialized = "true";
     }
     const signoutButton = document.getElementById(
@@ -6745,12 +7047,25 @@
 
   async function initializeReviewerAuth() {
     if (reviewerAuthConfigPromise) return reviewerAuthConfigPromise;
-    reviewerAuthCheckPending = !hasExplicitReviewerSignOut();
+    installReviewerSignOutStorageListener();
+    if (
+      !reviewerSessionId &&
+      !reviewerSessionRestorePending &&
+      !hasExplicitReviewerSignOut() &&
+      getStoredReviewerSessionId()
+    )
+      void restoreReviewerSession();
+    reviewerAuthCheckPending =
+      !hasExplicitReviewerSignOut() && !getStoredReviewerSessionId();
     reviewerAuthConfigPromise = (async () => {
       const authStatus = document.getElementById(
         "resource-reviewer-auth-status",
       );
-      if (authStatus && reviewerAuthCheckPending) {
+      if (
+        authStatus &&
+        reviewerAuthCheckPending &&
+        !reviewerSessionRestorePending
+      ) {
         authStatus.textContent = "Checking Google sign-in…";
         authStatus.setAttribute("aria-busy", "true");
         setReviewerNavigationBusy(true);
@@ -6758,6 +7073,20 @@
       const signInButton = document.getElementById(
         "resource-reviewer-signin-button",
       );
+      const retryButton = document.getElementById(
+        "resource-reviewer-retry-verification",
+      );
+      if (retryButton && !retryButton.dataset.initialized) {
+        retryButton.addEventListener("click", () => {
+          if (reviewerVerificationInFlightToken) return;
+          if (reviewerVerificationRetryToken) {
+            void completeReviewerSignIn(reviewerVerificationRetryToken);
+            return;
+          }
+          void restoreReviewerSession();
+        });
+        retryButton.dataset.initialized = "true";
+      }
       const enrollmentForm = document.getElementById(
         "resource-reviewer-enrollment-form",
       );
@@ -6846,22 +7175,56 @@
           itp_support: true,
         });
         if (signInButton) {
-          signInButton.replaceChildren();
-          globalScope.google.accounts.id.renderButton(signInButton, {
-            type: "standard",
-            theme: "filled_blue",
-            size: "large",
-            text: "signin_with",
-            shape: "rectangular",
-            logo_alignment: "left",
-            width: 280,
-            locale: "en",
-          });
+          let renderedButtonLayout = "";
+          const renderResponsiveSignInButton = () => {
+            const width = Math.max(
+              120,
+              Math.min(280, Math.floor(signInButton.clientWidth || 280)),
+            );
+            const buttonText = width < 187 ? "signin" : "signin_with";
+            const layout = `${width}:${buttonText}`;
+            if (layout === renderedButtonLayout) return;
+            signInButton.replaceChildren();
+            globalScope.google.accounts.id.renderButton(signInButton, {
+              type: "standard",
+              theme: "filled_blue",
+              size: "large",
+              text: buttonText,
+              shape: "rectangular",
+              logo_alignment: "left",
+              width,
+              locale: "en",
+            });
+            renderedButtonLayout = layout;
+          };
+          renderResponsiveSignInButton();
+          if (reviewerSignInButtonResizeHandler)
+            globalScope.removeEventListener(
+              "resize",
+              reviewerSignInButtonResizeHandler,
+            );
+          reviewerSignInButtonResizeHandler = renderResponsiveSignInButton;
+          globalScope.addEventListener(
+            "resize",
+            reviewerSignInButtonResizeHandler,
+          );
+          if (typeof globalScope.ResizeObserver === "function") {
+            reviewerSignInButtonResizeObserver?.disconnect();
+            reviewerSignInButtonResizeObserver =
+              new globalScope.ResizeObserver(renderResponsiveSignInButton);
+            reviewerSignInButtonResizeObserver.observe(signInButton);
+          }
         }
-        if (authStatus)
+        if (
+          authStatus &&
+          !reviewerSessionRestorePending &&
+          !reviewerSessionId &&
+          !reviewerPendingEnrollmentSessionId
+        )
           authStatus.textContent =
             "Use Google to sign in and request Reviewer access.";
-        reviewerAuthCheckPending = !hasExplicitReviewerSignOut();
+        reviewerAuthCheckPending =
+          !hasExplicitReviewerSignOut() && !getStoredReviewerSessionId();
         if (reviewerAuthCheckPending) {
           authStatus?.setAttribute("aria-busy", "true");
           setReviewerNavigationBusy(true);
@@ -6873,25 +7236,32 @@
             if (!promptFinished) return;
             reviewerAuthCheckPending = false;
             setReviewerNavigationBusy(
-              Boolean(reviewerPendingEnrollmentToken || reviewerIdentityToken),
+              Boolean(
+                reviewerPendingEnrollmentSessionId ||
+                  reviewerSessionId ||
+                  reviewerSessionRestorePending,
+              ),
             );
             authStatus?.removeAttribute("aria-busy");
             if (
-              !reviewerIdentityToken &&
-              !reviewerPendingEnrollmentToken &&
+              !reviewerSessionId &&
+              !reviewerPendingEnrollmentSessionId &&
               resourceDashboardActiveTab === "REVIEWERS"
             ) {
               if (authStatus)
                 authStatus.textContent =
                   "Google sign-in was not completed. Open Profile to sign in.";
               setResourceDashboardStatus(
-                "Sign in through Profile to access Reviewer resources.",
+                "",
               );
             }
           });
         } else {
-          setReviewerNavigationBusy(false);
-          authStatus?.removeAttribute("aria-busy");
+          setReviewerNavigationBusy(
+            Boolean(reviewerSessionRestorePending || reviewerSessionId),
+          );
+          if (!reviewerSessionRestorePending)
+            authStatus?.removeAttribute("aria-busy");
         }
         return true;
       } catch (error) {
@@ -6924,31 +7294,115 @@
     }
   }
 
+  async function restoreReviewerSession(requestedSessionId = "") {
+    if (reviewerSessionRestorePromise) return reviewerSessionRestorePromise;
+    if (hasExplicitReviewerSignOut()) return false;
+    const sessionId =
+      requestedSessionId || getStoredReviewerSessionId();
+    if (!sessionId) return false;
+    if (reviewerSessionId === sessionId) return true;
+
+    installReviewerSignOutStorageListener();
+    const authGeneration = reviewerAuthGeneration;
+    reviewerSessionRestorePending = true;
+    reviewerAuthCheckPending = false;
+    setReviewerNavigationBusy(true);
+    const signInButton = document.getElementById(
+      "resource-reviewer-signin-button",
+    );
+    if (signInButton) signInButton.hidden = true;
+    const authStatus = document.getElementById(
+      "resource-reviewer-auth-status",
+    );
+    if (authStatus) {
+      authStatus.textContent = "Restoring your reviewer session…";
+      authStatus.setAttribute("aria-busy", "true");
+    }
+
+    const restorePromise = (async () => {
+      try {
+        const response = await globalScope.AppNetwork.callBackend(
+          { type: "restore_reviewer_session", sessionId },
+          { timeoutMs: 15000, maxRetries: 0 },
+        );
+        if (authGeneration !== reviewerAuthGeneration) return false;
+        applyReviewerAccountStatus(response, sessionId);
+        scheduleReviewerStatusPolling(sessionId);
+        if (
+          response.accountStatus === "TRUE" &&
+          resourceDashboardActiveTab === "REVIEWERS"
+        )
+          void loadReviewerDashboard();
+        return true;
+      } catch (error) {
+        if (authGeneration !== reviewerAuthGeneration) return false;
+        if (isDefinitivelyInvalidReviewerCredential(error)) {
+          clearStoredReviewerSession();
+          reviewerSessionId = "";
+          reviewerPendingEnrollmentSessionId = "";
+          reviewerAuthorizedEmail = "";
+          reviewerDashboardLoadedForEmail = "";
+          reviewerProfilePictureUrl = "";
+          clearReviewerResourceRows();
+          const signInButton = document.getElementById(
+            "resource-reviewer-signin-button",
+          );
+          const signoutButton = document.getElementById(
+            "resource-reviewer-signout",
+          );
+          if (signInButton) signInButton.hidden = false;
+          if (signoutButton) signoutButton.hidden = true;
+          if (authStatus)
+            authStatus.textContent =
+              "Your saved reviewer session expired or was revoked. Sign in with Google again.";
+        } else {
+          const signInButton = document.getElementById(
+            "resource-reviewer-signin-button",
+          );
+          if (signInButton) signInButton.hidden = false;
+          if (authStatus)
+            authStatus.textContent =
+              "Unable to verify your saved reviewer session right now. It has been kept; retry when online.";
+          const retryButton = document.getElementById(
+            "resource-reviewer-retry-verification",
+          );
+          if (retryButton) retryButton.hidden = false;
+          (globalScope.DebugUtils || console).error(
+            "Unable to restore the saved reviewer session.",
+            error,
+          );
+        }
+        return false;
+      } finally {
+        if (authGeneration === reviewerAuthGeneration) {
+          reviewerSessionRestorePending = false;
+          setReviewerNavigationBusy(
+            Boolean(reviewerSessionId || reviewerPendingEnrollmentSessionId),
+          );
+          authStatus?.removeAttribute("aria-busy");
+        }
+      }
+    })();
+    reviewerSessionRestorePromise = restorePromise;
+    try {
+      return await restorePromise;
+    } finally {
+      if (reviewerSessionRestorePromise === restorePromise)
+        reviewerSessionRestorePromise = null;
+    }
+  }
+
   function setReviewerAccessEnabled(enabled) {
     const reviewersNav = document.getElementById(
       "resource-dashboard-reviewers-nav",
     );
-    const reviewersLock = document.getElementById(
-      "resource-dashboard-reviewers-lock",
-    );
-    if (enabled) {
-      if (reviewersNav) {
-        reviewersNav.removeAttribute("aria-disabled");
-        reviewersNav.setAttribute("aria-label", "Reviewers");
-        reviewersNav.title = "Open reviewer resources";
-      }
-      if (reviewersLock) reviewersLock.hidden = true;
-      return;
-    }
     if (reviewersNav) {
       reviewersNav.removeAttribute("aria-disabled");
-      reviewersNav.setAttribute(
-        "aria-label",
-        "Reviewers - administrator approval required",
-      );
-      reviewersNav.title = "Administrator approval is required";
+      reviewersNav.setAttribute("aria-label", "Reviewers");
+      reviewersNav.title = enabled
+        ? "Open reviewer resources"
+        : "Sign in or create a reviewer profile to request access";
     }
-    if (reviewersLock) reviewersLock.hidden = false;
   }
 
   function clearReviewerResourceRows() {
@@ -6974,10 +7428,14 @@
         .getElementById("resource-dashboard-table-body")
         ?.replaceChildren();
       setResourceDashboardStatus(
-        reviewerPendingEnrollmentToken
+        reviewerPendingEnrollmentSessionId
           ? "Verifying your Google sign-in and reviewer approval…"
           : "Checking your Google sign-in…",
-        Boolean(reviewerPendingEnrollmentToken || reviewerAuthCheckPending),
+        Boolean(
+          reviewerPendingEnrollmentSessionId ||
+            reviewerAuthCheckPending ||
+            reviewerSessionRestorePending,
+        ),
       );
     }
   }
@@ -7036,7 +7494,7 @@
 
   function applyReviewerAccountStatus(
     response,
-    idToken,
+    sessionId,
     preserveProfileEditor = false,
   ) {
     if (
@@ -7065,6 +7523,9 @@
     const signInButton = document.getElementById(
       "resource-reviewer-signin-button",
     );
+    const retryButton = document.getElementById(
+      "resource-reviewer-retry-verification",
+    );
     const signoutButton = document.getElementById(
       "resource-reviewer-signout",
     );
@@ -7076,17 +7537,22 @@
     const keepProfileEditorOpen =
       preserveProfileEditor && reviewerProfileEditing;
     reviewerAuthorizedEmail = response.email;
+    if (!reviewerVerificationRetryToken)
+      reviewerVerificationRetryAvailable = false;
+    reviewerReauthenticationPromptAttempted = false;
+    if (retryButton && !reviewerVerificationRetryToken)
+      retryButton.hidden = true;
     reviewerProfilePictureUrl =
       typeof response.picture === "string" &&
       /^https:\/\/lh[3-6]\.googleusercontent\.com\//.test(response.picture)
         ? response.picture
         : "";
     if (accountStatus === "TRUE") {
-      reviewerIdentityToken = idToken;
-      reviewerPendingEnrollmentToken = "";
+      reviewerSessionId = sessionId;
+      reviewerPendingEnrollmentSessionId = "";
     } else {
-      reviewerIdentityToken = "";
-      reviewerPendingEnrollmentToken = idToken;
+      reviewerSessionId = "";
+      reviewerPendingEnrollmentSessionId = sessionId;
       clearReviewerResourceRows();
     }
     populateReviewerProfile(response);
@@ -7145,57 +7611,67 @@
     return accountStatus === "TRUE";
   }
 
-  function scheduleReviewerStatusPolling(idToken) {
+  function scheduleReviewerStatusPolling(sessionId) {
     stopReviewerStatusPolling();
-    if (!idToken) return;
+    if (!sessionId) return;
     const authGeneration = reviewerAuthGeneration;
     reviewerStatusPollTimer = globalScope.setTimeout(async () => {
       reviewerStatusPollTimer = null;
       if (
         authGeneration !== reviewerAuthGeneration ||
-        (idToken !== reviewerPendingEnrollmentToken &&
-          idToken !== reviewerIdentityToken)
+        (sessionId !== reviewerPendingEnrollmentSessionId &&
+          sessionId !== reviewerSessionId)
       ) return;
       if (reviewerStatusPollInFlight) {
-        scheduleReviewerStatusPolling(idToken);
+        scheduleReviewerStatusPolling(sessionId);
         return;
       }
       reviewerStatusPollInFlight = true;
       try {
         let response = await globalScope.AppNetwork.callBackend(
-          { type: "get_reviewer_account_status", idToken },
+          { type: "get_reviewer_account_status", sessionId },
           { timeoutMs: 15000, maxRetries: 0 },
         );
         if (
           authGeneration !== reviewerAuthGeneration ||
-          (idToken !== reviewerPendingEnrollmentToken &&
-            idToken !== reviewerIdentityToken)
+          (sessionId !== reviewerPendingEnrollmentSessionId &&
+            sessionId !== reviewerSessionId)
         )
           return;
-        applyReviewerAccountStatus(response, idToken, true);
+        applyReviewerAccountStatus(response, sessionId, true);
       } catch (error) {
         if (authGeneration !== reviewerAuthGeneration) return;
         const authStatus = document.getElementById("resource-reviewer-auth-status");
-        if (error?.code === "UNAUTHORIZED") {
+        if (isDefinitivelyInvalidReviewerCredential(error)) {
+          const retryCredential =
+            reviewerVerificationRetryToken
+              ? reviewerVerificationRetryToken
+              : "";
           signOutReviewer(false);
           if (authStatus)
             authStatus.textContent =
-              "Google sign-in expired. Sign in again to check reviewer approval.";
+              retryCredential
+                ? "Your saved reviewer session expired. Retry verification of your new Google sign-in."
+                : "Your reviewer session expired. Sign in with Google again to check reviewer approval.";
+          if (retryCredential) {
+            reviewerVerificationRetryToken = retryCredential;
+            reviewerVerificationRetryAvailable = true;
+            const retryButton = document.getElementById(
+              "resource-reviewer-retry-verification",
+            );
+            if (retryButton) retryButton.hidden = false;
+          } else {
+            promptReviewerReauthentication();
+          }
           return;
-        }
-        if (reviewerIdentityToken === idToken) {
-          reviewerIdentityToken = "";
-          reviewerPendingEnrollmentToken = idToken;
-          clearReviewerResourceRows();
-          setReviewerAccessEnabled(false);
         }
         if (authStatus)
           authStatus.textContent =
-            "Unable to check administrator approval. Reviewer access is locked until approval can be confirmed: " +
+            "Unable to refresh administrator approval right now. Your current sign-in is retained; protected requests will still be checked by the server: " +
             String(error?.message || error);
         if (resourceDashboardActiveTab === "REVIEWERS")
           setResourceDashboardStatus(
-            `Reviewer access is locked while approval is being confirmed: ${String(
+            `Unable to refresh reviewer approval right now. Your current sign-in is retained: ${String(
               error?.message || error,
             )}`,
           );
@@ -7207,10 +7683,10 @@
         reviewerStatusPollInFlight = false;
         if (
           authGeneration === reviewerAuthGeneration &&
-          (idToken === reviewerPendingEnrollmentToken ||
-            idToken === reviewerIdentityToken)
+          (sessionId === reviewerPendingEnrollmentSessionId ||
+            sessionId === reviewerSessionId)
         )
-          scheduleReviewerStatusPolling(idToken);
+          scheduleReviewerStatusPolling(sessionId);
       }
     }, REVIEWER_STATUS_POLL_INTERVAL_MS);
   }
@@ -7231,15 +7707,23 @@
         );
       return false;
     }
+    if (reviewerVerificationInFlightToken === idToken) return false;
+    const previousSessionId =
+      reviewerSessionId || reviewerPendingEnrollmentSessionId;
     const authGeneration = ++reviewerAuthGeneration;
     reviewerAuthCheckPending = false;
     stopReviewerStatusPolling();
-    reviewerIdentityToken = "";
-    reviewerAuthorizedEmail = "";
-    reviewerPendingEnrollmentToken = idToken;
-    clearReviewerResourceRows();
+    reviewerVerificationRetryAvailable = false;
+    reviewerVerificationRetryToken = idToken;
+    reviewerVerificationInFlightToken = idToken;
     setReviewerNavigationBusy(true);
-    setReviewerAccessEnabled(false);
+    const retryButton = document.getElementById(
+      "resource-reviewer-retry-verification",
+    );
+    if (retryButton) {
+      retryButton.hidden = true;
+      retryButton.disabled = true;
+    }
     if (authStatus) {
       authStatus.textContent =
         "Checking your profile and administrator approval...";
@@ -7253,11 +7737,21 @@
       );
       if (
         authGeneration !== reviewerAuthGeneration ||
-        reviewerPendingEnrollmentToken !== idToken
+        reviewerVerificationInFlightToken !== idToken
       )
         return false;
-      const approved = applyReviewerAccountStatus(response, idToken);
-      scheduleReviewerStatusPolling(idToken);
+      reviewerVerificationInFlightToken = "";
+      if (retryButton) retryButton.disabled = false;
+      const sessionId = String(response?.sessionId || "");
+      if (!/^[a-f0-9]{96}$/.test(sessionId))
+        throw new Error(
+          "The reviewer sign-in service did not return a valid application session.",
+        );
+      saveReviewerSessionId(sessionId);
+      if (reviewerVerificationRetryToken === idToken)
+        reviewerVerificationRetryToken = "";
+      const approved = applyReviewerAccountStatus(response, sessionId);
+      scheduleReviewerStatusPolling(sessionId);
       if (approved) {
         if (resourceDashboardActiveTab === "REVIEWERS") {
           await loadReviewerDashboard();
@@ -7269,7 +7763,7 @@
             authStatus.setAttribute("aria-busy", "true");
           }
           void loadReviewerDashboard().then((loaded) => {
-            if (reviewerIdentityToken !== idToken) return;
+            if (reviewerSessionId !== sessionId) return;
             if (authStatus) {
               authStatus.textContent = loaded
                 ? "Reviewer access approved."
@@ -7282,17 +7776,67 @@
       return approved;
     } catch (error) {
       if (authGeneration !== reviewerAuthGeneration) return false;
-      signOutReviewer(false);
+      if (isDefinitivelyInvalidReviewerCredential(error)) {
+        reviewerVerificationInFlightToken = "";
+        if (previousSessionId) {
+          reviewerVerificationRetryToken = "";
+          reviewerVerificationRetryAvailable = false;
+          if (retryButton) retryButton.hidden = true;
+          if (authStatus)
+            authStatus.textContent =
+              "The new Google sign-in could not be verified. Your existing sign-in remains active.";
+          scheduleReviewerStatusPolling(previousSessionId);
+        } else {
+          signOutReviewer(false);
+          if (authStatus)
+            authStatus.textContent =
+              "Google sign-in expired or is no longer valid. Sign in with Google again.";
+          promptReviewerReauthentication();
+        }
+        if (resourceDashboardActiveTab === "REVIEWERS")
+          setResourceDashboardStatus(
+            previousSessionId
+              ? "The new Google sign-in could not be verified. Your existing sign-in remains active."
+              : "Google sign-in expired or is no longer valid. Open Profile to sign in again.",
+          );
+      } else {
+        reviewerVerificationInFlightToken = "";
+        reviewerVerificationRetryToken = idToken;
+        reviewerVerificationRetryAvailable = true;
+        setReviewerNavigationBusy(false);
+        if (retryButton) {
+          retryButton.hidden = false;
+          retryButton.disabled = false;
+        }
+        if (authStatus)
+          authStatus.textContent =
+            "Google sign-in could not be verified right now. " +
+            (previousSessionId ? "Your existing sign-in is retained; " : "") +
+            "retry verification or use Google sign-in again.";
+        if (resourceDashboardActiveTab === "REVIEWERS")
+          setResourceDashboardStatus(
+            previousSessionId
+              ? "Google sign-in could not be verified right now. Your existing sign-in is retained; retry from Profile."
+              : "Google sign-in could not be verified right now. Retry from Profile.",
+          );
+        if (previousSessionId)
+          scheduleReviewerStatusPolling(previousSessionId);
+      }
       if (authStatus)
-        authStatus.textContent = String(
-          error?.message || "Google sign-in could not be verified.",
-        );
+        authStatus.removeAttribute("aria-busy");
       (globalScope.DebugUtils || console).error(
         "Unable to verify reviewer account approval.",
         error,
       );
       return false;
     } finally {
+      if (
+        authGeneration === reviewerAuthGeneration &&
+        reviewerVerificationInFlightToken === idToken
+      ) {
+        reviewerVerificationInFlightToken = "";
+        if (retryButton) retryButton.disabled = false;
+      }
       if (
         authGeneration === reviewerAuthGeneration &&
         !preparingReviewerResources
@@ -7308,9 +7852,9 @@
       "resource-reviewer-auth-status",
     );
     const submitButton = form.querySelector('button[type="submit"]');
-    const enrollmentToken =
-      reviewerPendingEnrollmentToken || reviewerIdentityToken;
-    if (!enrollmentToken) {
+    const enrollmentSessionId =
+      reviewerPendingEnrollmentSessionId || reviewerSessionId;
+    if (!enrollmentSessionId) {
       if (authStatus)
         authStatus.textContent =
           "Sign in with Google before submitting your profile.";
@@ -7337,7 +7881,7 @@
       const response = await globalScope.AppNetwork.callBackend(
         {
           type: "request_reviewer_enrollment",
-          idToken: enrollmentToken,
+          sessionId: enrollmentSessionId,
           eventId: createResourceEventId(),
           lastName,
           firstName,
@@ -7347,8 +7891,8 @@
       );
       if (
         authGeneration !== reviewerAuthGeneration ||
-        (enrollmentToken !== reviewerPendingEnrollmentToken &&
-          enrollmentToken !== reviewerIdentityToken)
+        (enrollmentSessionId !== reviewerPendingEnrollmentSessionId &&
+          enrollmentSessionId !== reviewerSessionId)
       )
         return false;
       if (
@@ -7366,12 +7910,19 @@
           profileUpdated:
             reviewerProfileEditing && response.accountStatus === "FALSE",
         },
-        enrollmentToken,
+        enrollmentSessionId,
       );
-      scheduleReviewerStatusPolling(enrollmentToken);
+      scheduleReviewerStatusPolling(enrollmentSessionId);
       return true;
     } catch (error) {
       if (authGeneration !== reviewerAuthGeneration) return false;
+      if (isDefinitivelyInvalidReviewerCredential(error)) {
+        signOutReviewer(false);
+        if (authStatus)
+          authStatus.textContent =
+            "Your reviewer session expired or was revoked. Sign in with Google again.";
+        return false;
+      }
       if (authStatus)
         authStatus.textContent =
           "Unable to submit account details: " +
@@ -7386,26 +7937,28 @@
       authStatus?.removeAttribute("aria-busy");
       if (
         authGeneration === reviewerAuthGeneration &&
-        (enrollmentToken === reviewerPendingEnrollmentToken ||
-          enrollmentToken === reviewerIdentityToken)
+        (enrollmentSessionId === reviewerPendingEnrollmentSessionId ||
+          enrollmentSessionId === reviewerSessionId)
       )
-        scheduleReviewerStatusPolling(enrollmentToken);
+        scheduleReviewerStatusPolling(enrollmentSessionId);
     }
   }
 
   async function logModuleDashboardAccess() {
-    if (!reviewerIdentityToken) return false;
+    if (!reviewerSessionId) return false;
     try {
       await globalScope.AppNetwork.callBackend(
         {
           type: "log_module_access",
-          idToken: reviewerIdentityToken,
+          sessionId: reviewerSessionId,
           eventId: createResourceEventId(),
         },
         { timeoutMs: 15000, maxRetries: 0 },
       );
       return true;
     } catch (error) {
+      if (isDefinitivelyInvalidReviewerCredential(error))
+        signOutReviewer(false);
       const status = document.getElementById("resource-reviewer-auth-status");
       if (status)
         status.textContent = `Unable to record module access: ${String(
@@ -7419,9 +7972,36 @@
     }
   }
 
-  function signOutReviewer(explicit = true) {
+  function signOutReviewer(explicit = true, preserveStoredSession = false) {
+    const sessionId =
+      reviewerSessionId ||
+      reviewerPendingEnrollmentSessionId ||
+      (explicit ? getStoredReviewerSessionId() : "");
+    if (explicit && sessionId) {
+      void globalScope.AppNetwork.callBackend(
+        { type: "sign_out_reviewer", sessionId },
+        { timeoutMs: 15000, maxRetries: 0 },
+      ).catch((error) => {
+        const status = document.getElementById(
+          "resource-reviewer-auth-status",
+        );
+        if (status)
+          status.textContent =
+            "Signed out in this browser, but the server could not revoke the session. Try signing out again while online.";
+        (globalScope.DebugUtils || console).error(
+          "Unable to revoke the reviewer session.",
+          error,
+        );
+      });
+    }
     reviewerAuthGeneration += 1;
     reviewerAuthCheckPending = false;
+    reviewerSessionRestorePending = false;
+    reviewerSessionRestorePromise = null;
+    reviewerVerificationInFlightToken = "";
+    reviewerVerificationRetryToken = "";
+    reviewerVerificationRetryAvailable = false;
+    if (explicit) reviewerReauthenticationPromptAttempted = false;
     let signOutPreferenceSaved = true;
     if (explicit) {
       try {
@@ -7434,8 +8014,11 @@
         );
       }
     }
-    reviewerIdentityToken = "";
-    reviewerPendingEnrollmentToken = "";
+    reviewerSessionId = "";
+    reviewerPendingEnrollmentSessionId = "";
+    if (!preserveStoredSession)
+      signOutPreferenceSaved =
+        clearStoredReviewerSession() && signOutPreferenceSaved;
     reviewerAuthorizedEmail = "";
     reviewerDashboardLoadedForEmail = "";
     reviewerProfilePictureUrl = "";
@@ -7457,24 +8040,24 @@
     );
     if (reviewersNav) {
       reviewersNav.removeAttribute("aria-disabled");
-      reviewersNav.setAttribute(
-        "aria-label",
-        "Reviewers — sign in with Google",
-      );
-      reviewersNav.title = "Sign in with Google to access reviewer resources";
+      reviewersNav.setAttribute("aria-label", "Reviewers");
+      reviewersNav.title = "Reviewer resources";
     }
-    const reviewersLock = document.getElementById(
-      "resource-dashboard-reviewers-lock",
-    );
-    if (reviewersLock) reviewersLock.hidden = false;
     const signInButton = document.getElementById(
       "resource-reviewer-signin-button",
     );
     const signoutButton = document.getElementById(
       "resource-reviewer-signout",
     );
+    const retryButton = document.getElementById(
+      "resource-reviewer-retry-verification",
+    );
     if (signInButton) signInButton.hidden = false;
     if (signoutButton) signoutButton.hidden = true;
+    if (retryButton) {
+      retryButton.hidden = true;
+      retryButton.disabled = false;
+    }
     const enrollmentForm = document.getElementById(
       "resource-reviewer-enrollment-form",
     );
@@ -7509,7 +8092,7 @@
     if (authStatus)
       authStatus.textContent = signOutPreferenceSaved
         ? "Signed out. Reviewer data has been cleared from this page."
-        : "Signed out, but this browser could not save the sign-out preference. Enable site storage to keep it signed out after refresh.";
+        : "Signed out here, but browser storage could not save the sign-out state. The server revocation request is still being processed.";
     authStatus?.removeAttribute("aria-busy");
     document
       .getElementById("resource-portal-status")
@@ -7518,18 +8101,26 @@
       resourceDashboardActiveTab = "MODULES";
       renderResourceDashboardTab();
     }
-    globalScope.google?.accounts?.id?.disableAutoSelect?.();
+    if (explicit) globalScope.google?.accounts?.id?.disableAutoSelect?.();
     return true;
   }
 
   async function loadReviewerDashboard() {
-    if (!reviewerIdentityToken) {
-      if (reviewerPendingEnrollmentToken || reviewerAuthCheckPending) {
+    if (!reviewerSessionId) {
+      if (
+        reviewerPendingEnrollmentSessionId ||
+        reviewerVerificationInFlightToken ||
+        reviewerAuthCheckPending ||
+        reviewerSessionRestorePending
+      ) {
         setResourceDashboardStatus(
-          reviewerPendingEnrollmentToken
-            ? "Verifying your Google sign-in and reviewer approval…"
-            : "Checking your Google sign-in…",
-          true,
+          reviewerVerificationRetryAvailable
+            ? "Google sign-in could not be verified. Retry verification from Profile."
+            : reviewerPendingEnrollmentSessionId ||
+                reviewerVerificationInFlightToken
+              ? "Verifying your reviewer session and approval…"
+              : "Checking your Google sign-in…",
+          !reviewerVerificationRetryAvailable,
         );
         return true;
       }
@@ -7545,7 +8136,7 @@
     }
     if (reviewerDashboardRequestPromise) return true;
     const requestGeneration = ++reviewerDashboardRequestGeneration;
-    const requestToken = reviewerIdentityToken;
+    const requestSessionId = reviewerSessionId;
     setReviewerNavigationBusy(true);
     const status = document.getElementById("resource-portal-status");
     const tableHead = document.getElementById(
@@ -7572,7 +8163,7 @@
       backendRequest = globalScope.AppNetwork.callBackend(
         {
           type: "get_reviewer_dashboard",
-          idToken: requestToken,
+          sessionId: requestSessionId,
           eventId: createResourceEventId(),
         },
         { timeoutMs: 30000, maxRetries: 0 },
@@ -7581,7 +8172,7 @@
       const response = await backendRequest;
       if (
         requestGeneration !== reviewerDashboardRequestGeneration ||
-        requestToken !== reviewerIdentityToken
+        requestSessionId !== reviewerSessionId
       )
         return false;
       if (
@@ -7607,7 +8198,7 @@
     } catch (error) {
       if (
         requestGeneration !== reviewerDashboardRequestGeneration ||
-        requestToken !== reviewerIdentityToken
+        requestSessionId !== reviewerSessionId
       )
         return false;
       if (resourceDashboardData) {
@@ -7621,13 +8212,31 @@
         };
       }
       reviewerDashboardLoadedForEmail = "";
-      if (["UNAUTHORIZED", "FORBIDDEN"].includes(error?.code)) {
+      if (
+        [
+          "UNAUTHORIZED",
+          "FORBIDDEN",
+          "SESSION_EXPIRED",
+          "SESSION_INVALID",
+          "SESSION_REVOKED",
+        ].includes(error?.code)
+      ) {
         signOutReviewer(false);
         setResourceDashboardStatus(
-          error.code === "UNAUTHORIZED"
-            ? "Google sign-in expired. Sign in again to view reviewer resources."
+          error.code === "UNAUTHORIZED" ||
+          error.code === "SESSION_EXPIRED" ||
+          error.code === "SESSION_INVALID" ||
+          error.code === "SESSION_REVOKED"
+            ? "Your reviewer session expired or was revoked. Sign in with Google again to view reviewer resources."
             : "This account is no longer authorized for reviewer resources.",
         );
+        if (
+          error.code === "UNAUTHORIZED" ||
+          error.code === "SESSION_EXPIRED" ||
+          error.code === "SESSION_INVALID" ||
+          error.code === "SESSION_REVOKED"
+        )
+          promptReviewerReauthentication();
       } else {
         if (resourceDashboardActiveTab === "REVIEWERS") {
           tableHead.replaceChildren();
@@ -7745,7 +8354,7 @@
     return normalized;
   }
 
-  async function loadResourceDashboard() {
+  async function loadResourceDashboard({ silent = false } = {}) {
     const status = document.getElementById("resource-portal-status");
     const tableHead = document.getElementById(
       "resource-dashboard-table-head",
@@ -7755,6 +8364,7 @@
     );
     if (!status || !tableHead || !tableBody) return false;
     if (resourceDashboardLoadingPromise) return resourceDashboardLoadingPromise;
+    resourceDashboardLastRefreshAt = Date.now();
 
     initializeResourceDashboardControls();
     void initializeReviewerAuth();
@@ -7805,11 +8415,13 @@
         }
       }
     }
-    status.textContent = cachedDashboard
-      ? "Checking for dashboard updates…"
-      : "Loading dashboard…";
-    status.setAttribute("aria-busy", "true");
-    if (!cachedDashboard) {
+    if (!silent) {
+      status.textContent = cachedDashboard
+        ? "Checking for dashboard updates…"
+        : "Loading dashboard…";
+      status.setAttribute("aria-busy", "true");
+    }
+    if (!cachedDashboard && !silent) {
       resourceDashboardData = null;
       tableHead.replaceChildren();
       tableBody.replaceChildren();
@@ -7820,8 +8432,8 @@
           {
             type: "get_resource_dashboard",
             eventId: createResourceEventId(),
-            ...(reviewerIdentityToken
-              ? { idToken: reviewerIdentityToken }
+            ...(reviewerSessionId
+              ? { sessionId: reviewerSessionId }
               : {}),
             ...(cachedDashboard ? { version: cachedDashboard.version } : {}),
           },
@@ -7835,7 +8447,7 @@
           }
           renderResourceDashboardTab();
           if (
-            reviewerIdentityToken &&
+            reviewerSessionId &&
             resourceDashboardActiveTab === "REVIEWERS"
           )
             return loadReviewerDashboard();
@@ -7846,8 +8458,8 @@
             {
               type: "get_resource_dashboard",
               eventId: createResourceEventId(),
-              ...(reviewerIdentityToken
-                ? { idToken: reviewerIdentityToken }
+              ...(reviewerSessionId
+                ? { sessionId: reviewerSessionId }
                 : {}),
             },
             { timeoutMs: 30000, maxRetries: 0 },
@@ -7874,22 +8486,23 @@
         }
         renderResourceDashboardTab();
         if (
-          reviewerIdentityToken &&
+          reviewerSessionId &&
           resourceDashboardActiveTab === "REVIEWERS"
         )
           return loadReviewerDashboard();
         return true;
       } catch (error) {
-        status.textContent = `Unable to load dashboard: ${String(
-          error?.message || error,
-        )}`;
+        if (!silent)
+          status.textContent = `Unable to load dashboard: ${String(
+            error?.message || error,
+          )}`;
         (globalScope.DebugUtils || console).error(
           "Unable to load the Resource Dashboard.",
           error,
         );
         return false;
       } finally {
-        status.removeAttribute("aria-busy");
+        if (!silent) status.removeAttribute("aria-busy");
         resourceDashboardLoadingPromise = null;
       }
     })();

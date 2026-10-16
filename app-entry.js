@@ -1,8 +1,8 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-release-26.10.16-12";
-  const APP_DISPLAY_VERSION = "26.10.16-12";
+  const APP_VERSION = "mrh-26.10.16-38-4c523ee2fb7b";
+  const APP_DISPLAY_VERSION = "26.10.16-38";
   const UPDATE_QUERY_PARAMETER = "__mrh_update";
   const LEGACY_PAGES_BASE_PATH = "/maritime-review-hub/";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
@@ -269,10 +269,10 @@
       })
       .then(async (release) => {
         if (
-          typeof release?.version !== "string" ||
-          !/^mrh-[A-Za-z0-9._-]+$/.test(release.version) ||
-          release.version === APP_VERSION ||
-          release.version === pendingAppUpdateVersion
+          typeof release?.buildVersion !== "string" ||
+          !/^mrh-[A-Za-z0-9._-]+$/.test(release.buildVersion) ||
+          release.buildVersion === APP_VERSION ||
+          release.buildVersion === pendingAppUpdateVersion
         ) {
           return;
         }
@@ -286,8 +286,8 @@
         if (serviceWorkerRegistration) return;
         if (!serviceWorkerRegistrationFailed) return;
 
-        await verifyDeployedReleaseAssets(release.version);
-        markAppUpdateAvailable(release.version);
+        await verifyDeployedReleaseAssets(release.buildVersion);
+        markAppUpdateAvailable(release.buildVersion);
       })
       .catch((error) => {
         bootstrapLogger().warn("Deployed app version check failed:", error);

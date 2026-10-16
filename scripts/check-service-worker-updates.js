@@ -12,9 +12,11 @@ const calls = {
 };
 const cachedEntries = new Map();
 const workerSource = fs.readFileSync("sw.js", "utf8");
+const releaseMetadata = JSON.parse(fs.readFileSync("version.json", "utf8"));
 const appVersionMatch = workerSource.match(/^const APP_VERSION = "([^"]+)";$/m);
 assert.ok(appVersionMatch, "service worker must declare its release version");
 const appVersion = appVersionMatch[1];
+assert.equal(releaseMetadata.buildVersion, appVersion);
 const webcrypto = require("node:crypto").webcrypto;
 const appOrigin = "https://example.test";
 const appBasePath = "/app/";
@@ -139,7 +141,10 @@ const context = {
     const parsedUrl = new URL(url);
     if (parsedUrl.pathname.endsWith("/version.json")) {
       return new Response(
-        JSON.stringify({ version: parsedUrl.searchParams.get("check") }),
+        JSON.stringify({
+          version: releaseMetadata.version,
+          buildVersion: parsedUrl.searchParams.get("check"),
+        }),
         { headers: { "Content-Type": "application/json" } },
       );
     }
@@ -448,9 +453,13 @@ async function main() {
     async fetch(request, options) {
       const url = typeof request === "string" ? request : request.url;
       if (new URL(url).pathname.endsWith("/version.json")) {
-        return new Response(JSON.stringify({ version: appVersion }), {
-          headers: { "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({
+            version: releaseMetadata.version,
+            buildVersion: appVersion,
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        );
       }
       return context.fetch(request, options);
     },

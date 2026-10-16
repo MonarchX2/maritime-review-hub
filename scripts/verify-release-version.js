@@ -56,7 +56,8 @@ const releaseMarkers = [
   [
     "version.json",
     (source) =>
-      JSON.parse(source).version === expectedVersion,
+      JSON.parse(source).version === expectedDisplayVersion &&
+      JSON.parse(source).buildVersion === expectedVersion,
   ],
   [
     "manifest.json",

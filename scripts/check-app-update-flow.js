@@ -53,11 +53,17 @@ assert.match(
   "app entry must declare a human-readable display version",
 );
 assert.equal(workerVersion, appVersion);
-assert.equal(release.version, appVersion);
+assert.equal(release.version, appDisplayVersion);
+assert.equal(release.buildVersion, appVersion);
+assert.equal(
+  appDisplayVersion,
+  JSON.parse(fs.readFileSync(path.join(rootDir, "version.json"), "utf8")).version,
+  "version.json must be the authoritative semantic application version",
+);
 assert.equal(
   JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf8")).version,
   appDisplayVersion,
-  "the package must define the SemVer baseline used for displayed releases",
+  "the npm package metadata must match the authoritative app version",
 );
 assert.equal(
   manifest.icons[0].src,
@@ -244,6 +250,11 @@ for (const asset of [
 assert.match(workflow, /Stamp release version[\s\S]*?Verify deployed release version/);
 assert.match(
   workflow,
+  /npm run sync:version[\s\S]*?npm ci/,
+  "the workflow must sync package metadata from version.json before installing dependencies",
+);
+assert.match(
+  workflow,
   /Resolve semantic release version[\s\S]*?RELEASE_VERSION:\s*\$\{\{\s*steps\.release\.outputs\.release_version\s*\}\}[\s\S]*?DISPLAY_VERSION:\s*\$\{\{\s*steps\.release\.outputs\.display_version\s*\}\}/,
   "deployments must stamp both unique build and SemVer display versions",
 );
@@ -303,6 +314,11 @@ try {
     [path.join(tempRoot, "scripts", "verify-release-version.js")],
     { cwd: tempRoot, env, stdio: "pipe" },
   );
+  const stampedVersionMetadata = JSON.parse(
+    fs.readFileSync(path.join(tempRoot, "version.json"), "utf8"),
+  );
+  assert.equal(stampedVersionMetadata.version, nextDisplayVersion);
+  assert.equal(stampedVersionMetadata.buildVersion, nextVersion);
 
   const stampedAppEntry = fs.readFileSync(
     path.join(tempRoot, "app-entry.js"),

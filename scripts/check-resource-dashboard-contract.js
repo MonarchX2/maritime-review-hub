@@ -52,7 +52,7 @@ assert.doesNotMatch(
 );
 assert.match(
   appCore,
-  /function applyReviewerAccountStatus\(\s*response,\s*idToken,\s*preserveProfileEditor = false,\s*\)[\s\S]*?accountStatus === "TRUE"[\s\S]*?reviewerIdentityToken = idToken[\s\S]*?accountStatus === "NOT_FOUND" \|\| accountStatus === "DENIED"/,
+  /function applyReviewerAccountStatus\(\s*response,\s*sessionId,\s*preserveProfileEditor = false,\s*\)[\s\S]*?accountStatus === "TRUE"[\s\S]*?reviewerSessionId = sessionId[\s\S]*?accountStatus === "NOT_FOUND" \|\| accountStatus === "DENIED"/,
   "only TRUE accounts should receive reviewer access, while denied and new users can submit profile details",
 );
 assert.match(
@@ -67,28 +67,33 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function scheduleReviewerStatusPolling\(idToken\)[\s\S]*?type: "get_reviewer_account_status"[\s\S]*?applyReviewerAccountStatus\(response, idToken, true\)[\s\S]*?REVIEWER_STATUS_POLL_INTERVAL_MS/,
+  /function scheduleReviewerStatusPolling\(sessionId\)[\s\S]*?type: "get_reviewer_account_status", sessionId[\s\S]*?applyReviewerAccountStatus\(response, sessionId, true\)[\s\S]*?REVIEWER_STATUS_POLL_INTERVAL_MS/,
   "the page should poll the server so administrator approval changes take effect while open",
 );
 assert.match(
   appCore,
-  /let reviewerAuthGeneration = 0;[\s\S]*?async function completeReviewerSignIn\(idToken\)[\s\S]*?const authGeneration = \+\+reviewerAuthGeneration;[\s\S]*?authGeneration !== reviewerAuthGeneration[\s\S]*?reviewerPendingEnrollmentToken !== idToken[\s\S]*?applyReviewerAccountStatus\(response, idToken\)/,
+  /let reviewerAuthGeneration = 0;[\s\S]*?async function completeReviewerSignIn\(idToken\)[\s\S]*?const authGeneration = \+\+reviewerAuthGeneration;[\s\S]*?authGeneration !== reviewerAuthGeneration[\s\S]*?reviewerVerificationInFlightToken !== idToken[\s\S]*?const sessionId = String\(response\?\.sessionId \|\| ""\)[\s\S]*?saveReviewerSessionId\(sessionId\)[\s\S]*?applyReviewerAccountStatus\(response, sessionId\)/,
   "out-of-order sign-in responses must not replace the currently selected Google account",
 );
 assert.match(
   appCore,
-  /function scheduleReviewerStatusPolling\(idToken\)[\s\S]*?const authGeneration = reviewerAuthGeneration;[\s\S]*?authGeneration !== reviewerAuthGeneration[\s\S]*?scheduleReviewerStatusPolling\(idToken\);[\s\S]*?applyReviewerAccountStatus\(response, idToken, true\)/,
+  /function scheduleReviewerStatusPolling\(sessionId\)[\s\S]*?const authGeneration = reviewerAuthGeneration;[\s\S]*?authGeneration !== reviewerAuthGeneration[\s\S]*?scheduleReviewerStatusPolling\(sessionId\);[\s\S]*?applyReviewerAccountStatus\(response, sessionId, true\)/,
   "approval polling should ignore stale auth responses and reschedule if another check is in flight",
 );
 assert.match(
   appCore,
-  /async function requestReviewerEnrollment\(event\)[\s\S]*?const authGeneration = \+\+reviewerAuthGeneration;\s*stopReviewerStatusPolling\(\)[\s\S]*?authGeneration !== reviewerAuthGeneration[\s\S]*?applyReviewerAccountStatus\([\s\S]*?finally \{[\s\S]*?scheduleReviewerStatusPolling\(enrollmentToken\)/,
+  /async function requestReviewerEnrollment\(event\)[\s\S]*?const authGeneration = \+\+reviewerAuthGeneration;\s*stopReviewerStatusPolling\(\)[\s\S]*?authGeneration !== reviewerAuthGeneration[\s\S]*?applyReviewerAccountStatus\([\s\S]*?finally \{[\s\S]*?scheduleReviewerStatusPolling\(enrollmentSessionId\)/,
   "profile submission should invalidate stale approval polls and resume polling after completion",
 );
 assert.match(
   appCore,
-  /function signOutReviewer\(explicit = true\) \{\s*reviewerAuthGeneration \+= 1;/,
+  /function signOutReviewer\(explicit = true(?:, preserveStoredSession = false)?\) \{[\s\S]*?reviewerAuthGeneration \+= 1;/,
   "sign-out should invalidate outstanding sign-in and profile requests",
+);
+assert.match(
+  appCore,
+  /const sessionId = String\(response\?\.sessionId \|\| ""\);[\s\S]*?saveReviewerSessionId\(sessionId\);[\s\S]*?if \(reviewerVerificationRetryToken === idToken\)\s*reviewerVerificationRetryToken = ""/,
+  "successful verification should persist only the opaque application session and clear its transient Google credential",
 );
 assert.match(
   appCore,
@@ -102,8 +107,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function setReviewerNavigationBusy\(busy\)[\s\S]*?resource-dashboard-reviewers-nav[\s\S]*?setReviewerNavigationBusy\(true\);[\s\S]*?setReviewerNavigationBusy\(false\)/,
-  "reviewer authentication and background resource prefetch should expose a navigation loading state",
+  /function setReviewerNavigationBusy\(\)[\s\S]*?resource-dashboard-reviewers-nav[\s\S]*?removeAttribute\("aria-busy"\)/,
+  "the Reviewer navigation should never show an adjacent loading indicator",
 );
 assert.match(
   appCore,
@@ -116,7 +121,7 @@ const reviewerPromptCallback = appCore.match(
 assert.ok(reviewerPromptCallback, "the returning-user prompt callback should exist");
 assert.match(
   reviewerPromptCallback[0],
-  /reviewerAuthCheckPending = false;\s*setReviewerNavigationBusy\(\s*Boolean\(reviewerPendingEnrollmentToken \|\| reviewerIdentityToken\),\s*\)/,
+  /reviewerAuthCheckPending = false;\s*setReviewerNavigationBusy\(\s*Boolean\(\s*reviewerPendingEnrollmentSessionId \|\|\s*reviewerSessionId \|\|\s*reviewerSessionRestorePending,\s*\),\s*\)/,
   "a prompt completion notification should preserve the busy state when credential verification is already underway",
 );
 assert.doesNotMatch(
@@ -181,13 +186,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /resourceDashboardSelectedCategory = "all"[\s\S]*?showCategoryFilter = \["MODULES", "REVIEWERS"\]\.includes\(\s*resourceDashboardActiveTab,\s*\)[\s\S]*?categoryFilterControl\.value = resourceDashboardSelectedCategory/,
-  "Modules and Reviewers should share a category filter that defaults to All",
+  /resourceDashboardSelectedCategory = "all"[\s\S]*?hasCategoryFilter = \["MODULES", "REVIEWERS"\]\.includes\(\s*resourceDashboardActiveTab,\s*\)[\s\S]*?showCategoryFilter =\s*hasCategoryFilter \|\| resourceDashboardActiveTab === "SYLLABUS"[\s\S]*?availableCategories = new Set\([\s\S]*?button\.disabled = !hasCategoryFilter \|\| !categoryAvailable[\s\S]*?button\.setAttribute\([\s\S]*?"aria-disabled"[\s\S]*?button\.dataset\.category === resourceDashboardSelectedCategory[\s\S]*?button\.setAttribute\("aria-pressed", String\(selected\)\)/,
+  "Modules and Reviewers should share an enabled category filter, while Syllabus shows it disabled",
 );
 assert.match(
   appCore,
-  /filterContainer\.hidden = !hasTermFilter && !showCategoryFilter[\s\S]*?yearFilterContainer\.hidden = !hasTermFilter[\s\S]*?semesterFilterContainer\.hidden = !hasTermFilter/,
-  "the category filter should remain available on Modules and Reviewers without year metadata",
+  /yearFilterContainer\.hidden = !hasTermFilter && !showCategoryFilter[\s\S]*?semesterFilterContainer\.hidden = !hasTermFilter && !showCategoryFilter[\s\S]*?filterContainer\.hidden =\s*!showCategoryFilter && !hasTermFilter/,
+  "the category filter should remain available on Syllabus, Modules, and Reviewers",
 );
 assert.match(
   appCore,
@@ -196,48 +201,73 @@ assert.match(
 );
 assert.match(
   appCore,
-  /categoryFilterControl\.addEventListener\("change"[\s\S]*?resourceDashboardSelectedCategory = categoryFilterControl\.value[\s\S]*?renderResourceDashboardTab\(\)/,
-  "changing the category should immediately rerender the dashboard",
+  /categoryFilterControl[\s\S]*?querySelectorAll\("\[data-category\]"\)[\s\S]*?button\.addEventListener\("click"[\s\S]*?resourceDashboardSelectedCategory = button\.dataset\.category[\s\S]*?renderResourceDashboardTab\(\)/,
+  "selecting a category segment should immediately rerender the dashboard",
 );
 assert.match(
   indexHtml,
-  /id="resource-dashboard-filter-category"[\s\S]*?<option value="all">All<\/option>[\s\S]*?<option value="PRELIMS">PRELIMS<\/option>[\s\S]*?<option value="MIDTERMS">MIDTERMS<\/option>[\s\S]*?<option value="FINALS">FINALS<\/option>/,
-  "the category dropdown should offer All, PRELIMS, MIDTERMS, and FINALS",
+  /id="resource-dashboard-filter-category"[^>]*role="group"[\s\S]*?data-category="all"[\s\S]*?data-category="PRELIMS"[\s\S]*?data-category="MIDTERMS"[\s\S]*?data-category="FINALS"/,
+  "the category segmented control should offer All, PRELIMS, MIDTERMS, and FINALS",
 );
 assert.match(
   indexHtml,
-  /id="resource-dashboard-help"[\s\S]*?class="resource-dashboard-help"[\s\S]*?aria-describedby="resource-dashboard-help"/,
-  "dashboard filters should be associated with a visible contextual explanation",
+  /id="resource-dashboard-filter-year"[^>]*role="group"[\s\S]*?id="resource-dashboard-filter-semester"[^>]*role="group"/,
+  "year and semester filters should use segmented button groups",
 );
-assert.match(
-  appCore,
-  /const resourceDashboardHelp = \{[\s\S]*?SYLLABUS:[\s\S]*?MODULES:[\s\S]*?REVIEWERS:[\s\S]*?function updateResourceDashboardHelp\(tabName\)[\s\S]*?help\.textContent = resourceDashboardHelp\[tabName\] \|\| ""/,
-  "each resource tab should display its own short usage explanation",
-);
-assert.match(
-  appCore,
-  /resourceDashboardActiveTab = tabName;\s*updateResourceDashboardHelp\(tabName\)/,
-  "switching dashboard tabs should immediately update the usage explanation",
+assert.doesNotMatch(
+  indexHtml,
+  /resource-dashboard-refresh/,
+  "the dashboard should not show a manual refresh button",
 );
 assert.match(
   indexHtml,
-  /Reviewer access requires administrator approval[\s\S]*?change your name, access is paused until the updated details\s*are approved/,
-  "the Profile screen should explain reviewer approval and name-edit behavior",
+  /class="resource-dashboard-title" aria-label="Student Portal"[\s\S]*?fa-house[\s\S]*?id="resource-dashboard-syllabus-nav"[\s\S]*?id="resource-dashboard-reviewers-nav"[\s\S]*?fa-clipboard-list/,
+  "the portal title should retain a home icon and the tabs a lined-note Reviewer icon",
 );
 assert.match(
   appCore,
-  /resourceDashboardSelectedYear = populateTermOptions\([\s\S]*?"3",\s*true,\s*\)/,
+  /function initializeResourceDashboardAutoRefresh\(\)[\s\S]*?setInterval\([\s\S]*?RESOURCE_DASHBOARD_AUTO_REFRESH_INTERVAL_MS[\s\S]*?visibilitychange[\s\S]*?pageshow[\s\S]*?function initializeResourceDashboardControls\(\)/,
+  "auto-refresh should be initialized once and revalidate the dashboard when a page returns",
+);
+assert.doesNotMatch(
+  indexHtml,
+  /resource-dashboard-help|aria-describedby="resource-dashboard-help"/,
+  "the unnecessary white help note should be removed from the resource tabs",
+);
+assert.doesNotMatch(
+  appCore,
+  /resourceDashboardHelp|updateResourceDashboardHelp/,
+  "the removed tab explanations should not be recreated by dashboard code",
+);
+assert.doesNotMatch(
+  indexHtml,
+  /Reviewer access requires administrator approval/,
+  "the Profile screen should not show the removed reviewer access notice",
+);
+assert.match(
+  appCore,
+  /resourceDashboardSelectedYear = populateTermOptions\([\s\S]*?defaultYear,\s*true,\s*false,\s*\["1",\s*"2",\s*"3"\],\s*\)/,
   "the year filter should support an all-levels selection",
 );
 assert.match(
   appCore,
-  /createResourceDashboardElement\(\s*"option",\s*"",\s*"All",?\s*\)[\s\S]*?allOption\.value = "all"/,
-  "the year dropdown should label its all-levels option simply All",
+  /const options = sortedValues\.map\(\(value\) => \(\{\s*value,\s*label:\s*value,\s*\}\)\)[\s\S]*?options\.unshift\(\{\s*value:\s*"all",\s*label:\s*"All"\s*\}\)[\s\S]*?button\.dataset\.filterValue = value[\s\S]*?button\.disabled =\s*disabled \|\| \(value !== "all" && !values\.has\(value\)\)[\s\S]*?control\.replaceChildren\(\.\.\.buttons\)/,
+  "the year and semester segmented controls should populate available and disabled values with All",
 );
 assert.match(
   appCore,
-  /const allYearLevelsSelected = resourceDashboardSelectedYear === "all"[\s\S]*?semesterFilterControl\.disabled = allYearLevelsSelected[\s\S]*?if \(allYearLevelsSelected\)[\s\S]*?resourceDashboardSelectedSemester = "all"/,
-  "All Year Levels should disable the semester filter and select all semesters",
+  /yearFilterControl\.addEventListener\("click"[\s\S]*?resourceDashboardSelectedYear = button\.dataset\.filterValue[\s\S]*?renderResourceDashboardTab\(\)/,
+  "changing the year segmented control should immediately rerender results",
+);
+assert.match(
+  appCore,
+  /semesterFilterControl\.addEventListener\("click"[\s\S]*?resourceDashboardSelectedSemester = button\.dataset\.filterValue[\s\S]*?renderResourceDashboardTab\(\)/,
+  "changing the semester segmented control should immediately rerender results",
+);
+assert.match(
+  appCore,
+  /const allYearLevelsSelected = resourceDashboardSelectedYear === "all"[\s\S]*?if \(allYearLevelsSelected\)[\s\S]*?resourceDashboardSelectedSemester = "all"[\s\S]*?true,\s*true,\s*\["1",\s*"2"\],\s*\)/,
+  "All Year Levels should disable the semester segments and select all semesters",
 );
 assert.match(
   appCore,
@@ -251,43 +281,83 @@ assert.match(
 );
 assert.match(
   appCore,
+  /const selectedYearName = \{\s*"1": "First",\s*"2": "Second",\s*"3": "Third",\s*\}\[resourceDashboardSelectedYear\][\s\S]*?\?\s*`\$\{selectedYearName\} Year`/,
+  "all-semester status should use First, Second, or Third Year labels",
+);
+assert.match(
+  appCore,
   /`Year Level \$\{resourceDashboardSelectedYear\}\.\$\{resourceDashboardSelectedSemester\}`[\s\S]*?`Showing \$\{visibleRows\.length\} of \$\{nonEmptyRows\.length\} rows for \$\{selectedTerm\}\./,
   "the dashboard row count should identify the selected term as Year Level X.Y and end with a period",
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-control:first-child select\s*\{\s*width:\s*3\.5rem;\s*\}[\s\S]*?\.resource-dashboard-control:nth-child\(2\) select\s*\{\s*width:\s*3\.5rem;/,
-  "year and semester dropdowns should use compact widths",
+  /\.resource-dashboard-filters\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);[\s\S]*?\.resource-dashboard-term-control\s*\{[^}]*width:\s*100%;[\s\S]*?\.resource-dashboard-semester-segments\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)[\s\S]*?\.resource-dashboard-segmented-control button\s*\{[^}]*overflow-x:\s*auto;[^}]*white-space:\s*nowrap;/,
+  "Year and Semester should fit side by side without filter labels spilling",
 );
 assert.match(
   resourceStyles,
-  /#resource-dashboard-filter-category\s*\{\s*width:\s*6\.5rem;\s*padding-right:\s*0\.4rem;\s*padding-left:\s*0\.4rem;/,
-  "the category dropdown should fit its phase labels without excess horizontal space",
+  /\.resource-dashboard-filters\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);[\s\S]*?#resource-dashboard-category-filter\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*width:\s*100%;[\s\S]*?\.resource-dashboard-category-segments\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/,
+  "the category segments should span the filter row beneath consistently sized controls",
 );
 assert.match(
   resourceStyles,
-  /\.resource-portal-nav-item:first-child\s*\{\s*margin-left:\s*auto;\s*\}[\s\S]*?\.resource-portal-nav-item:last-child\s*\{\s*margin-right:\s*auto;\s*\}/,
-  "dashboard links should center when there is free space and remain reachable when overflowing",
+  /\.resource-dashboard-segmented-control button\.is-active\s*\{[^}]*color:\s*#fff;[^}]*background:\s*#2563eb;[\s\S]*?\.dark \.resource-dashboard-segmented-control\s*\{[^}]*background:\s*#334155;/,
+  "the segmented category selection should use the website's blue accent in both themes",
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-topbar \.resource-profile-toggle\s*\{\s*margin-left:\s*auto;/,
-  "the Profile icon button should align to the far right of the title bar",
+  /\.resource-dashboard-segmented-control button:disabled\s*\{[^}]*cursor:\s*not-allowed;[^}]*opacity:\s*0\.5;/,
+  "the disabled Syllabus category segments should look inactive",
 );
 assert.match(
   resourceStyles,
-  /#resource-reviewer-signin-button\s*\{[^}]*justify-content:\s*center;/,
-  "Google sign-in should be horizontally centered",
+  /#resource-reviewers-locked-panel:not\(\[hidden\]\)\s*~\s*\.resource-portal-toolbar\s*\{\s*display:\s*none;/,
+  "the empty dashboard toolbar spacing should be removed while the Reviewers section is locked",
 );
 assert.match(
   resourceStyles,
-  /#resource-reviewer-signin-button\[hidden\],\s*\.resource-reviewer-signout\[hidden\]\s*\{\s*display:\s*none;/,
+  /#resource-reviewers-locked-panel:not\(\[hidden\]\)\s*~\s*#resource-portal-status\s*~\s*\.resource-dashboard-table-scroll\s*\{\s*display:\s*none;/,
+  "the empty table frame should be hidden while the Reviewers section is locked",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-segmented-control button\s*\{[^}]*text-transform:\s*uppercase;/,
+  "year, semester, and category labels should be capitalized consistently",
+);
+assert.match(
+  appCore,
+  /const preferredTerm = "3\.2"[\s\S]*?availablePreviousTerms = orderedTerms\.filter[\s\S]*?year < preferredYear \|\|\s*\(year === preferredYear && semester <= preferredSemester\)[\s\S]*?const defaultTerm =\s*availablePreviousTerms\[availablePreviousTerms\.length - 1\][\s\S]*?!termValues\.has\(preferredTerm\)[\s\S]*?resourceDashboardSelectedYear = defaultYear;[\s\S]*?resourceDashboardSelectedSemester = defaultTerm\.split\("\."\)\[1\]/,
+  "default filters should prefer year 3 semester 2 and fall back to the nearest earlier available term",
+);
+assert.match(
+  appCore,
+  /const previousSemesters = orderedSemesters\.filter\([\s\S]*?Number\(semester\) <= preferredSemester[\s\S]*?const fallbackSemester =\s*previousSemesters\[previousSemesters\.length - 1\]/,
+  "missing semester 2 should fall back to the nearest earlier available semester",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-sidebar\s*\{[^}]*justify-content:\s*center;[\s\S]*?\.resource-portal-nav-item:first-child\s*\{\s*margin-left:\s*0;\s*\}[\s\S]*?\.resource-portal-nav-item:last-child\s*\{\s*margin-right:\s*0;\s*\}/,
+  "Syllabus, Modules, and Reviewers should be centered together in the navigation row",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-topbar \.resource-profile-toggle\s*\{\s*margin-left:\s*auto;[\s\S]*?\.resource-profile-toggle\s*\{[^}]*display:\s*inline-grid;[^}]*justify-items:\s*center;[\s\S]*?\.resource-profile-toggle > img\s*\{[^}]*width:\s*1\.35rem;[\s\S]*?\.resource-profile-toggle > i\s*\{[^}]*width:\s*1\.75rem;[^}]*height:\s*1\.75rem;[^}]*font-size:\s*1\.35rem;[\s\S]*?\.resource-profile-toggle:hover,\s*\.resource-profile-toggle\.is-active\s*\{[^}]*border-color:\s*transparent;[^}]*color:\s*inherit;[^}]*background:\s*transparent;/,
+  "the Profile control should be right aligned with an enlarged icon and unchanged picture sizing",
+);
+assert.match(
+  resourceStyles,
+  /#resource-reviewer-signin-button\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*justify-content:\s*center;[^}]*overflow:\s*hidden;[\s\S]*?#resource-reviewer-signin-button iframe\s*\{[^}]*max-width:\s*100%;/,
+  "Google sign-in should fit its container without overflowing",
+);
+assert.match(
+  resourceStyles,
+  /#resource-reviewer-signin-button\[hidden\],\s*\.resource-reviewer-signout\[hidden\],\s*\.resource-reviewer-retry\[hidden\]\s*\{\s*display:\s*none;/,
   "the sign-in and account action controls should respect their hidden state",
 );
 assert.match(
   resourceStyles,
-  /\.resource-profile-card\s*\{[^}]*display:\s*grid;[^}]*gap:\s*1\.25rem;[\s\S]*?\.resource-reviewer-enrollment\s*\{[^}]*display:\s*grid;[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*gap:\s*1rem;[\s\S]*?\.resource-reviewer-enrollment input\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;/,
-  "Reviewer name fields should stack in a full-width, overflow-safe grid",
+  /\.resource-profile-screen\s*\{[^}]*margin:\s*0 auto;[\s\S]*?\.resource-profile-card\s*\{[^}]*display:\s*grid;[^}]*gap:\s*1rem;[^}]*padding:\s*clamp\(1rem,\s*3vw,\s*1\.5rem\);[\s\S]*?\.resource-reviewer-enrollment\s*\{[^}]*display:\s*grid;[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*gap:\s*1rem;[\s\S]*?\.resource-reviewer-enrollment input\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;/,
+  "Profile settings should avoid excess outer and inner spacing while reviewer fields stay overflow-safe",
 );
 assert.match(
   resourceStyles,
@@ -296,8 +366,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-layout\s*\{[^}]*width:\s*100%;[\s\S]*?\.resource-portal-shell\s*\{[^}]*width:\s*100%;[\s\S]*?\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*fit-content;[^}]*margin-inline:\s*auto;/,
-  "Resource Dashboard containers should fill the page while the table frame fits its content and centers",
+  /\.resource-dashboard-layout\s*\{[^}]*width:\s*min\(100%,\s*40rem\);[^}]*max-width:\s*100%;[\s\S]*?\.resource-portal-shell\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[\s\S]*?\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[\s\S]*?\.resource-dashboard-table\s*\{[^}]*width:\s*max-content;[^}]*margin-inline:\s*auto;[\s\S]*?\.resource-dashboard-table thead tr::before,\s*\.resource-dashboard-table tbody tr::before\s*\{[^}]*inset:\s*0 -100vw;/,
+  "Resource Dashboard should keep a compact stable maximum width while remaining responsive",
 );
 assert.match(
   resourceStyles,
@@ -310,14 +380,44 @@ assert.match(
   "Profile should center the sign-in control and show a circular account avatar",
 );
 assert.match(
-  appCore,
-  /script\.src = "https:\/\/accounts\.google\.com\/gsi\/client\?hl=en"[\s\S]*?renderButton\(signInButton,\s*\{[\s\S]*?theme:\s*"filled_blue"[\s\S]*?shape:\s*"rectangular"[\s\S]*?width:\s*280[\s\S]*?locale:\s*"en"/,
-  "the Google sign-in button should use the site's blue theme, compact rectangular shape, and English",
+  resourceStyles,
+  /\.resource-profile-heading\s*\{[^}]*display:\s*grid;[^}]*justify-items:\s*center;[\s\S]*?\.resource-reviewers-locked-panel\s*\{[^}]*width:\s*fit-content;[^}]*max-width:\s*min\(100%,\s*38rem\);[^}]*margin-inline:\s*auto;/,
+  "the Profile heading should stack and center its icon and label, and the locked message should use a centered content-fit width",
 );
 assert.match(
   appCore,
-  /tabName === "REVIEWERS" &&\s*!reviewerIdentityToken &&\s*!reviewerPendingEnrollmentToken &&\s*!reviewerAuthCheckPending[\s\S]*?openResourceDashboardTab\("PROFILE"\)[\s\S]*?dashboardContent\.hidden = tabName === "PROFILE"[\s\S]*?profileScreen\.hidden = tabName !== "PROFILE"[\s\S]*?if \(tabName === "PROFILE"\) \{\s*void initializeReviewerAuth\(\)/,
-  "the Reviewers tab should wait for in-flight sign-in and route confirmed signed-out users to Profile",
+  /const renderResponsiveSignInButton = \(\) => \{[\s\S]*?Math\.min\(280, Math\.floor\(signInButton\.clientWidth \|\| 280\)\)[\s\S]*?width < 187 \? "signin" : "signin_with"[\s\S]*?renderButton\(signInButton,\s*\{[\s\S]*?theme:\s*"filled_blue"[\s\S]*?text:\s*buttonText[\s\S]*?shape:\s*"rectangular"[\s\S]*?width,[\s\S]*?locale:\s*"en"/,
+  "the Google sign-in button should use the site's blue theme, fit its container, and use English",
+);
+assert.match(
+  appCore,
+  /reviewerSignInButtonResizeHandler = renderResponsiveSignInButton;[\s\S]*?globalScope\.addEventListener\([\s\S]*?"resize"[\s\S]*?reviewerSignInButtonResizeHandler/,
+  "the Google sign-in button should be resized when its container changes",
+);
+assert.match(
+  appCore,
+  /new globalScope\.ResizeObserver\(renderResponsiveSignInButton\)/,
+  "Google sign-in width changes should also be tracked when the container resizes without a window event",
+);
+assert.match(
+  appCore,
+  /resourceDashboardActiveTab = tabName;[\s\S]*?dashboardContent\.hidden = tabName === "PROFILE"[\s\S]*?profileScreen\.hidden = tabName !== "PROFILE"[\s\S]*?lockedPanel\.hidden = tabName !== "REVIEWERS"[\s\S]*?if \(tabName === "PROFILE"\) \{\s*void initializeReviewerAuth\(\)[\s\S]*?if \(tabName === "REVIEWERS"\) \{\s*if \(!reviewerSessionId\) \{[\s\S]*?lockedPanel\.hidden = false[\s\S]*?setResourceDashboardStatus\(""\)/,
+  "signed-out users should see the locked Reviewer message in place without being redirected or shown a busy icon",
+);
+assert.match(
+  appCore,
+  /function renderResourceDashboardTab\(\)[\s\S]*?if \(\s*resourceDashboardActiveTab === "REVIEWERS" &&\s*!reviewerSessionId\s*\) \{[\s\S]*?lockedPanel\.hidden = false[\s\S]*?updateNote\.hidden = true[\s\S]*?filters\.hidden = true[\s\S]*?tableHead\.replaceChildren\(\)[\s\S]*?tableBody\.replaceChildren\(\)[\s\S]*?return true;\s*\}\s*if \(!tab\) return false;/,
+  "late dashboard renders should not hide the locked Reviewer panel or expose its empty filters when signed out",
+);
+assert.match(
+  appCore,
+  /updateNote\.hidden = tabName === "REVIEWERS" && !reviewerSessionId;[\s\S]*?if \(tabName === "REVIEWERS"\) \{[\s\S]*?if \(!reviewerSessionId\) \{[\s\S]*?setResourceDashboardStatus\(""\)/,
+  "the file update note should be hidden while Reviewer resources are locked",
+);
+assert.match(
+  appCore,
+  /if \(updateNote\)\s*updateNote\.hidden =\s*resourceDashboardActiveTab === "REVIEWERS" && !reviewerSessionId;/,
+  "the file update note should become visible when a signed-in Reviewer tab is rendered",
 );
 assert.match(
   appCore,
@@ -336,7 +436,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function signOutReviewer\(explicit = true\)[\s\S]*?setExplicitReviewerSignOut\(true\)[\s\S]*?catch \(error\) \{[\s\S]*?reviewerIdentityToken = ""[\s\S]*?reviewerAuthorizedEmail = ""[\s\S]*?reviewerDashboardRequestGeneration \+= 1/,
+  /function signOutReviewer\(explicit = true[\s\S]*?setExplicitReviewerSignOut\(true\)[\s\S]*?catch \(error\) \{[\s\S]*?reviewerSessionId = ""[\s\S]*?reviewerAuthorizedEmail = ""[\s\S]*?reviewerDashboardRequestGeneration \+= 1/,
   "explicit sign-out should suppress automatic sign-in and clear in-memory credentials even if saving the preference fails",
 );
 assert.doesNotMatch(
@@ -344,9 +444,92 @@ assert.doesNotMatch(
   /localStorage\.setItem\([^,]*(?:token|credential)|sessionStorage\.setItem\([^,]*(?:token|credential)/i,
   "Google credentials must not be persisted in browser storage",
 );
+const invalidCredentialHelper = appCore.match(
+  /function isDefinitivelyInvalidReviewerCredential\(error\) \{[\s\S]*?\n  \}/,
+);
+assert.ok(
+  invalidCredentialHelper,
+  "reviewer verification errors should be classified conservatively",
+);
+const isDefinitivelyInvalidReviewerCredential = new Function(
+  `${invalidCredentialHelper[0]}; return isDefinitivelyInvalidReviewerCredential;`,
+)();
+assert.equal(
+  isDefinitivelyInvalidReviewerCredential({ code: "UNAUTHORIZED" }),
+  true,
+  "a backend-confirmed invalid credential should trigger reauthentication",
+);
+assert.equal(
+  isDefinitivelyInvalidReviewerCredential({ code: "SESSION_EXPIRED" }),
+  true,
+  "an expired application session should be invalidated",
+);
+assert.equal(
+  isDefinitivelyInvalidReviewerCredential({ code: "SESSION_INVALID" }),
+  true,
+  "a revoked application session should be invalidated",
+);
+for (const error of [
+  { code: "AUTH_PROVIDER_UNAVAILABLE" },
+  { code: "SERVER_ERROR" },
+  { code: "HTTP_ERROR", status: 429 },
+  new TypeError("Network request failed"),
+  { name: "TimeoutError" },
+]) {
+  assert.equal(
+    isDefinitivelyInvalidReviewerCredential(error),
+    false,
+    "a temporary or ambiguous verification failure must retain the credential",
+  );
+}
 assert.match(
   appCore,
-  /async function loadResourceDashboard\(\)[\s\S]*?initializeResourceDashboardControls\(\);\s*void initializeReviewerAuth\(\);/,
+  /async function completeReviewerSignIn\(idToken\)[\s\S]*?const previousSessionId =\s*reviewerSessionId \|\| reviewerPendingEnrollmentSessionId;[\s\S]*?reviewerVerificationInFlightToken = idToken;[\s\S]*?authGeneration !== reviewerAuthGeneration \|\|\s*reviewerVerificationInFlightToken !== idToken[\s\S]*?saveReviewerSessionId\(sessionId\)[\s\S]*?if \(isDefinitivelyInvalidReviewerCredential\(error\)\) \{[\s\S]*?previousSessionId[\s\S]*?reviewerVerificationRetryToken = idToken;[\s\S]*?retryButton\.hidden = false/,
+  "candidate verification should preserve the current application session on temporary failures and ignore stale results",
+);
+assert.match(
+  appCore,
+  /function signOutReviewer\(explicit = true[\s\S]*?reviewerVerificationRetryToken = "";[\s\S]*?reviewerSessionId = ""/,
+  "explicit sign-out should clear both the active session and any retry credential",
+);
+assert.match(
+  appCore,
+  /catch \(error\) \{[\s\S]*?Unable to refresh administrator approval right now[\s\S]*?Your current sign-in is retained[\s\S]*?\(globalScope\.DebugUtils \|\| console\)\.error\(\s*"Unable to refresh reviewer account approval status\."/,
+  "temporary approval-check failures should not discard a valid in-memory credential",
+);
+assert.match(
+  appCore,
+  /const retryCredential =\s*reviewerVerificationRetryToken[\s\S]*?signOutReviewer\(false\);[\s\S]*?reviewerVerificationRetryToken = retryCredential;[\s\S]*?reviewerVerificationRetryAvailable = true/,
+  "expiry of the prior session should not discard a distinct candidate credential awaiting retry",
+);
+assert.match(
+  appCore,
+  /function handleReviewerSignOutStorageChange\(event\)[\s\S]*?event\?\.key === REVIEWER_SESSION_STORAGE_KEY[\s\S]*?signOutReviewer\(false\)/,
+  "session changes and explicit sign-out in another tab should clear or restore this tab's reviewer session",
+);
+assert.match(
+  appCore,
+  /if \(!reviewerVerificationRetryToken\)\s*reviewerVerificationRetryAvailable = false;[\s\S]*?if \(retryButton && !reviewerVerificationRetryToken\)\s*retryButton\.hidden = true/,
+  "approval polling for the active account should preserve retry state for a different transient Google credential",
+);
+assert.match(
+  appCore,
+  /function promptReviewerReauthentication\(\)[\s\S]*?reviewerReauthenticationPromptAttempted[\s\S]*?hasExplicitReviewerSignOut\(\)[\s\S]*?identityApi\.prompt\(\(notification\) => \{[\s\S]*?authGeneration !== reviewerAuthGeneration/,
+  "confirmed invalid credentials should trigger at most one guarded Google reauthentication prompt",
+);
+assert.match(
+  appCore,
+  /function signOutReviewer\(explicit = true[\s\S]*?if \(explicit\) globalScope\.google\?\.accounts\?\.id\?\.disableAutoSelect\?\.\(\);/,
+  "only explicit sign-out should disable Google's automatic account selection",
+);
+assert.match(
+  indexHtml,
+  /id="resource-reviewer-retry-verification"[^>]*class="resource-reviewer-signout resource-reviewer-retry"[^>]*hidden/,
+  "temporary verification failures should have an accessible retry control",
+);
+assert.match(
+  appCore,
+  /async function loadResourceDashboard\(\{ silent = false \} = \{\}\)[\s\S]*?initializeResourceDashboardControls\(\);\s*void initializeReviewerAuth\(\);/,
   "Google re-authentication should initialize when the dashboard loads after refresh",
 );
 assert.match(
@@ -376,8 +559,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /reviewersNav\.removeAttribute\("aria-disabled"\)[\s\S]*?reviewersLock\.hidden = true[\s\S]*?function signOutReviewer[\s\S]*?reviewersNav\.removeAttribute\("aria-disabled"\)[\s\S]*?reviewersLock\.hidden = false/,
-  "sign-in should unlock reviewer resources and sign-out should restore the lock state",
+  /function setReviewerAccessEnabled\(enabled\)[\s\S]*?reviewersNav\.title = enabled[\s\S]*?setReviewerAccessEnabled\(accountStatus === "TRUE"\)[\s\S]*?function signOutReviewer[\s\S]*?reviewersNav\.title = "Reviewer resources"/,
+  "verified approval should update the Reviewer navigation label and sign-out should reset it without an icon",
 );
 assert.match(
   appCore,
@@ -391,13 +574,13 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-control input,\s*\.resource-dashboard-control select\s*\{[^}]*min-height:\s*2\.25rem;[^}]*padding:\s*var\(--resource-dashboard-space\) var\(--resource-dashboard-space-wide\);/,
-  "dashboard filter controls should use consistent spacing and align with refresh",
+  /\.resource-dashboard-control\s*\{[^}]*font-size:\s*0\.9rem;[\s\S]*?\.resource-dashboard-segmented-control button\s*\{[^}]*min-height:\s*1\.75rem;[^}]*overflow-x:\s*auto;[^}]*white-space:\s*nowrap;/,
+  "dashboard filter labels should be larger while controls stay compact and clip/scroll long labels",
 );
 assert.match(
   appCore,
-  /resourceDashboardSelectedYear = "3"[\s\S]*?resourceDashboardSelectedSemester = "1"/,
-  "the dashboard should default to year 3, semester 1",
+  /resourceDashboardSelectedYear = "3"[\s\S]*?resourceDashboardSelectedSemester = "2"/,
+  "the dashboard should default to year 3, semester 2",
 );
 assert.match(
   appCore,
@@ -487,8 +670,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /tabName === "REVIEWERS" &&\s*!reviewerIdentityToken &&\s*!reviewerPendingEnrollmentToken &&\s*!reviewerAuthCheckPending[\s\S]*?openResourceDashboardTab\("PROFILE"\)[\s\S]*?Verifying your Google sign-in and reviewer approval/,
-  "the Reviewers tab should stay open while Google sign-in is being verified and route signed-out users to Profile",
+  /if \(tabName === "REVIEWERS"\) \{\s*if \(!reviewerSessionId\) \{[\s\S]*?lockedPanel\.hidden = false[\s\S]*?filters\.hidden = true[\s\S]*?setResourceDashboardStatus\(""\)/,
+  "the Reviewers tab should stay open and display the locked-panel sign-in prompt for unauthenticated users",
 );
 assert.match(
   appCore,
@@ -517,8 +700,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /createResourceDashboardElement\(\s*"option",\s*"",\s*"All",?\s*\)[\s\S]*?allOption\.value = "all"/,
-  "year and semester filters should label their all-values option All",
+  /options\.unshift\(\{\s*value:\s*"all",\s*label:\s*"All"\s*\}\)[\s\S]*?button\.dataset\.filterValue = value[\s\S]*?control\.replaceChildren\(\.\.\.buttons\)/,
+  "year and semester segments should expose an All option",
+);
+assert.match(
+  appCore,
+  /\[\.\.\.new Set\(\[\.\.\.fixedValues,\s*\.\.\.values\]\)\][\s\S]*?button\.disabled =\s*disabled \|\| \(value !== "all" && !values\.has\(value\)\)[\s\S]*?\["1", "2", "3"\][\s\S]*?\["1", "2"\]/,
+  "Year and Semester should retain unavailable choices as disabled options",
 );
 assert.doesNotMatch(
   appCore,
@@ -586,8 +774,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(reviewerIdentityToken\)\s*payload\.idToken = reviewerIdentityToken;/,
-  "file click logs should include the verified account when the user is signed in",
+  /if \(reviewerSessionId\)\s*payload\.sessionId = reviewerSessionId;/,
+  "file click logs should include the verified application session when the user is signed in",
 );
 assert.match(
   network,
@@ -598,6 +786,11 @@ assert.match(
   resourceStyles,
   /\.resource-dashboard-table th\s*\{[^}]*text-align:\s*center;/,
   "the dashboard header row should be center-aligned",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-table thead tr::after\s*\{[^}]*z-index:\s*2;[^}]*right:\s*-100vw;[^}]*bottom:\s*0;[^}]*left:\s*-100vw;[^}]*border-bottom:\s*1px solid/,
+  "the full-width header divider should render above the header cells",
 );
 assert.doesNotMatch(
   appCore,
@@ -611,8 +804,8 @@ assert.doesNotMatch(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-table \.resource-dashboard-column-course\s*\{[^}]*text-align:\s*right;/,
-  "the dashboard Course column should be right-aligned",
+  /\.resource-dashboard-table td\s*\{[^}]*text-align:\s*center;/,
+  "dashboard table cell contents, including Course values, should remain centered",
 );
 assert.match(
   resourceStyles,
@@ -621,13 +814,18 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-table \.resource-dashboard-link-cell\s*\{[^}]*text-align:\s*center;/,
-  "dashboard resource buttons should be center-aligned",
+  /\.resource-dashboard-table td\.resource-dashboard-column-course\s*\{[^}]*text-align:\s*right;/,
+  "the dashboard Course names should be right-aligned without shifting the column heading",
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-help\s*\{[^}]*border-left:\s*3px solid #94a3b8;[^}]*font-size:\s*var\(--resource-dashboard-font-small\);[^}]*line-height:\s*1\.5;/,
-  "contextual dashboard notes should be readable but visually restrained",
+  /\.resource-dashboard-table \.resource-dashboard-link-cell\s*\{[^}]*text-align:\s*center;/,
+  "dashboard resource buttons should be center-aligned",
+);
+assert.doesNotMatch(
+  resourceStyles,
+  /\.resource-dashboard-help\s*\{/,
+  "the unnecessary resource-tab explanation box styles should be removed",
 );
 assert.match(
   resourceStyles,
@@ -646,8 +844,18 @@ assert.match(
 );
 assert.match(
   resourceStyles,
+  /\.resource-dashboard-table-scroll\s*\{[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*visible;/,
+  "the dashboard table should expand with its rows and allow horizontal scrolling",
+);
+assert.doesNotMatch(
+  resourceStyles.match(/\.resource-dashboard-table-scroll\s*\{([^}]+)\}/)?.[1] || "",
+  /\b(?:height|min-height|max-height)\s*:/,
+  "the dashboard table should not have a fixed or bounded height",
+);
+assert.doesNotMatch(
+  resourceStyles,
   /\.resource-portal-nav-item\[aria-busy="true"\]::after\s*\{[^}]*animation:\s*resource-dashboard-status-spin/,
-  "reviewer sign-in and background resource preparation should show progress on the Reviewer tab",
+  "the Reviewer tab should not show an adjacent loading icon",
 );
 assert.match(
   resourceStyles,
@@ -657,7 +865,7 @@ assert.match(
 assert.match(
   resourceStyles,
   /\.resource-portal-sidebar\s*\{[^}]*flex-wrap:\s*nowrap;[^}]*overflow-x:\s*auto;/,
-  "dashboard tabs should remain on one horizontally scrollable row",
+  "dashboard tabs should stay in one row and scroll horizontally if needed",
 );
 assert.match(
   resourceStyles,
@@ -701,18 +909,49 @@ assert.match(
 );
 assert.match(
   network,
-  /get_resource_dashboard:\s*\{\s*required:\s*\["eventId"\],\s*allowed:\s*\["type",\s*"version",\s*"idToken",\s*"eventId",\s*"appVersion"\]/,
+  /get_resource_dashboard:\s*\{\s*required:\s*\["eventId"\],\s*allowed:\s*\[[\s\S]*?"sessionId"[\s\S]*?"eventId"[\s\S]*?\]/,
   "dashboard requests should support cached versions and event-level logging",
 );
 assert.match(
   network,
-  /log_module_access:\s*\{\s*required:\s*\["idToken",\s*"eventId"\]/,
-  "module access logging should require verified identity and a unique event ID",
+  /log_module_access:\s*\{\s*required:\s*\["eventId"\],\s*allowed:\s*\["type",\s*"idToken",\s*"sessionId",\s*"eventId",\s*"appVersion"\]/,
+  "module access logging should require an application session and unique event ID",
 );
 assert.match(
   network,
-  /get_reviewer_account_status:\s*\{\s*required:\s*\["idToken"\]/,
-  "the client should have an authenticated account-status polling endpoint",
+  /get_reviewer_account_status:\s*\{\s*required:\s*\[\],\s*allowed:\s*\["type",\s*"idToken",\s*"sessionId",\s*"appVersion"\]/,
+  "account-status polling should support securely validated application sessions",
+);
+assert.match(
+  appCore,
+  /renderSkeleton\(\);\s*installReviewerSignOutStorageListener\(\);\s*void restoreReviewerSession\(\);/,
+  "saved reviewer sessions and tab synchronization should initialize during app startup",
+);
+assert.match(
+  appCore,
+  /async function restoreReviewerSession\([\s\S]*?type: "restore_reviewer_session", sessionId[\s\S]*?applyReviewerAccountStatus\(response, sessionId\)[\s\S]*?clearStoredReviewerSession\(\)[\s\S]*?Unable to verify your saved reviewer session right now\. It has been kept/,
+  "startup should restore sessions from the backend and retain them after temporary failures",
+);
+assert.match(
+  appCore,
+  /REVIEWER_SESSION_STORAGE_KEY = "mrh_reviewer_session_v1"[\s\S]*?function saveReviewerSessionId\(sessionId\)[\s\S]*?localStorage\.setItem\(\s*REVIEWER_SESSION_STORAGE_KEY,\s*sessionId/,
+  "only the opaque application session ID should persist in browser storage",
+);
+assert.match(
+  network,
+  /restore_reviewer_session:[\s\S]*?required: \["sessionId"\][\s\S]*?sign_out_reviewer:[\s\S]*?required: \["sessionId"\]/,
+  "the backend client contract should expose validated session restore and revocation",
+);
+const backend = fs.readFileSync("backend/main.js", "utf8");
+assert.match(
+  backend,
+  /REVIEWER_SESSION_TTL_MS = 30 \* 24 \* 60 \* 60 \* 1000[\s\S]*?function createReviewerSession_\([\s\S]*?Utilities\.getUuid\(\)[\s\S]*?function verifyReviewerSession_\([\s\S]*?session\.expiresAt[\s\S]*?Date\.now\(\)/,
+  "the backend should create random sessions and validate their server-side expiry",
+);
+assert.match(
+  backend,
+  /function getReviewerSessionPropertyKey_\(sessionId\)[\s\S]*?REVIEWER_SESSION_PROPERTY_PREFIX \+ sha256Hex\(sessionId\)[\s\S]*?function revokeReviewerSession_\(/,
+  "the backend should persist sessions by a hashed ID and support server-side revocation",
 );
 assert.match(
   network,

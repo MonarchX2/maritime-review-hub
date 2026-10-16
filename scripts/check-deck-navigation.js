@@ -90,6 +90,41 @@ assert.match(
   /class="dashboard-header-row[^"]*\bmb-0\b/,
   "dashboard header should have no bottom margin above the navigation bar",
 );
+assert.match(
+  indexSource,
+  /<h2\s+aria-label="Home"[^>]*>[\s\S]*?<span class="dashboard-subject-label" aria-hidden="true"\s*>\s*HOME\s*<\/span\s*>[\s\S]*?class="dashboard-subject-icon fa-solid fa-house"/,
+  "the dashboard heading should identify Home with a house icon",
+);
+assert.match(
+  appCoreSource,
+  /data-deck-breadcrumb[\s\S]*?<button onclick="goToPath\(-1\)" aria-label="Home" title="Home" class="deck-breadcrumb-home[^"]*"[^>]*>[\s\S]*?<i class="fa-solid fa-house text-brand-500" aria-hidden="true"><\/i>\s*<\/button>/,
+  "the deck breadcrumb should use an accessible icon-only house button for Home navigation",
+);
+assert.match(
+  stylesSource,
+  /\.deck-breadcrumb-home\s*\{[^}]*display:\s*inline-flex;[^}]*flex:\s*0 0 auto;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;[^}]*padding:\s*0;[^}]*border:\s*0;[^}]*background:\s*transparent;/,
+  "the breadcrumb Home button should center its icon without adding width or a background",
+);
+assert.match(
+  appCoreSource,
+  /<div data-deck-breadcrumb class="[^"]*">/,
+  "the deck breadcrumb should remain a simple inline navigation row",
+);
+assert.doesNotMatch(
+  appCoreSource.match(/<div data-deck-breadcrumb class="([^"]*)">/)?.[1] ?? "",
+  /\bbg-white\b|\bdark:bg-gray-800\b|\bp-3\b|\brounded-lg\b|\bshadow-sm\b|\bborder\b/,
+  "the deck breadcrumb should not render a background box, border, or shadow",
+);
+assert.match(
+  stylesSource,
+  /\.dashboard-header-row\s*\{[^}]*min-height:\s*2\.375rem;[\s\S]*?\.deck-breadcrumb-nav\s*\{[^}]*box-sizing:\s*border-box;[^}]*height:\s*2\.375rem;[^}]*margin-block:\s*0 1rem;[^}]*padding-block:\s*0\.5rem;[^}]*border-block:\s*1px solid #e5e7eb;[\s\S]*?\.dark \.deck-breadcrumb-nav\s*\{[^}]*border-color:\s*#374151;/,
+  "the Home/controls row and breadcrumb should align with zero top gap and theme-aware separators",
+);
+assert.match(
+  indexSource,
+  /class="student-portal-deck-icon" aria-hidden="true">\s*<i class="fa-solid fa-book-open"><\/i>/,
+  "the Student Portal deck in Home should use a book icon",
+);
 
 function checkSessionNavigationUrls() {
   const location = {
@@ -162,27 +197,33 @@ function checkSessionNavigationUrls() {
   assert.deepEqual(
     Array.from(window.getNavigationPathFromUrl()),
     ["resources"],
-    "the Dashboard URL should open the Resource Dashboard view",
+    "the legacy Dashboard URL should continue opening the portal view",
+  );
+  location.hash = "#/portal";
+  assert.deepEqual(
+    Array.from(window.getNavigationPathFromUrl()),
+    ["resources"],
+    "the Portal URL should open the portal view",
   );
   location.hash = "#/resources";
   assert.deepEqual(
     Array.from(window.getNavigationPathFromUrl()),
     ["resources"],
-    "the legacy Resources URL should continue opening the Resource Dashboard",
+    "the legacy Resources URL should continue opening the portal view",
   );
   window.updateNavigationUrl(["resources"]);
   assert.equal(
     location.hash,
-    "#/dashboard",
-    "opening the Resource Dashboard should use the canonical Dashboard URL",
+    "#/portal",
+    "opening the portal should use the canonical Portal URL",
   );
 }
 
 checkSessionNavigationUrls();
 assert.match(
   indexSource,
-  /id="database-connection-icon"[\s\S]*?onclick="navigate\('resources'\)"[\s\S]*?aria-label="Open Resource Dashboard"[\s\S]*?Resource Dashboard/,
-  "the Resource Dashboard button should appear immediately after the sync status icon",
+  /<div class="flex items-center gap-4 relative">\s*<button[\s\S]*?onclick="navigate\('resources'\)"[\s\S]*?aria-label="Open Student Portal"[\s\S]*?fa-house[\s\S]*?Student Portal[\s\S]*?id="btn-theme-toggle"/,
+  "the house-icon Student Portal button should appear in the header's right-side actions",
 );
 assert.match(
   indexSource,
@@ -196,13 +237,13 @@ assert.match(
 );
 assert.match(
   indexSource,
-  /class="resource-dashboard-topbar"[\s\S]*?resource-dashboard-title">Resource Dashboard[\s\S]*?id="resource-dashboard-profile-nav"[\s\S]*?is-active[\s\S]*?aria-current="page"[\s\S]*?id="resource-dashboard-content" hidden[\s\S]*?id="resource-dashboard-profile"[\s\S]*?resource-profile-screen/,
-  "the Resource Dashboard should open on Profile and keep the Profile control beside the title",
+  /class="resource-dashboard-topbar"[\s\S]*?resource-dashboard-title" aria-label="Student Portal"[\s\S]*?fa-house[\s\S]*?id="resource-dashboard-profile-nav"[\s\S]*?is-active[\s\S]*?aria-current="page"[\s\S]*?id="resource-dashboard-content" hidden[\s\S]*?id="resource-dashboard-profile"[\s\S]*?resource-profile-screen/,
+  "the Student Portal should open on Profile and keep the Profile control beside the title",
 );
 assert.match(
   deckNavSource,
-  /confirmNavigationAwayFromResourceDashboard[\s\S]*?Are you sure you want to exit the Resource Dashboard\?[\s\S]*?requestConfirmation\(message, title\)[\s\S]*?currentView\?\.id === "view-resources"[\s\S]*?confirmNavigationAwayFromResourceDashboard/,
-  "leaving the Resource Dashboard should ask for confirmation",
+  /confirmNavigationAwayFromResourceDashboard[\s\S]*?Are you sure you want to exit the Student Portal\?[\s\S]*?requestConfirmation\(message, title\)[\s\S]*?currentView\?\.id === "view-resources"[\s\S]*?confirmNavigationAwayFromResourceDashboard/,
+  "leaving the Student Portal should ask for confirmation",
 );
 assert.doesNotMatch(
   indexSource,
@@ -300,6 +341,31 @@ assert.doesNotMatch(
   "folders should not move during entry and exit navigation",
 );
 assert.match(indexSource, /<div id="category-list"><\/div>/);
+assert.match(
+  indexSource,
+  /<button\s+onclick="navigate\('resources'\)"[\s\S]*?aria-label="Open Student Portal"[\s\S]*?type="button"[\s\S]*?hidden[\s\S]*?Student Portal/,
+  "the legacy header Student Portal control should be hidden",
+);
+assert.match(
+  indexSource,
+  /<section id="view-dashboard"[^>]*>\s*<div class="student-portal-deck-grid">[\s\S]*?<button[\s\S]*?class="student-portal-deck deck-card"[\s\S]*?onclick="navigate\('resources'\)"[\s\S]*?aria-label="Open Student Portal"[\s\S]*?<span class="student-portal-deck-title">STUDENT PORTAL<\/span>[\s\S]*?<\/button>[\s\S]*?<\/div>\s*<div\s+id="deck-not-found-notice"/,
+  "the Student Portal deck should be the first item at the top of the dashboard",
+);
+assert.doesNotMatch(
+  indexSource,
+  /<span class="student-portal-deck-action"[^>]*>[\s\S]*?Open portal/,
+  "the Student Portal card should not show an Open Portal action label",
+);
+assert.match(
+  stylesSource,
+  /\.student-portal-deck-grid\s*\{[^}]*display:\s*grid;[^}]*gap:\s*1rem;[^}]*margin-block:\s*1rem;[\s\S]*?\.student-portal-deck\s*\{[^}]*width:\s*100%;[^}]*gap:\s*0\.75rem;[^}]*padding:\s*0\.75rem 1rem;[\s\S]*?background:\s*#fff;[\s\S]*?\.student-portal-deck-icon\s*\{[^}]*width:\s*2\.5rem;[^}]*height:\s*2\.5rem;[\s\S]*?\.dark \.student-portal-deck\s*\{[\s\S]*?background:\s*#1f2937;/,
+  "the Student Portal deck should use compact spacing and match the dashboard's neutral light and dark styling",
+);
+assert.doesNotMatch(
+  stylesSource.match(/\.student-portal-deck\s*\{([^}]*)\}/)?.[1] ?? "",
+  /min-height:\s*8rem/,
+  "the Student Portal deck should grow to its content instead of retaining excess minimum height",
+);
 assert.match(
   appCoreSource,
   /container\.className = "";/,
@@ -734,8 +800,8 @@ async function checkConcurrentNavigation() {
     "the Resource Dashboard should remain visible after exit is cancelled",
   );
   assert.deepEqual(confirmationRequests.at(-1), {
-    message: "Are you sure you want to exit the Resource Dashboard?",
-    title: "Exit Resource Dashboard",
+    message: "Are you sure you want to exit the Student Portal?",
+    title: "Exit Student Portal",
   });
   confirmationResult = true;
   await context.module.exports.navigate("dashboard");

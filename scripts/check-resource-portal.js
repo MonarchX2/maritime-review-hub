@@ -7,6 +7,45 @@ const appCore = fs.readFileSync("app-core.js", "utf8");
 const backend = fs.readFileSync("backend/main.js", "utf8");
 const deckNavigation = fs.readFileSync("deck-nav-core.js", "utf8");
 const index = fs.readFileSync("index.html", "utf8");
+const releaseMetadata = JSON.parse(fs.readFileSync("version.json", "utf8"));
+const appVersion = releaseMetadata.buildVersion;
+const resourceStyles = fs.readFileSync("styles.css", "utf8");
+
+assert.match(
+  releaseMetadata.version,
+  /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
+  "version.json must define the editable semantic app version",
+);
+assert.match(
+  appVersion,
+  /^mrh-[A-Za-z0-9._-]+$/,
+  "version.json must define a valid generated release build identifier",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-shell\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?overflow:\s*visible;/,
+  "the dashboard box should expand with its content instead of clipping it",
+);
+assert.doesNotMatch(
+  resourceStyles.match(/\.resource-portal-shell\s*\{([^}]+)\}/)?.[1] || "",
+  /\b(?:height|min-height|max-height)\s*:/,
+  "the dashboard box must not have a fixed or bounded height",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-sidebar\s*\{[\s\S]*?flex-wrap:\s*nowrap;[\s\S]*?overflow-x:\s*auto;/,
+  "dashboard navigation should stay on one line and scroll horizontally if needed",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-browser\s*\{[^}]*min-width:\s*0;[^}]*min-height:\s*auto;/,
+  "the dashboard content area should expand naturally with dynamically added content",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-table-scroll\s*\{[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*visible;/,
+  "wide tables may scroll horizontally without a vertical height limit",
+);
 
 assert.match(
   index,
@@ -15,13 +54,18 @@ assert.match(
 );
 assert.match(
   index,
-  /id="resource-dashboard-reviewers-nav"[^>]*onclick="openResourceDashboardTab\('REVIEWERS'\)"[^>]*aria-label="Reviewers — sign in with Google"[^>]*title="Sign in with Google to access reviewer resources"[\s\S]*?id="resource-dashboard-reviewers-lock"/,
-  "the Reviewers tab should remain clickable and direct signed-out users to Profile",
+  /id="resource-dashboard-reviewers-nav"[^>]*onclick="openResourceDashboardTab\('REVIEWERS'\)"[^>]*aria-label="Reviewers"[\s\S]*?Reviewers\s*<\/button>[\s\S]*?id="resource-reviewers-locked-panel"[\s\S]*?This section is locked[\s\S]*?Sign in or create an account/,
+  "the Reviewers tab should show an in-place locked message with a sign-in and account-creation action",
+);
+assert.doesNotMatch(
+  index,
+  /resource-dashboard-reviewers-lock|fa-lock resource-dashboard-lock-icon/,
+  "the Reviewers tab should not display a lock icon",
 );
 assert.match(
   index,
-  /id="resource-dashboard-reviewers-nav"[\s\S]*?<i class="fa-solid fa-clipboard-check" aria-hidden="true"><\/i>/,
-  "the Reviewers tab should use a clear review-material icon",
+  /id="resource-dashboard-reviewers-nav"[\s\S]*?<i class="fa-solid fa-clipboard-list" aria-hidden="true"><\/i>/,
+  "the Reviewers tab should use a lined-note icon",
 );
 assert.doesNotMatch(
   index.match(/id="resource-dashboard-reviewers-nav"[^>]*>/)?.[0] || "",
@@ -35,8 +79,8 @@ assert.match(
 );
 assert.match(
   index,
-  /class="resource-dashboard-topbar"[\s\S]*?resource-dashboard-title">Resource Dashboard[\s\S]*?id="resource-dashboard-profile-nav"[^>]*onclick="openResourceDashboardTab\('PROFILE'\)"[^>]*aria-label="Profile"[\s\S]*?<\/button>\s*<\/div>\s*<div class="resource-portal-shell">/,
-  "the Profile button should sit to the right of the Resource Dashboard title, outside the resource tabs",
+  /class="resource-dashboard-topbar"[\s\S]*?resource-dashboard-title" aria-label="Student Portal"[\s\S]*?fa-house[\s\S]*?<span>Student Portal<\/span>[\s\S]*?id="resource-dashboard-profile-nav"[^>]*onclick="openResourceDashboardTab\('PROFILE'\)"[^>]*aria-label="Profile"[\s\S]*?<\/button>\s*<\/div>\s*<div class="resource-portal-shell">/,
+  "the Profile button should sit to the right of the Student Portal title, outside the resource tabs",
 );
 assert.match(
   index,
@@ -71,6 +115,11 @@ assert.doesNotMatch(
   /\brequired\b/,
   "the middle initial input must not be required",
 );
+assert.doesNotMatch(
+  index,
+  /Reviewer access requires administrator approval/,
+  "the Profile screen should not display the reviewer access approval notice",
+);
 assert.match(
   index,
   /resource-profile-form-note[\s\S]*?correct capitalization[\s\S]*?Maria[\s\S]*?Dela Cruz/,
@@ -98,13 +147,13 @@ assert.doesNotMatch(
 );
 assert.match(
   index,
-  /resource-dashboard-topbar[\s\S]*?id="resource-dashboard-return"[\s\S]*?aria-label="Return to main menu"[\s\S]*?<span>Return<\/span>[\s\S]*?resource-dashboard-title">Resource Dashboard[\s\S]*?resource-portal-shell/,
-  "the dashboard should place a Return button and Resource Dashboard label above and outside its card",
+  /resource-dashboard-topbar[\s\S]*?id="resource-dashboard-return"[\s\S]*?aria-label="Return to main menu"[\s\S]*?<span>Return<\/span>[\s\S]*?resource-dashboard-title" aria-label="Student Portal"[\s\S]*?fa-house[\s\S]*?<span>Student Portal<\/span>[\s\S]*?resource-portal-shell/,
+  "the dashboard should place a Return button and Student Portal label above and outside its card",
 );
 assert.match(
   index,
-  /resource-dashboard-table-scroll[\s\S]*?class="resource-dashboard-update-note">[\s\S]*?Changes in Google Drive may take up to 3 minutes to appear\.\s*Refresh to check for updates\./,
-  "the dashboard should show a centered bottom note inside the card explaining file update delays",
+  /resource-dashboard-table-scroll[\s\S]*?class="resource-dashboard-update-note">\s*File updates may take up to 3 minutes\.\s*<\/p>/,
+  "the dashboard should show a concise note about file update delays",
 );
 assert.match(
   index,
@@ -118,8 +167,8 @@ assert.doesNotMatch(
 );
 assert.match(
   index,
-  /<span class="resource-dashboard-title">Resource Dashboard<\/span>/,
-  "the dashboard label should sit to the right of the Return button",
+  /<span class="resource-dashboard-title" aria-label="Student Portal">[\s\S]*?<span>Student Portal<\/span>\s*<\/span>/,
+  "the dashboard title should retain its accessible text and a home icon",
 );
 assert.doesNotMatch(
   index,
@@ -133,8 +182,28 @@ assert.match(
 );
 assert.match(
   index,
-  /id="resource-dashboard-filter-category"[\s\S]*?<option value="all">All<\/option>[\s\S]*?<option value="PRELIMS">PRELIMS<\/option>[\s\S]*?<option value="MIDTERMS">MIDTERMS<\/option>[\s\S]*?<option value="FINALS">FINALS<\/option>/,
-  "the category filter should provide All, PRELIMS, MIDTERMS, and FINALS",
+  /resource-dashboard-filter-semester[\s\S]*?resource-dashboard-category-filter/,
+  "the filter controls should render without a manual refresh button",
+);
+assert.doesNotMatch(
+  index,
+  /resource-dashboard-refresh/,
+  "the dashboard should not show a manual refresh button",
+);
+assert.match(
+  index,
+  /id="resource-dashboard-filter-year"[^>]*role="group"[\s\S]*?id="resource-dashboard-filter-semester"[^>]*role="group"[\s\S]*?id="resource-dashboard-category-filter"/,
+  "Year and Semester should use segmented button groups",
+);
+assert.match(
+  appCore,
+  /initializeResourceDashboardAutoRefresh\(\)[\s\S]*?setInterval\([\s\S]*?RESOURCE_DASHBOARD_AUTO_REFRESH_INTERVAL_MS[\s\S]*?visibilitychange[\s\S]*?pageshow/,
+  "the dashboard should periodically revalidate its backend version and refresh on tab return",
+);
+assert.match(
+  index,
+  /id="resource-dashboard-filter-category"[^>]*role="group"[\s\S]*?data-category="all"[\s\S]*?data-category="PRELIMS"[\s\S]*?data-category="MIDTERMS"[\s\S]*?data-category="FINALS"/,
+  "the category segmented control should provide All, PRELIMS, MIDTERMS, and FINALS",
 );
 assert.match(
   appCore,
@@ -143,8 +212,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /showCategoryFilter = \["MODULES", "REVIEWERS"\]\.includes\(\s*resourceDashboardActiveTab,\s*\)/,
-  "the category filter should be available only for Modules and Reviewers",
+  /hasCategoryFilter = \["MODULES", "REVIEWERS"\]\.includes\(\s*resourceDashboardActiveTab,\s*\)[\s\S]*?availableCategories = new Set\([\s\S]*?button\.disabled = !hasCategoryFilter \|\| !categoryAvailable/,
+  "the category filter should disable unsupported categories and all choices on Syllabus",
 );
 assert.match(
   appCore,
@@ -168,7 +237,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /async function loadResourceDashboard\(\)[\s\S]*?type: "get_resource_dashboard"/,
+  /async function loadResourceDashboard\(\{ silent = false \} = \{\}\)[\s\S]*?type: "get_resource_dashboard"/,
   "the dashboard should load its sheet data from the backend",
 );
 assert.match(
@@ -203,15 +272,14 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(!tab \|\| !status \|\| !tableHead \|\| !tableBody\) return false;/,
+  /if \(!status \|\| !tableHead \|\| !tableBody\) return false;[\s\S]*?if \(!tab\) return false;/,
   "dashboard rendering should not require a visible title bar",
 );
 assert.match(
   fs.readFileSync("styles.css", "utf8"),
-  /\.resource-dashboard-table\s*\{[^}]*width:\s*max-content;[^}]*\}/,
-  "dashboard table columns should size to their contents without stretching",
+  /\.resource-dashboard-table\s*\{[^}]*width:\s*max-content;[^}]*margin-inline:\s*auto;[\s\S]*?\.resource-dashboard-table thead tr::before,\s*\.resource-dashboard-table tbody tr::before\s*\{[^}]*inset:\s*0 -100vw;[^}]*border-bottom:\s*1px solid/,
+  "table content should stay centered while generated row lines extend across the full frame",
 );
-const resourceStyles = fs.readFileSync("styles.css", "utf8");
 assert.match(
   appCore,
   /const nonEmptyRows = tab\.rows[\s\S]*?tab\.columns\.some\(\(_, columnIndex\) => \{[\s\S]*?displayValue !== "" \|\| isResourceDashboardLink\(linkUrl\)[\s\S]*?const populatedColumnIndices = tab\.columns[\s\S]*?nonEmptyRows\.some\(/,
@@ -229,8 +297,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-layout\s*\{[^}]*width:\s*100%;[^}]*margin-inline:\s*auto;/,
-  "the dashboard layout should use the available content width",
+  /\.resource-dashboard-layout\s*\{[^}]*width:\s*min\(100%,\s*40rem\);[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;[^}]*margin-inline:\s*auto;/,
+  "the dashboard layout should use a compact stable maximum width and remain responsive",
 );
 assert.match(
   resourceStyles,
@@ -239,38 +307,53 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-control:first-child select\s*\{[^}]*width:\s*3\.5rem;/,
-  "the year filter dropdown should have a compact width",
+  /\.resource-dashboard-segmented-control\s*\{[^}]*overflow:\s*hidden;[\s\S]*?\.resource-dashboard-segmented-control button\s*\{[^}]*overflow-x:\s*auto;[^}]*white-space:\s*nowrap;/,
+  "filter options should use matching segmented controls without spilling long labels",
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-control:nth-child\(2\) select\s*\{[^}]*width:\s*3\.5rem;/,
-  "the semester filter dropdown should have a compact width",
+  /\.resource-dashboard-table-scroll\s*\{[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*visible;/,
+  "the dashboard table should grow with its rows and remain horizontally scrollable",
+);
+assert.doesNotMatch(
+  resourceStyles.match(/\.resource-dashboard-table-scroll\s*\{([^}]+)\}/)?.[1] || "",
+  /\b(?:height|min-height|max-height)\s*:/,
+  "the dashboard table must not impose a fixed or bounded height",
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-table-scroll\s*\{[^}]*max-height:\s*min\(68vh,\s*48rem\);/,
-  "the dashboard table should scroll within the available viewport",
+  /\.resource-dashboard-layout\s*\{[^}]*width:\s*min\(100%,\s*40rem\);[^}]*max-width:\s*100%;[^}]*margin-inline:\s*auto;/,
+  "the dashboard toolbar and card should maintain a compact consistent width within the available page width",
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-layout\s*\{[^}]*width:\s*100%;[^}]*margin-inline:\s*auto;/,
-  "the dashboard toolbar and card should fill the available page width",
+  /\.resource-portal-shell\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;/,
+  "the dashboard box should fill the stable-width layout without exceeding its parent",
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*fit-content;[^}]*margin-inline:\s*auto;/,
-  "the dashboard table should fit its content and center within its section",
+  /\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;[\s\S]*?\.resource-dashboard-table\s*\{[^}]*width:\s*max-content;[^}]*margin-inline:\s*auto;[\s\S]*?\.resource-dashboard-table thead tr::before,\s*\.resource-dashboard-table tbody tr::before\s*\{[^}]*inset:\s*0 -100vw;[^}]*border-bottom:\s*1px solid/,
+  "row lines and backgrounds should fill the full frame while table content stays centered",
 );
 assert.match(
   appCore,
   /function getResourceDashboardColumnHeading\(column\)[\s\S]*?return String\(column\)\.trim\(\)\.toLowerCase\(\) === "course syllabus"\s*\?\s*"SYLLABUS"/,
   "the dashboard should display the syllabus link column as SYLLABUS",
 );
-assert.doesNotMatch(
-  resourceStyles.match(/\.resource-dashboard-table\s*\{[^}]*\}/)?.[0] || "",
-  /min-width:\s*100%/,
-  "the dashboard table should not stretch to fill the available width",
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-filters\s*\{[^}]*gap:\s*var\(--resource-dashboard-space\);[\s\S]*?\.resource-dashboard-control\s*\{[^}]*gap:\s*var\(--resource-dashboard-space-tight\);/,
+  "filter spacing should use consistent dashboard spacing tokens",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-table td\s*\{[^}]*text-align:\s*center;/,
+  "dashboard table contents should remain centered",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-table thead tr::after\s*\{[^}]*z-index:\s*2;[^}]*right:\s*-100vw;[^}]*bottom:\s*0;[^}]*left:\s*-100vw;[^}]*border-bottom:\s*1px solid/,
+  "the table header divider should be drawn visibly across the full dashboard frame",
 );
 assert.doesNotMatch(
   resourceStyles,
@@ -348,8 +431,8 @@ assert.doesNotMatch(
 );
 assert.match(
   appCore,
-  /resourceDashboardSelectedYear = "3"[\s\S]*?resourceDashboardSelectedSemester = "1"/,
-  "dashboard filters should default to year 3, semester 1",
+  /resourceDashboardSelectedYear = "3"[\s\S]*?resourceDashboardSelectedSemester = "2"/,
+  "dashboard filters should default to year 3, semester 2",
 );
 assert.match(
   appCore,
@@ -363,8 +446,28 @@ assert.match(
 );
 assert.match(
   appCore,
-  /createResourceDashboardElement\(\s*"option",\s*"",\s*"All",?\s*\)[\s\S]*?allOption\.value = "all"/,
-  "year and semester filters should label their all-values option All",
+  /options\.unshift\(\{\s*value:\s*"all",\s*label:\s*"All"\s*\}\)[\s\S]*?button\.dataset\.filterValue = value[\s\S]*?control\.replaceChildren\(\.\.\.buttons\)/,
+  "year and semester segments should retain All as a selectable option",
+);
+assert.match(
+  index,
+  /id="resource-dashboard-filter-year"[^>]*role="group"[\s\S]*?id="resource-dashboard-filter-semester"[^>]*role="group"/,
+  "Year and Semester should be segmented controls",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-filters\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/,
+  "Year and Semester should sit side by side above a full-width category segmented control",
+);
+assert.match(
+  resourceStyles,
+  /#resource-dashboard-category-filter\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*width:\s*100%;/,
+  "the category control should span the full filter row",
+);
+assert.doesNotMatch(
+  index,
+  /id="resource-dashboard-help"|aria-describedby="resource-dashboard-help"/,
+  "the resource tabs should not show the removed explanatory note",
 );
 assert.match(
   appCore,
@@ -660,7 +763,7 @@ const routedDashboard = JSON.parse(
         contents: JSON.stringify({
           type: "get_resource_dashboard",
           eventId: "12345678-1234-4123-8123-123456789abc",
-          appVersion: "mrh-release-26.10.16-24",
+          appVersion,
         }),
       },
     })
@@ -690,7 +793,7 @@ const unchangedDashboard = JSON.parse(
           type: "get_resource_dashboard",
           eventId: "22345678-1234-4123-8123-123456789abc",
           version: routedDashboard.version,
-          appVersion: "mrh-release-26.10.16-24",
+          appVersion,
         }),
       },
     })
@@ -734,7 +837,7 @@ const updatedDashboard = JSON.parse(
           type: "get_resource_dashboard",
           eventId: "32345678-1234-4123-8123-123456789abc",
           version: routedDashboard.version,
-          appVersion: "mrh-release-26.10.16-24",
+          appVersion,
         }),
       },
     })
@@ -759,7 +862,7 @@ const disabledListing = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "list_public_resources",
-          appVersion: "mrh-release-26.10.16-24",
+          appVersion,
         }),
       },
     })
@@ -776,7 +879,7 @@ const disabledPreview = JSON.parse(
       postData: {
         contents: JSON.stringify({
           type: "get_resource_preview",
-          appVersion: "mrh-release-26.10.16-24",
+          appVersion,
         }),
       },
     })

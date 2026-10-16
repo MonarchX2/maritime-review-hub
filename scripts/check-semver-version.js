@@ -71,8 +71,29 @@ assert.throws(() => calculateNextVersion("14.8", []), /Invalid SemVer version/);
 
 const repositoryRoot = path.resolve(__dirname, "..");
 const currentVersion = JSON.parse(
+  fs.readFileSync(path.join(repositoryRoot, "version.json"), "utf8"),
+).version;
+const packageVersion = JSON.parse(
   fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"),
 ).version;
+const lockfile = JSON.parse(
+  fs.readFileSync(path.join(repositoryRoot, "package-lock.json"), "utf8"),
+);
+assert.equal(
+  packageVersion,
+  currentVersion,
+  "package metadata must be synchronized from version.json before running checks",
+);
+assert.equal(
+  lockfile.version,
+  currentVersion,
+  "package-lock metadata must be synchronized from version.json before running checks",
+);
+assert.equal(
+  lockfile.packages[""].version,
+  currentVersion,
+  "the root package-lock entry must be synchronized from version.json",
+);
 const changelog = fs.readFileSync(
   path.join(repositoryRoot, "CHANGELOG.md"),
   "utf8",
@@ -91,6 +112,40 @@ assert.equal(
 );
 
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "mrh-semver-"));
+const packageSyncFixture = path.join(fixture, "package-sync");
+fs.mkdirSync(path.join(packageSyncFixture, "scripts"), { recursive: true });
+for (const fileName of ["package.json", "package-lock.json"]) {
+  fs.copyFileSync(
+    path.join(repositoryRoot, fileName),
+    path.join(packageSyncFixture, fileName),
+  );
+}
+fs.copyFileSync(
+  path.join(repositoryRoot, "scripts", "sync-package-version.js"),
+  path.join(packageSyncFixture, "scripts", "sync-package-version.js"),
+);
+fs.writeFileSync(
+  path.join(packageSyncFixture, "version.json"),
+  JSON.stringify({ version: "9.8.7" }),
+);
+execFileSync(
+  process.execPath,
+  [path.join(packageSyncFixture, "scripts", "sync-package-version.js")],
+  { cwd: packageSyncFixture, stdio: "pipe" },
+);
+assert.equal(
+  JSON.parse(
+    fs.readFileSync(path.join(packageSyncFixture, "package.json"), "utf8"),
+  ).version,
+  "9.8.7",
+  "package metadata must synchronize from version.json",
+);
+const synchronizedLockfile = JSON.parse(
+  fs.readFileSync(path.join(packageSyncFixture, "package-lock.json"), "utf8"),
+);
+assert.equal(synchronizedLockfile.version, "9.8.7");
+assert.equal(synchronizedLockfile.packages[""].version, "9.8.7");
+
 function git(args) {
   return execFileSync("git", args, {
     cwd: fixture,
@@ -104,10 +159,10 @@ try {
   git(["config", "user.name", "SemVer Test"]);
   git(["config", "user.email", "semver-test@example.invalid"]);
   fs.writeFileSync(
-    path.join(fixture, "package.json"),
+    path.join(fixture, "version.json"),
     JSON.stringify({ version: "1.2.3" }),
   );
-  git(["add", "package.json"]);
+  git(["add", "version.json"]);
   git(["commit", "-m", "chore: initialize baseline"]);
   git(["tag", "v1.2.3"]);
   fs.writeFileSync(path.join(fixture, "change.txt"), "feature\n");
@@ -122,10 +177,10 @@ try {
   assert.equal(featureRelease.shouldTag, true);
 
   fs.writeFileSync(
-    path.join(fixture, "package.json"),
+    path.join(fixture, "version.json"),
     JSON.stringify({ version: "1.3.1" }),
   );
-  git(["add", "package.json"]);
+  git(["add", "version.json"]);
   git(["commit", "-m", "chore: bump version to 1.3.1"]);
   const explicitVersionRelease = getReleaseContext(fixture);
   assert.equal(explicitVersionRelease.displayVersion, "1.3.1");
@@ -141,10 +196,10 @@ try {
   assert.equal(fixRelease.shouldTag, true);
 
   fs.writeFileSync(
-    path.join(fixture, "package.json"),
+    path.join(fixture, "version.json"),
     JSON.stringify({ version: "1.3.2-2" }),
   );
-  git(["add", "package.json"]);
+  git(["add", "version.json"]);
   git(["commit", "-m", "chore: bump version to 1.3.2-2"]);
   const prereleaseRelease = getReleaseContext(fixture);
   assert.equal(prereleaseRelease.displayVersion, "1.3.2-2");
@@ -152,10 +207,10 @@ try {
   assert.equal(prereleaseRelease.shouldTag, true);
 
   fs.writeFileSync(
-    path.join(fixture, "package.json"),
+    path.join(fixture, "version.json"),
     JSON.stringify({ version: "26.10.15-6" }),
   );
-  git(["add", "package.json"]);
+  git(["add", "version.json"]);
   git(["commit", "-m", "chore: set date-based release baseline"]);
   const dateVersionBaseline = getReleaseContext(fixture);
   assert.equal(dateVersionBaseline.displayVersion, "26.10.15-6");

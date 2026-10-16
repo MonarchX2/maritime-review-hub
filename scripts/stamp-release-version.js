@@ -42,11 +42,11 @@ replaceExactlyOne(
   /(const APP_VERSION = ")[^"]+(";)/,
   `$1${version}$2`,
 );
-replaceExactlyOne(
-  "version.json",
-  /("version"\s*:\s*")[^"]+(")/,
-  `$1${version}$2`,
-);
+const versionPath = path.join(rootDir, "version.json");
+const versionMetadata = JSON.parse(fs.readFileSync(versionPath, "utf8"));
+versionMetadata.version = displayVersion;
+versionMetadata.buildVersion = version;
+fs.writeFileSync(versionPath, `${JSON.stringify(versionMetadata, null, 2)}\n`);
 replaceExactlyOne(
   "manifest.json",
   /("src"\s*:\s*"icon\.svg)(?:\?v=mrh-[^"]*)?(")/,

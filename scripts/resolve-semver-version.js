@@ -55,7 +55,7 @@ function getVersionBumpCommit(repositoryDir, version, previousTag) {
   const range = previousTag ? `${previousTag}..HEAD` : "HEAD";
   const commits = execFileSync(
     "git",
-    ["log", "--format=%H", range, "--", "package.json"],
+    ["log", "--format=%H", range, "--", "version.json"],
     { cwd: repositoryDir, encoding: "utf8" },
   )
     .trim()
@@ -63,13 +63,13 @@ function getVersionBumpCommit(repositoryDir, version, previousTag) {
     .filter(Boolean);
 
   for (const commit of commits) {
-    const commitPackage = JSON.parse(
-      execFileSync("git", ["show", `${commit}:package.json`], {
+    const commitVersion = JSON.parse(
+      execFileSync("git", ["show", `${commit}:version.json`], {
         cwd: repositoryDir,
         encoding: "utf8",
       }),
     );
-    if (commitPackage.version !== version) continue;
+    if (commitVersion.version !== version) continue;
 
     let parentVersion = "";
     try {
@@ -78,7 +78,7 @@ function getVersionBumpCommit(repositoryDir, version, previousTag) {
         encoding: "utf8",
       }).trim();
       parentVersion = JSON.parse(
-        execFileSync("git", ["show", `${parent}:package.json`], {
+        execFileSync("git", ["show", `${parent}:version.json`], {
           cwd: repositoryDir,
           encoding: "utf8",
         }),
@@ -87,7 +87,11 @@ function getVersionBumpCommit(repositoryDir, version, previousTag) {
       if (error.code !== "ENOENT" && error.status !== 128) throw error;
     }
 
-    if (parentVersion !== version) return commit;
+    if (
+      semverPattern.test(parentVersion) &&
+      parentVersion !== version
+    )
+      return commit;
   }
 
   return "";
@@ -105,15 +109,15 @@ function getReleaseContext(repositoryDir = rootDir, commitSha = process.env.GITH
       /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(tag),
     );
   const previousTag = tags[0] || "";
-  const packageJson = JSON.parse(
-    fs.readFileSync(path.join(repositoryDir, "package.json"), "utf8"),
+  const versionJson = JSON.parse(
+    fs.readFileSync(path.join(repositoryDir, "version.json"), "utf8"),
   );
-  const taggedVersion = previousTag ? previousTag.slice(1) : packageJson.version;
+  const taggedVersion = previousTag ? previousTag.slice(1) : versionJson.version;
   const versionBumpCommit = previousTag
-    ? getVersionBumpCommit(repositoryDir, packageJson.version, previousTag)
+    ? getVersionBumpCommit(repositoryDir, versionJson.version, previousTag)
     : "";
   const baseVersion = versionBumpCommit
-    ? packageJson.version
+    ? versionJson.version
     : taggedVersion;
   parseVersion(baseVersion);
   const commitRangeStart = versionBumpCommit || previousTag;

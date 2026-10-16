@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-release-26.10.16-12";
+const APP_VERSION = "mrh-26.10.16-38-4c523ee2fb7b";
 
 function getRuntimeCacheVersion() {
   return APP_VERSION;
@@ -367,9 +367,9 @@ async function verifyCurrentReleaseMetadata() {
   }
 
   const release = await response.json();
-  if (release?.version !== APP_VERSION) {
+  if (release?.buildVersion !== APP_VERSION) {
     throw new Error(
-      `Release metadata mismatch: expected ${APP_VERSION}, got ${release?.version}.`,
+      `Release metadata mismatch: expected ${APP_VERSION}, got ${release?.buildVersion}.`,
     );
   }
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 26.10.16-38 - 2026-10-16
+
+- Persist reviewer sign-in across browser restarts with server-validated application sessions and cross-tab sign-out synchronization.
+- Move Student Portal to the top of Home and refine dashboard and breadcrumb spacing.
+- Auto-size the Resource Dashboard box around its content and wrap dashboard navigation instead of clipping it.
+- Centralize the semantic release baseline in `package.json` and regenerate app, worker, manifest, and runtime release metadata during deployment.
+- Preserve reviewer authentication state after temporary verification failures and offer a retry.
+
 ## 26.10.16-37 - 2026-10-16
 
 ### Improved

@@ -9,6 +9,7 @@ const spreadsheetId = "1234567890123456789012345678901234567890123";
 const oldDeviceId = "01234567-89ab-4cde-8fab-0123456789ab";
 let tokenClaims = {};
 let tokenFetchFailures = 0;
+let uuidSequence = 0;
 let spreadsheetTimeZone = "";
 let spreadsheetOpenCount = 0;
 let reviewerDriveLookupCount = 0;
@@ -202,6 +203,8 @@ const context = {
     getScriptProperties: () => ({
       getProperty: (key) => properties.get(key) || "",
       setProperty: (key, value) => properties.set(key, String(value)),
+      getProperties: () => Object.fromEntries(properties),
+      deleteProperty: (key) => properties.delete(key),
     }),
   },
   CacheService: {
@@ -276,6 +279,10 @@ const context = {
   Utilities: {
     DigestAlgorithm: { SHA_256: "SHA_256" },
     Charset: { UTF_8: "UTF_8" },
+    getUuid() {
+      uuidSequence += 1;
+      return `00000000-0000-4000-8000-${String(uuidSequence).padStart(12, "0")}`;
+    },
     computeDigest(_algorithm, value) {
       return Array.from(
         crypto.createHash("sha256").update(String(value), "utf8").digest(),
@@ -328,7 +335,9 @@ vm.runInContext(fs.readFileSync("backend/main.js", "utf8"), context, {
 });
 
 const clientId = "1234567890-example.apps.googleusercontent.com";
-const appVersion = "mrh-release-26.10.16-24";
+const appVersion = JSON.parse(
+  fs.readFileSync("version.json", "utf8"),
+).buildVersion;
 const validClaims = (email) => ({
   aud: clientId,
   iss: "https://accounts.google.com",
@@ -475,6 +484,28 @@ assert.deepEqual(
     lastName: "Reviewer",
   },
 );
+assert.match(approved.sessionId, /^[a-f0-9]{96}$/);
+assert.equal(
+  approved.expiresAt > Date.now(),
+  true,
+  "successful Google sign-in should create a bounded application session",
+);
+assert.equal(
+  post({
+    type: "restore_reviewer_session",
+    sessionId: approved.sessionId,
+  }).accountStatus,
+  "TRUE",
+  "a saved application session should restore without a Google ID token",
+);
+assert.equal(
+  post({
+    type: "get_reviewer_account_status",
+    sessionId: approved.sessionId,
+  }).email,
+  "reviewer@example.com",
+  "account status polling should validate an application session",
+);
 assert.equal(appendedRows["SIGN-IN"][1][5], "SIGN_IN:TRUE");
 assert.equal(appendedRows["SIGN-IN"][1].length, 6);
 const beforeStatusCheck = appendedRows["SIGN-IN"].length;
@@ -495,6 +526,53 @@ assert.equal(
     .accountStatus,
   "TRUE",
   "an administrator-approved account should be authorized",
+);
+assert.equal(
+  context.authorizeReviewerRequest_({ sessionId: approved.sessionId }).account
+    .accountStatus,
+  "TRUE",
+  "protected reviewer authorization should accept the validated application session",
+);
+assert.equal(
+  post({ type: "sign_out_reviewer", sessionId: approved.sessionId }).status,
+  "success",
+  "explicit sign-out should revoke the application session server-side",
+);
+assert.equal(
+  post({
+    type: "restore_reviewer_session",
+    sessionId: approved.sessionId,
+  }).code,
+  "SESSION_INVALID",
+  "a revoked application session must no longer restore",
+);
+tokenClaims = validClaims();
+const expiredSession = post(
+  authRequest("verify_reviewer_access", "expiring-session-token", eventId("e")),
+);
+const expiredSessionKey =
+  "MRH_REVIEWER_SESSION_v1_" +
+  crypto.createHash("sha256").update(expiredSession.sessionId).digest("hex");
+properties.set(
+  expiredSessionKey,
+  JSON.stringify({
+    email: "reviewer@example.com",
+    picture: "",
+    expiresAt: Date.now() - 1,
+  }),
+);
+assert.equal(
+  post({
+    type: "restore_reviewer_session",
+    sessionId: expiredSession.sessionId,
+  }).code,
+  "SESSION_EXPIRED",
+  "an expired application session must be rejected and removed",
+);
+assert.equal(
+  properties.has(expiredSessionKey),
+  false,
+  "expired application session records should be deleted server-side",
 );
 
 tokenClaims = {

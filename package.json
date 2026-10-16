@@ -1,6 +1,7 @@
 {
-  "version": "26.10.16-12",
+  "version": "26.10.16-38",
   "scripts": {
+    "sync:version": "node scripts/sync-package-version.js",
     "build:css": "node scripts/build-css.js",
     "check:architecture": "node scripts/frontend-architecture-check.js",
     "check:runtime": "node scripts/check-runtime-reliability.js",

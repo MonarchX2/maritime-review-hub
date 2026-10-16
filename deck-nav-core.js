@@ -60,8 +60,8 @@
   }
 
   async function confirmNavigationAwayFromResourceDashboard() {
-    const message = "Are you sure you want to exit the Resource Dashboard?";
-    const title = "Exit Resource Dashboard";
+    const message = "Are you sure you want to exit the Student Portal?";
+    const title = "Exit Student Portal";
     if (typeof globalScope.requestConfirmation === "function") {
       return Boolean(await globalScope.requestConfirmation(message, title));
     }

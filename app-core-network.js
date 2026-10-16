@@ -501,15 +501,24 @@
       required: ["idToken", "eventId"],
       allowed: ["type", "idToken", "eventId", "appVersion"],
     },
+    restore_reviewer_session: {
+      required: ["sessionId"],
+      allowed: ["type", "sessionId", "appVersion"],
+    },
+    sign_out_reviewer: {
+      required: ["sessionId"],
+      allowed: ["type", "sessionId", "appVersion"],
+    },
     get_reviewer_account_status: {
-      required: ["idToken"],
-      allowed: ["type", "idToken", "appVersion"],
+      required: [],
+      allowed: ["type", "idToken", "sessionId", "appVersion"],
     },
     request_reviewer_enrollment: {
-      required: ["idToken", "eventId"],
+      required: ["eventId"],
       allowed: [
         "type",
         "idToken",
+        "sessionId",
         "eventId",
         "lastName",
         "firstName",
@@ -518,12 +527,12 @@
       ],
     },
     get_reviewer_dashboard: {
-      required: ["idToken", "eventId"],
-      allowed: ["type", "idToken", "eventId", "appVersion"],
+      required: ["eventId"],
+      allowed: ["type", "idToken", "sessionId", "eventId", "appVersion"],
     },
     log_module_access: {
-      required: ["idToken", "eventId"],
-      allowed: ["type", "idToken", "eventId", "appVersion"],
+      required: ["eventId"],
+      allowed: ["type", "idToken", "sessionId", "eventId", "appVersion"],
     },
     log_resource_file_click: {
       required: ["eventId", "resourceArea", "fileName", "fileId"],
@@ -534,6 +543,7 @@
         "fileName",
         "fileId",
         "idToken",
+        "sessionId",
         "appVersion",
       ],
     },
@@ -561,7 +571,14 @@
     },
     get_resource_dashboard: {
       required: ["eventId"],
-      allowed: ["type", "version", "idToken", "eventId", "appVersion"],
+      allowed: [
+        "type",
+        "version",
+        "idToken",
+        "sessionId",
+        "eventId",
+        "appVersion",
+      ],
     },
   });
 
@@ -574,6 +591,7 @@
     folderId: 200,
     fileId: 200,
     idToken: 8192,
+    sessionId: 96,
     eventId: 36,
     lastName: 100,
     firstName: 100,
@@ -648,6 +666,21 @@
         throw new Error(`Backend field '${key}' is required.`);
       }
     });
+
+    if (
+      [
+        "get_reviewer_account_status",
+        "request_reviewer_enrollment",
+        "get_reviewer_dashboard",
+        "log_module_access",
+      ].includes(type) &&
+      !String(payload.idToken || "").trim() &&
+      !String(payload.sessionId || "").trim()
+    ) {
+      throw new Error(
+        `Backend request '${type}' requires a reviewer session.`,
+      );
+    }
 
     if (
       payload.page !== undefined &&

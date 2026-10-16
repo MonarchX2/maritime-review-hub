@@ -18,8 +18,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /<div data-deck-breadcrumb class="[^"]*\bmt-4\b[^"]*\bmb-5\b/,
-  "The navigation bar should have spacing above it and retain its 1.25rem bottom spacing.",
+  /<div data-deck-breadcrumb class="deck-breadcrumb-nav\b/,
+  "The breadcrumb should use the shared navbar spacing styles.",
+);
+assert.match(
+  styles,
+  /\.dashboard-header-row\s*\{[^}]*min-height:\s*2\.375rem;[\s\S]*?\.deck-breadcrumb-nav\s*\{[^}]*height:\s*2\.375rem;[^}]*margin-block:\s*0 1rem;/,
+  "The breadcrumb should sit against the Home/controls row and retain its 1rem gap below.",
 );
 assert.doesNotMatch(
   appCore,

@@ -14,9 +14,11 @@ by submitting a name to the `ACCOUNTS`
 worksheet in the `MRH_Accounts` spreadsheet. New requests begin with
 `Active=FALSE` and are not authorized until an administrator changes the value
 to `TRUE`. `DENIED` blocks reviewer access and lets the user correct and
-resubmit their name. The backend checks the token's audience, issuer, expiry,
-and verified email, then requires the matching email and `Active=TRUE` on
-every reviewer request. Missing or invalid configuration fails closed.
+resubmit their name. The backend checks the Google token's audience, issuer,
+expiry, and verified email at sign-in, then validates the issued application
+session and requires the matching email and `Active=TRUE` for each protected
+reviewer request.
+Missing or invalid configuration fails closed.
 The profile form requires last and first names; middle initial is optional.
 Users are asked to check spelling and capitalization before saving (for
 example, `Dela Cruz`, `Maria`, `P.`). A user may edit a saved name; if any
@@ -24,17 +26,51 @@ name field changes, the backend saves it and resets `Active` to `FALSE` until
 an administrator confirms the edited profile. Submitting the same name does
 not remove existing approval.
 
-The verified identity token exists only in page memory and is sent to the
-backend for each protected request; it is not stored in browser storage.
-Google Identity Services uses automatic selection and FedCM for both the
-returning-user prompt and sign-in button, so an existing Google session can
-provide a fresh credential after a page refresh. An explicit sign-out
-preference is saved in browser storage to suppress automatic selection and
-prompting; signing in again clears that preference. Automatic restoration
-still depends on Google's browser session, prior consent, and browser identity
-settings, so a user may need to select their Google account again. Reviewer
-dashboard data is kept only in page memory and cleared on sign-out or page
-reload. The public dashboard does not return reviewer rows.
+Google ID tokens are used only to establish a session and are not written to
+browser storage. After validating the Google token, Apps Script creates a
+random, 96-hex-character application session ID. The server stores the session
+identity and expiry in Script Properties under a key derived from the SHA-256
+hash of that ID. Sessions expire after 30 days, are validated server-side on
+each protected reviewer request, and are revoked on successful sign-out.
+Changing or disabling the account approval still prevents reviewer access.
+Startup validates a saved session before any reviewer rows are fetched; a
+temporary network failure retains the opaque session ID for retry and does not
+grant access until validation succeeds. Reviewer dashboard rows remain in page
+memory and are cleared on sign-out or reload.
+
+The static GitHub Pages site persists only the opaque application session ID
+in first-party local storage (`mrh_reviewer_session_v1`), never a Google ID
+token, password, or refresh token. This works across refreshes and browser
+restarts and is synchronized across tabs through the browser storage event.
+As with any JavaScript-readable storage, an XSS vulnerability could expose
+this bearer session ID. Keep the site free of untrusted executable content and
+use a restrictive Content Security Policy where the deployment supports it.
+An explicit sign-out preference is also saved to suppress automatic Google
+account selection; signing in again clears that preference.
+
+If Google verification fails without a confirmed invalid-credential response,
+the page retains the candidate Google credential in memory and offers a retry.
+Temporary failures during application-session restoration keep the opaque
+session ID and offer a retry. Approval polling similarly retains a verified
+application session on temporary failures; protected backend operations
+continue to validate authorization. Explicit sign-out and session replacement
+are propagated to other open tabs through the browser storage event.
+
+The current site is a static GitHub Pages deployment and calls the Google Apps
+Script web app at `script.google.com` as a separate origin. Apps Script
+`ContentService` does not provide a supported way to set a host-only
+`HttpOnly` session cookie for the GitHub Pages origin, and a cookie scoped to
+Google's backend host is not a first-party cookie for the site. Cross-origin
+cookies would also be subject to credentialed-CORS and browser third-party
+cookie restrictions. The current deployment therefore uses a server-managed
+opaque session ID in local storage as the compatible fallback; this is not
+equivalent to an `HttpOnly` cookie.
+For stronger XSS resistance, move the reviewer API behind a server-capable
+same-origin backend (for example, a GitHub Pages replacement with a proxy to
+Cloud Run or Cloud Functions). That backend can issue a host-only
+`Secure; HttpOnly; SameSite=Lax; Path=/` cookie, hash session IDs server-side,
+enforce expiry/revocation, validate Origin, and apply CSRF protection. No
+Google ID token or refresh token should be persisted in browser storage.
 
 Google Drive permissions are not changed by the dashboard. Anyone who can open
 a linked file can copy or capture its contents. Ensure reviewer files are not
@@ -45,10 +81,11 @@ someone bypass app sign-in by opening a copied Drive URL.
 
 The Apps Script web app remains anonymously callable and executes Drive
 operations as its owner. The protected reviewer endpoint therefore does not
-trust a browser-supplied email: it verifies the Google ID token with Google's
-token information endpoint, checks that the token was issued for the configured
-OAuth client, then checks the verified email and approval status in the
-`ACCOUNTS` worksheet. A new verified account is added with `Active=FALSE`;
+trust a browser-supplied email: sign-in verifies the Google ID token with
+Google's token information endpoint and checks the configured OAuth client.
+Subsequent reviewer requests validate the opaque session ID against its
+server-side hash record, then check the verified email and approval status in
+the `ACCOUNTS` worksheet. A new verified account is added with `Active=FALSE`;
 only an administrator can grant reviewer access by setting `Active=TRUE`.
 Setting `Active=DENIED` rejects the profile and asks the user to correct and
 resubmit their name. The page polls for status changes while the user remains
@@ -92,6 +129,12 @@ To initialize sign-in and access logging:
 6. Enable the Apps Script Advanced Google service **Google Sheets API v4**
    (the project manifest declares this service; enable the Google Sheets API
    in the linked Cloud project if prompted), and deploy a new web-app version.
+   The repository's `backend/` directory is excluded by `.gitignore` and is
+   not published by the GitHub Pages workflow; publish the updated
+   `backend/main.js` to the Apps Script project separately before deploying
+   the frontend. Existing users will need to complete Google sign-in once to
+   exchange their transient Google credential for a persistent application
+   session.
    If scopes are added or consent is revoked later, run
    `initializeMRHAccountsSpreadsheet()` again from the Apps Script editor and
    approve the requested permissions as the deployment owner.
