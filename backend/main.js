@@ -1637,6 +1637,7 @@ function updateReviewerStatusNotification_(
 ) {
   var propertyKey = getReviewerStatusNotificationPropertyKey_(email);
   var properties = getScriptProps();
+  if (properties.getProperty(propertyKey) === accountStatus) return;
   var lock = lockAlreadyHeld ? null : LockService.getScriptLock();
   if (lock && !lock.tryLock(10000))
     throw new Error("Reviewer status notification is busy. Please retry.");

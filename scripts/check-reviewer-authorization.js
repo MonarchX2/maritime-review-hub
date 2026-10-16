@@ -13,6 +13,7 @@ let uuidSequence = 0;
 let spreadsheetTimeZone = "";
 let spreadsheetOpenCount = 0;
 let reviewerDriveLookupCount = 0;
+let scriptLockAcquisitionCount = 0;
 const driveFiles = new Map();
 const accountRows = [
   [
@@ -309,10 +310,13 @@ const context = {
     },
   },
   LockService: {
-    getScriptLock: () => ({
-      tryLock: () => true,
-      releaseLock() {},
-    }),
+    getScriptLock: () => {
+      scriptLockAcquisitionCount += 1;
+      return {
+        tryLock: () => true,
+        releaseLock() {},
+      };
+    },
   },
   Sheets: {
     Spreadsheets: {
@@ -396,6 +400,17 @@ vm.createContext(context);
 vm.runInContext(fs.readFileSync("backend/main.js", "utf8"), context, {
   filename: "backend/main.js",
 });
+const notificationPropertyKey =
+  context.getReviewerStatusNotificationPropertyKey_("reviewer@example.com");
+properties.set(notificationPropertyKey, "TRUE");
+const lockCountBeforeUnchangedStatus =
+  scriptLockAcquisitionCount;
+context.updateReviewerStatusNotification_("reviewer@example.com", "TRUE");
+assert.equal(
+  scriptLockAcquisitionCount,
+  lockCountBeforeUnchangedStatus,
+  "unchanged reviewer account status checks should not contend on the global script lock",
+);
 assert.equal(
   context.authorizeMRHReviewerStatusEmails(),
   100,
