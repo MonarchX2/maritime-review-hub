@@ -156,7 +156,7 @@
     if (viewId === "stats") globalScope.renderCharts();
     if (viewId === "resources") {
       if (currentView?.id !== "view-resources")
-        globalScope.openResourceDashboardTab?.("PROFILE");
+        globalScope.openResourceDashboardTab?.("DEFAULT");
       Promise.resolve(globalScope.loadResourceDashboard?.()).catch((error) => {
         logger.error("Unable to load the Resource Dashboard.", error);
       });

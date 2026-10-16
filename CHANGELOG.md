@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.10.16-41 - 2026-10-16
+
+### Improved
+- Simplify the locked Reviewer prompt with a red lock icon and concise sign-in action.
+- Cache reviewer display details for instant Profile and header rendering while validating sessions and refreshing resources silently in the background.
+- Open Reviewer resources by default for signed-in users and refine Profile actions.
+
 ## 26.10.16-40 - 2026-10-16
 
 ### Improved

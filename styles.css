@@ -1598,15 +1598,15 @@ button:active:not(:disabled) {
 }
 
 .resource-profile-toggle > img {
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2.75rem;
+  height: 2.75rem;
 }
 
 .resource-profile-toggle > i {
-  width: 2.25rem;
-  height: 2.25rem;
-  font-size: 1.75rem;
-  line-height: 2.25rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  font-size: 2rem;
+  line-height: 2.75rem;
 }
 
 .resource-profile-toggle:hover,
@@ -1757,30 +1757,9 @@ button:active:not(:disabled) {
   background: #fff;
 }
 
-.resource-profile-heading {
-  display: grid;
-  justify-items: center;
-  gap: 0.35rem;
-  margin: 0;
-  color: #334155;
-  text-align: center;
-}
-
-.resource-profile-heading > i {
-  color: #64748b;
-  font-size: 1.75rem;
-}
-
-.resource-profile-heading h2,
 .resource-profile-name,
 .resource-profile-email {
   margin: 0;
-}
-
-.resource-profile-heading h2 {
-  color: #1e293b;
-  font-size: 1.125rem;
-  font-weight: 700;
 }
 
 .resource-reviewers-locked-panel {
@@ -1822,6 +1801,10 @@ button:active:not(:disabled) {
 .resource-reviewers-locked-panel h2 {
   color: #1e293b;
   font-size: 1rem;
+}
+
+.resource-reviewers-locked-icon {
+  color: #dc2626;
 }
 
 .resource-reviewers-locked-panel button {
@@ -1889,9 +1872,40 @@ button:active:not(:disabled) {
   display: grid;
   justify-items: center;
   gap: var(--resource-dashboard-space);
-  border-top: 1px solid #e2e8f0;
-  padding-top: 1.5rem;
   text-align: center;
+}
+
+.resource-profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--resource-dashboard-space);
+  width: 100%;
+}
+
+.resource-profile-actions .resource-reviewer-signout {
+  min-width: 6rem;
+  border-radius: 0.375rem;
+  color: #fff;
+  font-weight: 700;
+}
+
+.resource-profile-edit-button {
+  border-color: #15803d;
+  background: #16a34a;
+}
+
+.resource-profile-signout-button {
+  border-color: #b91c1c;
+  background: #dc2626;
+}
+
+.resource-profile-actions .resource-profile-edit-button:hover {
+  background: #15803d;
+}
+
+.resource-profile-actions .resource-profile-signout-button:hover {
+  background: #b91c1c;
 }
 
 .resource-profile-account-details[hidden] {
@@ -2218,6 +2232,16 @@ button:active:not(:disabled) {
   color: #1e40af;
   background: #eff6ff;
   font-weight: 600;
+}
+
+.resource-dashboard-browser
+  .resource-portal-status.resource-dashboard-status-stacked[aria-busy="true"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  gap: var(--resource-dashboard-space-wide);
+  min-height: 4.5rem;
+  text-align: center;
 }
 
 .resource-dashboard-browser .resource-portal-status[aria-busy="true"]::before {
@@ -2790,13 +2814,10 @@ button:active:not(:disabled) {
   color: #f1f5f9;
 }
 
-.dark .resource-profile-heading,
-.dark .resource-profile-heading h2,
 .dark .resource-profile-name {
   color: #e2e8f0;
 }
 
-.dark .resource-profile-heading > i,
 .dark .resource-profile-status,
 .dark .resource-profile-email {
   color: #94a3b8;
@@ -2822,6 +2843,18 @@ button:active:not(:disabled) {
   border-color: #475569;
   color: #cbd5e1;
   background: #1e293b;
+}
+
+.dark .resource-profile-actions .resource-profile-edit-button {
+  border-color: #166534;
+  color: #fff;
+  background: #15803d;
+}
+
+.dark .resource-profile-actions .resource-profile-signout-button {
+  border-color: #991b1b;
+  color: #fff;
+  background: #b91c1c;
 }
 
 .dark .resource-portal-browser-header h2,

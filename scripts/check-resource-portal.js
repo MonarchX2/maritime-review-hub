@@ -54,13 +54,18 @@ assert.match(
 );
 assert.match(
   index,
-  /id="resource-dashboard-reviewers-nav"[^>]*onclick="openResourceDashboardTab\('REVIEWERS'\)"[^>]*aria-label="Reviewers"[\s\S]*?Reviewers\s*<\/button>[\s\S]*?id="resource-reviewers-locked-panel"[\s\S]*?This section is locked[\s\S]*?Sign in or create an account/,
-  "the Reviewers tab should show an in-place locked message with a sign-in and account-creation action",
+  /id="resource-dashboard-reviewers-nav"[^>]*onclick="openResourceDashboardTab\('REVIEWERS'\)"[^>]*aria-label="Reviewers"[\s\S]*?Reviewers\s*<\/button>[\s\S]*?id="resource-reviewers-locked-panel"[\s\S]*?fa-lock resource-reviewers-locked-icon[\s\S]*?Locked[\s\S]*?Sign in with Google to request Reviewer access/,
+  "the locked Reviewer panel should show a red lock, concise label, and Google sign-in prompt",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-reviewers-locked-icon\s*\{[^}]*color:\s*#dc2626;/,
+  "the Reviewer lock icon should be red",
 );
 assert.doesNotMatch(
   index,
-  /resource-dashboard-reviewers-lock|fa-lock resource-dashboard-lock-icon/,
-  "the Reviewers tab should not display a lock icon",
+  /or create a reviewer profile|to these resources\./,
+  "the locked Reviewer prompt should not include the removed phrase or resource wording",
 );
 assert.match(
   index,
@@ -98,7 +103,12 @@ assert.doesNotMatch(
 assert.match(
   index,
   /id="resource-dashboard-content" hidden[\s\S]*?id="resource-dashboard-profile"[^>]*class="resource-profile-screen"[^>]*aria-label="Profile settings"(?![^>]*hidden)[\s\S]*?resource-reviewer-auth-status[\s\S]*?resource-reviewer-signin-button[\s\S]*?resource-reviewer-enrollment-form[\s\S]*?resource-profile-account-details[\s\S]*?resource-profile-name[\s\S]*?resource-profile-email[\s\S]*?resource-reviewer-signout/,
-  "Profile should be the initial dashboard view and show login/enrollment or account controls",
+  "Profile should remain the signed-out fallback with login/enrollment controls",
+);
+assert.doesNotMatch(
+  index,
+  /resource-profile-heading|<h2>Profile<\/h2>/,
+  "Profile settings should not repeat a Profile heading or icon",
 );
 assert.match(
   index,
@@ -127,8 +137,8 @@ assert.match(
 );
 assert.match(
   index,
-  /id="resource-reviewer-edit-profile"[\s\S]*?Edit name/,
-  "approved and pending users should have a name-edit control",
+  /class="resource-profile-actions"[\s\S]*?id="resource-reviewer-edit-profile"[^>]*class="[^"]*resource-profile-edit-button"[^>]*hidden[\s\S]*?Edit\s*<\/button>[\s\S]*?id="resource-reviewer-signout"[^>]*class="[^"]*resource-profile-signout-button"[\s\S]*?Sign out/,
+  "Edit and Sign out should sit side by side as distinct profile actions",
 );
 assert.match(
   index,
@@ -142,8 +152,23 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-profile-toggle > img\s*\{\s*width:\s*2\.25rem;\s*height:\s*2\.25rem;\s*\}[\s\S]*?\.resource-profile-toggle > i\s*\{\s*width:\s*2\.25rem;\s*height:\s*2\.25rem;/,
-  "the header profile photo and fallback icon should share the larger size",
+  /\.resource-profile-toggle > img\s*\{\s*width:\s*2\.75rem;\s*height:\s*2\.75rem;\s*\}[\s\S]*?\.resource-profile-toggle > i\s*\{\s*width:\s*2\.75rem;\s*height:\s*2\.75rem;/,
+  "the header profile photo and fallback icon should use the enlarged size",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-profile-actions\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*center;[\s\S]*?\.resource-profile-edit-button\s*\{[^}]*background:\s*#16a34a;[\s\S]*?\.resource-profile-signout-button\s*\{[^}]*background:\s*#dc2626;/,
+  "profile actions should be side by side with green Edit and red Sign out buttons",
+);
+assert.doesNotMatch(
+  resourceStyles.match(/\.resource-profile-account-details\s*\{([^}]+)\}/)?.[1] || "",
+  /border-top|padding-top/,
+  "the redundant separator above cached account details should be removed",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-browser\s*\.resource-portal-status\.resource-dashboard-status-stacked\[aria-busy="true"\]\s*\{[^}]*display:\s*grid;[^}]*justify-items:\s*center;/,
+  "Reviewer loading should stack the spinner above its Loading label",
 );
 assert.doesNotMatch(
   index,

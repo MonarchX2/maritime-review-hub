@@ -780,8 +780,8 @@ async function checkConcurrentNavigation() {
   await context.module.exports.navigate("resources");
   assert.equal(
     context.resourceDashboardDefaultTab,
-    "PROFILE",
-    "entering the Resource Dashboard should select Profile by default",
+    "DEFAULT",
+    "entering the Resource Dashboard should let the saved reviewer session select its default tab",
   );
   assert.equal(
     navigationUrlUpdates.at(-1).path.join("/"),

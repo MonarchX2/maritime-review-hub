@@ -62,8 +62,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /async function loadReviewerDashboard\(\{ refresh = false \} = \{\}\)[\s\S]*?if \(!status \|\| !tableHead \|\| !tableBody\) \{[\s\S]*?if \(!hasExistingReviewerRows\) \{[\s\S]*?tableHead\.replaceChildren\(\);[\s\S]*?filterContainer\.hidden = true;[\s\S]*?Loading reviewer resources…[\s\S]*?backendRequest = globalScope\.AppNetwork\.callBackend\([\s\S]*?await backendRequest/,
-  "loading Reviewer resources should retain valid visible rows while refreshing and show a loading state on first load",
+  /async function loadReviewerDashboard\(\{ refresh = false \} = \{\}\)[\s\S]*?const silentRefresh = refresh && hasExistingReviewerRows[\s\S]*?if \(!silentRefresh\)\s*showReviewerDashboardLoading\(!hasExistingReviewerRows\)[\s\S]*?backendRequest = globalScope\.AppNetwork\.callBackend\([\s\S]*?await backendRequest/,
+  "Reviewer initial loads should show Loading while background refreshes preserve existing rows and status",
+);
+assert.doesNotMatch(
+  appCore.match(/async function loadReviewerDashboard\([\s\S]*?\n  \}/)?.[0] || "",
+  /filterContainer\.hidden = true|Refreshing reviewer resources…|Loading reviewer resources…/,
+  "Reviewer loading should not hide filters or replace the Showing status during refresh",
 );
 assert.match(
   appCore,
@@ -102,8 +107,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(approved\) \{[\s\S]*?Preparing your resources…[\s\S]*?void loadReviewerDashboard\(\)\.then\(\(loaded\) => \{[\s\S]*?authStatus\.textContent = loaded\s*\? ""\s*:\s*"Resources could not be preloaded/,
-  "approved reviewer data should preload without a persistent approval message",
+  /if \(approved\) \{[\s\S]*?if \(resourceDashboardActiveTab === "REVIEWERS"\)\s*await loadReviewerDashboard\(\);\s*else await openResourceDashboardTab\("REVIEWERS"\);/,
+  "approved sign-in should open Reviewer resources instead of leaving the user on Profile",
+);
+assert.doesNotMatch(
+  appCore,
+  /preparingReviewerResources|Checking your profile and administrator approval/,
+  "approved sign-in should not show redundant background-check status text",
 );
 assert.match(
   appCore,
@@ -112,13 +122,28 @@ assert.match(
 );
 assert.doesNotMatch(
   appCore,
-  /Reviewer access approved/,
-  "the Profile view should not show an approval status message",
+  /Reviewer access approved|Preparing your resources/,
+  "background reviewer preloading should not display approval or loading copy in Profile",
 );
 assert.match(
   appCore,
   /function setReviewerNavigationBusy\(\)[\s\S]*?resource-dashboard-reviewers-nav[\s\S]*?removeAttribute\("aria-busy"\)/,
   "the Reviewer navigation should never show an adjacent loading indicator",
+);
+assert.match(
+  appCore,
+  /const REVIEWER_PROFILE_CACHE_KEY = "mrh_reviewer_profile_v1";[\s\S]*?function getStoredReviewerProfile\(\)[\s\S]*?getStoredReviewerSessionId\(\)[\s\S]*?function cacheReviewerProfile\(response\)[\s\S]*?email,[\s\S]*?firstName:[\s\S]*?middleInitial:[\s\S]*?lastName:[\s\S]*?picture:[\s\S]*?cachedAt:/,
+  "display-only reviewer name, picture, and email should be cached for immediate restoration",
+);
+assert.match(
+  appCore,
+  /function openResourceDashboardTab\(tabName = "DEFAULT"\)[\s\S]*?hasReviewerSession =\s*!hasExplicitReviewerSignOut\(\) &&\s*Boolean\(reviewerSessionId \|\| getStoredReviewerSessionId\(\)\)[\s\S]*?tabName = hasReviewerSession \? "REVIEWERS" : "PROFILE"[\s\S]*?getStoredReviewerProfile\(\)[\s\S]*?populateReviewerProfile\(cachedProfile\)/,
+  "a saved reviewer session should show cached profile data and open Reviewers by default",
+);
+assert.match(
+  appCore,
+  /function showReviewerDashboardLoading\(clearRows = false\)[\s\S]*?filters\.hidden = false[\s\S]*?categoryFilter\.hidden = false[\s\S]*?setResourceDashboardStatus\("Loading", true, true\)/,
+  "the Reviewer loading state should retain all filters and display a stacked generic label",
 );
 assert.match(
   appCore,
@@ -351,7 +376,7 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-topbar \.resource-profile-toggle\s*\{\s*margin-left:\s*auto;[\s\S]*?\.resource-profile-toggle\s*\{[^}]*display:\s*inline-grid;[^}]*justify-items:\s*center;[\s\S]*?\.resource-profile-toggle > img\s*\{[^}]*width:\s*2\.25rem;[^}]*height:\s*2\.25rem;[\s\S]*?\.resource-profile-toggle > i\s*\{[^}]*width:\s*2\.25rem;[^}]*height:\s*2\.25rem;[^}]*font-size:\s*1\.75rem;[^}]*line-height:\s*2\.25rem;[\s\S]*?\.resource-profile-toggle:hover,\s*\.resource-profile-toggle\.is-active\s*\{[^}]*border-color:\s*transparent;[^}]*color:\s*inherit;[^}]*background:\s*transparent;/,
+  /\.resource-dashboard-topbar \.resource-profile-toggle\s*\{\s*margin-left:\s*auto;[\s\S]*?\.resource-profile-toggle\s*\{[^}]*display:\s*inline-grid;[^}]*justify-items:\s*center;[\s\S]*?\.resource-profile-toggle > img\s*\{[^}]*width:\s*2\.75rem;[^}]*height:\s*2\.75rem;[\s\S]*?\.resource-profile-toggle > i\s*\{[^}]*width:\s*2\.75rem;[^}]*height:\s*2\.75rem;[^}]*font-size:\s*2rem;[^}]*line-height:\s*2\.75rem;[\s\S]*?\.resource-profile-toggle:hover,\s*\.resource-profile-toggle\.is-active\s*\{[^}]*border-color:\s*transparent;[^}]*color:\s*inherit;[^}]*background:\s*transparent;/,
   "the Profile control should be right aligned and both profile images should use the enlarged size",
 );
 assert.match(
@@ -391,8 +416,13 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-profile-heading\s*\{[^}]*display:\s*grid;[^}]*justify-items:\s*center;[\s\S]*?\.resource-reviewers-locked-panel\s*\{[^}]*width:\s*fit-content;[^}]*max-width:\s*min\(100%,\s*38rem\);[^}]*margin-inline:\s*auto;/,
-  "the Profile heading should stack and center its icon and label, and the locked message should use a centered content-fit width",
+  /\.resource-profile-actions\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*center;[^}]*width:\s*100%;/,
+  "the Profile actions should stay in one flexible row",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-reviewers-locked-panel\s*\{[^}]*width:\s*fit-content;[^}]*max-width:\s*min\(100%,\s*38rem\);[^}]*margin-inline:\s*auto;/,
+  "the locked message should remain centered within its content width",
 );
 assert.match(
   appCore,
@@ -504,8 +534,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /catch \(error\) \{[\s\S]*?Unable to refresh administrator approval right now[\s\S]*?Your current sign-in is retained[\s\S]*?\(globalScope\.DebugUtils \|\| console\)\.error\(\s*"Unable to refresh reviewer account approval status\."/,
-  "temporary approval-check failures should not discard a valid in-memory credential",
+  /catch \(error\) \{[\s\S]*?if \(isDefinitivelyInvalidReviewerCredential\(error\)\)[\s\S]*?\(globalScope\.DebugUtils \|\| console\)\.error\(\s*"Unable to refresh reviewer account approval status\."/,
+  "temporary approval-check failures should retain the session and only log in the background",
+);
+assert.doesNotMatch(
+  appCore,
+  /Unable to refresh administrator approval right now|Unable to refresh reviewer approval right now/,
+  "background approval polling should not replace Profile or Reviewer status text",
 );
 assert.match(
   appCore,
@@ -541,6 +576,11 @@ assert.match(
   appCore,
   /async function loadResourceDashboard\(\{ silent = false \} = \{\}\)[\s\S]*?initializeResourceDashboardControls\(\);\s*void initializeReviewerAuth\(\);/,
   "Google re-authentication should initialize when the dashboard loads after refresh",
+);
+assert.match(
+  appCore,
+  /const keepReviewerStatus = resourceDashboardActiveTab === "REVIEWERS"[\s\S]*?if \(!silent && !keepReviewerStatus\)[\s\S]*?if \(!cachedDashboard && !silent && !keepReviewerStatus\)/,
+  "public dashboard refreshes should not clear Reviewer rows or status",
 );
 assert.match(
   appCore,
@@ -745,8 +785,17 @@ assert.match(
 );
 assert.match(
   appCore,
-  /const hasExistingReviewerRows =[\s\S]*?if \(resourceDashboardActiveTab === "REVIEWERS"\) \{\s*if \(!hasExistingReviewerRows\) \{[\s\S]*?tableHead\.replaceChildren\(\)[\s\S]*?Refreshing reviewer resources…[\s\S]*?Previously loaded data is still shown/,
-  "reviewer refreshes and temporary network failures should preserve already-loaded rows",
+  /const hasExistingReviewerRows =[\s\S]*?const silentRefresh = refresh && hasExistingReviewerRows[\s\S]*?if \(!silentRefresh\)\s*showReviewerDashboardLoading\(!hasExistingReviewerRows\)/,
+  "reviewer refreshes should keep existing rows and status while loading only on first fetch",
+);
+const reviewerDashboardLoader = appCore.match(
+  /async function loadReviewerDashboard\(\{ refresh = false \} = \{\}\)[\s\S]*?\n  \}/,
+);
+assert.ok(reviewerDashboardLoader, "the reviewer dashboard loader should exist");
+assert.doesNotMatch(
+  reviewerDashboardLoader[0],
+  /Unable to refresh reviewer resources/,
+  "background refresh failures should preserve the visible Showing status",
 );
 assert.match(
   appCore,
@@ -1009,7 +1058,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /async function restoreReviewerSession\([\s\S]*?type: "restore_reviewer_session", sessionId[\s\S]*?applyReviewerAccountStatus\(response, sessionId\)[\s\S]*?clearStoredReviewerSession\(\)[\s\S]*?Unable to verify your saved reviewer session right now\. It has been kept/,
+  /async function restoreReviewerSession\([\s\S]*?type: "restore_reviewer_session", sessionId[\s\S]*?applyReviewerAccountStatus\(response, sessionId\)[\s\S]*?if \(isDefinitivelyInvalidReviewerCredential\(error\)\) \{\s*signOutReviewer\(false\);[\s\S]*?Your saved reviewer session expired or was revoked[\s\S]*?Unable to verify your saved reviewer session right now\. It has been kept/,
   "startup should restore sessions from the backend and retain them after temporary failures",
 );
 assert.match(

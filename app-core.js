@@ -6037,6 +6037,8 @@
   const REVIEWER_EXPLICIT_SIGNOUT_COOKIE =
     "mrh_reviewer_explicit_signout_v1";
   const REVIEWER_SESSION_STORAGE_KEY = "mrh_reviewer_session_v1";
+  const REVIEWER_PROFILE_CACHE_KEY = "mrh_reviewer_profile_v1";
+  const REVIEWER_PROFILE_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
   const RESOURCE_DASHBOARD_CACHE_KEY = "resource_dashboard_cache_v1";
   const RESOURCE_DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 30000;
   let resourceDashboardAutoRefreshTimer = null;
@@ -6091,6 +6093,75 @@
         error,
       );
       return false;
+    }
+  }
+
+  function getReviewerProfilePictureUrl(value) {
+    const picture = typeof value === "string" ? value.trim() : "";
+    return /^https:\/\/lh[3-6]\.googleusercontent\.com\//.test(picture)
+      ? picture
+      : "";
+  }
+
+  function getStoredReviewerProfile() {
+    if (
+      hasExplicitReviewerSignOut() ||
+      !(reviewerSessionId || getStoredReviewerSessionId())
+    )
+      return null;
+    try {
+      const cached = JSON.parse(
+        globalScope.localStorage.getItem(REVIEWER_PROFILE_CACHE_KEY) || "null",
+      );
+      const email = String(cached?.email || "").trim();
+      const age = Date.now() - Number(cached?.cachedAt || 0);
+      if (
+        !email ||
+        !Number.isFinite(age) ||
+        age < 0 ||
+        age > REVIEWER_PROFILE_CACHE_MAX_AGE_MS
+      ) {
+        clearStoredReviewerProfile();
+        return null;
+      }
+      return {
+        email,
+        firstName: String(cached.firstName || "").slice(0, 100),
+        middleInitial: String(cached.middleInitial || "").slice(0, 10),
+        lastName: String(cached.lastName || "").slice(0, 100),
+        picture: getReviewerProfilePictureUrl(cached.picture),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function cacheReviewerProfile(response) {
+    const email = String(response?.email || "").trim();
+    if (!email) return false;
+    try {
+      globalScope.localStorage.setItem(
+        REVIEWER_PROFILE_CACHE_KEY,
+        JSON.stringify({
+          email,
+          firstName: String(response.firstName || "").slice(0, 100),
+          middleInitial: String(response.middleInitial || "").slice(0, 10),
+          lastName: String(response.lastName || "").slice(0, 100),
+          picture: getReviewerProfilePictureUrl(response.picture),
+          cachedAt: Date.now(),
+        }),
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function clearStoredReviewerProfile() {
+    try {
+      globalScope.localStorage.removeItem(REVIEWER_PROFILE_CACHE_KEY);
+    } catch {
+      // Cached profile details are optional when browser storage is unavailable.
     }
   }
 
@@ -6282,11 +6353,15 @@
     ].join("-");
   }
 
-  function setResourceDashboardStatus(message, busy = false) {
+  function setResourceDashboardStatus(message, busy = false, stacked = false) {
     const status = document.getElementById("resource-portal-status");
     if (!status) return;
     status.textContent = message;
     status.hidden = !message;
+    status.classList?.toggle(
+      "resource-dashboard-status-stacked",
+      Boolean(message && busy && stacked),
+    );
     if (busy) status.setAttribute("aria-busy", "true");
     else status.removeAttribute("aria-busy");
   }
@@ -6298,7 +6373,47 @@
     button?.removeAttribute("aria-busy");
   }
 
-  function openResourceDashboardTab(tabName) {
+  function showReviewerDashboardLoading(clearRows = false) {
+    const filters = document
+      .getElementById("resource-dashboard-filter-year")
+      ?.closest(".resource-dashboard-filters");
+    const categoryFilter = document.getElementById(
+      "resource-dashboard-category-filter",
+    );
+    if (filters) filters.hidden = false;
+    if (categoryFilter) categoryFilter.hidden = false;
+    if (clearRows) {
+      document
+        .getElementById("resource-dashboard-table-head")
+        ?.replaceChildren();
+      document
+        .getElementById("resource-dashboard-table-body")
+        ?.replaceChildren();
+    }
+    setResourceDashboardStatus("Loading", true, true);
+  }
+
+  function openResourceDashboardTab(tabName = "DEFAULT") {
+    if (tabName === "DEFAULT") {
+      const hasReviewerSession =
+        !hasExplicitReviewerSignOut() &&
+        Boolean(reviewerSessionId || getStoredReviewerSessionId());
+      tabName = hasReviewerSession ? "REVIEWERS" : "PROFILE";
+      if (hasReviewerSession) {
+        const cachedProfile = getStoredReviewerProfile();
+        if (cachedProfile) {
+          populateReviewerProfile(cachedProfile);
+          const signInButton = document.getElementById(
+            "resource-reviewer-signin-button",
+          );
+          const authStatus = document.getElementById(
+            "resource-reviewer-auth-status",
+          );
+          if (signInButton) signInButton.hidden = true;
+          if (authStatus) authStatus.textContent = "";
+        }
+      }
+    }
     if (!["MODULES", "REVIEWERS", "SYLLABUS", "PROFILE"].includes(tabName))
       return false;
 
@@ -6355,7 +6470,7 @@
           (!hasExplicitReviewerSignOut() && getStoredReviewerSessionId())
         ) {
           if (lockedPanel) lockedPanel.hidden = true;
-          setResourceDashboardStatus("Restoring your reviewer session…", true);
+          showReviewerDashboardLoading(true);
           void restoreReviewerSession();
           return true;
         }
@@ -6386,7 +6501,7 @@
         return true;
       }
       if (reviewerDashboardRequestPromise) {
-        setResourceDashboardStatus("Loading reviewer resources…", true);
+        showReviewerDashboardLoading();
         return true;
       }
       return loadReviewerDashboard();
@@ -6929,6 +7044,7 @@
             nonEmptyRows.length === 1 ? "row" : "rows"
           }${tab.truncated ? " (showing the first 2,000)" : ""}`;
     status.removeAttribute("aria-busy");
+      status.classList?.remove("resource-dashboard-status-stacked");
     return true;
   }
 
@@ -7095,15 +7211,7 @@
       const authStatus = document.getElementById(
         "resource-reviewer-auth-status",
       );
-      if (
-        authStatus &&
-        reviewerAuthCheckPending &&
-        !reviewerSessionRestorePending
-      ) {
-        authStatus.textContent = "Checking Google sign-in…";
-        authStatus.setAttribute("aria-busy", "true");
-        setReviewerNavigationBusy(true);
-      }
+      if (reviewerAuthCheckPending) setReviewerNavigationBusy(true);
       const signInButton = document.getElementById(
         "resource-reviewer-signin-button",
       );
@@ -7348,10 +7456,9 @@
     const authStatus = document.getElementById(
       "resource-reviewer-auth-status",
     );
-    if (authStatus) {
-      authStatus.textContent = "Restoring your reviewer session…";
-      authStatus.setAttribute("aria-busy", "true");
-    }
+    authStatus?.removeAttribute("aria-busy");
+    if (resourceDashboardActiveTab === "REVIEWERS")
+      showReviewerDashboardLoading(true);
 
     const restorePromise = (async () => {
       try {
@@ -7371,24 +7478,12 @@
       } catch (error) {
         if (authGeneration !== reviewerAuthGeneration) return false;
         if (isDefinitivelyInvalidReviewerCredential(error)) {
-          clearStoredReviewerSession();
-          reviewerSessionId = "";
-          reviewerPendingEnrollmentSessionId = "";
-          reviewerAuthorizedEmail = "";
-          reviewerDashboardLoadedForEmail = "";
-          reviewerProfilePictureUrl = "";
-          clearReviewerResourceRows();
-          const signInButton = document.getElementById(
-            "resource-reviewer-signin-button",
-          );
-          const signoutButton = document.getElementById(
-            "resource-reviewer-signout",
-          );
-          if (signInButton) signInButton.hidden = false;
-          if (signoutButton) signoutButton.hidden = true;
+          signOutReviewer(false);
           if (authStatus)
             authStatus.textContent =
               "Your saved reviewer session expired or was revoked. Sign in with Google again.";
+          if (resourceDashboardActiveTab !== "PROFILE")
+            openResourceDashboardTab("PROFILE");
         } else {
           const signInButton = document.getElementById(
             "resource-reviewer-signin-button",
@@ -7401,6 +7496,10 @@
             "resource-reviewer-retry-verification",
           );
           if (retryButton) retryButton.hidden = false;
+          if (resourceDashboardActiveTab === "REVIEWERS")
+            setResourceDashboardStatus(
+              "Unable to verify your saved reviewer session. Open Profile to retry.",
+            );
           (globalScope.DebugUtils || console).error(
             "Unable to restore the saved reviewer session.",
             error,
@@ -7435,7 +7534,7 @@
       reviewersNav.setAttribute("aria-label", "Reviewers");
       reviewersNav.title = enabled
         ? "Open reviewer resources"
-        : "Sign in or create a reviewer profile to request access";
+        : "Sign in to request Reviewer access";
     }
   }
 
@@ -7461,16 +7560,7 @@
       document
         .getElementById("resource-dashboard-table-body")
         ?.replaceChildren();
-      setResourceDashboardStatus(
-        reviewerPendingEnrollmentSessionId
-          ? "Verifying your Google sign-in and reviewer approval…"
-          : "Checking your Google sign-in…",
-        Boolean(
-          reviewerPendingEnrollmentSessionId ||
-            reviewerAuthCheckPending ||
-            reviewerSessionRestorePending,
-        ),
-      );
+      setResourceDashboardStatus("");
     }
   }
 
@@ -7501,11 +7591,7 @@
     if (profileName) profileName.textContent = displayName || email;
     if (profileEmail) profileEmail.textContent = email;
     if (profileDetails) profileDetails.hidden = false;
-    const pictureUrl =
-      typeof response.picture === "string" &&
-      /^https:\/\/lh[3-6]\.googleusercontent\.com\//.test(response.picture)
-        ? response.picture
-        : "";
+    const pictureUrl = getReviewerProfilePictureUrl(response.picture);
     reviewerProfilePictureUrl = pictureUrl;
     [profilePicture, headerProfilePicture].forEach((image) => {
       if (!image) return;
@@ -7544,6 +7630,7 @@
       );
     }
     const accountStatus = response.accountStatus;
+    cacheReviewerProfile(response);
     const authStatus = document.getElementById("resource-reviewer-auth-status");
     authStatus?.removeAttribute("aria-busy");
     const form = document.getElementById("resource-reviewer-enrollment-form");
@@ -7576,11 +7663,7 @@
     reviewerReauthenticationPromptAttempted = false;
     if (retryButton && !reviewerVerificationRetryToken)
       retryButton.hidden = true;
-    reviewerProfilePictureUrl =
-      typeof response.picture === "string" &&
-      /^https:\/\/lh[3-6]\.googleusercontent\.com\//.test(response.picture)
-        ? response.picture
-        : "";
+    reviewerProfilePictureUrl = getReviewerProfilePictureUrl(response.picture);
     if (accountStatus === "TRUE") {
       reviewerSessionId = sessionId;
       reviewerPendingEnrollmentSessionId = "";
@@ -7699,16 +7782,6 @@
           }
           return;
         }
-        if (authStatus)
-          authStatus.textContent =
-            "Unable to refresh administrator approval right now. Your current sign-in is retained; protected requests will still be checked by the server: " +
-            String(error?.message || error);
-        if (resourceDashboardActiveTab === "REVIEWERS")
-          setResourceDashboardStatus(
-            `Unable to refresh reviewer approval right now. Your current sign-in is retained: ${String(
-              error?.message || error,
-            )}`,
-          );
         (globalScope.DebugUtils || console).error(
           "Unable to refresh reviewer account approval status.",
           error,
@@ -7758,12 +7831,6 @@
       retryButton.hidden = true;
       retryButton.disabled = true;
     }
-    if (authStatus) {
-      authStatus.textContent =
-        "Checking your profile and administrator approval...";
-      authStatus.setAttribute("aria-busy", "true");
-    }
-    let preparingReviewerResources = false;
     try {
       const response = await globalScope.AppNetwork.callBackend(
         { type: "verify_reviewer_access", idToken, eventId: createResourceEventId() },
@@ -7787,25 +7854,9 @@
       const approved = applyReviewerAccountStatus(response, sessionId);
       scheduleReviewerStatusPolling(sessionId);
       if (approved) {
-        if (resourceDashboardActiveTab === "REVIEWERS") {
+        if (resourceDashboardActiveTab === "REVIEWERS")
           await loadReviewerDashboard();
-        } else {
-          preparingReviewerResources = true;
-          if (authStatus) {
-            authStatus.textContent =
-                "Preparing your resources…";
-            authStatus.setAttribute("aria-busy", "true");
-          }
-          void loadReviewerDashboard().then((loaded) => {
-            if (reviewerSessionId !== sessionId) return;
-            if (authStatus) {
-              authStatus.textContent = loaded
-                ? ""
-                : "Resources could not be preloaded. Open Reviewers to retry.";
-              authStatus.removeAttribute("aria-busy");
-            }
-          });
-        }
+        else await openResourceDashboardTab("REVIEWERS");
       }
       return approved;
     } catch (error) {
@@ -7871,10 +7922,7 @@
         reviewerVerificationInFlightToken = "";
         if (retryButton) retryButton.disabled = false;
       }
-      if (
-        authGeneration === reviewerAuthGeneration &&
-        !preparingReviewerResources
-      )
+      if (authGeneration === reviewerAuthGeneration)
         authStatus?.removeAttribute("aria-busy");
     }
   }
@@ -8056,6 +8104,7 @@
     reviewerAuthorizedEmail = "";
     reviewerDashboardLoadedForEmail = "";
     reviewerProfilePictureUrl = "";
+    clearStoredReviewerProfile();
     setReviewerNavigationBusy(false);
     stopReviewerStatusPolling();
     reviewerDashboardRequestGeneration += 1;
@@ -8131,6 +8180,9 @@
     document
       .getElementById("resource-portal-status")
       ?.removeAttribute("aria-busy");
+    document
+      .getElementById("resource-portal-status")
+      ?.classList?.remove("resource-dashboard-status-stacked");
     if (resourceDashboardActiveTab === "REVIEWERS") {
       resourceDashboardActiveTab = "MODULES";
       renderResourceDashboardTab();
@@ -8147,15 +8199,7 @@
         reviewerAuthCheckPending ||
         reviewerSessionRestorePending
       ) {
-        setResourceDashboardStatus(
-          reviewerVerificationRetryAvailable
-            ? "Google sign-in could not be verified. Retry verification from Profile."
-            : reviewerPendingEnrollmentSessionId ||
-                reviewerVerificationInFlightToken
-              ? "Verifying your reviewer session and approval…"
-              : "Checking your Google sign-in…",
-          !reviewerVerificationRetryAvailable,
-        );
+        showReviewerDashboardLoading();
         return true;
       }
       return false;
@@ -8190,21 +8234,10 @@
         reviewerAuthorizedEmail.toLowerCase() &&
       Array.isArray(resourceDashboardData?.REVIEWERS?.columns) &&
       Array.isArray(resourceDashboardData?.REVIEWERS?.rows);
+    const silentRefresh = refresh && hasExistingReviewerRows;
     if (resourceDashboardActiveTab === "REVIEWERS") {
-      if (!hasExistingReviewerRows) {
-        tableHead.replaceChildren();
-        tableBody.replaceChildren();
-      }
-      const filterContainer = document
-        .getElementById("resource-dashboard-filter-year")
-        ?.closest(".resource-dashboard-filters");
-      if (filterContainer) filterContainer.hidden = true;
-      setResourceDashboardStatus(
-        hasExistingReviewerRows
-          ? "Refreshing reviewer resources…"
-          : "Loading reviewer resources…",
-        true,
-      );
+      if (!silentRefresh)
+        showReviewerDashboardLoading(!hasExistingReviewerRows);
     }
     let backendRequest = null;
     try {
@@ -8275,13 +8308,7 @@
         )
           promptReviewerReauthentication();
       } else {
-        if (hasExistingReviewerRows) {
-          setResourceDashboardStatus(
-            `Unable to refresh reviewer resources. Previously loaded data is still shown: ${String(
-              error?.message || error,
-            )}`,
-          );
-        } else {
+        if (!hasExistingReviewerRows) {
           reviewerDashboardLoadedForEmail = "";
         }
         if (
@@ -8310,8 +8337,10 @@
       if (
         requestGeneration === reviewerDashboardRequestGeneration &&
         resourceDashboardActiveTab === "REVIEWERS"
-      )
+      ) {
         status.removeAttribute("aria-busy");
+        status.classList?.remove("resource-dashboard-status-stacked");
+      }
     }
   }
 
@@ -8439,6 +8468,7 @@
     void initializeReviewerAuth();
     const storage = globalScope.StorageUtils;
     const appVersion = String(globalScope.__MRH_APP__?.version || "").trim();
+    const keepReviewerStatus = resourceDashboardActiveTab === "REVIEWERS";
     let cachedDashboard = null;
     if (typeof storage?.getStoredJSON === "function") {
       const stored = storage.getStoredJSON(
@@ -8485,13 +8515,13 @@
         }
       }
     }
-    if (!silent) {
+    if (!silent && !keepReviewerStatus) {
       status.textContent = cachedDashboard
         ? "Checking for dashboard updates…"
         : "Loading dashboard…";
       status.setAttribute("aria-busy", "true");
     }
-    if (!cachedDashboard && !silent) {
+    if (!cachedDashboard && !silent && !keepReviewerStatus) {
       resourceDashboardData = null;
       tableHead.replaceChildren();
       tableBody.replaceChildren();
@@ -8564,7 +8594,7 @@
           return loadReviewerDashboard({ refresh: true });
         return true;
       } catch (error) {
-        if (!silent)
+        if (!silent && !keepReviewerStatus)
           status.textContent = `Unable to load dashboard: ${String(
             error?.message || error,
           )}`;
@@ -8574,7 +8604,8 @@
         );
         return false;
       } finally {
-        if (!silent) status.removeAttribute("aria-busy");
+        if (!silent && !keepReviewerStatus)
+          status.removeAttribute("aria-busy");
         resourceDashboardLoadingPromise = null;
       }
     })();
