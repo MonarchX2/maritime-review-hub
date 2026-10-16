@@ -95,8 +95,27 @@
     }
 
     const dashboard = document.getElementById("view-dashboard");
-    if (!dashboard?.classList.contains("active")) {
+    const resourceDashboard = document.getElementById("view-resources");
+    if (
+      !dashboard?.classList.contains("active") &&
+      !resourceDashboard?.classList.contains("active")
+    ) {
       return "An update is ready. It will be applied when you return to the dashboard.";
+    }
+    if (resourceDashboard?.classList.contains("active")) {
+      const enrollmentForm = document.getElementById(
+        "resource-reviewer-enrollment-form",
+      );
+      if (
+        enrollmentForm &&
+        !enrollmentForm.hidden &&
+        Array.from(enrollmentForm.elements).some(
+          (control) =>
+            typeof control.value === "string" && control.value.trim(),
+        )
+      ) {
+        return "An update is ready. Finish or clear your profile details before updating.";
+      }
     }
     if (document.querySelector('[role="dialog"][aria-hidden="false"]')) {
       return "An update is ready. It will be applied after you close the open dialog.";

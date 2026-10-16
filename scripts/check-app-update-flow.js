@@ -186,6 +186,16 @@ assert.ok(
 assert.match(appEntry, /MRH_QUERY_CLIENT_VERSION/);
 assert.match(appEntry, /MRH_UPDATE_AVAILABLE/);
 assert.match(appEntry, /PENDING_UPDATE_RETRY_INTERVAL_MS = 15 \* 1000/);
+assert.match(
+  appEntry,
+  /const dashboard = document\.getElementById\("view-dashboard"\)[\s\S]*?const resourceDashboard = document\.getElementById\("view-resources"\)[\s\S]*?!dashboard\?\.classList\.contains\("active"\)[\s\S]*?!resourceDashboard\?\.classList\.contains\("active"\)/,
+  "safe app updates should apply while the Resource Dashboard is active",
+);
+assert.match(
+  appEntry,
+  /resourceDashboard\?\.classList\.contains\("active"\)[\s\S]*?resource-reviewer-enrollment-form[\s\S]*?Array\.from\(enrollmentForm\.elements\)\.some/,
+  "app updates should not discard unsaved Profile enrollment details",
+);
 
 assert.doesNotMatch(worker, /self\.clients\.claim\(/);
 assert.doesNotMatch(worker, /client\.navigate\(/);

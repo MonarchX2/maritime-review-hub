@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-19 - 2026-10-16
+
+### Fixed
+- Apply safe frontend updates while the Resource Dashboard is open, while preserving unfinished Profile enrollment details.
+
 ## 26.10.16-18 - 2026-10-16
 
 ### Fixed
