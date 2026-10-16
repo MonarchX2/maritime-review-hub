@@ -162,8 +162,13 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-profile-card\s*\{[^}]*display:\s*grid;[^}]*gap:\s*1rem;[\s\S]*?\.resource-reviewer-enrollment\s*\{[^}]*flex-direction:\s*column;[^}]*gap:\s*0\.75rem;/,
+  /\.resource-profile-card\s*\{[^}]*display:\s*grid;[^}]*gap:\s*1\.25rem;[\s\S]*?\.resource-reviewer-enrollment\s*\{[^}]*flex-direction:\s*column;[^}]*gap:\s*1rem;/,
   "Profile form sections should have clear, consistent spacing",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-layout\s*\{[^}]*width:\s*100%;[\s\S]*?\.resource-portal-shell\s*\{[^}]*width:\s*100%;[\s\S]*?\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*100%;/,
+  "Resource Dashboard layout, tab shell, and table should use the available content width",
 );
 assert.match(
   resourceStyles,
@@ -232,7 +237,7 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-control input,\s*\.resource-dashboard-control select\s*\{[^}]*min-height:\s*2rem;[^}]*padding:\s*var\(--resource-dashboard-space-tight\) var\(--resource-dashboard-space\);/,
+  /\.resource-dashboard-control input,\s*\.resource-dashboard-control select\s*\{[^}]*min-height:\s*2\.25rem;[^}]*padding:\s*var\(--resource-dashboard-space\) var\(--resource-dashboard-space-wide\);/,
   "dashboard filter controls should use consistent spacing and align with refresh",
 );
 assert.match(
@@ -453,12 +458,12 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-portal-sidebar\s*\{[^}]*gap:\s*var\(--resource-dashboard-space\);[^}]*padding:\s*0 var\(--resource-dashboard-space-wide\);/,
+  /\.resource-portal-sidebar\s*\{[^}]*gap:\s*var\(--resource-dashboard-space-wide\);[^}]*padding:\s*var\(--resource-dashboard-space\) 1rem;/,
   "dashboard tabs should use the shared spacing scale",
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-table th,\s*\.resource-dashboard-table td\s*\{[^}]*padding:\s*var\(--resource-dashboard-space\);/,
+  /\.resource-dashboard-table th,\s*\.resource-dashboard-table td\s*\{[^}]*padding:\s*0\.75rem 1rem;/,
   "dashboard table cells should have equal, consistent spacing",
 );
 assert.match(
@@ -468,7 +473,7 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-portal-nav-item\s*\{[^}]*min-height:\s*2\.2rem;[^}]*font-size:\s*var\(--resource-dashboard-font\)/,
+  /\.resource-portal-nav-item\s*\{[^}]*min-height:\s*2\.5rem;[^}]*font-size:\s*var\(--resource-dashboard-font\)/,
   "dashboard tabs should use a compact height and the shared dashboard body font",
 );
 assert.match(

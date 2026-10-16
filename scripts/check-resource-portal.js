@@ -184,8 +184,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-layout\s*\{[^}]*width:\s*fit-content;[^}]*margin-inline:\s*auto;/,
-  "the top controls and dashboard card should share a centered layout",
+  /\.resource-dashboard-layout\s*\{[^}]*width:\s*100%;[^}]*margin-inline:\s*auto;/,
+  "the dashboard layout should use the available content width",
 );
 assert.match(
   resourceStyles,
@@ -209,13 +209,13 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-layout\s*\{[^}]*width:\s*fit-content;[^}]*margin-inline:\s*auto;/,
-  "the dashboard toolbar and card should fit their contents and center on the page",
+  /\.resource-dashboard-layout\s*\{[^}]*width:\s*100%;[^}]*margin-inline:\s*auto;/,
+  "the dashboard toolbar and card should fill the available page width",
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*fit-content;[^}]*margin-inline:\s*auto;/,
-  "the dashboard table wrapper should fit and center around its contents",
+  /\.resource-dashboard-table-scroll\s*\{[^}]*width:\s*100%;[^}]*margin-inline:\s*0;/,
+  "the dashboard table wrapper should use the available content width",
 );
 assert.doesNotMatch(
   resourceStyles.match(/\.resource-dashboard-table\s*\{[^}]*\}/)?.[0] || "",

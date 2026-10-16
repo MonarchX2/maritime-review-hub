@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-26 - 2026-10-16
+
+### Fixed
+- Expand the Resource Dashboard to the available page width and add consistent spacing across profile, navigation, filters, and resource tables.
+
 ## 26.10.16-25 - 2026-10-16
 
 ### Fixed
