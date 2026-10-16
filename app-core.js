@@ -5992,9 +5992,75 @@
   let reviewerAuthorizedEmail = "";
   let reviewerPendingEnrollmentToken = "";
   let reviewerDashboardRequestGeneration = 0;
+  const REVIEWER_EXPLICIT_SIGNOUT_KEY = "mrh_reviewer_explicit_signout_v1";
+  const REVIEWER_EXPLICIT_SIGNOUT_COOKIE =
+    "mrh_reviewer_explicit_signout_v1";
   const RESOURCE_DASHBOARD_CACHE_KEY = "resource_dashboard_cache_v1";
   let resourceDashboardSelectedYear = "3";
   let resourceDashboardSelectedSemester = "1";
+
+  function hasExplicitReviewerSignOut() {
+    const signOutCookie = String(globalScope.document?.cookie || "")
+      .split("; ")
+      .find((entry) =>
+        entry.startsWith(`${REVIEWER_EXPLICIT_SIGNOUT_COOKIE}=`),
+      );
+    if (signOutCookie)
+      return signOutCookie.slice(REVIEWER_EXPLICIT_SIGNOUT_COOKIE.length + 1) ===
+        "true";
+    try {
+      if (
+        globalScope.localStorage.getItem(REVIEWER_EXPLICIT_SIGNOUT_KEY) ===
+        "true"
+      )
+        return true;
+    } catch (error) {
+      // The first-party cookie remains available when local storage is blocked.
+    }
+    return String(globalScope.document?.cookie || "")
+      .split("; ")
+      .some(
+        (entry) => entry === `${REVIEWER_EXPLICIT_SIGNOUT_COOKIE}=true`,
+      );
+  }
+
+  function setExplicitReviewerSignOut(signedOut) {
+    let persisted = false;
+    try {
+      if (signedOut)
+        globalScope.localStorage.setItem(
+          REVIEWER_EXPLICIT_SIGNOUT_KEY,
+          "true",
+        );
+      else globalScope.localStorage.removeItem(REVIEWER_EXPLICIT_SIGNOUT_KEY);
+      persisted = true;
+    } catch (error) {
+      // Fall back to the same-origin cookie when local storage is blocked.
+    }
+    try {
+      if (globalScope.document) {
+        globalScope.document.cookie = signedOut
+          ? `${REVIEWER_EXPLICIT_SIGNOUT_COOKIE}=true; Max-Age=315360000; Path=/; SameSite=Strict; Secure`
+          : `${REVIEWER_EXPLICIT_SIGNOUT_COOKIE}=false; Max-Age=315360000; Path=/; SameSite=Strict; Secure`;
+        const cookieValue = String(globalScope.document.cookie || "")
+          .split("; ")
+          .find((entry) =>
+            entry.startsWith(`${REVIEWER_EXPLICIT_SIGNOUT_COOKIE}=`),
+          );
+        persisted =
+          (signedOut
+            ? cookieValue === `${REVIEWER_EXPLICIT_SIGNOUT_COOKIE}=true`
+            : cookieValue === `${REVIEWER_EXPLICIT_SIGNOUT_COOKIE}=false`) ||
+          persisted;
+      }
+    } catch (error) {
+      // Local storage may still preserve the explicit sign-out preference.
+    }
+    if (!persisted)
+      throw new Error(
+        "The sign-out preference could not be saved. Enable site storage and try again.",
+      );
+  }
 
   function getResourceDeviceIdentity(createIfMissing = true) {
     const storageKey = "mrh_device_identity_v1";
@@ -6604,9 +6670,17 @@
         globalScope.google.accounts.id.initialize({
           client_id: reviewerAuthConfig.clientId,
           callback: (credentialResponse) => {
+            try {
+              setExplicitReviewerSignOut(false);
+            } catch (error) {
+              (globalScope.DebugUtils || console).error(
+                "Unable to clear the explicit reviewer sign-out preference.",
+                error,
+              );
+            }
             void completeReviewerSignIn(credentialResponse?.credential || "");
           },
-          auto_select: true,
+          auto_select: !hasExplicitReviewerSignOut(),
           cancel_on_tap_outside: true,
         });
         if (signInButton) {
@@ -6625,7 +6699,8 @@
         if (authStatus)
           authStatus.textContent =
             "Sign in with Google. First-time sign-in asks for your name; access is immediate.";
-        globalScope.google.accounts.id.prompt();
+        if (!hasExplicitReviewerSignOut())
+          globalScope.google.accounts.id.prompt();
         return true;
       } catch (error) {
         reviewerAuthConfigPromise = null;
@@ -6647,7 +6722,7 @@
     const authStatus = document.getElementById(
       "resource-reviewer-auth-status",
     );
-    const deviceIdentity = getResourceDeviceIdentity(false);
+    const deviceIdentity = getResourceDeviceIdentity();
     const response = await globalScope.AppNetwork.callBackend(
       {
         type: "request_reviewer_enrollment",
@@ -6681,7 +6756,10 @@
         )) {
       throw new Error("The saved account device identity is invalid.");
     }
-    persistResourceDeviceIdentity(response.deviceIdentity);
+    if (response.deviceIdentity !== deviceIdentity)
+      throw new Error(
+        "The saved device identity does not match this browser. It was not replaced; contact the administrator.",
+      );
     if (!response.active) {
       reviewerPendingEnrollmentToken = "";
       if (authStatus)
@@ -6702,12 +6780,7 @@
     }
     if (authStatus) authStatus.textContent = "Signing you in…";
     try {
-      let deviceIdentity = getResourceDeviceIdentity(false);
-      if (!deviceIdentity) {
-        const recovered = await recoverReviewerDeviceIdentity(idToken);
-        if (!recovered) return false;
-        deviceIdentity = getResourceDeviceIdentity(false);
-      }
+      const deviceIdentity = getResourceDeviceIdentity();
       const response = await globalScope.AppNetwork.callBackend(
         { type: "verify_reviewer_access", idToken, deviceIdentity },
         { timeoutMs: 30000, maxRetries: 0 },
@@ -6940,7 +7013,19 @@
     }
   }
 
-  function signOutReviewer() {
+  function signOutReviewer(explicit = true) {
+    let signOutPreferenceSaved = true;
+    if (explicit) {
+      try {
+        setExplicitReviewerSignOut(true);
+      } catch (error) {
+        signOutPreferenceSaved = false;
+        (globalScope.DebugUtils || console).error(
+          "Unable to save the explicit reviewer sign-out preference.",
+          error,
+        );
+      }
+    }
     reviewerIdentityToken = "";
     reviewerAuthorizedEmail = "";
     reviewerDashboardRequestGeneration += 1;
@@ -7009,8 +7094,9 @@
       "resource-reviewer-auth-status",
     );
     if (authStatus)
-      authStatus.textContent =
-        "Signed out. Reviewer data has been cleared from this page.";
+      authStatus.textContent = signOutPreferenceSaved
+        ? "Signed out. Reviewer data has been cleared from this page."
+        : "Signed out, but this browser could not save the sign-out preference. Enable site storage to keep it signed out after refresh.";
     if (resourceDashboardActiveTab === "REVIEWERS") {
       resourceDashboardActiveTab = "MODULES";
       renderResourceDashboardTab();
@@ -7089,7 +7175,7 @@
         };
       }
       if (["UNAUTHORIZED", "FORBIDDEN"].includes(error?.code)) {
-        signOutReviewer();
+        signOutReviewer(false);
         status.textContent =
           error.code === "UNAUTHORIZED"
             ? "Google sign-in expired. Sign in again to view reviewer resources."

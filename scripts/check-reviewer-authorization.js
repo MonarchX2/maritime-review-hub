@@ -52,6 +52,14 @@ const legacyAccountRows = [
     "",
     "TRUE",
   ],
+  [
+    "reviewer@example.com",
+    "61234567-89ab-4cde-8fab-0123456789ab",
+    "Reviewer",
+    "Rita",
+    "A",
+    "TRUE",
+  ],
 ];
 let tokenClaims = {};
 let tokenStatus = 200;
@@ -309,8 +317,14 @@ assert.deepEqual(
   "account setup should create the syllabus file-click log worksheet",
 );
 assert.equal(sheets.Accounts, undefined, "the legacy account worksheet should be removed after merging");
-assert.equal(accountRows.length, 3, "legacy account rows should merge without duplicating matching accounts");
+assert.equal(
+  accountRows.length,
+  4,
+  "legacy account rows should merge without duplicating accounts and allow multiple devices",
+);
 assert.equal(accountRows[2][0], "second-reviewer@example.com");
+assert.equal(accountRows[3][0], "reviewer@example.com");
+assert.equal(accountRows[3][1], "61234567-89ab-4cde-8fab-0123456789ab");
 assert.equal(sheets["SIGN-IN"] !== undefined, true);
 assert.equal(
   logSheetRows["SIGN-IN"].length,
@@ -489,10 +503,43 @@ assert.equal(duplicateEnrollment.existing, true);
 assert.equal(duplicateEnrollment.active, true);
 assert.equal(
   duplicateEnrollment.deviceIdentity,
-  "11234567-89ab-4cde-8fab-0123456789ab",
-  "re-enrollment must recover the account's stored device identity rather than rotate it",
+  "21234567-89ab-4cde-8fab-0123456789ab",
+  "a new browser should retain its own device identity when registered for an existing account",
 );
-assert.equal(accountRows.length, 4, "duplicate email must not add a row");
+assert.deepEqual(
+  Array.from(accountRows[accountRows.length - 1]),
+  [
+    "new-reviewer@example.com",
+    "21234567-89ab-4cde-8fab-0123456789ab",
+    "New",
+    "Reviewer",
+    "B",
+    "TRUE",
+  ],
+  "additional devices should inherit the existing profile without requiring profile edits",
+);
+assert.equal(accountRows.length, 6, "an additional device should add a distinct account row");
+const sameDeviceEnrollment = post({
+  type: "request_reviewer_enrollment",
+  idToken: "new-reviewer-token",
+  deviceIdentity: "21234567-89ab-4cde-8fab-0123456789ab",
+  lastName: "Changed",
+  firstName: "Name",
+});
+assert.equal(sameDeviceEnrollment.status, "success");
+assert.equal(accountRows.length, 6, "repeating enrollment on a device must not duplicate its row");
+tokenClaims = validClaims("other-reviewer@example.com");
+assert.equal(
+  post({
+    type: "request_reviewer_enrollment",
+    idToken: "other-reviewer-token",
+    deviceIdentity: "21234567-89ab-4cde-8fab-0123456789ab",
+    lastName: "Other",
+    firstName: "Reviewer",
+  }).code,
+  "DEVICE_CONFLICT",
+  "a device identity already assigned to another account must be rejected",
+);
 tokenClaims = validClaims("reviewer@example.com");
 const recoveredDevice = post({
   type: "request_reviewer_enrollment",
@@ -504,9 +551,22 @@ assert.equal(recoveredDevice.active, true);
 assert.equal(recoveredDevice.existing, true);
 assert.equal(
   recoveredDevice.deviceIdentity,
-  deviceIdentity,
-  "clearing browser storage must recover the server-registered device identity",
+  "41234567-89ab-4cde-8fab-0123456789ab",
+  "a fresh browser identity should be registered as a separate device for the account",
 );
+assert.equal(accountRows.length, 7);
+accountRows[3][2] = "Conflicting";
+assert.equal(
+  post({
+    type: "request_reviewer_enrollment",
+    idToken: "reviewer-recovery",
+    deviceIdentity: "71234567-89ab-4cde-8fab-0123456789ab",
+  }).code,
+  "ACCOUNT_CONFLICT",
+  "inconsistent saved profile details across devices should fail safely",
+);
+accountRows[3][2] = "Reviewer";
+assert.equal(accountRows.length, 7);
 tokenClaims = validClaims("reviewer@example.com");
 assert.equal(
   post({ type: "verify_reviewer_access", idToken: "missing-device" }).code,

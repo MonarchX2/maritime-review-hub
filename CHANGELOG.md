@@ -1,5 +1,14 @@
 # Changelog
 
+## 26.10.16-23 - 2026-10-16
+
+### Fixed
+- Preserve reviewer sign-out state across refreshes without storing Google ID tokens, and always clear the in-memory session even if browser storage is unavailable.
+
+### Changed
+- Register one `ACCOUNTS` row per verified email and browser-device UUID, allowing an existing account to sign in on additional browsers without re-entering profile details.
+- Document that clearing browser storage creates a new device UUID rather than recovering a physical-device identifier.
+
 ## 26.10.16-22 - 2026-10-16
 
 ### Changed

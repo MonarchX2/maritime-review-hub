@@ -24,25 +24,28 @@ optional. Users are asked to check spelling and capitalization before saving
 The verified identity token exists only in page memory and is sent to the
 backend for each protected request; it is not stored in browser storage.
 Google Identity Services can offer automatic sign-in again after a refresh if
-the user previously authorized it. Reviewer dashboard data is also kept only
-in page memory and cleared on sign-out or page reload. The public dashboard
-does not return reviewer rows.
+the user previously authorized it. An explicit sign-out preference is saved
+in browser storage to suppress automatic selection and prompting; signing in
+again clears that preference. Automatic sign-in depends on Google's browser
+session and consent state, so a user may need to click the sign-in button
+again. Reviewer dashboard data is kept only in page memory and cleared on
+sign-out or page reload. The public dashboard does not return reviewer rows.
 
-The browser keeps a random UUID in local storage and a long-lived first-party
-cookie; it is never displayed in the interface. After site storage is cleared,
-Google sign-in automatically recovers the single device ID already registered
-for that verified email before retrying authorization. The ID is not silently
-replaced when saved copies conflict or are damaged. A user account is kept to
-one device ID; administrators must resolve conflicting rows manually. The
-device ID is an enrollment and audit identifier, not a secret or independent
-proof of identity.
+Each browser installation keeps a random UUID in local storage and a long-lived
+first-party cookie; it is never displayed in the interface. `ACCOUNTS` stores
+one row for each email/device pair, allowing the same Google account to sign
+in from multiple browsers or devices. A recognized email signing in with a
+new browser UUID adds a device row using the existing profile details. The ID
+is not silently replaced when the two saved copies conflict or are damaged.
+The device ID is an enrollment and audit identifier, not a secret or
+independent proof of identity.
 
-A website cannot read an immutable hardware identifier. Clearing all browser
-storage before the account has been registered, removing or changing the
-spreadsheet record, switching accounts, or using another browser/device can
-prevent recovery or create a different browser UUID. The UUID is not
-cryptographically bound to physical hardware, and must not be treated as
-tamper-proof or used as an authentication factor.
+A website cannot read an immutable hardware identifier. Clearing both local
+storage and cookies causes that browser to generate a new UUID; on a verified
+sign-in, the new UUID is registered as an additional device for an existing
+account. Switching accounts or using another browser/device likewise has a
+separate UUID. The UUID is not cryptographically bound to physical hardware,
+and must not be treated as tamper-proof or used as an authentication factor.
 
 Google Drive permissions are not changed by the dashboard. Anyone who can open
 a linked file can copy or capture its contents. Ensure reviewer files are not
@@ -86,10 +89,12 @@ To initialize sign-in and access logging:
    private to administrators.
 5. On first sign-in, a user submits `Last Name`, `First Name`, and optional
    `Middle Initial`. The backend verifies the Google identity and saves the
-   name, email, stable internal device ID, and `Active=TRUE` immediately. The
-   exact account columns are `Email`, `Device Identity`, `Last Name`,
-   `First Name`, `Middle Initial`, and `Active`. There should be one row per
-   email; do not manually create another device ID for an existing account.
+   name, email, browser UUID, and `Active=TRUE` immediately. The exact account
+   columns are `Email`, `Device Identity`, `Last Name`, `First Name`,
+   `Middle Initial`, and `Active`. There is one row per email/device pair;
+   additional devices for an existing email are registered after Google
+   sign-in using that account's saved profile. Do not manually copy a device
+   ID between devices.
 6. Enable the Apps Script Advanced Google service **Google Sheets API v4**
    (the project manifest declares this service; enable the Google Sheets API
    in the linked Cloud project if prompted), and deploy a new web-app version.

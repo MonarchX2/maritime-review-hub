@@ -52,8 +52,8 @@ assert.doesNotMatch(
 );
 assert.match(
   appCore,
-  /async function recoverReviewerDeviceIdentity\(idToken\)[\s\S]*?persistResourceDeviceIdentity\(response\.deviceIdentity\)[\s\S]*?completeReviewerSignIn\(idToken, true\)/,
-  "a Google-authenticated returning user should recover the saved device identity after clearing browser storage",
+  /async function recoverReviewerDeviceIdentity\(idToken\)[\s\S]*?const deviceIdentity = getResourceDeviceIdentity\(\)[\s\S]*?deviceIdentity \? \{ deviceIdentity \} : \{\}[\s\S]*?response\.deviceIdentity !== deviceIdentity[\s\S]*?completeReviewerSignIn\(idToken, true\)/,
+  "a verified existing account should register and use this browser's persistent device identity",
 );
 assert.doesNotMatch(
   appCore,
@@ -62,8 +62,8 @@ assert.doesNotMatch(
 );
 assert.match(
   appCore,
-  /async function completeReviewerSignIn[\s\S]*?let deviceIdentity = getResourceDeviceIdentity\(false\)[\s\S]*?recoverReviewerDeviceIdentity\(idToken\)/,
-  "sign-in should recover an existing server-side ID without generating a new local one",
+  /async function completeReviewerSignIn[\s\S]*?const deviceIdentity = getResourceDeviceIdentity\(\)[\s\S]*?recoverReviewerDeviceIdentity\(idToken\)/,
+  "sign-in should use the current browser's persistent ID and register a new one after a storage reset",
 );
 assert.match(
   appCore,
@@ -187,8 +187,23 @@ assert.match(
 );
 assert.match(
   appCore,
-  /auto_select:\s*true[\s\S]*?google\.accounts\.id\.prompt\(\)/,
-  "returning users should be offered Google automatic sign-in after page refresh without persisting ID tokens",
+  /auto_select:\s*!hasExplicitReviewerSignOut\(\)[\s\S]*?if \(!hasExplicitReviewerSignOut\(\)\)\s*globalScope\.google\.accounts\.id\.prompt\(\)/,
+  "returning users should be offered Google automatic sign-in unless they explicitly signed out",
+);
+assert.match(
+  appCore,
+  /function setExplicitReviewerSignOut\(signedOut\)[\s\S]*?localStorage\.setItem\(\s*REVIEWER_EXPLICIT_SIGNOUT_KEY,\s*"true",?\s*\)[\s\S]*?localStorage\.removeItem\(REVIEWER_EXPLICIT_SIGNOUT_KEY\)/,
+  "explicit sign-out preference should persist across reloads and clear on a subsequent sign-in",
+);
+assert.match(
+  appCore,
+  /function signOutReviewer\(explicit = true\)[\s\S]*?setExplicitReviewerSignOut\(true\)[\s\S]*?catch \(error\) \{[\s\S]*?reviewerIdentityToken = ""[\s\S]*?reviewerAuthorizedEmail = ""[\s\S]*?reviewerDashboardRequestGeneration \+= 1/,
+  "explicit sign-out should suppress automatic sign-in and clear in-memory credentials even if saving the preference fails",
+);
+assert.doesNotMatch(
+  appCore,
+  /localStorage\.setItem\([^,]*(?:token|credential)|sessionStorage\.setItem\([^,]*(?:token|credential)/i,
+  "Google credentials must not be persisted in browser storage",
 );
 assert.match(
   appCore,
