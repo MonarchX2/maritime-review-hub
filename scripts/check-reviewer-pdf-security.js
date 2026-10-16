@@ -78,12 +78,24 @@ assert.match(
   /function handleGetReviewerPdfPreviewRequest_\(data\)[\s\S]*?authorizeReviewerPdfRequest_\(data\)[\s\S]*?getReviewerPdfSource_\(fileId\)[\s\S]*?data: Utilities\.base64Encode\(sourceBytes\)/,
   "online preview must authorize and return only the current protected source bytes without watermark generation",
 );
+assert.match(
+  backend,
+  /function handleGetReviewerPdfPreviewRequest_\(data\)[\s\S]*?Drive\.Files\.get\(fileId[\s\S]*?reviewerPdfSourceVersion_\([\s\S]*?latestSourceVersion !== source\.sourceVersion/,
+  "preview should verify the source with one metadata lookup instead of rechecking its full Drive hierarchy",
+);
 assert.doesNotMatch(
   backend.match(
     /function handleGetReviewerPdfPreviewRequest_\(data\)[\s\S]*?\n\}/,
   )?.[0] || "",
   /watermarkReviewerPdfBytes_|DriveApp\.createFile/,
   "online preview must not generate or persist a physical derivative",
+);
+assert.doesNotMatch(
+  backend.match(
+    /function handleGetReviewerPdfPreviewRequest_\(data\)[\s\S]*?\n\}/,
+  )?.[0] || "",
+  /appendMRHAccessLog_/,
+  "preview delivery should not wait for a duplicate synchronous spreadsheet log",
 );
 assert.match(
   backend,
@@ -169,6 +181,16 @@ assert.match(
   pdfHelper,
   /var watermarkLines = \[fullName, email\]/,
   "the PDF watermark should contain only the account name and email on separate lines",
+);
+assert.match(
+  pdfHelper,
+  /\[0\.25, 0\.75\]\.forEach\(function \(columnFraction\)[\s\S]*?\[0\.12, 0\.31, 0\.5, 0\.69, 0\.88\]\.forEach\(function \(rowFraction\)[\s\S]*?opacity: 0\.24/,
+  "downloaded PDFs should carry ten compact two-line identity watermarks per page",
+);
+assert.match(
+  pdfHelper,
+  /fullNameCount < 10[\s\S]*?emailCount < 10/,
+  "downloaded PDF watermark verification should require all ten stamps on each page",
 );
 assert.doesNotMatch(
   pdfHelper,

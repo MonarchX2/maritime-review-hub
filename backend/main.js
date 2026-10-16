@@ -2528,17 +2528,21 @@ function getReviewerPdfSource_(fileId) {
   return {
     entry: entry,
     driveFile: driveFile,
-    sourceVersion: sha256Hex(
-      [
-        driveFile.id,
-        driveFile.size,
-        driveFile.modifiedTime,
-        driveFile.headRevisionId,
-        driveFile.md5Checksum,
-        driveFile.parents.slice().sort().join(","),
-      ].join("\n"),
-    ),
+    sourceVersion: reviewerPdfSourceVersion_(driveFile),
   };
+}
+
+function reviewerPdfSourceVersion_(driveFile) {
+  return sha256Hex(
+    [
+      driveFile.id,
+      driveFile.size,
+      driveFile.modifiedTime,
+      driveFile.headRevisionId,
+      driveFile.md5Checksum,
+      driveFile.parents.slice().sort().join(","),
+    ].join("\n"),
+  );
 }
 
 function reviewerPdfFailure_(data, startedAt, code, message) {
@@ -2651,11 +2655,24 @@ function handleGetReviewerPdfPreviewRequest_(data) {
       "INVALID_PDF",
       "The source PDF is invalid or too large.",
     );
-  var latestSource = getReviewerPdfSource_(fileId);
-  if (
-    latestSource.error ||
-    latestSource.sourceVersion !== source.sourceVersion
-  )
+  var latestFile = Drive.Files.get(fileId, {
+    fields: "id,mimeType,parents,trashed,size,modifiedTime,headRevisionId,md5Checksum",
+    supportsAllDrives: true,
+  });
+  var latestSourceVersion =
+    latestFile &&
+    !latestFile.trashed &&
+    String(latestFile.mimeType || "").toLowerCase() === "application/pdf"
+      ? reviewerPdfSourceVersion_({
+          id: String(latestFile.id),
+          size: Number(latestFile.size || 0),
+          modifiedTime: String(latestFile.modifiedTime || ""),
+          headRevisionId: String(latestFile.headRevisionId || ""),
+          md5Checksum: String(latestFile.md5Checksum || ""),
+          parents: (latestFile.parents || []).map(String),
+        })
+      : "";
+  if (latestSourceVersion !== source.sourceVersion)
     return reviewerPdfFailure_(
       data,
       startedAt,
@@ -2676,16 +2693,6 @@ function handleGetReviewerPdfPreviewRequest_(data) {
       String(error && error.message || "Verified account details are required."),
     );
   }
-  appendMRHAccessLog_(
-    "REVIEWERS",
-    authorization.account,
-    String(data.eventId || ""),
-    {
-      event: "PROTECTED_PDF_PREVIEW",
-      category: "REVIEWERS",
-      resource: source.entry.title + " | " + fileId,
-    },
-  );
   Logger.log(JSON.stringify({
     event: "reviewer_pdf_preview_delivered",
     correlationId: String(data.eventId || ""),

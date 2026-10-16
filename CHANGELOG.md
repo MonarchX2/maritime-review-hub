@@ -1,5 +1,19 @@
 # Changelog
 
+## 26.10.20 - 2026-10-17
+
+### Fixed
+
+- Keep the reviewer resource table visible while refreshing already-rendered
+  data, and make the expanded PDF viewer fill its viewport.
+
+### Improved
+
+- Reduce protected PDF preview work by checking the source version with a
+  metadata lookup and avoiding a duplicate synchronous access-log write.
+- Increase online preview watermarks to a compact 4-by-5 grid and downloaded
+  PDF watermarks to a compact 2-by-5 grid.
+
 ## 26.10.19 - 2026-10-17
 
 ### Fixed

@@ -6531,9 +6531,22 @@
       "resource-dashboard-category-filter",
     );
     const status = document.getElementById("resource-portal-status");
+    const tableHead = document.getElementById("resource-dashboard-table-head");
     const alreadyLoading =
       status?.getAttribute("aria-busy") === "true" &&
       status.textContent.trim() === "Loading";
+    const hasRenderedReviewerTable =
+      !clearRows &&
+      reviewerDashboardLoadedForEmail?.toLowerCase() ===
+        reviewerAuthorizedEmail.toLowerCase() &&
+      Array.isArray(resourceDashboardData?.REVIEWERS?.columns) &&
+      Array.isArray(resourceDashboardData?.REVIEWERS?.rows) &&
+      Boolean(tableHead?.firstElementChild);
+    if (hasRenderedReviewerTable) {
+      setReviewerDashboardFiltersDisabled(false);
+      renderResourceDashboardTab();
+      return;
+    }
     if (filters) filters.hidden = false;
     if (categoryFilter) categoryFilter.hidden = false;
     const addLoadingOptions = (control, values, selectedValue) => {
@@ -9642,7 +9655,7 @@
       throw new Error("The PDF preview watermark could not be displayed.");
     const text = `${normalizedName}\n${normalizedEmail}`;
     watermark.replaceChildren(
-      ...Array.from({ length: 6 }, () => {
+      ...Array.from({ length: 20 }, () => {
         const line = document.createElement("span");
         line.textContent = text;
         return line;

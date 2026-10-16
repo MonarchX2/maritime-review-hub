@@ -1695,7 +1695,7 @@ button:active:not(:disabled) {
   z-index: 1;
   inset: 0;
   display: grid;
-  grid-template: repeat(3, 1fr) / repeat(2, 1fr);
+  grid-template: repeat(5, 1fr) / repeat(4, 1fr);
   overflow: hidden;
   pointer-events: none;
   user-select: none;
@@ -1705,12 +1705,12 @@ button:active:not(:disabled) {
   display: grid;
   place-items: center;
   color: rgb(51 65 85 / 24%);
-  font-size: clamp(0.7rem, 1.4vw, 1.15rem);
+  font-size: clamp(0.48rem, 0.8vw, 0.78rem);
   font-weight: 700;
-  line-height: 1.35;
+  line-height: 1.15;
   text-align: center;
   text-transform: uppercase;
-  white-space: pre-line;
+  white-space: pre;
   transform: rotate(-28deg);
 }
 
@@ -2598,6 +2598,9 @@ button:active:not(:disabled) {
   position: fixed;
   z-index: 1000;
   inset: 1rem;
+  height: calc(100vh - 2rem);
+  height: calc(100dvh - 2rem);
+  box-sizing: border-box;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   margin: 0;
@@ -2608,13 +2611,19 @@ button:active:not(:disabled) {
 }
 
 .resource-portal-preview.is-expanded .resource-portal-preview-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
   height: 100%;
   min-height: 0;
 }
 
 .resource-portal-preview.is-expanded .resource-portal-preview-viewer {
-  height: 100%;
+  position: relative;
+  width: 100%;
+  height: auto;
   min-height: 0;
+  overflow: hidden;
 }
 
 .resource-portal-preview-header {

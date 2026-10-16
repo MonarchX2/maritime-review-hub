@@ -55,7 +55,8 @@ permanently delete any remaining outputs for the session; job expiry after ten
 minutes is a cleanup fallback. The active queue is capped at three.
 
 Each physical page watermark contains only the verified account's full name
-and email on two separate lines. No derivative is cached or reused. The
+and email on two separate lines, repeated in a compact two-column by
+five-row pattern. Every stamp is checked after saving. No derivative is cached or reused. The
 authoritative index is cached only by its Drive file ID and last-modified
 timestamp, and checked again for each protected request.
 Run `setupReviewerPdfDelivery()` once from the Apps Script editor as the

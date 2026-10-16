@@ -117,16 +117,20 @@ The original PDF remains in Drive and is read only by the existing Apps
 Script execution identity. Online preview uses the authenticated
 `get_reviewer_pdf_preview` route to return the original bytes without invoking
 PDF processing or creating a Drive derivative. The browser displays the PDF
-with a dynamic overlay containing the verified full name and email on separate
-lines. The frame and object URL are cleared when the preview closes, approval
-is lost, or the session ends.
+with a dynamic 20-stamp overlay containing the verified full name and email on
+separate lines. The route checks the protected hierarchy once, then verifies
+the source version with a single Drive metadata lookup after reading the
+content; it does not block preview delivery on a spreadsheet access-log write.
+The frame and object URL are cleared when the preview closes, approval is lost,
+or the session ends.
 
 Only the explicit Download action calls `get_reviewer_pdf`. It creates a
 session-bound job for the asynchronous watermark worker; the worker rechecks
 the session and stored Active value (`TRUE`), current index membership, Drive
 MIME type, protected-root ancestry, and source version. The `pdf-lib` 1.17.1
-(MIT licensed) helper uses two lines (full name and email) on each physical
-page and verifies each page after saving. The browser polls
+(MIT licensed) helper uses two lines (full name and email) in a compact
+two-column by five-row pattern on each physical page and verifies every stamp
+after saving. The browser polls
 `get_reviewer_pdf_job`, which reauthorizes and revalidates the source before
 delivery. Its private Drive derivative is permanently deleted before response
 bytes are returned. Sign-out and a page-exit beacon clean up any remaining

@@ -67,6 +67,11 @@ assert.match(
 );
 assert.match(
   appCore,
+  /function showReviewerDashboardLoading\(clearRows = false\)[\s\S]*?hasRenderedReviewerTable[\s\S]*?setReviewerDashboardFiltersDisabled\(false\)[\s\S]*?renderResourceDashboardTab\(\)[\s\S]*?return;/,
+  "an already-rendered authorized Reviewer table must not retain a loading indicator during refresh",
+);
+assert.match(
+  appCore,
   /resourceDashboardActiveTab === "REVIEWERS" &&\s*reviewerSessionId &&\s*reviewerDashboardLoadedForEmail\?\.toLowerCase\(\) !==\s*reviewerAuthorizedEmail\.toLowerCase\(\)[\s\S]*?showReviewerDashboardLoading\(true\);\s*return true;/,
   "Reviewer placeholder data should not render as zero rows while the authorized table request is pending",
 );
@@ -110,6 +115,21 @@ assert.match(
   appCore,
   /cacheReviewerDashboard\(reviewerAuthorizedEmail, response\.tab\)/,
   "fresh dashboard data should refresh the current-tab cache",
+);
+assert.match(
+  appCore,
+  /function renderReviewerPdfWatermark\(fullName, email\)[\s\S]*?Array\.from\(\{ length: 20 \}/,
+  "online PDF preview should show a compact 20-stamp identity overlay",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-preview-watermark\s*\{[^}]*grid-template:\s*repeat\(5,\s*1fr\)\s*\/\s*repeat\(4,\s*1fr\)/,
+  "online PDF identity stamps should use a compact five-by-four grid",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-preview\.is-expanded\s*\{[^}]*height:\s*calc\(100dvh - 2rem\)[\s\S]*?\.resource-portal-preview\.is-expanded \.resource-portal-preview-frame\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*width:\s*100%;[^}]*height:\s*100%/,
+  "expanded PDF preview should fill the viewport with an absolutely sized frame",
 );
 assert.match(
   appCore,
