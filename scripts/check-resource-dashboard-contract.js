@@ -52,8 +52,13 @@ assert.doesNotMatch(
 );
 assert.match(
   appCore,
-  /function applyReviewerAccountStatus\(response, idToken\)[\s\S]*?accountStatus === "TRUE"[\s\S]*?reviewerIdentityToken = idToken[\s\S]*?accountStatus === "NOT_FOUND" \|\| accountStatus === "DENIED"/,
+  /function applyReviewerAccountStatus\(\s*response,\s*idToken,\s*preserveProfileEditor = false,\s*\)[\s\S]*?accountStatus === "TRUE"[\s\S]*?reviewerIdentityToken = idToken[\s\S]*?accountStatus === "NOT_FOUND" \|\| accountStatus === "DENIED"/,
   "only TRUE accounts should receive reviewer access, while denied and new users can submit profile details",
+);
+assert.match(
+  appCore,
+  /const keepProfileEditorOpen =\s*preserveProfileEditor && reviewerProfileEditing;[\s\S]*?if \(keepProfileEditorOpen\) \{[\s\S]*?form\.hidden = false;[\s\S]*?formButton\.textContent = "Save changes for approval";[\s\S]*?\} else \{[\s\S]*?if \(inputs\.lastName\) inputs\.lastName\.value = response\.lastName \|\| "";/,
+  "approval polling should keep an open profile editor and its unsubmitted field values intact",
 );
 assert.match(
   appCore,
@@ -62,7 +67,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function scheduleReviewerStatusPolling\(idToken\)[\s\S]*?type: "get_reviewer_account_status"[\s\S]*?REVIEWER_STATUS_POLL_INTERVAL_MS/,
+  /function scheduleReviewerStatusPolling\(idToken\)[\s\S]*?type: "get_reviewer_account_status"[\s\S]*?applyReviewerAccountStatus\(response, idToken, true\)[\s\S]*?REVIEWER_STATUS_POLL_INTERVAL_MS/,
   "the page should poll the server so administrator approval changes take effect while open",
 );
 assert.match(

@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-33 - 2026-10-16
+
+### Fixed
+- Keep the profile name editor open and preserve unsaved changes while reviewer approval status refreshes.
+
 ## 26.10.16-32 - 2026-10-16
 
 ### Changed

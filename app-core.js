@@ -6868,7 +6868,11 @@
     if (headerProfileIcon) headerProfileIcon.hidden = Boolean(pictureUrl);
   }
 
-  function applyReviewerAccountStatus(response, idToken) {
+  function applyReviewerAccountStatus(
+    response,
+    idToken,
+    preserveProfileEditor = false,
+  ) {
     if (
       response?.status !== "success" ||
       typeof response.email !== "string" ||
@@ -6902,6 +6906,8 @@
       firstName: document.getElementById("resource-reviewer-first-name"),
       middleInitial: document.getElementById("resource-reviewer-middle-initial"),
     };
+    const keepProfileEditorOpen =
+      preserveProfileEditor && reviewerProfileEditing;
     reviewerAuthorizedEmail = response.email;
     reviewerProfilePictureUrl =
       typeof response.picture === "string" &&
@@ -6917,37 +6923,43 @@
       clearReviewerResourceRows();
     }
     populateReviewerProfile(response);
-    reviewerProfileEditing = false;
     setReviewerAccessEnabled(accountStatus === "TRUE");
     if (signInButton) signInButton.hidden = true;
     if (signoutButton) signoutButton.hidden = false;
-    if (form)
-      form.hidden = !(
-        accountStatus === "NOT_FOUND" || accountStatus === "DENIED"
-      );
-    if (editProfileButton)
-      editProfileButton.hidden = !["TRUE", "FALSE"].includes(accountStatus);
-    if (cancelEditButton) cancelEditButton.hidden = true;
-    if (formButton)
-      formButton.textContent =
-        accountStatus === "DENIED"
-          ? "Correct details and resubmit"
-          : response.profileUpdated
-            ? "Save changes for approval"
-            : "Submit for administrator review";
-    if (accountStatus === "NOT_FOUND") {
-      Object.values(inputs).forEach((input) => {
-        if (input) input.value = "";
-      });
+    if (keepProfileEditorOpen) {
+      if (form) form.hidden = false;
+      if (cancelEditButton) cancelEditButton.hidden = false;
+      if (formButton) formButton.textContent = "Save changes for approval";
     } else {
-      if (inputs.lastName) inputs.lastName.value = response.lastName || "";
-      if (inputs.firstName) inputs.firstName.value = response.firstName || "";
-      if (inputs.middleInitial)
-        inputs.middleInitial.value = response.middleInitial || "";
+      reviewerProfileEditing = false;
+      if (form)
+        form.hidden = !(
+          accountStatus === "NOT_FOUND" || accountStatus === "DENIED"
+        );
+      if (editProfileButton)
+        editProfileButton.hidden = !["TRUE", "FALSE"].includes(accountStatus);
+      if (cancelEditButton) cancelEditButton.hidden = true;
+      if (formButton)
+        formButton.textContent =
+          accountStatus === "DENIED"
+            ? "Correct details and resubmit"
+            : response.profileUpdated
+              ? "Save changes for approval"
+              : "Submit for administrator review";
+      if (accountStatus === "NOT_FOUND") {
+        Object.values(inputs).forEach((input) => {
+          if (input) input.value = "";
+        });
+      } else {
+        if (inputs.lastName) inputs.lastName.value = response.lastName || "";
+        if (inputs.firstName) inputs.firstName.value = response.firstName || "";
+        if (inputs.middleInitial)
+          inputs.middleInitial.value = response.middleInitial || "";
+      }
+      Object.values(inputs).forEach((input) => {
+        if (input) input.dataset.savedValue = input.value;
+      });
     }
-    Object.values(inputs).forEach((input) => {
-      if (input) input.dataset.savedValue = input.value;
-    });
     const messages = {
       TRUE: "Reviewer access approved.",
       FALSE: "Awaiting administrator approval.",
@@ -6983,7 +6995,7 @@
           idToken !== reviewerIdentityToken
         )
           return;
-        applyReviewerAccountStatus(response, idToken);
+        applyReviewerAccountStatus(response, idToken, true);
       } catch (error) {
         const authStatus = document.getElementById("resource-reviewer-auth-status");
         if (error?.code === "UNAUTHORIZED") {
