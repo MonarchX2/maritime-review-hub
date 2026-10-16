@@ -227,8 +227,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /auto_select:\s*!hasExplicitReviewerSignOut\(\)[\s\S]*?if \(!hasExplicitReviewerSignOut\(\)\)\s*globalScope\.google\.accounts\.id\.prompt\(\)/,
-  "returning users should be offered Google automatic sign-in unless they explicitly signed out",
+  /auto_select:\s*!hasExplicitReviewerSignOut\(\)[\s\S]*?button_auto_select:\s*!hasExplicitReviewerSignOut\(\)[\s\S]*?use_fedcm_for_prompt:\s*true[\s\S]*?use_fedcm_for_button:\s*true[\s\S]*?if \(!hasExplicitReviewerSignOut\(\)\)\s*globalScope\.google\.accounts\.id\.prompt\(\)/,
+  "returning users should be automatically reauthenticated through Google prompt and button flows unless they explicitly signed out",
 );
 assert.match(
   appCore,

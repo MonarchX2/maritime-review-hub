@@ -6723,8 +6723,10 @@
             void completeReviewerSignIn(credentialResponse?.credential || "");
           },
           auto_select: !hasExplicitReviewerSignOut(),
+          button_auto_select: !hasExplicitReviewerSignOut(),
           cancel_on_tap_outside: true,
           use_fedcm_for_prompt: true,
+          use_fedcm_for_button: true,
           itp_support: true,
         });
         if (signInButton) {

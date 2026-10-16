@@ -26,13 +26,15 @@ not remove existing approval.
 
 The verified identity token exists only in page memory and is sent to the
 backend for each protected request; it is not stored in browser storage.
-Google Identity Services can offer automatic sign-in again after a refresh if
-the user previously authorized it. An explicit sign-out preference is saved
-in browser storage to suppress automatic selection and prompting; signing in
-again clears that preference. Automatic sign-in depends on Google's browser
-session and consent state, so a user may need to click the sign-in button
-again. Reviewer dashboard data is kept only in page memory and cleared on
-sign-out or page reload. The public dashboard does not return reviewer rows.
+Google Identity Services uses automatic selection and FedCM for both the
+returning-user prompt and sign-in button, so an existing Google session can
+provide a fresh credential after a page refresh. An explicit sign-out
+preference is saved in browser storage to suppress automatic selection and
+prompting; signing in again clears that preference. Automatic restoration
+still depends on Google's browser session, prior consent, and browser identity
+settings, so a user may need to select their Google account again. Reviewer
+dashboard data is kept only in page memory and cleared on sign-out or page
+reload. The public dashboard does not return reviewer rows.
 
 Google Drive permissions are not changed by the dashboard. Anyone who can open
 a linked file can copy or capture its contents. Ensure reviewer files are not

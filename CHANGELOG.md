@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-32 - 2026-10-16
+
+### Changed
+- Improve Google sign-in restoration after refresh with FedCM automatic selection for both the returning-user prompt and sign-in button, without persisting credentials.
+
 ## 26.10.16-31 - 2026-10-16
 
 ### Fixed
