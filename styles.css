@@ -1445,6 +1445,14 @@ button:active:not(:disabled) {
   background: #f8fafc;
 }
 
+.resource-portal-nav-item:first-child {
+  margin-left: auto;
+}
+
+.resource-portal-nav-item:last-child {
+  margin-right: auto;
+}
+
 .resource-profile-toggle {
   display: inline-flex;
   width: 2.25rem;
@@ -1857,7 +1865,9 @@ button:active:not(:disabled) {
 }
 
 #resource-dashboard-filter-category {
-  width: 7.25rem;
+  width: 6.5rem;
+  padding-right: 0.4rem;
+  padding-left: 0.4rem;
 }
 
 .resource-dashboard-control input,

@@ -283,6 +283,11 @@ assert.match(
 );
 assert.match(
   backend,
+  /MRH_RESOURCE_DASHBOARD_VERSION_CACHE_TTL_SECONDS\s*=\s*CACHE_TTL_SECONDS[\s\S]*?MRH_REVIEWER_DASHBOARD_VERSION_CACHE_TTL_SECONDS\s*=\s*CACHE_TTL_SECONDS/,
+  "version-keyed dashboard payloads should remain cached for six hours",
+);
+assert.match(
+  backend,
   /DriveApp\.getFolderById\(RESOURCE_DASHBOARD_INDEX_FOLDER_ID\)[\s\S]*?getFilesByName\(fileName\)/,
   "the backend should read dashboard indexes from their Drive export folder",
 );
@@ -295,6 +300,16 @@ assert.match(
   backend,
   /function handleGetReviewerDashboardRequest\(data\)[\s\S]*?mrh_reviewer_dashboard_latest_v1[\s\S]*?return jsonResponse\(\{[\s\S]*?tab: parsedLatestReviewerTab/,
   "the reviewer endpoint should authorize each request before serving a cached payload",
+);
+assert.match(
+  dashboardHandler,
+  /dashboardCache\.put\(\s*dashboardCacheKey,\s*dashboardJson,\s*MRH_RESOURCE_DASHBOARD_VERSION_CACHE_TTL_SECONDS,\s*\)[\s\S]*?dashboardCache\.put\(\s*"mrh_resource_dashboard_latest_v1",\s*dashboardJson,\s*MRH_RESOURCE_DASHBOARD_CACHE_TTL_SECONDS,/,
+  "resource payload retention should not extend the short freshness window for the latest snapshot",
+);
+assert.match(
+  backend,
+  /reviewerCache\.put\(\s*reviewerCacheKey,\s*reviewerJson,\s*MRH_REVIEWER_DASHBOARD_VERSION_CACHE_TTL_SECONDS,\s*\)[\s\S]*?reviewerCache\.put\(\s*"mrh_reviewer_dashboard_latest_v1",\s*reviewerJson,\s*MRH_REVIEWER_DASHBOARD_CACHE_TTL_SECONDS,/,
+  "reviewer payload retention should not extend the short freshness window for the latest snapshot",
 );
 assert.match(
   backend,
@@ -616,6 +631,22 @@ assert.deepEqual(
   "the backend should return Modules and Syllabus while withholding Reviewers dashboard content",
 );
 assert.equal(indexReadCount, 2);
+const dashboardVersionCacheKey = Array.from(dashboardCacheValues.keys()).find(
+  (key) => key.startsWith("mrh_resource_dashboard_v1_"),
+);
+assert.ok(dashboardVersionCacheKey);
+assert.equal(
+  dashboardCacheValues.get(dashboardVersionCacheKey).expiresAt -
+    dashboardCacheClock,
+  Number(backend.match(/const CACHE_TTL_SECONDS = (\d+)/)?.[1]) * 1000,
+  "the version-keyed public dashboard payload should stay cached for six hours",
+);
+assert.equal(
+  dashboardCacheValues.get("mrh_resource_dashboard_latest_v1").expiresAt -
+    dashboardCacheClock,
+  context.MRH_RESOURCE_DASHBOARD_CACHE_TTL_SECONDS * 1000,
+  "the latest dashboard pointer should keep its short freshness lifetime",
+);
 
 const routedDashboard = JSON.parse(
   context
@@ -672,6 +703,22 @@ assert.equal(
   "unchanged dashboard versions should be served without a Drive lookup",
 );
 
+dashboardCacheClock += 61000;
+const cachedAfterLatestExpiry = JSON.parse(
+  context.handleGetResourceDashboardRequest().text,
+);
+assert.equal(cachedAfterLatestExpiry.version, routedDashboard.version);
+assert.equal(
+  indexReadCount,
+  2,
+  "an expired latest pointer should reuse the still-valid versioned payload without rereading Drive indexes",
+);
+assert.equal(
+  dashboardDriveLookupCount,
+  2,
+  "an expired latest pointer should only require checking Drive metadata for changes",
+);
+
 dashboardIndexModifiedTimes["reviewers_combined.json"] += 1;
 dashboardCacheClock += 61000;
 const updatedDashboard = JSON.parse(
@@ -697,7 +744,7 @@ assert.equal(
 );
 assert.equal(
   dashboardDriveLookupCount,
-  2,
+  3,
   "expired snapshots should recheck Drive metadata for updates",
 );
 

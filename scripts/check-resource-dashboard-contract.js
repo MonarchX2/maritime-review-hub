@@ -227,8 +227,13 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /#resource-dashboard-filter-category\s*\{\s*width:\s*7\.25rem;/,
-  "the category dropdown should be wide enough to display phase labels",
+  /#resource-dashboard-filter-category\s*\{\s*width:\s*6\.5rem;\s*padding-right:\s*0\.4rem;\s*padding-left:\s*0\.4rem;/,
+  "the category dropdown should fit its phase labels without excess horizontal space",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-nav-item:first-child\s*\{\s*margin-left:\s*auto;\s*\}[\s\S]*?\.resource-portal-nav-item:last-child\s*\{\s*margin-right:\s*auto;\s*\}/,
+  "dashboard links should center when there is free space and remain reachable when overflowing",
 );
 assert.match(
   resourceStyles,

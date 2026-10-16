@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.16-36 - 2026-10-16
+
+### Improved
+- Center dashboard navigation links when they fit and keep them scrollable on narrow screens.
+- Tighten the Category dropdown and retain versioned dashboard payloads longer to avoid repeated index rebuilds.
+
 ## 26.10.16-35 - 2026-10-16
 
 ### Changed
