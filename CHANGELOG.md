@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.16-21 - 2026-10-16
+
+### Fixed
+- Clear the previous resource tab's table and filters while Reviewer resources are loading.
+
 ## 26.10.16-20 - 2026-10-16
 
 ### Fixed

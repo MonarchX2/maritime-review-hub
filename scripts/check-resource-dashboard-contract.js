@@ -28,6 +28,11 @@ assert.match(
 );
 assert.match(
   appCore,
+  /async function loadReviewerDashboard\(\)[\s\S]*?if \(!status \|\| !tableHead \|\| !tableBody\) return false;\s*tableHead\.replaceChildren\(\);\s*tableBody\.replaceChildren\(\);[\s\S]*?filterContainer\.hidden = true;[\s\S]*?status\.textContent = "Loading reviewer resources…";[\s\S]*?await globalScope\.AppNetwork\.callBackend/,
+  "loading Reviewer resources should clear the previous tab's rows and filters first",
+);
+assert.match(
+  appCore,
   /async function loadResourceDashboard\(\)[\s\S]*?const deviceIdentity = getResourceDeviceIdentity\(false\)[\s\S]*?type: "get_resource_dashboard",\s*\.\.\.\(deviceIdentity \? \{ deviceIdentity \} : \{\}\)/,
   "opening the public dashboard must not create a device identity as a side effect",
 );

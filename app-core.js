@@ -6971,6 +6971,12 @@
       "resource-dashboard-table-body",
     );
     if (!status || !tableHead || !tableBody) return false;
+    tableHead.replaceChildren();
+    tableBody.replaceChildren();
+    const filterContainer = document
+      .getElementById("resource-dashboard-filter-year")
+      ?.closest(".resource-dashboard-filters");
+    if (filterContainer) filterContainer.hidden = true;
     status.textContent = "Loading reviewer resources…";
     status.setAttribute("aria-busy", "true");
     try {
