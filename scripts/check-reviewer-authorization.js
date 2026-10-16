@@ -12,6 +12,7 @@ let tokenFetchFailures = 0;
 let uuidSequence = 0;
 let spreadsheetTimeZone = "";
 let spreadsheetOpenCount = 0;
+let accountCacheTtlSeconds = 0;
 let reviewerDriveLookupCount = 0;
 let scriptLockAcquisitionCount = 0;
 const driveFiles = new Map();
@@ -252,7 +253,10 @@ const context = {
   CacheService: {
     getScriptCache: () => ({
       get: (key) => cacheValues.get(key) || null,
-      put: (key, value) => cacheValues.set(key, value),
+      put: (key, value, ttlSeconds) => {
+        accountCacheTtlSeconds = ttlSeconds;
+        cacheValues.set(key, value);
+      },
       remove: (key) => cacheValues.delete(key),
     }),
   },
@@ -1508,6 +1512,11 @@ assert.equal(
   "repeated approval polls should use the shared account cache instead of reopening the spreadsheet",
 );
 assert.ok(spreadsheetOpensAfterFirstStatusPoll > spreadsheetOpensBeforeStatusPoll);
+assert.equal(
+  accountCacheTtlSeconds,
+  5,
+  "approval status cache should expire quickly even when an account edit trigger is unavailable",
+);
 liveAccount[4] = "TRUE";
 const generationBeforeAccountEdit = context.getMRHAccountCacheGeneration_();
 context.mrhAccountsEdited({

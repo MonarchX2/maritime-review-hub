@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.10.24 - 2026-10-17
+
+### Fixed
+
+- Limit account-status cache lifetime to five seconds so administrator changes
+  reach active sessions quickly even if the spreadsheet edit trigger is delayed.
+
 ## 26.10.23 - 2026-10-17
 
 ### Fixed
