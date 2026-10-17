@@ -81,6 +81,9 @@
   }
 
   function getUpdateDeferralMessage() {
+    if (rootScope.__MRH_PDF_DOWNLOAD_ACTIVE === true) {
+      return "An update is ready. It will be applied after the PDF download finishes.";
+    }
     if (rootScope.navigator?.onLine === false) {
       return "An update is ready. It will be applied when you are back online.";
     }

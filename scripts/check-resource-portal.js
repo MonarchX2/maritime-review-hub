@@ -571,6 +571,27 @@ assert.match(
   /id="resource-dashboard-content"[\s\S]*?id="resource-portal-preview"[^>]*hidden[\s\S]*?id="resource-portal-preview-title"[\s\S]*?id="resource-portal-preview-expand"[\s\S]*?id="resource-portal-preview-close"[\s\S]*?id="resource-portal-preview-status"[\s\S]*?id="resource-portal-preview-frame"[^>]*referrerpolicy="no-referrer"[^>]*hidden/,
   "the dashboard must contain a hidden, in-site preview with accessible status and close/expand controls",
 );
+assert.match(
+  index,
+  /class="resource-portal-preview-heading"[\s\S]*?id="resource-portal-preview-file-icon"[\s\S]*?class="resource-portal-preview-file-icon fa-solid fa-file-pdf"[\s\S]*?id="resource-portal-preview-title"/,
+  "the preview title bar should place an accessible-hidden PDF icon before the title",
+);
+assert.ok(
+  appCore.includes(
+    'fileIcon.hidden = !(reviewer || /\\.pdf$/i.test(String(fileName || "")));',
+  ),
+  "the preview header should show the PDF icon only for PDF resources",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-link-icon\.fa-file-pdf,\s*\.resource-portal-preview-file-icon\s*\{\s*color:\s*#dc2626;/,
+  "the preview PDF icon should share the table chip icon color",
+);
+assert.match(
+  resourceStyles,
+  /\.dark \.resource-dashboard-link-icon\.fa-file-pdf,\s*\.dark \.resource-portal-preview-file-icon\s*\{\s*color:\s*#fca5a5;/,
+  "the preview and table PDF icons should share the dark-theme color",
+);
 assert.doesNotMatch(
   index.match(/id="resource-portal-preview"[\s\S]*?<\/section>/)?.[0] || "",
   /https?:\/\/|drive\.google\.com/,

@@ -10270,6 +10270,7 @@
       status.textContent = "Preparing PDF download…";
       status.hidden = false;
     }
+    globalScope.__MRH_PDF_DOWNLOAD_ACTIVE = true;
     const downloadRequest = (async () => {
       try {
         let response = await globalScope.AppNetwork.callBackend(
@@ -10391,6 +10392,7 @@
           button.disabled = false;
         if (reviewerPdfDownloadInFlight === downloadRequest)
           reviewerPdfDownloadInFlight = null;
+        globalScope.__MRH_PDF_DOWNLOAD_ACTIVE = false;
       }
     })();
     reviewerPdfDownloadInFlight = downloadRequest;
@@ -10404,6 +10406,9 @@
   ) {
     const preview = document.getElementById("resource-portal-preview");
     const title = document.getElementById("resource-portal-preview-title");
+    const fileIcon = document.getElementById(
+      "resource-portal-preview-file-icon",
+    );
     const frame = document.getElementById("resource-portal-preview-frame");
     const status = document.getElementById("resource-portal-preview-status");
     const watermark = document.getElementById(
@@ -10500,6 +10505,8 @@
           previewLessonTitle?.header || getReviewerPdfDisplayName(fileName)
         }`
       : String(fileName || "File preview");
+    if (fileIcon)
+      fileIcon.hidden = !(reviewer || /\.pdf$/i.test(String(fileName || "")));
     if (reviewer) {
       const courseLine = document.createElement("span");
       courseLine.textContent = String(course || "").trim() || "Reviewer";

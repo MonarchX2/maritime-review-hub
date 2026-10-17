@@ -210,6 +210,11 @@ assert.match(
   /__MRH_REQUEST_APP_UPDATE = checkForAppUpdate/,
   "the backend version gate should trigger the existing safe state-save and reload flow",
 );
+assert.match(
+  appEntry,
+  /if \(rootScope\.__MRH_PDF_DOWNLOAD_ACTIVE === true\)[\s\S]*?applied after the PDF download finishes/,
+  "pending app updates must wait until an active PDF download finishes",
+);
 assert.match(appEntry, /PENDING_UPDATE_RETRY_INTERVAL_MS = 15 \* 1000/);
 assert.match(
   appEntry,

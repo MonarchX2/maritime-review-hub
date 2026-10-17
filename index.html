@@ -895,12 +895,20 @@
                   hidden
                 >
                   <header class="resource-portal-preview-header">
-                    <h2
-                      id="resource-portal-preview-title"
-                      class="resource-portal-preview-title"
-                    >
-                      File preview
-                    </h2>
+                    <div class="resource-portal-preview-heading">
+                      <i
+                        id="resource-portal-preview-file-icon"
+                        class="resource-portal-preview-file-icon fa-solid fa-file-pdf"
+                        aria-hidden="true"
+                        hidden
+                      ></i>
+                      <h2
+                        id="resource-portal-preview-title"
+                        class="resource-portal-preview-title"
+                      >
+                        File preview
+                      </h2>
+                    </div>
                     <div class="resource-portal-preview-actions">
                       <button
                         type="button"
@@ -2344,10 +2352,12 @@
                   Version 26.10.17-15
                 </h5>
                 <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
-                  Fixed
+                  Fixed and improved
                 </h6>
                 <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
                   <li>Keep the Reviewer PDF preview course name bold while using regular weight for the lesson details below it.</li>
+                  <li>Show a PDF icon to the left of PDF preview titles, using the same light and dark theme colors as the PDF resource chips.</li>
+                  <li>Defer automatic website updates until a Reviewer PDF download finishes.</li>
                 </ul>
                 <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 26.10.17-14

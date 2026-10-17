@@ -334,6 +334,11 @@ assert.match(
 );
 assert.match(
   reviewerDownload,
+  /__MRH_PDF_DOWNLOAD_ACTIVE = true[\s\S]*?finally[\s\S]*?__MRH_PDF_DOWNLOAD_ACTIVE = false/,
+  "downloading a Reviewer PDF should defer automatic app reloads until it finishes",
+);
+assert.match(
+  reviewerDownload,
   /let pollDelayMs = 1000[\s\S]*?Math\.min\(2500, Math\.round\(pollDelayMs \* 1\.35\)\)/,
   "browser polling should start promptly and use a shorter capped backoff",
 );

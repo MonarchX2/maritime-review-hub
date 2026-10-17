@@ -2758,7 +2758,20 @@ button:active:not(:disabled) {
   background: #f8fafc;
 }
 
+.resource-portal-preview-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.resource-portal-preview-file-icon {
+  flex: 0 0 auto;
+  font-size: 0.9rem;
+}
+
 .resource-portal-preview-title {
+  flex: 1 1 auto;
   min-width: 0;
   margin: 0;
   overflow: hidden;
@@ -3061,7 +3074,8 @@ button:active:not(:disabled) {
   font-size: 0.8rem;
 }
 
-.resource-dashboard-link-icon.fa-file-pdf {
+.resource-dashboard-link-icon.fa-file-pdf,
+.resource-portal-preview-file-icon {
   color: #dc2626;
 }
 
@@ -3117,7 +3131,8 @@ button:active:not(:disabled) {
   background: #1e3a8a;
 }
 
-.dark .resource-dashboard-link-icon.fa-file-pdf {
+.dark .resource-dashboard-link-icon.fa-file-pdf,
+.dark .resource-portal-preview-file-icon {
   color: #fca5a5;
 }
 

@@ -2,10 +2,13 @@
 
 ## 26.10.17-15 - 2026-10-17
 
-### Fixed
+### Fixed and improved
 
 - Keep the Reviewer PDF preview course name bold while using regular weight for
   the lesson details below it.
+- Show a PDF icon to the left of PDF preview titles, using the same light and
+  dark theme colors as the PDF resource chips.
+- Defer automatic website updates until a Reviewer PDF download finishes.
 
 ## 26.10.17-14 - 2026-10-17
 
