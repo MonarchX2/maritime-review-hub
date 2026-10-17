@@ -116,6 +116,7 @@
 
           const peerId = String(data.tabId || "");
           const timestamp = Number(data.timestamp);
+          const isNewPeer = !peers.has(peerId);
           if (
             peerId === tabId ||
             !/^[a-z0-9_-]{8,128}$/i.test(peerId) ||
@@ -127,6 +128,18 @@
 
           peers.set(peerId, Date.now());
           electLeader();
+          if (isNewPeer) {
+            try {
+              channel?.postMessage({
+                protocol,
+                type: "leader_heartbeat",
+                tabId,
+                timestamp: Date.now(),
+              });
+            } catch (error) {
+              logger.warn?.("[LEADER] Peer announcement failed:", error);
+            }
+          }
         };
         heartbeatTimer = lifecycle.setInterval(
           sendHeartbeat,
@@ -245,9 +258,12 @@
       setConnected(false);
       if (wasConnected) options.renderCategoryProgress();
       if (isPageHidden()) return;
+      const retryJitterMs =
+        Math.random() * Math.min(1000, retryIntervalMs * 0.5);
       const delay = Math.min(
         retryMaxDelayMs,
-        Math.max(retryIntervalMs, backoffDelay(retryAttempt - 1)),
+        Math.max(retryIntervalMs, backoffDelay(retryAttempt - 1)) +
+          retryJitterMs,
       );
       const retryAt = Date.now() + delay;
       const renderCountdown = () => {

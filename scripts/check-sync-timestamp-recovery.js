@@ -415,10 +415,11 @@ async function main() {
     summariesBeforeIncompatibleSchema,
     "an incompatible backend payload schema must not be applied",
   );
-  assert.equal(
-    [...timeoutDelays.values()][0],
-    3000,
-    "an incompatible backend schema should retry with bounded backoff",
+  const incompatibleSchemaRetryDelay = [...timeoutDelays.values()][0];
+  assert.ok(
+    incompatibleSchemaRetryDelay >= 3000 &&
+      incompatibleSchemaRetryDelay <= 4000,
+    "an incompatible backend schema should retry after the minimum interval with bounded jitter",
   );
   payloadSchemaVersion = 2;
 

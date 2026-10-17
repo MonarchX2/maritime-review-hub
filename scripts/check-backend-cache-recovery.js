@@ -80,6 +80,180 @@ assert.equal(
   "requests without a client version must be rejected",
 );
 
+const chunkCacheEntries = new Map();
+context.CacheService = {
+  getScriptCache() {
+    return {
+      get(key) {
+        return chunkCacheEntries.get(key) || null;
+      },
+      getAll(keys) {
+        return Object.fromEntries(
+          keys
+            .filter((key) => chunkCacheEntries.has(key))
+            .map((key) => [key, chunkCacheEntries.get(key)]),
+        );
+      },
+      putAll(entries) {
+        Object.entries(entries).forEach(([key, value]) =>
+          chunkCacheEntries.set(key, value),
+        );
+      },
+    };
+  },
+};
+const largeCachedPayload = "deck\u{1F6A2}".repeat(12000);
+assert.equal(context.cachePutChunked("test-large-payload", largeCachedPayload), true);
+assert.equal(
+  context.cacheGetChunked("test-large-payload"),
+  largeCachedPayload,
+  "joining cached chunks must preserve large unicode payloads exactly",
+);
+chunkCacheEntries.delete("test-large-payload_1");
+assert.equal(
+  context.cacheGetChunked("test-large-payload"),
+  null,
+  "an incomplete chunk set must not return a partial payload",
+);
+
+const deckCacheProperties = new Map([["MRH_CACHE_VERSION", "payload-cache-v1"]]);
+const originalDeckCacheHelpers = {
+  getScriptProps: context.getScriptProps,
+  loadDeckMetadataMap: context.loadDeckMetadataMap,
+  isSubjectHiddenByHierarchy: context.isSubjectHiddenByHierarchy,
+  getEffectivePassword: context.getEffectivePassword,
+  getDeckJsonContent: context.getDeckJsonContent,
+  cacheGetChunked: context.cacheGetChunked,
+  cachePutChunked: context.cachePutChunked,
+};
+context.getScriptProps = () => ({
+  getProperty: (key) => deckCacheProperties.get(key) || null,
+});
+context.loadDeckMetadataMap = () => ({ COLREGS: {} });
+context.isSubjectHiddenByHierarchy = () => false;
+context.getEffectivePassword = () => "";
+let persistentDeckPayload = JSON.stringify(
+  Array.from({ length: 12000 }, (_, index) => ({
+    Question: `Question ${index} 🚢`,
+    Answer: `Answer ${index} — café`,
+  })),
+);
+const originalExpectedPayloadVersion = crypto
+  .createHash("sha256")
+  .update(persistentDeckPayload, "utf8")
+  .digest("hex");
+let persistentDeckReads = 0;
+context.getDeckJsonContent = () => {
+  persistentDeckReads += 1;
+  return persistentDeckPayload;
+};
+context.ContentService = {
+  MimeType: { JSON: "application/json" },
+  createTextOutput(text) {
+    return {
+      text,
+      setMimeType() {
+        return this;
+      },
+    };
+  },
+};
+const cachedDeckResponse = context.handleGetDeckRequest({ subject: "COLREGS" });
+const cachedDeckFingerprint = crypto
+  .createHash("sha256")
+  .update(cachedDeckResponse.text, "utf8")
+  .digest("hex");
+const deckCacheKey = context.buildDeckCacheKey("COLREGS", "authorized");
+assert.ok(
+  Number(chunkCacheEntries.get(deckCacheKey + "_count")) > 1,
+  "the large Unicode deck fixture must occupy multiple cache chunks",
+);
+assert.equal(JSON.parse(cachedDeckResponse.text).length, 12000);
+assert.equal(
+  cachedDeckFingerprint,
+  originalExpectedPayloadVersion,
+  "the payload fingerprint must match the expected PayloadVersion",
+);
+assert.match(JSON.parse(cachedDeckResponse.text)[11999].Answer, /café/);
+assert.equal(persistentDeckReads, 1);
+const repeatedDeckResponse = context.handleGetDeckRequest({
+  subject: "COLREGS",
+});
+assert.equal(
+  repeatedDeckResponse.text,
+  cachedDeckResponse.text,
+  "repeated unchanged deck requests must return identical payload bytes",
+);
+assert.equal(
+  crypto
+    .createHash("sha256")
+    .update(repeatedDeckResponse.text, "utf8")
+    .digest("hex"),
+  cachedDeckFingerprint,
+  "repeated requests must preserve the same payload fingerprint",
+);
+assert.equal(
+  persistentDeckReads,
+  1,
+  "an unchanged cached deck must not be downloaded from persistent storage again",
+);
+
+deckCacheProperties.set("MRH_CACHE_VERSION", "payload-cache-v2");
+persistentDeckPayload = JSON.stringify(
+  Array.from({ length: 12000 }, (_, index) => ({
+    Question: `Updated question ${index} 🚢`,
+    Answer: `Updated answer ${index} — café`,
+  })),
+);
+const updatedExpectedPayloadVersion = crypto
+  .createHash("sha256")
+  .update(persistentDeckPayload, "utf8")
+  .digest("hex");
+const invalidatedDeckResponse = context.handleGetDeckRequest({
+  subject: "COLREGS",
+});
+assert.equal(JSON.parse(invalidatedDeckResponse.text).length, 12000);
+assert.match(
+  JSON.parse(invalidatedDeckResponse.text)[0].Question,
+  /^Updated question 0/,
+  "cache-version invalidation must return the new complete payload",
+);
+assert.notEqual(
+  crypto
+    .createHash("sha256")
+    .update(invalidatedDeckResponse.text, "utf8")
+    .digest("hex"),
+  cachedDeckFingerprint,
+  "a changed payload must have a new fingerprint",
+);
+assert.equal(
+  crypto
+    .createHash("sha256")
+    .update(invalidatedDeckResponse.text, "utf8")
+    .digest("hex"),
+  updatedExpectedPayloadVersion,
+  "the invalidated payload fingerprint must match the updated PayloadVersion",
+);
+assert.equal(persistentDeckReads, 2);
+
+const currentDeckCacheKey = context.buildDeckCacheKey("COLREGS", "authorized");
+chunkCacheEntries.delete(currentDeckCacheKey + "_1");
+const recoveredDeckResponse = context.handleGetDeckRequest({
+  subject: "COLREGS",
+});
+assert.equal(
+  recoveredDeckResponse.text,
+  invalidatedDeckResponse.text,
+  "a missing chunk must fall back to the full persistent payload, never partial or mixed JSON",
+);
+assert.equal(JSON.parse(recoveredDeckResponse.text).length, 12000);
+assert.equal(
+  persistentDeckReads,
+  3,
+  "a missing payload chunk must trigger one persistent-storage recovery read",
+);
+Object.assign(context, originalDeckCacheHelpers);
+
 function createIterator(items) {
   let index = 0;
   return {
@@ -874,4 +1048,83 @@ assert.equal(
 assert.equal(rateLimitValues.has("contended"), false);
 assert.equal(rateLimitLockReleases, 3);
 
-console.log("Backend cache recovery checks passed.");
+(async () => {
+  context.cacheGetChunked = originalDeckCacheHelpers.cacheGetChunked;
+  context.cachePutChunked = originalDeckCacheHelpers.cachePutChunked;
+  context.getScriptProps = () => ({
+    getProperty: (key) => deckCacheProperties.get(key) || null,
+  });
+  context.loadDeckMetadataMap = () => ({ COLREGS: {} });
+  context.isSubjectHiddenByHierarchy = () => false;
+  context.getEffectivePassword = () => "";
+  context.getDeckJsonContent = () => {
+    persistentDeckReads += 1;
+    return persistentDeckPayload;
+  };
+  context.CacheService = {
+    getScriptCache() {
+      return {
+        get: (key) => chunkCacheEntries.get(key) || null,
+        getAll(keys) {
+          return Object.fromEntries(
+            keys
+              .filter((key) => chunkCacheEntries.has(key))
+              .map((key) => [key, chunkCacheEntries.get(key)]),
+          );
+        },
+        putAll(entries) {
+          Object.entries(entries).forEach(([key, value]) =>
+            chunkCacheEntries.set(key, value),
+          );
+        },
+      };
+    },
+  };
+  context.ContentService = {
+    MimeType: { JSON: "application/json" },
+    createTextOutput(text) {
+      return { text, setMimeType() { return this; } };
+    },
+  };
+  const burstCacheKey = context.buildDeckCacheKey(
+    "COLREGS",
+    "authorized",
+  );
+  const burstChunkCount = Number(
+    chunkCacheEntries.get(burstCacheKey + "_count") || 0,
+  );
+  chunkCacheEntries.delete(burstCacheKey + "_count");
+  for (let index = 0; index < burstChunkCount; index++)
+    chunkCacheEntries.delete(burstCacheKey + "_" + index);
+  const readsBeforeBurst = persistentDeckReads;
+  const payloadBurst = await Promise.all(
+    Array.from({ length: 32 }, () =>
+      Promise.resolve().then(() =>
+        context.handleGetDeckRequest({ subject: "COLREGS" }),
+      ),
+    ),
+  );
+  assert.ok(
+    payloadBurst.every((response) => response.text === persistentDeckPayload),
+    `concurrent payload requests must each return the complete same JSON: ${JSON.stringify(
+      payloadBurst.slice(0, 2).map((response) => response.text),
+    )}`,
+  );
+  assert.equal(
+    persistentDeckReads,
+    readsBeforeBurst + 1,
+    "concurrent cold payload requests should populate the cache on the first read",
+  );
+  console.log(
+    JSON.stringify({
+      test: "concurrent deck payload request burst",
+      requests: payloadBurst.length,
+      persistentReads: persistentDeckReads - readsBeforeBurst,
+      environment: "local Apps Script API simulation, not production GAS",
+    }),
+  );
+  console.log("Backend cache recovery checks passed.");
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

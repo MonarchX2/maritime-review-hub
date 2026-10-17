@@ -924,6 +924,7 @@
     const appVersion = String(globalScope.__MRH_APP__?.version || "").trim();
     if (!appVersion) throw new Error("Client app version is unavailable.");
     const requestId = createRequestId();
+    const requestStartedAt = Date.now();
     const versionedPayload = { ...payload, appVersion, requestId };
     validateBackendPayload(versionedPayload);
     const serializedPayload = JSON.stringify(versionedPayload);
@@ -972,6 +973,11 @@
             requestType: String(payload.type || "unknown")
               .replace(/[^A-Za-z0-9_]/g, "")
               .slice(0, 64),
+            appVersion: /^[A-Za-z0-9._-]{1,80}$/.test(appVersion)
+              ? appVersion
+              : "unknown",
+            timestamp: new Date().toISOString(),
+            durationMs: Math.max(0, Date.now() - requestStartedAt),
             status: Number(response?.status || error?.status) || 0,
             redirected: Boolean(response?.redirected),
             responseHost: responseHost,

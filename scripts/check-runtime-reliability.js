@@ -434,6 +434,12 @@ async function checkBackendErrorHandling() {
   const diagnosticLogText = JSON.stringify(networkDiagnostics);
   assert.match(diagnosticLogText, new RegExp(dashboardRequestIds[0]));
   assert.match(diagnosticLogText, /get_reviewer_dashboard/);
+  assert.match(diagnosticLogText, /"durationMs":\d+/);
+  assert.match(diagnosticLogText, /"timestamp":"[^"]+"/);
+  assert.match(
+    diagnosticLogText,
+    new RegExp(`appVersion.*${networkContext.__MRH_APP__.version}`),
+  );
   assert.doesNotMatch(
     diagnosticLogText,
     /sensitive-token|sensitive-session/,

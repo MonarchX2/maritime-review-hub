@@ -9768,19 +9768,14 @@
       if (reviewerVerificationRetryToken === idToken)
         reviewerVerificationRetryToken = "";
       const approved = applyReviewerAccountStatus(response, sessionId);
-      await globalScope.AppNetwork.callBackend(
-        {
-          type: "log_reviewer_sign_in",
-          sessionId,
-          eventId: signInEventId,
-        },
-        { timeoutMs: 15000, maxRetries: 0 },
-      ).catch((error) => {
+      if (response?.auditLogged === false) {
+        setReviewerAuthStatus(
+          "Sign-in succeeded, but we couldn't record the sign-in activity. Contact the site administrator.",
+        );
         (globalScope.DebugUtils || console).error(
           "Unable to record reviewer sign-in activity.",
-          error,
         );
-      });
+      }
       scheduleReviewerStatusPolling(sessionId);
       if (approved) {
         if (resourceDashboardActiveTab === "REVIEWERS")

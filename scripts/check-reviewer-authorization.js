@@ -24,6 +24,7 @@ let reviewerDriveLookupCount = 0;
 let reviewerIndexReadCount = 0;
 let reviewerIndexModifiedAt = 1000;
 let scriptLockAcquisitionCount = 0;
+let forceScriptLockBusy = false;
 const driveFiles = new Map();
 const accountRows = [
   [
@@ -345,7 +346,7 @@ const context = {
     getScriptLock: () => {
       scriptLockAcquisitionCount += 1;
       return {
-        tryLock: () => true,
+        tryLock: () => !forceScriptLockBusy,
         releaseLock() {},
       };
     },
@@ -782,8 +783,9 @@ assert.deepEqual(
 
 tokenClaims = validClaims("Reviewer@Example.com");
 const signInLogCountBefore = appendedRows["SIGN-IN"].length;
+const approvedSignInEventId = eventId("1");
 const approved = post(
-  authRequest("verify_reviewer_access", "approved-token", eventId("1")),
+  authRequest("verify_reviewer_access", "approved-token", approvedSignInEventId),
 );
 assert.equal(approved.status, "success", JSON.stringify(approved));
 assert.deepEqual(
@@ -811,9 +813,27 @@ assert.equal(
   "successful Google sign-in should create a bounded application session",
 );
 assert.equal(
+  approved.auditLogged,
+  true,
+  "sign-in should report that its audit event was recorded",
+);
+assert.equal(
   appendedRows["SIGN-IN"].length,
-  signInLogCountBefore,
-  "sign-in should return without waiting for the access-log spreadsheet write",
+  signInLogCountBefore + 1,
+  "sign-in should write its audit event as part of the authentication request",
+);
+const duplicateApprovedSignIn = post(
+  authRequest("verify_reviewer_access", "approved-token", approvedSignInEventId),
+);
+assert.equal(
+  duplicateApprovedSignIn.auditLogged,
+  true,
+  "an idempotent sign-in retry should report its already-recorded audit event as successful",
+);
+assert.equal(
+  appendedRows["SIGN-IN"].length,
+  signInLogCountBefore + 1,
+  "retrying the same sign-in event ID must not append a duplicate audit row",
 );
 assert.equal(
   post({
@@ -822,9 +842,9 @@ assert.equal(
     eventId: eventId("a"),
   }).status,
   "success",
-  "sign-in activity should be written in a separate authenticated request",
+  "legacy clients may still log sign-in activity separately",
 );
-assert.equal(appendedRows["SIGN-IN"].length, signInLogCountBefore + 1);
+assert.equal(appendedRows["SIGN-IN"].length, signInLogCountBefore + 2);
 assert.equal(
   post({
     type: "restore_reviewer_session",
@@ -1079,6 +1099,11 @@ const notFound = post(
   authRequest("verify_reviewer_access", "new-user-token", eventId("2")),
 );
 assert.equal(notFound.accountStatus, "NOT_FOUND");
+assert.equal(
+  notFound.auditLogged,
+  true,
+  "an unlisted user's sign-in attempt should still be audited",
+);
 assert.equal(notFound.suggestedFirstName, "Rita");
 assert.equal(notFound.suggestedLastName, "Reviewer");
 const restoredNewProfile = post({
@@ -1133,6 +1158,67 @@ assert.deepEqual(Array.from(reusableAccountRow.slice(0, 5)), [
   "P.",
   "FALSE",
 ]);
+const pendingSignInEventId = eventId("c");
+const pendingSignInLogStart = appendedRows["SIGN-IN"].length;
+const pendingSignIn = post(
+  authRequest("verify_reviewer_access", "new-user-token", pendingSignInEventId),
+);
+assert.equal(pendingSignIn.accountStatus, "FALSE");
+assert.equal(pendingSignIn.active, false);
+assert.equal(pendingSignIn.auditLogged, true);
+assert.equal(appendedRows["SIGN-IN"].length, pendingSignInLogStart + 1);
+assert.equal(
+  appendedRows["SIGN-IN"].at(-1)[6],
+  "SIGN_IN:FALSE",
+  "pending users should receive a session and have their pending sign-in status audited",
+);
+
+const originalSheetAppend = context.Sheets.Spreadsheets.Values.append;
+const auditFailureEventId = eventId("d");
+const auditFailureRequestId = eventId("6");
+const auditRowsBeforeFailure = appendedRows["SIGN-IN"].length;
+context.Sheets.Spreadsheets.Values.append = () => {
+  throw new Error("simulated transient Sheets outage");
+};
+let auditFailureResponse;
+try {
+  tokenClaims = validClaims("Reviewer@Example.com");
+  auditFailureResponse = post(
+    {
+      ...authRequest(
+        "verify_reviewer_access",
+        "audit-failure-token",
+        auditFailureEventId,
+      ),
+      requestId: auditFailureRequestId,
+    },
+  );
+} finally {
+  context.Sheets.Spreadsheets.Values.append = originalSheetAppend;
+}
+assert.equal(
+  auditFailureResponse.auditLogged,
+  false,
+  "a transient audit write failure must be explicit in the sign-in response",
+);
+assert.match(auditFailureResponse.sessionId, /^[a-f0-9]{96}$/);
+assert.equal(
+  appendedRows["SIGN-IN"].length,
+  auditRowsBeforeFailure,
+  "a failed audit write must not create a success-shaped audit row",
+);
+assert.ok(
+  backendLogs.some(
+    (entry) =>
+      entry.includes("handler=handleReviewerSignInRequest") &&
+      entry.includes("requestType=verify_reviewer_access") &&
+      entry.includes(`correlationId=${auditFailureRequestId}`) &&
+      entry.includes(`clientVersion=${appVersion}`) &&
+      /timestamp=\S+/.test(entry) &&
+      /durationMs=\d+/.test(entry),
+  ),
+  "a failed sign-in audit write must log request correlation and safe timing metadata",
+);
 assert.match(reusableAccountRow[5], /^\d{4}-\d{2}-\d{2}$/);
 assert.match(reusableAccountRow[6], /^\d{2}:\d{2}:\d{2}$/);
 assert.equal(
@@ -1695,7 +1781,10 @@ assert.match(
 const loggedFailure = backendLogs.slice(backendLogCountBeforeFailure).join("\n");
 assert.match(loggedFailure, /requestType=get_reviewer_dashboard/);
 assert.match(loggedFailure, new RegExp(failedDashboardResponse.correlationId));
+assert.match(loggedFailure, /timestamp=\d{4}-\d{2}-\d{2}T/);
 assert.match(loggedFailure, /reasonCode=REVIEWER_INDEX_MISSING/);
+assert.match(loggedFailure, /durationMs=\d+/);
+assert.match(loggedFailure, new RegExp(`clientVersion=${appVersion}`));
 assert.doesNotMatch(
   loggedFailure,
   /private-token|private-id-token|private-session|sensitive-account-data/,
@@ -1910,7 +1999,7 @@ Promise.all(
       }),
     ),
   ),
-).then((statusBurst) => {
+).then(async (statusBurst) => {
   const statusBurstElapsedMs = performance.now() - burstStartedAt;
   assert.ok(
     statusBurst.every((result) => result.accountStatus === "FALSE"),
@@ -1927,6 +2016,148 @@ Promise.all(
       requests: statusBurst.length,
       elapsedMs: Math.round(statusBurstElapsedMs),
       additionalSpreadsheetOpens: 0,
+      environment: "local Apps Script API simulation, not production GAS",
+    }),
+  );
+
+  const duplicateBurstEventId = eventId("e");
+  const signInRowsBeforeDuplicateBurst = appendedRows["SIGN-IN"].length;
+  const duplicateSignInStartedAt = performance.now();
+  const duplicateSignInBurst = await Promise.all(
+    Array.from({ length: 32 }, () =>
+      Promise.resolve().then(() =>
+        post(
+          authRequest(
+            "verify_reviewer_access",
+            "fresh-status-token",
+            duplicateBurstEventId,
+          ),
+        ),
+      ),
+    ),
+  );
+  assert.ok(
+    duplicateSignInBurst.every(
+      (result) =>
+        result.status === "success" &&
+        result.auditLogged === true &&
+        /^[a-f0-9]{96}$/.test(result.sessionId),
+    ),
+    "a concurrent duplicate sign-in burst must return sessions and report the single audit event",
+  );
+  assert.equal(
+    appendedRows["SIGN-IN"].length,
+    signInRowsBeforeDuplicateBurst + 1,
+    "concurrent retries of one event ID must append exactly one audit row",
+  );
+  console.log(
+    JSON.stringify({
+      test: "duplicate sign-in request burst",
+      requests: duplicateSignInBurst.length,
+      elapsedMs: Math.round(performance.now() - duplicateSignInStartedAt),
+      auditRows: 1,
+      environment: "local Apps Script API simulation, not production GAS",
+    }),
+  );
+
+  const uniqueSignInRowsBeforeBurst = appendedRows["SIGN-IN"].length;
+  const uniqueSignInStartedAt = performance.now();
+  const uniqueSignInBurst = await Promise.all(
+    Array.from({ length: 16 }, (_, index) =>
+      Promise.resolve().then(() =>
+        post(
+          authRequest(
+            "verify_reviewer_access",
+            "fresh-status-token",
+            `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+          ),
+        ),
+      ),
+    ),
+  );
+  assert.ok(
+    uniqueSignInBurst.every(
+      (result) =>
+        result.status === "success" &&
+        result.auditLogged === true &&
+        /^[a-f0-9]{96}$/.test(result.sessionId),
+    ),
+    "simultaneous distinct sign-ins must not return lock or server errors",
+  );
+  assert.equal(
+    appendedRows["SIGN-IN"].length,
+    uniqueSignInRowsBeforeBurst + uniqueSignInBurst.length,
+    "each distinct successful sign-in event must have one audit row",
+  );
+  console.log(
+    JSON.stringify({
+      test: "distinct sign-in request burst",
+      requests: uniqueSignInBurst.length,
+      elapsedMs: Math.round(performance.now() - uniqueSignInStartedAt),
+      auditRows: uniqueSignInBurst.length,
+      environment: "local Apps Script API simulation, not production GAS",
+    }),
+  );
+
+  forceScriptLockBusy = true;
+  try {
+    const sessionBusyEventId = eventId("f");
+    const sessionBusyRequestId = eventId("8");
+    assert.equal(
+      post(
+        {
+          ...authRequest(
+            "verify_reviewer_access",
+            "fresh-status-token",
+            sessionBusyEventId,
+          ),
+          requestId: sessionBusyRequestId,
+        },
+      ).code,
+      "SESSION_BUSY",
+      "session lock contention must return the explicit retryable SESSION_BUSY code",
+    );
+    const enrollmentBusyEventId = eventId("9");
+    const enrollmentBusyRequestId = eventId("7");
+    assert.equal(
+      post({
+        type: "request_reviewer_enrollment",
+        sessionId: uniqueSignInBurst[0].sessionId,
+        eventId: enrollmentBusyEventId,
+        requestId: enrollmentBusyRequestId,
+        appVersion,
+        lastName: "Reviewer",
+        firstName: "Rita",
+        middleInitial: "A.",
+      }).code,
+      "ENROLLMENT_BUSY",
+      "enrollment lock contention must return the explicit retryable ENROLLMENT_BUSY code",
+    );
+    assert.ok(
+      backendLogs.some(
+        (entry) =>
+          entry.includes("requestType=verify_reviewer_access") &&
+          entry.includes(`correlationId=${sessionBusyRequestId}`) &&
+          entry.includes("reasonCode=SESSION_BUSY"),
+      ),
+      "session lock contention should be visible with the request correlation ID",
+    );
+    assert.ok(
+      backendLogs.some(
+        (entry) =>
+          entry.includes("requestType=request_reviewer_enrollment") &&
+            entry.includes(`correlationId=${enrollmentBusyRequestId}`) &&
+          entry.includes("reasonCode=ENROLLMENT_BUSY"),
+      ),
+      "enrollment lock contention should be visible with the request correlation ID",
+    );
+  } finally {
+    forceScriptLockBusy = false;
+  }
+  console.log(
+    JSON.stringify({
+      test: "script lock contention surfaced",
+      codes: ["SESSION_BUSY", "ENROLLMENT_BUSY"],
       environment: "local Apps Script API simulation, not production GAS",
     }),
   );

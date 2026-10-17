@@ -4,6 +4,7 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync("sync-core.js", "utf8");
 const timerCallbacks = new Map();
+const timeoutDelays = new Map();
 let nextTimerId = 0;
 let storedTimestamp = "2026-10-14T00:00:00.000Z";
 let storedCacheVersion = "cache-v1";
@@ -27,16 +28,20 @@ const context = {
   Promise,
   console,
   LifecycleUtils: {
-    setTimeout(callback) {
+    setTimeout(callback, delay = 0) {
       const id = ++nextTimerId;
       timerCallbacks.set(id, callback);
+      timeoutDelays.set(id, delay);
       return id;
     },
     clearTimeout(id) {
       timerCallbacks.delete(id);
+      timeoutDelays.delete(id);
     },
-    setInterval(callback) {
-      return this.setTimeout(callback);
+    setInterval(callback, delay = 0) {
+      const id = ++nextTimerId;
+      timerCallbacks.set(id, callback);
+      return id;
     },
     clearInterval(id) {
       timerCallbacks.delete(id);
@@ -179,6 +184,146 @@ async function main() {
   );
   assert.equal(storedTimestamp, "2026-10-14T00:00:00.000Z");
   assert.equal(storedCacheVersion, "cache-v2");
+
+  let concurrentSnapshotRequests = 0;
+  let releaseConcurrentSnapshot;
+  const concurrentSyncController = context.SyncCore.createController({
+    state: { categorySummary: [] },
+    lifecycle: context.LifecycleUtils,
+    appConfig: { backendPayloadSchemaVersion: 2 },
+    network: {
+      getDeckSyncSnapshot() {
+        concurrentSnapshotRequests += 1;
+        return new Promise((resolve) => {
+          releaseConcurrentSnapshot = resolve;
+        });
+      },
+    },
+    logger: { warn() {}, error() {}, info() {} },
+    isLeader: () => true,
+    hasActiveSession: () => false,
+    readStoredSyncStatusTimestamp: () => "same-timestamp",
+    readStoredSyncStatusCacheVersion: () => "same-cache-version",
+    refreshPendingPayloads: async () => {},
+    updateSyncStatus() {},
+    setSyncConnected() {},
+    setColdStart() {},
+    onSyncSuccess() {},
+  });
+  const concurrentSyncStartedAt = performance.now();
+  const concurrentSyncRuns = Array.from({ length: 32 }, () =>
+    concurrentSyncController.optimizedBackgroundSync(),
+  );
+  await Promise.resolve();
+  assert.equal(
+    concurrentSnapshotRequests,
+    1,
+    "concurrent same-tab sync triggers must share a single in-flight snapshot request",
+  );
+  releaseConcurrentSnapshot({
+    status: "ok",
+    payloadSchemaVersion: 2,
+    syncTimestamp: "same-timestamp",
+    cacheVersion: "same-cache-version",
+  });
+  await Promise.all(concurrentSyncRuns);
+  assert.equal(concurrentSnapshotRequests, 1);
+  console.log(
+    JSON.stringify({
+      test: "concurrent sync trigger coalescing",
+      triggers: concurrentSyncRuns.length,
+      snapshotRequests: concurrentSnapshotRequests,
+      elapsedMs: Math.round(performance.now() - concurrentSyncStartedAt),
+    }),
+  );
+  concurrentSyncController.cleanup();
+
+  const broadcastChannels = [];
+  context.BroadcastChannel = class {
+    constructor(name) {
+      this.name = name;
+      this.closed = false;
+      broadcastChannels.push(this);
+    }
+
+    postMessage(data) {
+      broadcastChannels.forEach((peer) => {
+        if (!peer.closed && peer !== this && peer.name === this.name)
+          peer.onmessage?.({ data });
+      });
+    }
+
+    close() {
+      this.closed = true;
+    }
+  };
+  const incumbentCoordinator = context.SyncCore.createLeaderCoordinator({
+    lifecycle: context.LifecycleUtils,
+    tabId: "tab_zzzzzzzz",
+  });
+  const lateCoordinator = context.SyncCore.createLeaderCoordinator({
+    lifecycle: context.LifecycleUtils,
+    tabId: "tab_aaaaaaaa",
+  });
+  incumbentCoordinator.start();
+  lateCoordinator.start();
+  assert.equal(incumbentCoordinator.isLeader(), false);
+  assert.equal(
+    lateCoordinator.isLeader(),
+    true,
+    "a late-joining lexicographically preferred tab should become the sole leader immediately",
+  );
+  incumbentCoordinator.cleanup();
+  lateCoordinator.cleanup();
+  delete context.BroadcastChannel;
+
+  const originalRandom = context.Math.random;
+  const retryControllers = [];
+  try {
+    context.Math.random = () => 0.25;
+    const firstRetryController = context.SyncCore.createController({
+      state: { categorySummary: [] },
+      lifecycle: context.LifecycleUtils,
+      appConfig: { syncRetryIntervalMs: 3000, syncRetryMaxDelayMs: 60000 },
+      isLeader: () => true,
+      hasActiveSession: () => false,
+      setSyncConnected() {},
+      updateSyncStatus() {},
+      logger: { warn() {}, error() {}, info() {} },
+    });
+    retryControllers.push(firstRetryController);
+    firstRetryController.scheduleSyncRetry();
+    const firstRetryDelay = [...timeoutDelays.values()].at(-1);
+
+    context.Math.random = () => 0.75;
+    const secondRetryController = context.SyncCore.createController({
+      state: { categorySummary: [] },
+      lifecycle: context.LifecycleUtils,
+      appConfig: { syncRetryIntervalMs: 3000, syncRetryMaxDelayMs: 60000 },
+      isLeader: () => true,
+      hasActiveSession: () => false,
+      setSyncConnected() {},
+      updateSyncStatus() {},
+      logger: { warn() {}, error() {}, info() {} },
+    });
+    retryControllers.push(secondRetryController);
+    secondRetryController.scheduleSyncRetry();
+    const retryDelays = [...timeoutDelays.values()].slice(-2);
+    assert.equal(retryDelays[0], firstRetryDelay);
+    assert.ok(
+      retryDelays[1] > retryDelays[0],
+      "first retries from separate clients should be jittered above the shared minimum delay",
+    );
+    console.log(
+      JSON.stringify({
+        test: "retry jitter above minimum delay",
+        delaysMs: retryDelays,
+      }),
+    );
+  } finally {
+    context.Math.random = originalRandom;
+    retryControllers.forEach((retryController) => retryController.cleanup());
+  }
 
   controller.cleanup();
   assert.equal(timerCallbacks.size, 0);

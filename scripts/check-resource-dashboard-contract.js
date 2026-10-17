@@ -1519,8 +1519,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /type:\s*"log_reviewer_sign_in"[\s\S]*?sessionId,[\s\S]*?eventId:\s*signInEventId[\s\S]*?\.catch\(\(error\) => \{[\s\S]*?Unable to record reviewer sign-in activity/,
-  "sign-in audit logging should run outside the blocking authentication request",
+  /const response = await globalScope\.AppNetwork\.callBackend\([\s\S]*?type:\s*"verify_reviewer_access"[\s\S]*?eventId:\s*signInEventId[\s\S]*?if \(response\?\.auditLogged === false\)[\s\S]*?setReviewerAuthStatus\([\s\S]*?couldn't record the sign-in activity[\s\S]*?Unable to record reviewer sign-in activity/,
+  "sign-in audit logging should share the authentication request without hiding audit failures",
+);
+assert.doesNotMatch(
+  appCore.match(/async function completeReviewerSignIn\(idToken\) \{([\s\S]*?)\n  \}\n\n  async function requestReviewerEnrollment/)?.[1] || "",
+  /type:\s*"log_reviewer_sign_in"/,
+  "the sign-in flow should not issue a second audit request",
 );
 assert.doesNotMatch(
   appCore,
@@ -3081,7 +3086,7 @@ if (fs.existsSync(backendPath)) {
 }
 assert.match(
   network,
-  /const requestId = createRequestId\(\);\s*const versionedPayload = \{ \.\.\.payload, appVersion, requestId \};\s*validateBackendPayload\(versionedPayload\)/,
+  /const requestId = createRequestId\(\);\s*const requestStartedAt = Date\.now\(\);\s*const versionedPayload = \{ \.\.\.payload, appVersion, requestId \};\s*validateBackendPayload\(versionedPayload\)/,
   "the allowlisted dashboard request should pass the common payload validator",
 );
 

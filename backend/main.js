@@ -94,7 +94,14 @@ function createBackendCorrelationId_() {
   });
 }
 
-function logBackendFailure_(handler, requestType, correlationId, error) {
+function logBackendFailure_(
+  handler,
+  requestType,
+  correlationId,
+  error,
+  durationMs,
+  clientVersion,
+) {
   var safeHandler = /^[A-Za-z0-9_]{1,40}$/.test(String(handler || ""))
     ? String(handler)
     : "unknown";
@@ -111,6 +118,14 @@ function logBackendFailure_(handler, requestType, correlationId, error) {
     error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(String(error.code || ""))
       ? String(error.code)
       : "UNCLASSIFIED";
+  var safeDurationMs = Number.isFinite(Number(durationMs))
+    ? Math.max(0, Math.floor(Number(durationMs)))
+    : -1;
+  var safeClientVersion = /^[A-Za-z0-9._-]{1,80}$/.test(
+    String(clientVersion || ""),
+  )
+    ? String(clientVersion)
+    : "unknown";
   Logger.log(
     "[MRH] failure handler=" +
       safeHandler +
@@ -118,10 +133,67 @@ function logBackendFailure_(handler, requestType, correlationId, error) {
       safeRequestType +
       " correlationId=" +
       correlationId +
+      " timestamp=" +
+      new Date().toISOString() +
+      " durationMs=" +
+      safeDurationMs +
+      " clientVersion=" +
+      safeClientVersion +
+      " responseCode=" +
+      reasonCode +
       " reasonCode=" +
       reasonCode +
       " errorName=" +
       errorName,
+  );
+}
+
+function logBackendContention_(
+  requestType,
+  correlationId,
+  reasonCode,
+  clientVersion,
+  durationMs,
+) {
+  var safeRequestType = /^[A-Za-z0-9_]{1,64}$/.test(
+    String(requestType || ""),
+  )
+    ? String(requestType)
+    : "unknown";
+  var safeReasonCode = /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(
+    String(reasonCode || ""),
+  )
+    ? String(reasonCode)
+    : "LOCK_CONTENTION";
+  var safeCorrelationId =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(correlationId || ""),
+    )
+      ? String(correlationId).toLowerCase()
+      : createBackendCorrelationId_();
+  var safeClientVersion = /^[A-Za-z0-9._-]{1,80}$/.test(
+    String(clientVersion || ""),
+  )
+    ? String(clientVersion)
+    : "unknown";
+  var safeDurationMs = Number.isFinite(Number(durationMs))
+    ? Math.max(0, Math.floor(Number(durationMs)))
+    : -1;
+  Logger.log(
+    "[MRH] contention requestType=" +
+      safeRequestType +
+      " correlationId=" +
+      safeCorrelationId +
+      " timestamp=" +
+      new Date().toISOString() +
+      " durationMs=" +
+      safeDurationMs +
+      " clientVersion=" +
+      safeClientVersion +
+      " responseCode=" +
+      safeReasonCode +
+      " reasonCode=" +
+      safeReasonCode,
   );
 }
 
@@ -1880,14 +1952,54 @@ function revokeReviewerSession_(sessionId) {
   }
 }
 
-function handleReviewerSignInRequest(data) {
+function handleReviewerSignInRequest(data, requestStartedAt, correlationId) {
   var verified = verifyReviewerRequestIdentity_(data);
   if (verified.error) return verified.error;
   var response = getReviewerAccountStatusResponse_(verified.identity);
   var session = createReviewerSession_(verified.identity);
-  if (session.error) return session.error;
+  if (session.error) {
+    logBackendContention_(
+      "verify_reviewer_access",
+      correlationId || (data && data.eventId),
+      "SESSION_BUSY",
+      data && data.appVersion,
+      Number.isFinite(Number(requestStartedAt))
+        ? Date.now() - Number(requestStartedAt)
+        : -1,
+    );
+    return session.error;
+  }
   response.sessionId = session.sessionId;
   response.expiresAt = session.expiresAt;
+  var auditAccount = response.accountStatus === "NOT_FOUND"
+    ? { email: response.email }
+    : {
+        email: response.email,
+        lastName: response.lastName,
+        firstName: response.firstName,
+        middleInitial: response.middleInitial,
+      };
+  try {
+    appendMRHAccessLog_(
+      "REVIEWERS",
+      auditAccount,
+      data && data.eventId,
+      "SIGN_IN:" + response.accountStatus,
+    );
+    response.auditLogged = true;
+  } catch (error) {
+    response.auditLogged = false;
+    logBackendFailure_(
+      "handleReviewerSignInRequest",
+      "verify_reviewer_access",
+      correlationId || String(data && data.eventId || ""),
+      error,
+      Number.isFinite(Number(requestStartedAt))
+        ? Date.now() - Number(requestStartedAt)
+        : -1,
+      data && data.appVersion,
+    );
+  }
   return jsonResponse(response);
 }
 
@@ -1996,7 +2108,7 @@ function authorizeReviewerPdfRequest_(data) {
   return authorization;
 }
 
-function handleReviewerEnrollmentRequest(data) {
+function handleReviewerEnrollmentRequest(data, requestStartedAt, correlationId) {
   var verified = verifyReviewerRequestIdentity_(data);
   if (verified.error) return verified.error;
   var lastName = cleanText(data && data.lastName, 100);
@@ -2014,11 +2126,21 @@ function handleReviewerEnrollmentRequest(data) {
     : middleInitial.toUpperCase();
 
   var lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000))
+  if (!lock.tryLock(10000)) {
+    logBackendContention_(
+      "request_reviewer_enrollment",
+      correlationId || (data && data.eventId),
+      "ENROLLMENT_BUSY",
+      data && data.appVersion,
+      Number.isFinite(Number(requestStartedAt))
+        ? Date.now() - Number(requestStartedAt)
+        : -1,
+    );
     return errorResponse(
       "Account submission is busy. Please try again.",
       "ENROLLMENT_BUSY",
     );
+  }
   try {
     var config = getReviewerAuthorizationConfig_();
     var spreadsheet = SpreadsheetApp.openById(config.spreadsheetId);
@@ -3683,14 +3805,14 @@ function cacheGetChunked(baseKey) {
 
   var keys = [];
   for (var i = 0; i < count; i++) keys.push(baseKey + "_" + i);
-  var chunks = cache.getAll(keys);
-  var result = "";
+  var cachedChunks = cache.getAll(keys);
+  var orderedChunks = [];
   for (var j = 0; j < count; j++) {
-    var chunk = chunks[keys[j]];
+    var chunk = cachedChunks[keys[j]];
     if (chunk === undefined || chunk === null) return null;
-    result += chunk;
+    orderedChunks[j] = chunk;
   }
-  return result;
+  return orderedChunks.join("");
 }
 
 /* -------------------------------------------------------------------------- */
@@ -4871,11 +4993,19 @@ function handleVerifyAccessRequest(data) {
 /* -------------------------------------------------------------------------- */
 
 function doGet(e) {
+  var startedAt = Date.now();
   try {
     return doGetInternal(e || { parameter: {} });
   } catch (error) {
     var correlationId = createBackendCorrelationId_();
-    logBackendFailure_("doGet", "get", correlationId, error);
+    logBackendFailure_(
+      "doGet",
+      "get",
+      correlationId,
+      error,
+      Date.now() - startedAt,
+      e && e.parameter && (e.parameter.v || e.parameter.appVersion),
+    );
     return errorResponse(
       "Server error. Reference: " + correlationId + ".",
       "SERVER_ERROR",
@@ -5132,6 +5262,8 @@ function filterSummaryDataByAccess(summaryJsonString) {
 function doPost(e) {
   var requestType = "unknown";
   var correlationId = createBackendCorrelationId_();
+  var startedAt = Date.now();
+  var clientVersion = "";
   try {
     if (!e || !e.postData || !e.postData.contents)
       return errorResponse("Request body is required.", "BAD_REQUEST");
@@ -5148,6 +5280,7 @@ function doPost(e) {
 
     var versionError = clientVersionRequired(data.appVersion);
     if (versionError) return versionError;
+    clientVersion = String(data.appVersion || "");
 
     requestType = String(data.type || "unknown");
     if (
@@ -5185,7 +5318,7 @@ function doPost(e) {
     if (requestType === "get_reviewer_auth_config")
       return handleGetReviewerAuthorizationConfigRequest();
     if (requestType === "verify_reviewer_access")
-      return handleReviewerSignInRequest(data);
+      return handleReviewerSignInRequest(data, startedAt, correlationId);
     if (requestType === "log_reviewer_sign_in")
       return handleLogReviewerSignInRequest(data);
     if (requestType === "restore_reviewer_session")
@@ -5195,7 +5328,7 @@ function doPost(e) {
     if (requestType === "get_reviewer_account_status")
       return handleGetReviewerAccountStatusRequest(data);
     if (requestType === "request_reviewer_enrollment")
-      return handleReviewerEnrollmentRequest(data);
+      return handleReviewerEnrollmentRequest(data, startedAt, correlationId);
     if (requestType === "get_reviewer_dashboard")
       return handleGetReviewerDashboardRequest(data);
     if (requestType === "get_reviewer_pdf_preview")
@@ -5228,7 +5361,14 @@ function doPost(e) {
 
     return errorResponse("Unknown request type.", "UNKNOWN_REQUEST");
   } catch (error) {
-    logBackendFailure_("doPost", requestType, correlationId, error);
+    logBackendFailure_(
+      "doPost",
+      requestType,
+      correlationId,
+      error,
+      Date.now() - startedAt,
+      clientVersion,
+    );
     return errorResponse(
       "Server error. Reference: " + correlationId + ".",
       "SERVER_ERROR",

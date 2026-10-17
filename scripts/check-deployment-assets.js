@@ -205,9 +205,12 @@ try {
     assertFileExists(match[1].split(/[?#]/, 1)[0]);
   }
   const shellAssets = worker.match(
-    /const APP_SHELL = \[([\s\S]*?)\]\.map/,
+    /const APP_SHELL_PATHS = \[([\s\S]*?)\];/,
   )?.[1];
-  assert.ok(shellAssets, "the service worker must declare its precached shell");
+  assert.ok(
+    shellAssets,
+    "the service worker must declare paths used to build its precached shell",
+  );
   for (const match of shellAssets.matchAll(/"\.\/([^"]+)"/g)) {
     const reference = match[1].split(/[?#]/, 1)[0];
     assertFileExists(reference);

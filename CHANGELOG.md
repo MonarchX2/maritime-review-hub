@@ -1,5 +1,18 @@
 # Changelog
 
+## 26.10.17-19 - 2026-10-17
+
+### Improved
+
+- Record Reviewer sign-in audits in the authorization request, report audit
+  failures explicitly, and preserve one audit row across retries.
+- Correlate backend failures and lock contention with request IDs, timestamps,
+  app versions, response codes, and elapsed time without logging credentials.
+- Prevent sync tabs from retrying in lockstep and converge late-joining tabs on
+  one background-sync leader.
+- Verify payload cache hits, invalidation, Unicode chunk recovery, and
+  concurrent request behavior with focused regressions.
+
 ## 26.11.3 - 2026-10-17
 
 ### Improved
