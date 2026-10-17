@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.17-2 - 2026-10-17
+
+### Improved
+
+- Remove Facebook click identifiers from the browser address bar after startup.
+
 ## 26.11.0 - 2026-10-17
 
 ### Added

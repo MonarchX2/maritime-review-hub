@@ -113,6 +113,11 @@ assert.match(html, new RegExp(`Version ${appDisplayVersion}`));
 assert.match(appEntry, /const versionLabel = `Version \$\{APP_DISPLAY_VERSION\}`/);
 assert.match(appEntry, /\["site-version", "about-version"\]/);
 assert.match(appEntry, /APP_UPDATE_CHECK_INTERVAL_MS = 5 \* 60 \* 1000/);
+assert.match(
+  appEntry,
+  /currentUrl\.searchParams\.has\(UPDATE_QUERY_PARAMETER\)[\s\S]*?currentUrl\.searchParams\.has\(FACEBOOK_CLICK_ID_PARAMETER\)[\s\S]*?searchParams\.delete\(UPDATE_QUERY_PARAMETER\)[\s\S]*?searchParams\.delete\(FACEBOOK_CLICK_ID_PARAMETER\)[\s\S]*?currentUrl\.pathname\}\$\{currentUrl\.search\}\$\{currentUrl\.hash\}/,
+  "startup should remove Facebook click IDs and update flags while preserving other URL parts",
+);
 assert.match(appEntry, /document\.addEventListener\("visibilitychange"/);
 assert.match(appEntry, /window\.addEventListener\("focus",\s*checkUpdateWhenForegrounded\)/);
 assert.match(appEntry, /window\.addEventListener\("pageshow",\s*checkUpdateWhenForegrounded\)/);

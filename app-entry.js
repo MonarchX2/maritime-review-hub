@@ -1,9 +1,10 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-26.10.17-1-20261017";
-  const APP_DISPLAY_VERSION = "26.10.17-1";
+  const APP_VERSION = "mrh-26.10.17-2-20261017";
+  const APP_DISPLAY_VERSION = "26.10.17-2";
   const UPDATE_QUERY_PARAMETER = "__mrh_update";
+  const FACEBOOK_CLICK_ID_PARAMETER = "fbclid";
   const LEGACY_PAGES_BASE_PATH = "/maritime-review-hub/";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
   const bootstrapLogger = () => rootScope.DebugUtils || console;
@@ -29,8 +30,12 @@
       : `${scriptPath}/`;
 
     const currentUrl = new URL(window.location.href);
-    if (currentUrl.searchParams.has(UPDATE_QUERY_PARAMETER)) {
+    if (
+      currentUrl.searchParams.has(UPDATE_QUERY_PARAMETER) ||
+      currentUrl.searchParams.has(FACEBOOK_CLICK_ID_PARAMETER)
+    ) {
       currentUrl.searchParams.delete(UPDATE_QUERY_PARAMETER);
+      currentUrl.searchParams.delete(FACEBOOK_CLICK_ID_PARAMETER);
       window.history.replaceState(
         window.history.state,
         "",
