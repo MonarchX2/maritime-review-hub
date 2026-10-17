@@ -1,23 +1,18 @@
 # Resources access and viewing
 
-Modules and Syllabus chips open files and folders from the Student Portal.
-Folder contents, nested folders, and child files are listed inside the portal.
-PDFs and unsupported Modules file types use Google Drive's native streamed
-preview inside a viewer shell with return navigation; PDFs retain an explicit
-in-site fallback, using PDF.js on mobile. This avoids loading an entire PDF
-through the Apps Script base64 response before rendering. Unsupported Modules
-files are never treated as active website content or automatically downloaded
-by the portal. Modules audio and video preserve their browser-recognized media
-types, and other supported previews remain in-site. Folder listing and file
-preview requests are
-restricted to descendants of the public resource root, exclude protected
-Reviewer folders, and paginate large folders. Drive shortcuts are resolved
-only when their targets remain inside the same public resource tree; shortcuts
-to protected or out-of-tree targets are excluded. Nested folder previews hide
-the full breadcrumb path, offer one-level-up navigation and list/grid views,
-and use file-type icons instead of requesting external thumbnail URLs. Files
-larger than the 32 MiB in-site fallback transport limit remain listed; direct
-Drive previews do not need to transfer the entire file through that limit.
+Modules and Syllabus folders and their contents are listed inside the portal.
+Opening a Modules file or Syllabus PDF requires a verified Google sign-in and
+explicit confirmation. The backend grants the signed-in account read-only
+access to that file for one hour, then opens its original Google Drive URL in
+the same tab. Reviewer approval is not required. Existing user or public
+permissions are left unchanged; the site never creates an anyone-with-the-link
+permission. Syllabus access is limited to PDFs. Google Drive sharing policies
+may reject a grant, in which case the portal reports the failure rather than
+opening a broken or incorrect download. A shortcut is opened only after its
+target is confirmed to remain inside the public resource tree; protected or
+out-of-tree targets are denied. Folder listing and navigation remain in-site,
+exclude protected Reviewer folders, and paginate large folders. The portal
+does not transfer full file contents through Apps Script for these opens.
 Reviewer dashboard rows are returned only after server-side account
 authorization. A folder name classifies resources; it does not authorize
 anyone to access them.
@@ -100,11 +95,12 @@ Google ID token or refresh token should be persisted in browser storage. A
 separately hosted backend may introduce hosting charges; that option is not
 part of the current zero-new-service-cost implementation.
 
-Google Drive permissions are not automatically changed by the dashboard.
-Anyone who can open a linked file can copy or capture its contents. The
+Google Drive permissions change only after a signed-in user explicitly
+confirms a Modules or Syllabus file open; the permission is read-only and
+expires after one hour. Anyone who can open a linked file can copy or capture
+its contents. The
 Reviewer PDF-only protection described below replaces direct Drive links for
-Reviewer PDFs; other Reviewer resource types and the Modules/Syllabus flows
-remain unchanged.
+Reviewer PDFs; other Reviewer resource types are not changed by that feature.
 
 ## Reviewer PDF-only protected viewing
 
@@ -158,8 +154,8 @@ screen recording, or all native PDF viewer behavior. Mobile and touch devices
 use a same-tab Blob viewer with return, download, and direct-open actions
 outside the native PDF frame. The preview frame, object URL, and in-memory
 prepared PDFs are cleared when the preview closes, approval is lost, or the
-session ends. Public Modules/Syllabus and non-PDF Reviewer flows remain
-unchanged.
+session ends. Public Modules/Syllabus access grants are separate from this
+Reviewer PDF flow.
 
 The local bundle, MIT attribution, compatibility tests, and deployment steps
 are documented in
@@ -264,10 +260,11 @@ To initialize sign-in and access logging:
 The portal records section opens, filter changes, resource clicks and previews,
 folder navigation/pagination, Reviewer PDF downloads, sign-in, sign-out, and
 profile submissions/updates in the corresponding access-log tabs. Logged-in
-actions are associated with the verified account. Modules and Syllabus are
-available before reviewer sign-in, so actions taken there without a valid
-reviewer session are recorded without an email identity; the website does not
-collect a separate identity merely to use public resources.
+actions are associated with the verified account. Modules and Syllabus
+listings are available before sign-in, but opening a file requires a verified
+Google account so the backend can grant access only to that account. Reviewer
+approval is not required, and the website does not collect a separate identity
+merely to browse the public listings.
 
 If Apps Script asks for OAuth scopes to be entered manually, add one scope per
 line in the Apps Script project manifest's `oauthScopes` array:

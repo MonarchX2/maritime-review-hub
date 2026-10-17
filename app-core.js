@@ -6006,6 +6006,7 @@
   let resourceDashboardFolderListing = null;
   let resourceDashboardFolderReturn = null;
   let resourceDashboardFolderViewMode = "list";
+  const resourceDriveOpenRequests = new Set();
   const reviewerPdfPreviewCache = new Map();
   let reviewerPdfPreviewInFlight = null;
   let resourceDashboardData = null;
@@ -7906,6 +7907,12 @@
             "span",
             "resource-dashboard-link-label",
           );
+          if (
+            ["REVIEWERS", "MODULES", "SYLLABUS"].includes(
+              resourceDashboardActiveTab,
+            )
+          )
+            label.classList.add("resource-dashboard-link-label-centered");
           const reviewerLessonTitle = isReviewerResource
             ? getReviewerPdfLessonTitle(resourceTitle, courseName)
             : null;
@@ -7994,12 +8001,8 @@
                   folderId: fileId,
                 });
               } else
-                void previewResourceFile(fileId, fileName, {
-                  course:
-                    resourceDashboardActiveTab === "MODULES"
-                      ? courseName
-                      : "",
-                  mimeType,
+                void openResourceFileInDrive(fileId, fileName, {
+                  resourceArea,
                 });
             });
           }
@@ -11671,6 +11674,121 @@
     return `${baseUrl}${encodeURIComponent(fileId)}/preview`;
   }
 
+  async function openResourceFileInDrive(
+    fileId,
+    fileName,
+    { resourceArea } = {},
+  ) {
+    if (
+      !/^[A-Za-z0-9_-]{10,200}$/.test(String(fileId || "")) ||
+      !["MODULES", "SYLLABUS"].includes(resourceArea)
+    ) {
+      setResourceDashboardStatus("This file cannot be opened in Google Drive.");
+      return false;
+    }
+    let sessionId =
+      reviewerSessionId || reviewerPendingEnrollmentSessionId;
+    if (
+      !sessionId &&
+      !hasExplicitReviewerSignOut() &&
+      getStoredReviewerSessionId()
+    ) {
+      await restoreReviewerSession();
+      sessionId =
+        reviewerSessionId || reviewerPendingEnrollmentSessionId;
+    }
+    if (!sessionId) {
+      resourceDriveOpenRequests.delete(fileId);
+      setResourceDashboardStatus(
+        "Sign in with Google from Profile to grant one-hour, read-only access. Reviewer approval is not required; return here and click the file again.",
+      );
+      return false;
+    }
+    if (resourceDriveOpenRequests.has(fileId)) return false;
+    resourceDriveOpenRequests.add(fileId);
+
+    const accountEmail =
+      reviewerAuthorizedEmail ||
+      getStoredReviewerProfile()?.email ||
+      "the signed-in Google account";
+    const safeName = cleanResourceDisplayName(fileName) || "this file";
+    if (typeof globalScope.confirm !== "function") {
+      resourceDriveOpenRequests.delete(fileId);
+      setResourceDashboardStatus(
+        "This browser cannot confirm the temporary Google Drive access request.",
+      );
+      return false;
+    }
+    if (
+      !globalScope.confirm(
+        `Open "${safeName}" in Google Drive? Maritime Review Hub will grant ${accountEmail} read-only access to this file for up to 1 hour. Existing access will not be changed.`,
+      )
+    ) {
+      resourceDriveOpenRequests.delete(fileId);
+      return false;
+    }
+
+    setResourceDashboardStatus("Granting temporary Google Drive access…", true);
+    try {
+      const response = await globalScope.AppNetwork.callBackend(
+        {
+          type: "grant_resource_temporary_access",
+          sessionId,
+          eventId: createResourceEventId(),
+          fileId,
+          resourceArea,
+        },
+        { timeoutMs: 30000, maxRetries: 0 },
+      );
+      if (
+        response?.status !== "success" ||
+        typeof response.driveUrl !== "string" ||
+        typeof response.alreadyHadAccess !== "boolean" ||
+        !/^[A-Za-z0-9_-]{10,200}$/.test(
+          String(response.targetFileId || ""),
+        )
+      )
+        throw new Error(
+          response?.message ||
+            "Google Drive did not confirm temporary access.",
+        );
+
+      const driveUrl = new URL(response.driveUrl);
+      const linkedFileId =
+        driveUrl.pathname.match(/\/d\/([A-Za-z0-9_-]{10,200})(?:\/|$)/)?.[1] ||
+        driveUrl.searchParams.get("id") ||
+        "";
+      if (
+        driveUrl.protocol !== "https:" ||
+        !["drive.google.com", "docs.google.com"].includes(
+          driveUrl.hostname,
+        ) ||
+        linkedFileId !== response.targetFileId
+      )
+        throw new Error("Google Drive returned an invalid file link.");
+
+      const expiryMessage = response.alreadyHadAccess
+        ? "You already have access. Opening the original Google Drive file."
+        : "Read-only access is active for up to 1 hour. Opening the original Google Drive file.";
+      setResourceDashboardStatus(expiryMessage);
+      globalScope.location.assign(driveUrl.href);
+      return true;
+    } catch (error) {
+      setResourceDashboardStatus(
+        `Unable to grant temporary Google Drive access: ${String(
+          error?.message || error,
+        )}`,
+      );
+      (globalScope.DebugUtils || console).error(
+        "Unable to grant temporary access to a Student Portal resource.",
+        error,
+      );
+      return false;
+    } finally {
+      resourceDriveOpenRequests.delete(fileId);
+    }
+  }
+
   function openDriveResourceViewer(
     title,
     fileId,
@@ -12188,14 +12306,8 @@
         void logResourceFileClick("MODULES", item.name, item.id, {
           category: "MODULES",
         });
-        resourceDashboardFolderReturn = resourceDashboardFolderListing;
-        void previewResourceFile(item.id, item.name, {
-          dashboardFolderFile: true,
-          mimeType: item.mimeType,
-          course: getCourseCodeFromBreadcrumbs(
-            listing.breadcrumbs,
-            String(listing.folder?.name || ""),
-          ),
+        void openResourceFileInDrive(item.id, item.name, {
+          resourceArea: "MODULES",
         });
       });
       row.appendChild(button);

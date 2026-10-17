@@ -1753,6 +1753,21 @@ assert.match(
           getName: () => "Outside",
           getParents: () => makeIterator([]),
         }]),
+        getUrl: () => "https://drive.google.com/file/d/outsideFile_123456/view",
+      };
+    }
+    if (fileId === "shortcutFile_123456") {
+      return {
+        getMimeType: () => "application/vnd.google-apps.shortcut",
+        getParents: () => makeIterator([resourceRootFolder]),
+        getUrl: () => "https://drive.google.com/file/d/shortcutFile_123456/view",
+      };
+    }
+    if (fileId === "wrongUrlFile_123456") {
+      return {
+        getMimeType: () => "application/pdf",
+        getParents: () => makeIterator([resourceRootFolder]),
+        getUrl: () => "https://drive.google.com/file/d/differentFile_123456/view",
       };
     }
     if (fileId === "googleDoc_123456") {
@@ -1774,6 +1789,7 @@ assert.match(
       getSize: () => previewBytes.length,
       getParents: () => makeIterator([resourceRootFolder]),
       getBlob: () => ({ getBytes: () => previewBytes }),
+      getUrl: () => "https://drive.google.com/file/d/publicFile_123456/view",
     };
   };
   const resourcePreview = JSON.parse(
@@ -1827,7 +1843,305 @@ assert.match(
     "the native Drive preview must retain the public resource root authorization check",
   );
 
-  console.log("Resource dashboard, in-site folder, and browser-watermarked PDF checks passed.");
+  const originalIdentityVerifier = context.verifyReviewerRequestIdentity_;
+  let createdPermission = null;
+  let createdPermissionResponse = null;
+  let deletedPermission = null;
+  let permissionList = [];
+  context.verifyReviewerRequestIdentity_ = (data) =>
+    data.sessionId === "verified-session"
+      ? { identity: { email: "student@example.com" } }
+      : { error: context.errorResponse("Sign in required.", "SESSION_INVALID") };
+  context.Drive = {
+    Files: {
+      get(fileId, options) {
+        assert.equal(fileId, "shortcutFile_123456");
+        assert.equal(options.supportsAllDrives, true);
+        return {
+          id: fileId,
+          mimeType: "application/vnd.google-apps.shortcut",
+          shortcutDetails: {
+            targetId: "publicFile_123456",
+            targetMimeType: "application/pdf",
+          },
+        };
+      },
+    },
+    Permissions: {
+      list(fileId, options) {
+        assert.equal(fileId, "publicFile_123456");
+        assert.equal(options.supportsAllDrives, true);
+        return { permissions: permissionList };
+      },
+      create(permission, fileId, options) {
+        assert.equal(fileId, "publicFile_123456");
+        assert.equal(options.sendNotificationEmail, false);
+        assert.equal(options.supportsAllDrives, true);
+        createdPermission = permission;
+        return createdPermissionResponse || {
+          id: "temporary-permission",
+          type: "user",
+          role: permission.role,
+          emailAddress: permission.emailAddress,
+          expirationTime: permission.expirationTime,
+        };
+      },
+      delete(fileId, permissionId, options) {
+        assert.equal(fileId, "publicFile_123456");
+        assert.equal(options.supportsAllDrives, true);
+        deletedPermission = permissionId;
+      },
+    },
+  };
+  const temporaryAccess = JSON.parse(
+    context.handleGrantResourceTemporaryAccessRequest_({
+      sessionId: "verified-session",
+      eventId: "12345678-1234-4123-8123-123456789abc",
+      fileId: "publicFile_123456",
+      resourceArea: "MODULES",
+    }).text,
+  );
+  assert.equal(temporaryAccess.status, "success");
+  assert.equal(temporaryAccess.alreadyHadAccess, false);
+  assert.equal(
+    createdPermission.role,
+    "reader",
+    "temporary access must be read-only",
+  );
+  assert.equal(
+    createdPermission.emailAddress,
+    "student@example.com",
+    "temporary access must target the verified Google identity",
+  );
+  assert.equal(
+    Date.parse(createdPermission.expirationTime) - Date.now() <= 60 * 60 * 1000,
+    true,
+    "temporary access must expire within one hour",
+  );
+  assert.equal(
+    Date.parse(createdPermission.expirationTime) - Date.now() > 59 * 60 * 1000,
+    true,
+    "temporary access should receive the full one-hour period",
+  );
+
+  createdPermission = null;
+  permissionList = [{
+    id: "expired-user-permission",
+    type: "user",
+    role: "reader",
+    emailAddress: "student@example.com",
+    expirationTime: new Date(Date.now() - 60 * 1000).toISOString(),
+  }];
+  const expiredPermission = JSON.parse(
+    context.handleGrantResourceTemporaryAccessRequest_({
+      sessionId: "verified-session",
+      eventId: "12345678-1234-4123-8123-123456789abc",
+      fileId: "publicFile_123456",
+      resourceArea: "MODULES",
+    }).text,
+  );
+  assert.equal(expiredPermission.status, "success");
+  assert.equal(
+    expiredPermission.alreadyHadAccess,
+    false,
+    "expired user permissions must not be treated as current access",
+  );
+  assert.equal(createdPermission.role, "reader");
+
+  createdPermission = null;
+  permissionList = [{
+    id: "existing-domain-permission",
+    type: "domain",
+    role: "reader",
+    domain: "example.com",
+  }];
+  const domainAccess = JSON.parse(
+    context.handleGrantResourceTemporaryAccessRequest_({
+      sessionId: "verified-session",
+      eventId: "12345678-1234-4123-8123-123456789abc",
+      fileId: "publicFile_123456",
+      resourceArea: "MODULES",
+    }).text,
+  );
+  assert.equal(domainAccess.status, "success");
+  assert.equal(domainAccess.alreadyHadAccess, true);
+  assert.equal(createdPermission, null, "domain access should not be duplicated");
+
+  permissionList = [];
+  const shortcutAccess = JSON.parse(
+    context.handleGrantResourceTemporaryAccessRequest_({
+      sessionId: "verified-session",
+      eventId: "12345678-1234-4123-8123-123456789abc",
+      fileId: "shortcutFile_123456",
+      resourceArea: "MODULES",
+    }).text,
+  );
+  assert.equal(shortcutAccess.status, "success");
+  assert.equal(
+    shortcutAccess.targetFileId,
+    "publicFile_123456",
+    "a shortcut should grant access to the in-root target file",
+  );
+  assert.equal(
+    shortcutAccess.driveUrl,
+    "https://drive.google.com/file/d/publicFile_123456/view",
+    "a shortcut should open its actual target rather than the shortcut record",
+  );
+  assert.equal(createdPermission.role, "reader");
+
+  createdPermission = null;
+  const mismatchedUrlAccess = JSON.parse(
+    context.handleGrantResourceTemporaryAccessRequest_({
+      sessionId: "verified-session",
+      eventId: "12345678-1234-4123-8123-123456789abc",
+      fileId: "wrongUrlFile_123456",
+      resourceArea: "MODULES",
+    }).text,
+  );
+  assert.equal(mismatchedUrlAccess.code, "DRIVE_PERMISSION_FAILED");
+  assert.equal(
+    createdPermission,
+    null,
+    "a mismatched Drive URL must be rejected before changing permissions",
+  );
+
+  permissionList = [];
+  createdPermissionResponse = {
+    id: "unconfirmed-permission",
+    type: "user",
+    role: "writer",
+    emailAddress: "student@example.com",
+    expirationTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  };
+  const unconfirmedPermission = JSON.parse(
+    context.handleGrantResourceTemporaryAccessRequest_({
+      sessionId: "verified-session",
+      eventId: "12345678-1234-4123-8123-123456789abc",
+      fileId: "publicFile_123456",
+      resourceArea: "MODULES",
+    }).text,
+  );
+  assert.equal(unconfirmedPermission.code, "DRIVE_PERMISSION_FAILED");
+  assert.equal(
+    deletedPermission,
+    "unconfirmed-permission",
+    "an unexpected permission result must be revoked rather than left behind",
+  );
+  createdPermissionResponse = null;
+  deletedPermission = null;
+
+  permissionList = [{
+    id: "existing-expired-public-permission",
+    type: "anyone",
+    role: "reader",
+    expirationTime: new Date(Date.now() - 60 * 1000).toISOString(),
+  }];
+  const expiredPublicAccess = JSON.parse(
+    context.handleGrantResourceTemporaryAccessRequest_({
+      sessionId: "verified-session",
+      eventId: "12345678-1234-4123-8123-123456789abc",
+      fileId: "publicFile_123456",
+      resourceArea: "MODULES",
+    }).text,
+  );
+  assert.equal(expiredPublicAccess.status, "success");
+  assert.equal(
+    expiredPublicAccess.alreadyHadAccess,
+    false,
+    "expired public permissions must not be treated as current access",
+  );
+  assert.equal(createdPermission.role, "reader");
+
+  createdPermission = null;
+  permissionList = [{
+    id: "existing-user-permission",
+    type: "user",
+    role: "reader",
+    emailAddress: "student@example.com",
+  }];
+  const existingAccess = JSON.parse(
+    context.handleGrantResourceTemporaryAccessRequest_({
+      sessionId: "verified-session",
+      eventId: "12345678-1234-4123-8123-123456789abc",
+      fileId: "publicFile_123456",
+      resourceArea: "MODULES",
+    }).text,
+  );
+  assert.equal(existingAccess.status, "success");
+  assert.equal(existingAccess.alreadyHadAccess, true);
+  assert.equal(createdPermission, null, "existing access must not be modified");
+
+  permissionList = [{
+    id: "existing-public-permission",
+    type: "anyone",
+    role: "reader",
+  }];
+  const publicAccess = JSON.parse(
+    context.handleGrantResourceTemporaryAccessRequest_({
+      sessionId: "verified-session",
+      eventId: "12345678-1234-4123-8123-123456789abc",
+      fileId: "publicFile_123456",
+      resourceArea: "MODULES",
+    }).text,
+  );
+  assert.equal(publicAccess.status, "success");
+  assert.equal(publicAccess.alreadyHadAccess, true);
+  assert.equal(createdPermission, null, "existing public access must not be changed");
+
+  permissionList = [];
+  const routedTemporaryAccess = JSON.parse(
+    context.doPost({
+      postData: {
+        contents: JSON.stringify({
+          type: "grant_resource_temporary_access",
+          sessionId: "verified-session",
+          eventId: "12345678-1234-4123-8123-123456789abc",
+          fileId: "publicFile_123456",
+          resourceArea: "MODULES",
+          appVersion,
+        }),
+      },
+    }).text,
+  );
+  assert.equal(
+    routedTemporaryAccess.status,
+    "success",
+    "the deployed request dispatcher should route the temporary-access request",
+  );
+
+  createdPermission = null;
+  const unauthenticatedAccess = JSON.parse(
+    context.handleGrantResourceTemporaryAccessRequest_({
+      eventId: "12345678-1234-4123-8123-123456789abc",
+      fileId: "publicFile_123456",
+      resourceArea: "MODULES",
+    }).text,
+  );
+  assert.equal(unauthenticatedAccess.code, "SESSION_INVALID");
+  assert.equal(createdPermission, null, "anonymous users must not receive access");
+  const outsideAccess = JSON.parse(
+    context.handleGrantResourceTemporaryAccessRequest_({
+      sessionId: "verified-session",
+      eventId: "12345678-1234-4123-8123-123456789abc",
+      fileId: "outsideFile_123456",
+      resourceArea: "MODULES",
+    }).text,
+  );
+  assert.equal(outsideAccess.code, "FORBIDDEN");
+  assert.equal(createdPermission, null, "files outside the resource root must be rejected");
+  const nonPdfSyllabusAccess = JSON.parse(
+    context.handleGrantResourceTemporaryAccessRequest_({
+      sessionId: "verified-session",
+      eventId: "12345678-1234-4123-8123-123456789abc",
+      fileId: "googleDoc_123456",
+      resourceArea: "SYLLABUS",
+    }).text,
+  );
+  assert.equal(nonPdfSyllabusAccess.code, "BAD_REQUEST");
+  assert.equal(createdPermission, null, "Syllabus grants must be limited to PDFs");
+  context.verifyReviewerRequestIdentity_ = originalIdentityVerifier;
+
+  console.log("Resource dashboard, in-site folder, PDF, and temporary Drive-access checks passed.");
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

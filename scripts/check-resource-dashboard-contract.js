@@ -1330,13 +1330,13 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-link-button\s*\{[^}]*width:\s*100%;[^}]*height:\s*2\.75rem;/,
-  "resource chips should share a consistent fixed height and fill their table column",
+  /\.resource-dashboard-link-button\s*\{[^}]*display:\s*flex;[^}]*width:\s*100%;[^}]*height:\s*2\.75rem;[^}]*max-width:\s*none;/,
+  "resource chips should fill their content-sized table column without a width cap",
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-change-link-wrap\s*\{[^}]*display:\s*flex;[^}]*width:\s*100%;[\s\S]*?\.resource-dashboard-change-link-wrap \.resource-dashboard-link-button\s*\{[^}]*max-width:\s*none;/,
-  "badged chips should keep the same column width as unbadged chips",
+  /\.resource-dashboard-change-link-wrap\s*\{[^}]*display:\s*flex;[^}]*width:\s*100%;[^}]*max-width:\s*none;[\s\S]*?\.resource-dashboard-change-link-wrap \.resource-dashboard-link-button\s*\{[^}]*max-width:\s*none;/,
+  "badged chips should keep the same natural column width as unbadged chips",
 );
 assert.match(
   resourceStyles,
@@ -2629,8 +2629,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(isInSiteDashboardResource\) \{\s*link\.addEventListener\("click", \(event\) => \{\s*event\.preventDefault\(\);/,
-  "Modules and Syllabus chips should prevent navigation and open local previews",
+  /if \(isInSiteDashboardResource\) \{\s*link\.addEventListener\("click", \(event\) => \{\s*event\.preventDefault\(\);[\s\S]*?openResourceFileInDrive\(fileId, fileName, \{/,
+  "Modules and Syllabus chips should request temporary access before opening the original Drive file",
 );
 assert.match(
   appCore,
@@ -2639,8 +2639,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /else\s+void previewResourceFile\(fileId, fileName, \{\s*course:/,
-  "file chips should load content in the website preview instead of a Drive tab",
+  /else\s+void openResourceFileInDrive\(fileId, fileName, \{\s*resourceArea/,
+  "file chips should open their original Drive file after backend authorization",
 );
 assert.match(
   appCore,
@@ -2659,8 +2659,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /item\.type === "folder"[\s\S]*?loadResourceDashboardFolderPreview\(item\.id, frame, status\)[\s\S]*?previewResourceFile\(item\.id, item\.name, \{\s*dashboardFolderFile: true/,
-  "folder descendants and their files must remain inside the Student Portal preview",
+  /item\.type === "folder"[\s\S]*?loadResourceDashboardFolderPreview\(item\.id, frame, status\)[\s\S]*?openResourceFileInDrive\(item\.id, item\.name, \{\s*resourceArea: "MODULES"/,
+  "folder descendants should browse in-site while files open in Drive",
 );
 assert.match(
   appCore,
@@ -2679,8 +2679,23 @@ assert.match(
 );
 assert.match(
   backend,
-  /if \(requestType === "list_public_resources"\)\s*return handleListPublicResourcesRequest\(data\)[\s\S]*?if \(requestType === "get_resource_preview"\)\s*return handleGetResourcePreviewRequest\(data\)/,
-  "the portal must route folder and file preview requests through the protected backend handlers",
+  /if \(requestType === "list_public_resources"\)\s*return handleListPublicResourcesRequest\(data\)[\s\S]*?if \(requestType === "get_resource_preview"\)\s*return handleGetResourcePreviewRequest\(data\)[\s\S]*?if \(requestType === "grant_resource_temporary_access"\)\s*return handleGrantResourceTemporaryAccessRequest_\(data\)/,
+  "the portal must route listing, preview, and temporary-access requests through protected backend handlers",
+);
+assert.match(
+  backend,
+  /function handleGrantResourceTemporaryAccessRequest_\(data\)[\s\S]*?verifyReviewerRequestIdentity_\(data\)[\s\S]*?getResourceFileBreadcrumbs\(file\)[\s\S]*?permission\.type === "anyone"[\s\S]*?role: "reader"[\s\S]*?expirationTime: expiresAt/,
+  "temporary Drive access must require a verified user, stay within the resource root, and never grant public access",
+);
+assert.match(
+  appCore,
+  /async function openResourceFileInDrive\([\s\S]*?type: "grant_resource_temporary_access"[\s\S]*?driveUrl\.protocol !== "https:"[\s\S]*?driveUrl\.hostname[\s\S]*?linkedFileId !== response\.targetFileId[\s\S]*?globalScope\.location\.assign\(driveUrl\.href\)/,
+  "Drive navigation must validate the returned file URL and only proceed after the grant succeeds",
+);
+assert.match(
+  backend,
+  /application\/vnd\.google-apps\.shortcut[\s\S]*?Drive\.Files\.get\(fileId[\s\S]*?getResourceFileBreadcrumbs\(file\)[\s\S]*?Drive\.Permissions\.create/,
+  "shortcuts must resolve to an in-root target before the target is shared",
 );
 const headingFunction = appCore.match(
   /function getResourceDashboardColumnHeading\(column\) \{[\s\S]*?\n  \}/,
@@ -2803,8 +2818,18 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-link-button\s*\{[^}]*position:\s*relative;[^}]*justify-content:\s*flex-start;[\s\S]*?\.resource-dashboard-link-icon\s*\{[^}]*position:\s*absolute;[^}]*left:\s*var\(--resource-dashboard-space-wide\);[\s\S]*?\.resource-dashboard-link-label\s*\{[^}]*text-align:\s*center;/,
+  /\.resource-dashboard-link-button\s*\{[^}]*position:\s*relative;[^}]*justify-content:\s*flex-start;[\s\S]*?\.resource-dashboard-link-icon\s*\{[^}]*position:\s*absolute;[^}]*left:\s*var\(--resource-dashboard-space-wide\);[\s\S]*?\.resource-dashboard-link-label\s*\{[^}]*display:\s*flex;[^}]*flex:\s*1 1 0;[^}]*justify-content:\s*center;[^}]*text-align:\s*center;/,
   "dashboard chip icons should stay left while label text remains centered",
+);
+assert.match(
+  appCore,
+  /\["REVIEWERS",\s*"MODULES",\s*"SYLLABUS"\]\.includes\(\s*resourceDashboardActiveTab,\s*\)[\s\S]*?label\.classList\.add\("resource-dashboard-link-label-centered"\)/,
+  "Reviewer, Modules, and Syllabus chip labels should use the same centered layout",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-link-label-centered\s*\{[^}]*flex:\s*1 1 0;[^}]*justify-content:\s*center;[^}]*text-align:\s*center;/,
+  "Reviewer, Modules, and Syllabus labels should remain in flow, fill the chip column, and center their text independently of the absolute left icon",
 );
 assert.match(
   resourceStyles,

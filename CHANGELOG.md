@@ -1,5 +1,19 @@
 # Changelog
 
+## 26.11.2 - 2026-10-17
+
+### Added
+
+- Grant verified Google accounts one-hour, read-only Drive access when opening
+  Modules files or Syllabus PDFs, without requiring Reviewer approval.
+
+### Improved
+
+- Keep Student Portal resource chips content-sized, with centered labels and
+  left-aligned file icons.
+- Validate temporary permissions and Drive links before navigation, recognize
+  existing access, and revoke grants that Drive does not confirm correctly.
+
 ## 26.11.1 - 2026-10-17
 
 ### Improved

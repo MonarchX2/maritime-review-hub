@@ -3245,6 +3245,220 @@ function handleGetResourcePreviewRequest(data) {
   return jsonResponse(preview);
 }
 
+function handleGrantResourceTemporaryAccessRequest_(data) {
+  var fileId = cleanText(data && data.fileId, 200);
+  var resourceArea = String(data && data.resourceArea || "");
+  var eventId = String(data && data.eventId || "");
+  if (!/^[A-Za-z0-9_-]{10,200}$/.test(fileId))
+    return errorResponse("Invalid file ID.", "BAD_REQUEST");
+  if (!["MODULES", "SYLLABUS"].includes(resourceArea))
+    return errorResponse("Temporary access is unavailable for this resource.", "BAD_REQUEST");
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      eventId,
+    )
+  )
+    return errorResponse("A valid event ID is required.", "BAD_REQUEST");
+
+  var verified = verifyReviewerRequestIdentity_(data);
+  if (verified.error) return verified.error;
+
+  var file;
+  try {
+    file = DriveApp.getFileById(fileId);
+  } catch (error) {
+    return errorResponse("This file is unavailable.", "NOT_FOUND");
+  }
+  try {
+    if (!getResourceFileBreadcrumbs(file))
+      return errorResponse("This file is not available.", "FORBIDDEN");
+    var targetFileId = fileId;
+    var mimeType = String(file.getMimeType() || "").toLowerCase();
+    if (mimeType === "application/vnd.google-apps.shortcut") {
+      var shortcutMetadata;
+      try {
+        shortcutMetadata = Drive.Files.get(fileId, {
+          supportsAllDrives: true,
+          fields: "id,mimeType,shortcutDetails(targetId,targetMimeType)",
+        });
+      } catch (error) {
+        return errorResponse("This shortcut target is unavailable.", "NOT_FOUND");
+      }
+      targetFileId = String(
+        shortcutMetadata &&
+          shortcutMetadata.shortcutDetails &&
+          shortcutMetadata.shortcutDetails.targetId ||
+          "",
+      );
+      if (!/^[A-Za-z0-9_-]{10,200}$/.test(targetFileId))
+        return errorResponse("This shortcut target is unavailable.", "NOT_FOUND");
+      try {
+        file = DriveApp.getFileById(targetFileId);
+      } catch (error) {
+        return errorResponse("This shortcut target is unavailable.", "NOT_FOUND");
+      }
+      if (!getResourceFileBreadcrumbs(file))
+        return errorResponse("This file is not available.", "FORBIDDEN");
+      mimeType = String(file.getMimeType() || "").toLowerCase();
+    }
+    if (
+      mimeType === "application/vnd.google-apps.folder" ||
+      (resourceArea === "SYLLABUS" && mimeType !== "application/pdf")
+    )
+      return errorResponse(
+        "Temporary access is available only for files and Syllabus PDFs.",
+        "BAD_REQUEST",
+      );
+
+    var driveUrl = String(file.getUrl() || "");
+    if (
+      !/^https:\/\/(?:drive\.google\.com|docs\.google\.com)\/[^\s<>]+$/i.test(
+        driveUrl,
+      )
+    )
+      throw new Error("Drive returned an unexpected file URL.");
+
+    var email = String(verified.identity.email || "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      return errorResponse("A verified Google email is required.", "UNAUTHORIZED");
+    var urlFileIdMatch =
+      /\/d\/([A-Za-z0-9_-]{10,200})(?:\/|$)/.exec(driveUrl);
+    if (!urlFileIdMatch) {
+      var queryFileIdMatch = /[?&]id=([A-Za-z0-9_-]{10,200})(?:&|$)/.exec(
+        driveUrl,
+      );
+      urlFileIdMatch = queryFileIdMatch;
+    }
+    if (!urlFileIdMatch || urlFileIdMatch[1] !== targetFileId)
+      throw new Error("Drive returned a URL for a different file.");
+
+    var pageToken = "";
+    var permissions = [];
+    var permissionPageCount = 0;
+    do {
+      permissionPageCount++;
+      if (permissionPageCount > 100)
+        throw new Error("Drive returned too many permission pages.");
+      var options = {
+        pageSize: 100,
+        fields:
+          "nextPageToken,permissions(id,type,role,emailAddress,domain,deleted,expirationTime,permissionDetails(inherited))",
+        supportsAllDrives: true,
+      };
+      if (pageToken) options.pageToken = pageToken;
+      var permissionPage = Drive.Permissions.list(targetFileId, options);
+      permissions = permissions.concat(permissionPage.permissions || []);
+      var nextPageToken = String(permissionPage.nextPageToken || "");
+      if (nextPageToken && nextPageToken === pageToken)
+        throw new Error("Drive returned a repeated permission page token.");
+      pageToken = nextPageToken;
+    } while (pageToken);
+
+    var now = Date.now();
+    var hasActivePermission = function (permission) {
+      if (!permission || permission.deleted === true) return false;
+      if (!permission.expirationTime) return true;
+      var expirationTime = Date.parse(String(permission.expirationTime));
+      return isFinite(expirationTime) && expirationTime > now;
+    };
+    var existingUserPermission = permissions.find(function (permission) {
+      return (
+        hasActivePermission(permission) &&
+        permission.type === "user" &&
+        String(permission.emailAddress || "").trim().toLowerCase() === email
+      );
+    });
+    var alreadyPublic = permissions.some(function (permission) {
+      return (
+        hasActivePermission(permission) &&
+        permission.type === "anyone" &&
+        ["reader", "commenter", "writer", "organizer", "fileOrganizer"].includes(
+          String(permission.role || ""),
+        )
+      );
+    });
+    var emailDomain = email.split("@").pop();
+    var alreadyDomainShared = permissions.some(function (permission) {
+      return (
+        hasActivePermission(permission) &&
+        permission.type === "domain" &&
+        String(permission.domain || "").trim().toLowerCase() === emailDomain &&
+        ["reader", "commenter", "writer", "organizer", "fileOrganizer"].includes(
+          String(permission.role || ""),
+        )
+      );
+    });
+    if (existingUserPermission || alreadyPublic || alreadyDomainShared) {
+      return jsonResponse({
+        status: "success",
+        driveUrl: driveUrl,
+        targetFileId: targetFileId,
+        alreadyHadAccess: true,
+        expiresAt: existingUserPermission
+          ? String(existingUserPermission.expirationTime || "")
+          : "",
+      });
+    }
+
+    var expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    var createdPermission = Drive.Permissions.create(
+      {
+        type: "user",
+        role: "reader",
+        emailAddress: email,
+        expirationTime: expiresAt,
+      },
+      targetFileId,
+      {
+        sendNotificationEmail: false,
+        supportsAllDrives: true,
+        fields: "id,type,role,emailAddress,expirationTime",
+      },
+    );
+    var confirmedExpiry = Date.parse(
+      String(createdPermission && createdPermission.expirationTime || ""),
+    );
+    var requestedExpiry = Date.parse(expiresAt);
+    var permissionConfirmed =
+      !createdPermission ||
+      !createdPermission.id ||
+      createdPermission.type !== "user" ||
+      createdPermission.role !== "reader" ||
+      String(createdPermission.emailAddress || "").toLowerCase() !== email ||
+      !isFinite(confirmedExpiry) ||
+      Math.abs(confirmedExpiry - requestedExpiry) > 1000;
+    if (permissionConfirmed) {
+      if (createdPermission && createdPermission.id) {
+        try {
+          Drive.Permissions.delete(
+            targetFileId,
+            createdPermission.id,
+            { supportsAllDrives: true },
+          );
+        } catch (cleanupError) {
+          Logger.log(
+            "[handleGrantResourceTemporaryAccessRequest_] Could not remove an unconfirmed temporary permission.",
+          );
+        }
+      }
+      throw new Error("Drive did not confirm the temporary viewer permission.");
+    }
+    return jsonResponse({
+      status: "success",
+      driveUrl: driveUrl,
+      targetFileId: targetFileId,
+      alreadyHadAccess: false,
+      expiresAt: String(createdPermission.expirationTime),
+    });
+  } catch (error) {
+    Logger.log("[handleGrantResourceTemporaryAccessRequest_] Drive access grant failed.");
+    return errorResponse(
+      "Google Drive could not grant temporary access to this file. Check the file's sharing policy or ask its owner for access.",
+      "DRIVE_PERMISSION_FAILED",
+    );
+  }
+}
+
 function isSupportedClientVersion(value) {
   var match = String(value || "")
     .trim()
@@ -5018,6 +5232,7 @@ function doPost(e) {
         "log_resource_file_click",
         "log_resource_dashboard_action",
         "get_resource_dashboard",
+        "grant_resource_temporary_access",
       ].indexOf(requestType) !== -1 &&
       !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
         String(data.eventId || ""),
@@ -5069,6 +5284,8 @@ function doPost(e) {
       return handleListPublicResourcesRequest(data);
     if (requestType === "get_resource_preview")
       return handleGetResourcePreviewRequest(data);
+    if (requestType === "grant_resource_temporary_access")
+      return handleGrantResourceTemporaryAccessRequest_(data);
     if (requestType === "get_deck") return handleGetDeckRequest(data);
     if (
       requestType === "verify_folder_access" ||
