@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.10.28 - 2026-10-17
+
+### Fixed
+
+- Keep the Reviewers section selected and show its locked panel if a session
+  expires during PDF download or online preview.
+
 ## 26.10.27 - 2026-10-17
 
 ### Fixed

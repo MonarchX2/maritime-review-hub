@@ -10366,7 +10366,6 @@
           setReviewerAuthStatus(
             "Your session expired or was revoked. Sign in with Google again.",
           );
-          openResourceDashboardTab("PROFILE");
           return false;
         }
         if (status) {
@@ -10671,7 +10670,6 @@
         setReviewerAuthStatus(
           "Your access session expired or was revoked. Sign in with Google again.",
         );
-        openResourceDashboardTab("PROFILE");
         return false;
       }
       if (
@@ -10705,7 +10703,6 @@
             setReviewerAuthStatus(
               "Your access session expired or was revoked. Sign in with Google again.",
             );
-            openResourceDashboardTab("PROFILE");
             return false;
           }
           (globalScope.DebugUtils || console).error(

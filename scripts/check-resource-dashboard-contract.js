@@ -751,6 +751,11 @@ assert.doesNotMatch(
   /openResourceDashboardTab\("PROFILE"\)/,
   "an expired saved session should keep the Reviewer tab active and show its locked panel",
 );
+assert.doesNotMatch(
+  appCore.match(/async function downloadReviewerPdf\(\)[\s\S]*?\n  function closeReviewerPdfPreview/)?.[0] || "",
+  /openResourceDashboardTab\("PROFILE"\)/,
+  "an expired session during PDF download or preview should preserve the Reviewers tab and show its locked panel",
+);
 assert.match(
   appCore,
   /let reviewerAuthGeneration = 0;[\s\S]*?async function completeReviewerSignIn\(idToken\)[\s\S]*?const authGeneration = \+\+reviewerAuthGeneration;[\s\S]*?authGeneration !== reviewerAuthGeneration[\s\S]*?reviewerVerificationInFlightToken !== idToken[\s\S]*?const sessionId = String\(response\?\.sessionId \|\| ""\)[\s\S]*?saveReviewerSessionId\(sessionId\)[\s\S]*?applyReviewerAccountStatus\(response, sessionId\)/,
