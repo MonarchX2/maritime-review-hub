@@ -134,10 +134,16 @@ MIME type, protected-root ancestry, and source version. The `pdf-lib` 1.17.1
 two-column by five-row pattern on each physical page and verifies every stamp
 after saving. The browser polls
 `get_reviewer_pdf_job`, which reauthorizes and revalidates the source before
-delivery. Its private Drive derivative is permanently deleted before response
-bytes are returned. Sign-out and a page-exit beacon clean up any remaining
-session outputs; ten-minute job expiry is the fallback if the browser exits
-without the beacon. Cleanup only targets files created as temporary outputs.
+delivery. Verified derivatives are saved in the configured private output
+folder (`10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl`) and read back from that folder for
+the response; successful output files are retained there. The worker checks
+that each generated file and every folder in its parent chain has only the
+execution owner's permission, so the output folder must not grant inherited or
+direct access to other users or groups.
+Sign-out and a page-exit beacon cancel unfinished jobs and clear session job
+state but do not delete completed PDFs. Delivery rechecks permissions before
+returning bytes. Ten-minute job expiry only expires the job metadata; temporary
+failed/cancelled outputs remain eligible for cleanup.
 The index payload is cached by Drive file ID and last-modified timestamp.
 `setupReviewerPdfDelivery()` must be run by the Apps Script project owner to
 install the worker trigger.
@@ -147,7 +153,10 @@ The code rejects sources over 2 MiB, derivatives over 4 MiB, and files over
 limits. A 4 MiB derivative expands to at most 5,592,408 base64 characters
 (about 5.33 MiB) before JSON; maximum-size and actual `ContentService`
 response behavior, time-trigger execution/recovery, and large download
-delivery remain untested against a representative protected file.
+delivery remain untested against a representative protected file. The
+configured output folder's live ACL has not been validated in Drive; the worker
+checks the output file and every folder in its parent chain and fails closed if
+any has a non-owner permission.
 MODULES, SYLLABUS, and non-PDF resource flows remain unchanged.
 Browser POSTs use `cache: "no-store"`; personalized output is not placed in
 shared Apps Script or dashboard caches.

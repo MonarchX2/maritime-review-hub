@@ -90,13 +90,23 @@ async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
 
   try {
     var font = await pdf.embedFont(PDFLib.StandardFonts.HelveticaBold);
+    var textWidthCache = Object.create(null);
+    function textWidth(line, fontSize) {
+      var key = fontSize + "\n" + line;
+      if (!Object.prototype.hasOwnProperty.call(textWidthCache, key))
+        textWidthCache[key] = font.widthOfTextAtSize(line, fontSize);
+      return textWidthCache[key];
+    }
+    var angle = (28 * Math.PI) / 180;
+    var cosine = Math.cos(angle);
+    var sine = Math.sin(angle);
     pages.forEach(function (page) {
       var size = page.getSize();
       var maxWidth = Math.max(80, size.width * 0.88);
       var fontSize = Math.max(9, Math.min(20, Math.min(size.width, size.height) * 0.04));
       while (
         watermarkLines.some(function (line) {
-          return font.widthOfTextAtSize(line, fontSize) > maxWidth;
+          return textWidth(line, fontSize) > maxWidth;
         }) &&
         fontSize > 9
       ) {
@@ -105,22 +115,21 @@ async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
       var lines = watermarkLines.slice();
       if (
         lines.some(function (line) {
-          return font.widthOfTextAtSize(line, fontSize) > maxWidth;
+          return textWidth(line, fontSize) > maxWidth;
         })
       )
         throw reviewerPdfError_("Account details do not fit the watermark area.", "WATERMARK_TEXT_TOO_LONG");
       var blockHeight = lines.length * fontSize * 1.25;
       if (blockHeight > size.height * 0.25)
         throw reviewerPdfError_("Account details do not fit the watermark area.", "WATERMARK_TEXT_TOO_LONG");
-      var angle = (28 * Math.PI) / 180;
       [0.25, 0.75].forEach(function (columnFraction) {
         [0.12, 0.31, 0.5, 0.69, 0.88].forEach(function (rowFraction) {
           lines.forEach(function (line, index) {
-            var textWidth = font.widthOfTextAtSize(line, fontSize);
+            var measuredWidth = textWidth(line, fontSize);
             var lineOffset = ((lines.length - 1) / 2 - index) * fontSize * 1.25;
             page.drawText(line, {
-              x: size.width * columnFraction - textWidth * Math.cos(angle) / 2,
-              y: size.height * rowFraction + lineOffset + textWidth * Math.sin(angle) / 2,
+              x: size.width * columnFraction - measuredWidth * cosine / 2,
+              y: size.height * rowFraction + lineOffset + measuredWidth * sine / 2,
               size: fontSize,
               font: font,
               color: PDFLib.rgb(0.24, 0.24, 0.24),
@@ -163,7 +172,7 @@ function reviewerPdfStreamText_(pdf, streamReference) {
   for (var offset = 0; offset < decoded.length; offset += 8192) {
     text += String.fromCharCode.apply(
       null,
-      Array.from(decoded.subarray(offset, Math.min(offset + 8192, decoded.length))),
+      decoded.subarray(offset, Math.min(offset + 8192, decoded.length)),
     );
   }
   return text.replace(/<([0-9a-fA-F]+)> Tj/g, function (_match, hex) {
@@ -189,11 +198,13 @@ async function verifyReviewerPdfWatermarks_(bytes, identity) {
     var streams = contents instanceof PDFLib.PDFArray
       ? contents.asArray()
       : [page.node.Contents()];
-    var pageText = streams.map(function (stream) {
-      return reviewerPdfStreamText_(pdf, stream);
-    }).join("\n");
-    var fullNameCount = pageText.split(fullName).length - 1;
-    var emailCount = pageText.split(email).length - 1;
+    var fullNameCount = 0;
+    var emailCount = 0;
+    streams.forEach(function (stream) {
+      var streamText = reviewerPdfStreamText_(pdf, stream);
+      fullNameCount += streamText.split(fullName).length - 1;
+      emailCount += streamText.split(email).length - 1;
+    });
     if (
       fullNameCount < 10 ||
       emailCount < 10

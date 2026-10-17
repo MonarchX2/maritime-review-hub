@@ -1,5 +1,20 @@
 # Changelog
 
+## 26.10.17-13 - 2026-10-17
+
+### Improved
+
+- Load the Google sign-in client while fetching reviewer authorization
+  configuration, shorten the verification retry label, and reduce avoidable
+  sign-in setup delay.
+- Save generated watermarked Reviewer PDFs in the configured Drive folder,
+  retain successfully delivered files, and tighten delivery privacy checks.
+- Format Reviewer PDF preview titles and table chips as compact two-line
+  course/lesson labels, center chip text, and support existing `Lesson X`
+  filenames.
+- Reduce spacing above dashboard filters and place the All option last in Year,
+  Semester, and Category controls.
+
 ## 26.10.17-12 - 2026-10-17
 
 ### Improved

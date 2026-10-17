@@ -2071,6 +2071,10 @@ button:active:not(:disabled) {
   background: #fff;
 }
 
+.resource-dashboard-browser {
+  padding-top: 0.75rem;
+}
+
 .resource-profile-screen {
   width: min(100%, 44rem);
   min-width: 0;
@@ -2760,8 +2764,18 @@ button:active:not(:disabled) {
   overflow: hidden;
   font-size: 0.875rem;
   font-weight: 600;
+  line-height: 1.15;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.resource-portal-preview-title-has-details {
+  font-weight: 400;
+}
+
+.resource-portal-preview.is-reviewer-pdf .resource-portal-preview-header {
+  min-height: 3.2rem;
 }
 
 .resource-portal-preview-actions {
@@ -2778,6 +2792,13 @@ button:active:not(:disabled) {
 .resource-portal-preview.is-reviewer-pdf,
 .resource-portal-preview.is-reviewer-pdf .resource-portal-preview-frame,
 .resource-portal-preview.is-reviewer-pdf .resource-portal-preview-viewer {
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.resource-portal-preview.is-reviewer-pdf canvas {
+  pointer-events: none;
   -webkit-user-select: none;
   user-select: none;
 }
@@ -3048,9 +3069,30 @@ button:active:not(:disabled) {
 }
 
 .resource-dashboard-link-label {
+  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: normal;
+}
+
+.resource-dashboard-link-primary,
+.resource-dashboard-link-secondary {
+  display: block;
+  line-height: 1;
+}
+
+.resource-dashboard-link-label-stacked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  text-align: center;
+  white-space: normal;
+}
+
+.resource-dashboard-link-secondary {
+  font-size: 0.92em;
 }
 
 .resource-dashboard-link-button:hover,
@@ -3520,6 +3562,10 @@ button:active:not(:disabled) {
 
   .resource-portal-browser {
     padding: 1rem;
+  }
+
+  .resource-dashboard-browser {
+    padding-top: 0.5rem;
   }
 
   .resource-portal-access-screen {

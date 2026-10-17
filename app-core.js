@@ -6635,8 +6635,8 @@
         }),
       );
     };
-    addLoadingOptions(yearControl, ["all", "1", "2", "3"], "3");
-    addLoadingOptions(semesterControl, ["all", "1", "2"], "2");
+    addLoadingOptions(yearControl, ["1", "2", "3", "all"], "3");
+    addLoadingOptions(semesterControl, ["1", "2", "all"], "2");
     setReviewerDashboardFiltersDisabled(true);
     if (clearRows) {
       document
@@ -7099,7 +7099,7 @@
         value,
         label: value,
       }));
-      if (includeAll) options.unshift({ value: "all", label: "All" });
+      if (includeAll) options.push({ value: "all", label: "All" });
       const buttons = options.map(({ value, label }) => {
         const button = createResourceDashboardElement(
           "button",
@@ -7400,7 +7400,7 @@
             titleInParentheses ? titleInParentheses[1] : fileTitle,
           ).trim();
           const resourceTitle = reviewerPdfMatch
-            ? getReviewerPdfDisplayName(rawResourceTitle)
+            ? getReviewerPdfDisplayName(fileTitle || value)
             : rawResourceTitle;
           const isModuleFolderFallback =
             resourceDashboardActiveTab === "MODULES" &&
@@ -7422,12 +7422,40 @@
             } resource-dashboard-link-icon`,
           );
           icon.setAttribute("aria-hidden", "true");
+          const isReviewerResource =
+            resourceDashboardActiveTab === "REVIEWERS";
+          const courseName =
+            courseColumnIndex < 0
+              ? ""
+              : String(values[courseColumnIndex] || "").trim();
           const link = createResourceDashboardElement(
             "a",
             "resource-dashboard-link-button",
           );
-          const isReviewerResource =
-            resourceDashboardActiveTab === "REVIEWERS";
+          const label = createResourceDashboardElement(
+            "span",
+            "resource-dashboard-link-label",
+          );
+          const reviewerLessonTitle = isReviewerResource
+            ? getReviewerPdfLessonTitle(resourceTitle, courseName)
+            : null;
+          if (reviewerLessonTitle) {
+            label.classList.add("resource-dashboard-link-label-stacked");
+            label.append(
+              createResourceDashboardElement(
+                "span",
+                "resource-dashboard-link-primary",
+                reviewerLessonTitle.lesson,
+              ),
+              createResourceDashboardElement(
+                "span",
+                "resource-dashboard-link-secondary",
+                reviewerLessonTitle.details,
+              ),
+            );
+          } else {
+            label.textContent = linkLabel;
+          }
           link.href = reviewerPdfMatch ? "#resource-portal-preview" : linkUrl;
           link.draggable = false;
           ["copy", "contextmenu", "dragstart"].forEach((eventName) => {
@@ -7435,14 +7463,7 @@
               event.preventDefault();
             });
           });
-          link.append(
-            icon,
-            createResourceDashboardElement(
-              "span",
-              "resource-dashboard-link-label",
-              linkLabel,
-            ),
-          );
+          link.append(icon, label);
           if (showResourceChangeBadge) {
             const changeLabel = changeType === "NEW" ? "New" : "Updated";
             link.setAttribute(
@@ -7505,6 +7526,7 @@
                 event.preventDefault();
                 void previewResourceFile(fileId, fileName, {
                   reviewer: true,
+                  course: courseName,
                 });
               }
               const clickedLink = event.currentTarget;
@@ -8011,10 +8033,23 @@
         "resource-dashboard-reviewers-nav",
       );
       try {
-        const response = await globalScope.AppNetwork.callBackend(
+        const authConfigRequest = globalScope.AppNetwork.callBackend(
           { type: "get_reviewer_auth_config" },
           { timeoutMs: 15000, maxRetries: 0 },
         );
+        const googleIdentityClientRequest = globalScope.google?.accounts?.id
+          ? Promise.resolve(null)
+          : new Promise((resolve, reject) => {
+              const script = document.createElement("script");
+              script.src = "https://accounts.google.com/gsi/client?hl=en";
+              script.async = true;
+              script.defer = true;
+              script.onload = () => resolve(null);
+              script.onerror = () =>
+                reject(new Error("Unable to load Google sign-in."));
+              document.head.appendChild(script);
+            }).catch((error) => error);
+        const response = await authConfigRequest;
         if (
           response?.status !== "success" ||
           typeof response.enabled !== "boolean" ||
@@ -8042,18 +8077,8 @@
           throw new Error("The Google sign-in client ID is missing.");
         }
 
-        if (!globalScope.google?.accounts?.id) {
-          await new Promise((resolve, reject) => {
-            const script = document.createElement("script");
-            script.src = "https://accounts.google.com/gsi/client?hl=en";
-            script.async = true;
-            script.defer = true;
-            script.onload = resolve;
-            script.onerror = () =>
-              reject(new Error("Unable to load Google sign-in."));
-            document.head.appendChild(script);
-          });
-        }
+        const googleIdentityClientError = await googleIdentityClientRequest;
+        if (googleIdentityClientError) throw googleIdentityClientError;
         if (!globalScope.google?.accounts?.id)
           throw new Error("Google sign-in did not initialize.");
 
@@ -10187,6 +10212,50 @@
       .trim() || "PDF";
   }
 
+  function getReviewerPdfLessonTitle(fileName, courseName) {
+    const title = String(fileName || "").replace(/\.pdf$/i, "").trim();
+    const course = String(courseName || "").trim();
+    const escapedCourse = course.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const matchedCourse = course
+      ? new RegExp(
+          `(?:^|[^A-Za-z0-9])${escapedCourse}(?=$|[^A-Za-z0-9])`,
+          "i",
+        ).exec(title)
+      : null;
+    const suffix = matchedCourse
+      ? title.slice(matchedCourse.index + matchedCourse[0].length)
+      : title;
+    const sequenceAfterCourse = matchedCourse
+      ? /^\s*(?:[-_–—:(\[]\s*)?(?:LESSON\s+)?(\d+(?:\s*-\s*\d+)?)\b/i.exec(
+          suffix,
+        )?.[1] || ""
+      : "";
+    const existingLesson = /\bLESSON\s+(\d+(?:\s*-\s*\d+)?|X)\b/i.exec(
+      title,
+    );
+    const sequence = sequenceAfterCourse || existingLesson?.[1] || "";
+    if (!sequence) return null;
+    const normalizedSequence =
+      sequence.toUpperCase() === "X"
+        ? "X"
+        : sequence.replace(/\s*-\s*/g, "-").trim();
+    const lesson = `Lesson ${normalizedSequence}`;
+    const details = /\(([^()]*)\)/.exec(title)?.[1]?.trim() || "";
+    return {
+      lesson,
+      details,
+      header: `${lesson}${details ? ` (${details})` : ""}`,
+    };
+  }
+
+  function decodeBase64Bytes(encoded) {
+    const binary = atob(encoded);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1)
+      bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  }
+
   async function downloadReviewerPdf() {
     if (reviewerPdfDownloadInFlight) return reviewerPdfDownloadInFlight;
     const activePdf = resourcePortalReviewerPdf;
@@ -10213,7 +10282,7 @@
           { timeoutMs: 60000, maxRetries: 0 },
         );
         const deadline = Date.now() + 9 * 60 * 1000;
-        let pollDelayMs = 1800;
+        let pollDelayMs = 1000;
         if (response?.status !== "pending")
           throw new Error(
             response?.message || "The PDF download could not be prepared.",
@@ -10241,7 +10310,7 @@
               maxRetries: 0,
             },
           );
-          pollDelayMs = Math.min(5000, Math.round(pollDelayMs * 1.5));
+          pollDelayMs = Math.min(2500, Math.round(pollDelayMs * 1.35));
         }
         if (
           response?.status !== "success" ||
@@ -10254,10 +10323,7 @@
           throw new Error(
             response?.message || "The download service returned invalid PDF data.",
           );
-        const binary = atob(response.data);
-        const bytes = Uint8Array.from(binary, (character) =>
-          character.charCodeAt(0),
-        );
+        const bytes = decodeBase64Bytes(response.data);
         if (
           bytes.byteLength < 5 ||
           bytes.byteLength > REVIEWER_PDF_MAX_OUTPUT_BYTES ||
@@ -10269,7 +10335,7 @@
         )
           throw new Error("The download service returned invalid PDF content.");
         const blobUrl = URL.createObjectURL(
-          new Blob([bytes], { type: "application/pdf" }),
+          new Blob([bytes.buffer], { type: "application/pdf" }),
         );
         const link = document.createElement("a");
         link.href = blobUrl;
@@ -10334,7 +10400,7 @@
   async function previewResourceFile(
     fileId,
     fileName,
-    { reviewer = false } = {},
+    { reviewer = false, course = "" } = {},
   ) {
     const preview = document.getElementById("resource-portal-preview");
     const title = document.getElementById("resource-portal-preview-title");
@@ -10350,6 +10416,22 @@
     const closeButton = document.getElementById(
       "resource-portal-preview-close",
     );
+    if (!preview.dataset.selectionRestricted) {
+      ["selectstart", "copy", "cut", "contextmenu"].forEach((eventName) => {
+        preview.addEventListener(eventName, (event) => {
+          if (resourcePortalPreviewIsReviewer) event.preventDefault();
+        });
+      });
+      preview.addEventListener("keydown", (event) => {
+        if (
+          resourcePortalPreviewIsReviewer &&
+          (event.ctrlKey || event.metaKey) &&
+          ["a", "c", "x"].includes(event.key.toLowerCase())
+        )
+          event.preventDefault();
+      });
+      preview.dataset.selectionRestricted = "true";
+    }
     if (closeButton && !closeButton.dataset.initialized) {
       closeButton.addEventListener("click", closeResourcePreview);
       closeButton.dataset.initialized = "true";
@@ -10408,9 +10490,19 @@
       resourcePortalPreviewObjectUrl = "";
     }
     frame.removeAttribute("src");
+    frame.setAttribute("draggable", "false");
     frame.hidden = true;
+    const previewLessonTitle = reviewer
+      ? getReviewerPdfLessonTitle(fileName, course)
+      : null;
+    title.classList.toggle(
+      "resource-portal-preview-title-has-details",
+      Boolean(reviewer && previewLessonTitle?.details),
+    );
     title.textContent = reviewer
-      ? getReviewerPdfDisplayName(fileName)
+      ? `${String(course || "").trim() || "Reviewer"}\n${
+          previewLessonTitle?.header || getReviewerPdfDisplayName(fileName)
+        }`
       : String(fileName || "File preview");
     frame.title = `Preview of ${title.textContent}`;
     preview.hidden = false;
@@ -10470,10 +10562,7 @@
       if (isReviewerCacheHit) {
         bytes = cachedReviewerPdf.bytes;
       } else {
-        const binary = atob(response.data);
-        bytes = Uint8Array.from(binary, (character) =>
-          character.charCodeAt(0),
-        );
+        bytes = decodeBase64Bytes(response.data);
       }
       if (
         reviewer &&
@@ -10519,7 +10608,7 @@
         }
         return false;
       }
-      const previewBlob = new Blob([bytes], { type: previewMimeType });
+      const previewBlob = new Blob([bytes.buffer], { type: previewMimeType });
       resourcePortalPreviewObjectUrl = URL.createObjectURL(previewBlob);
       if (reviewer) {
         renderReviewerPdfWatermark(response.fullName, response.email);

@@ -45,6 +45,125 @@ assert.equal(
   "",
   "click log identity parsing must only accept Google resource URLs",
 );
+const reviewerLessonTitleHelper = appCore.match(
+  /function getReviewerPdfLessonTitle\(fileName, courseName\) \{[\s\S]*?\n  \}/,
+);
+assert.ok(reviewerLessonTitleHelper, "Reviewer PDF lesson titles should have a shared formatter");
+const getReviewerPdfLessonTitle = new Function(
+  `${reviewerLessonTitleHelper[0]}; return getReviewerPdfLessonTitle;`,
+)();
+assert.deepEqual(
+  JSON.parse(
+    JSON.stringify(
+      getReviewerPdfLessonTitle(
+        "NAV7 Lesson 1-2 - SEAM5 (1914H - 12.10.26).pdf",
+        "NAV7",
+      ),
+    ),
+  ),
+  {
+    lesson: "Lesson 1-2",
+    details: "1914H - 12.10.26",
+    header: "Lesson 1-2 (1914H - 12.10.26)",
+  },
+  "Reviewer titles should split lesson and parenthetical details into compact display lines",
+);
+assert.equal(
+  getReviewerPdfLessonTitle("NAV7 00 (1914H - 12.10.26).pdf", ""),
+  null,
+  "numeric-only titles must not be interpreted as lessons without a matched COURSE value",
+);
+assert.equal(
+  getReviewerPdfLessonTitle("NAV7 00 (1914H - 12.10.26).pdf", "NAV7").lesson,
+  "Lesson 00",
+  "the lesson label should be inserted before a numeric sequence that follows the matched course",
+);
+assert.equal(
+  getReviewerPdfLessonTitle(
+    "NAV7 Lesson 4 (1914H - 12.10.26).pdf",
+    "NAV7",
+  ).lesson,
+  "Lesson 4",
+  "a single-number Lesson X title must format instead of leaving the chip blank",
+);
+assert.equal(
+  getReviewerPdfLessonTitle("Lesson 00 (1615H - 12.10.26).pdf", "NAV7").lesson,
+  "Lesson 00",
+  "a separate COURSE cell and a title beginning with Lesson X must still render the chip",
+);
+assert.deepEqual(
+  JSON.parse(
+    JSON.stringify(
+      getReviewerPdfLessonTitle(
+        "02 LESSON 1-2 - SEAM5 (1914H - 12.10.26).pdf",
+        "SEAM5",
+      ),
+    ),
+  ),
+  {
+    lesson: "Lesson 1-2",
+    details: "1914H - 12.10.26",
+    header: "Lesson 1-2 (1914H - 12.10.26)",
+  },
+  "a title with an existing Lesson X before the course should preserve both chip lines",
+);
+assert.deepEqual(
+  JSON.parse(
+    JSON.stringify(
+      getReviewerPdfLessonTitle("Lesson X (1615H - 12.10.26).pdf", ""),
+    ),
+  ),
+  {
+    lesson: "Lesson X",
+    details: "1615H - 12.10.26",
+    header: "Lesson X (1615H - 12.10.26)",
+  },
+  "an already-labeled Lesson X should preserve its details as the second display line",
+);
+assert.equal(
+  getReviewerPdfLessonTitle(
+    "02 1-2 - SEAM5 (1914H - 12.10.26).pdf",
+    "NAV7",
+  ),
+  null,
+  "a leading numeric prefix must not be mistaken for the lesson after a different COURSE",
+);
+assert.ok(
+  /\.resource-dashboard-link-label\s*\{[^}]*white-space:\s*normal/.test(
+    resourceStyles,
+  ) &&
+    /\.resource-dashboard-link-label-stacked\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*align-items:\s*center;[^}]*gap:\s*0;[^}]*text-align:\s*center/.test(
+      resourceStyles,
+    ) &&
+    /\.resource-dashboard-link-primary,\s*\.resource-dashboard-link-secondary\s*\{[^}]*display:\s*block;[^}]*line-height:\s*1/.test(
+      resourceStyles,
+    ),
+  "lesson chips should render their lesson and details as tightly stacked lines",
+);
+assert.match(indexHtml, /id="resource-reviewer-retry-verification"[\s\S]*?>\s*Retry\s*</);
+assert.match(
+  appCore,
+  /if \(reviewerLessonTitle\) \{\s*label\.classList\.add\("resource-dashboard-link-label-stacked"\);\s*label\.append/,
+  "recognized Reviewer lessons should use a dedicated two-line chip layout",
+);
+assert.match(
+  appCore,
+  /const authConfigRequest = globalScope\.AppNetwork\.callBackend\([\s\S]*?const googleIdentityClientRequest =[\s\S]*?const response = await authConfigRequest/,
+  "the Google sign-in client should load while auth configuration is being fetched",
+);
+const decodeBase64BytesHelper = appCore.match(
+  /function decodeBase64Bytes\(encoded\) \{[\s\S]*?\n  \}/,
+);
+assert.ok(decodeBase64BytesHelper, "PDF byte decoding should use a shared fast path");
+const decodeBase64Bytes = new Function(
+  "atob",
+  `${decodeBase64BytesHelper[0]}; return decodeBase64Bytes;`,
+)((encoded) => Buffer.from(encoded, "base64").toString("binary"));
+assert.deepEqual(
+  Array.from(decodeBase64Bytes("JVA=")),
+  [37, 80],
+  "base64 PDF decoding should preserve every byte",
+);
 
 assert.doesNotMatch(
   indexHtml,
@@ -554,6 +673,31 @@ assert.match(
 );
 assert.match(
   appCore,
+  /preview\.addEventListener\(eventName, \(event\) => \{\s*if \(resourcePortalPreviewIsReviewer\) event\.preventDefault\(\)/,
+  "Reviewer PDF previews should suppress text selection and copy/context actions",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-link-primary,\s*\.resource-dashboard-link-secondary\s*\{[^}]*display:\s*block;[^}]*line-height:\s*1;/,
+  "Reviewer table chips should use two tightly stacked lines with zero vertical gap",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-preview-title\s*\{[^}]*white-space:\s*pre-line/,
+  "Reviewer preview headers should display course and lesson on separate lines",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-preview-title-has-details\s*\{\s*font-weight:\s*400/,
+  "the second line of Reviewer preview titles should not be bold",
+);
+assert.match(
+  appCore,
+  /title\.classList\.toggle\(\s*"resource-portal-preview-title-has-details",\s*Boolean\(reviewer && previewLessonTitle\?\.details\),?\s*\)/,
+  "the regular-weight preview title style should apply when a second line is present",
+);
+assert.match(
+  appCore,
   /function clearReviewerResourceRows\(\)[\s\S]*?clearStoredReviewerDashboard\(\)/,
   "approval loss should clear the current-tab reviewer dashboard cache",
 );
@@ -764,8 +908,8 @@ assert.match(
 );
 assert.match(
   indexHtml,
-  /id="resource-dashboard-filter-category"[^>]*role="group"[\s\S]*?data-category="all"[\s\S]*?data-category="PRELIMS"[\s\S]*?data-category="MIDTERMS"[\s\S]*?data-category="FINALS"/,
-  "the category segmented control should offer All, PRELIMS, MIDTERMS, and FINALS",
+  /id="resource-dashboard-filter-category"[^>]*role="group"[\s\S]*?data-category="PRELIMS"[\s\S]*?data-category="MIDTERMS"[\s\S]*?data-category="FINALS"[\s\S]*?data-category="all"/,
+  "the category segmented control should offer PRELIMS, MIDTERMS, FINALS, then All",
 );
 assert.match(
   indexHtml,
@@ -814,7 +958,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /const options = sortedValues\.map\(\(value\) => \(\{\s*value,\s*label:\s*value,\s*\}\)\)[\s\S]*?options\.unshift\(\{\s*value:\s*"all",\s*label:\s*"All"\s*\}\)[\s\S]*?button\.dataset\.filterValue = value[\s\S]*?button\.disabled =\s*disabled \|\| \(value !== "all" && !values\.has\(value\)\)[\s\S]*?control\.replaceChildren\(\.\.\.buttons\)/,
+  /const options = sortedValues\.map\(\(value\) => \(\{\s*value,\s*label:\s*value,\s*\}\)\)[\s\S]*?options\.push\(\{\s*value:\s*"all",\s*label:\s*"All"\s*\}\)[\s\S]*?button\.dataset\.filterValue = value[\s\S]*?button\.disabled =\s*disabled \|\| \(value !== "all" && !values\.has\(value\)\)[\s\S]*?control\.replaceChildren\(\.\.\.buttons\)/,
   "the year and semester segmented controls should keep unavailable values disabled alongside All",
 );
 assert.match(
@@ -1571,8 +1715,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /options\.unshift\(\{\s*value:\s*"all",\s*label:\s*"All"\s*\}\)[\s\S]*?button\.dataset\.filterValue = value[\s\S]*?control\.replaceChildren\(\.\.\.buttons\)/,
-  "year and semester segments should expose an All option",
+  /options\.push\(\{\s*value:\s*"all",\s*label:\s*"All"\s*\}\)[\s\S]*?button\.dataset\.filterValue = value[\s\S]*?control\.replaceChildren\(\.\.\.buttons\)/,
+  "year and semester segments should put All after the ordered options",
 );
 assert.match(
   appCore,
@@ -1587,7 +1731,17 @@ assert.doesNotMatch(
 assert.match(
   appCore,
   /titleInParentheses\s*\?\s*titleInParentheses\[1\]\s*:\s*fileTitle/,
-  "resource buttons should use only the parenthesized filename",
+  "non-reviewer resource buttons should retain the parenthesized filename convention",
+);
+assert.match(
+  appCore,
+  /reviewerPdfMatch\s*\?\s*getReviewerPdfDisplayName\(fileTitle \|\| value\)/,
+  "Reviewer PDF table chips should format lesson details from the full resource title",
+);
+assert.match(
+  appCore,
+  /const courseName =[\s\S]*?String\(values\[courseColumnIndex\] \|\| ""\)\.trim\(\)[\s\S]*?previewResourceFile\(fileId, fileName, \{\s*reviewer: true,\s*course: courseName/,
+  "Reviewer PDF preview headers should include the course from their table row",
 );
 assert.match(
   appCore,

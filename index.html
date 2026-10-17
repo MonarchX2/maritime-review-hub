@@ -843,13 +843,6 @@
                       >
                         <button
                           type="button"
-                          data-category="all"
-                          aria-pressed="true"
-                        >
-                          All
-                        </button>
-                        <button
-                          type="button"
                           data-category="PRELIMS"
                           aria-pressed="false"
                         >
@@ -868,6 +861,13 @@
                           aria-pressed="false"
                         >
                           Finals
+                        </button>
+                        <button
+                          type="button"
+                          data-category="all"
+                          aria-pressed="true"
+                        >
+                          All
                         </button>
                       </span>
                     </div>
@@ -980,7 +980,7 @@
                     class="resource-reviewer-signout resource-reviewer-retry"
                     hidden
                   >
-                    Retry verification
+                    Retry
                   </button>
                   <div
                     id="resource-profile-account-details"
@@ -2341,6 +2341,18 @@
             <div id="about-changelog-entries" class="mt-3">
               <!-- ABOUT CHANGELOG START -->
                 <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.17-13
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Improved
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Load the Google sign-in client while fetching reviewer authorization configuration, shorten the verification retry label, and reduce avoidable sign-in setup delay.</li>
+                  <li>Save generated watermarked Reviewer PDFs in the configured Drive folder, retain successfully delivered files, and tighten delivery privacy checks.</li>
+                  <li>Format Reviewer PDF preview titles and table chips as compact two-line course/lesson labels, center chip text, and support existing <code>Lesson X</code> filenames.</li>
+                  <li>Reduce spacing above dashboard filters and place the All option last in Year, Semester, and Category controls.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 26.10.17-12
                 </h5>
                 <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
@@ -2359,6 +2371,7 @@
                   <li>Reuse recently previewed Reviewer PDF bytes within the current tab after reauthorizing the reviewer and verifying the source version.</li>
                   <li>Disable Reviewer category filters that have no resources for the selected year and semester, and avoid showing a misleading filtered-results empty state.</li>
                 </ul>
+                <div id="about-changelog-older" class="hidden">
                 <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 26.10.17-10
                 </h5>
@@ -2369,7 +2382,6 @@
                   <li>Show NEW and UPDATED badges for changed resources in MODULES and SYLLABUS, using the same separate badge styling and once-per-session visibility as REVIEWERS.</li>
                   <li>Add small-screen spacing around View Profile in the stacked Student Portal welcome banner, space the Student Portal home icon from its title, and place Unverified to the right of the button.</li>
                 </ul>
-                <div id="about-changelog-older" class="hidden">
                 <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 26.10.17-9
                 </h5>

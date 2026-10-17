@@ -19,6 +19,7 @@ const REVIEWER_PDF_JOB_PROPERTY_PREFIX = "MRH_REVIEWER_PDF_JOB_v1_";
 const REVIEWER_PDF_QUEUE_PROPERTY = "MRH_REVIEWER_PDF_QUEUE_v1";
 const REVIEWER_PDF_WORKER_READY_PROPERTY = "MRH_REVIEWER_PDF_WORKER_READY_v1";
 const REVIEWER_PDF_WORKER_SCHEDULE_PROPERTY = "MRH_REVIEWER_PDF_WORKER_SCHEDULED_AT";
+const REVIEWER_PDF_OUTPUT_FOLDER_ID = "10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl";
 const REVIEWER_PDF_JOB_TTL_MS = 10 * 60 * 1000;
 const REVIEWER_PDF_CLEANUP_RETRY_MS = 60 * 1000;
 const REVIEWER_PDF_QUEUE_LIMIT = 3;
@@ -2461,6 +2462,58 @@ function listReviewerPdfPermissions_(fileId) {
   return permissions;
 }
 
+function reviewerPdfOutputFolderIsPrivate_() {
+  var outputOwner = String(Session.getEffectiveUser().getEmail() || "").toLowerCase();
+  if (!outputOwner) return false;
+  function isOwnerOnly(targetId) {
+    var permissions = listReviewerPdfPermissions_(targetId);
+    return permissions.length === 1 &&
+      permissions.every(function (permission) {
+        return permission.type === "user" &&
+          String(permission.emailAddress || "").toLowerCase() === outputOwner &&
+          permission.role === "owner";
+      });
+  }
+  var pendingFolderIds = [REVIEWER_PDF_OUTPUT_FOLDER_ID];
+  var visitedFolderIds = Object.create(null);
+  while (pendingFolderIds.length && Object.keys(visitedFolderIds).length < 100) {
+    var folderId = pendingFolderIds.shift();
+    if (visitedFolderIds[folderId]) continue;
+    visitedFolderIds[folderId] = true;
+    var folder = Drive.Files.get(folderId, {
+      fields: "id,mimeType,parents,trashed",
+      supportsAllDrives: true,
+    });
+    if (
+      !folder ||
+      folder.trashed ||
+      folder.mimeType !== "application/vnd.google-apps.folder" ||
+      !isOwnerOnly(folderId)
+    )
+      return false;
+    (folder.parents || []).forEach(function (parentId) {
+      if (!visitedFolderIds[parentId])
+        pendingFolderIds.push(String(parentId));
+    });
+  }
+  return pendingFolderIds.length === 0;
+}
+
+function reviewerPdfOutputIsPrivate_(fileId) {
+  var outputOwner = String(Session.getEffectiveUser().getEmail() || "").toLowerCase();
+  if (!outputOwner) return false;
+  var permissions = listReviewerPdfPermissions_(fileId);
+  return (
+    permissions.length === 1 &&
+    permissions.every(function (permission) {
+      return permission.type === "user" &&
+        String(permission.emailAddress || "").toLowerCase() === outputOwner &&
+        permission.role === "owner";
+    }) &&
+    reviewerPdfOutputFolderIsPrivate_()
+  );
+}
+
 function getReviewerPdfDriveHierarchy_(fileId) {
   var queue = [{ id: fileId, path: [] }];
   var visited = Object.create(null);
@@ -2584,7 +2637,7 @@ function reviewerPdfQueueConfigured_() {
 function scheduleReviewerPdfWorkerLocked_(delayMs) {
   var properties = getScriptProps();
   var now = Date.now();
-  var delay = Math.max(10000, Number(delayMs) || 10000);
+  var delay = Math.max(1000, Number(delayMs) || 1000);
   var desiredAt = now + delay;
   var scheduledAt = Number(
     properties.getProperty(REVIEWER_PDF_WORKER_SCHEDULE_PROPERTY) || 0,
@@ -2623,7 +2676,7 @@ function setupReviewerPdfDelivery() {
     });
     getScriptProps().setProperty(REVIEWER_PDF_WORKER_READY_PROPERTY, "true");
     getScriptProps().deleteProperty(REVIEWER_PDF_WORKER_SCHEDULE_PROPERTY);
-    scheduleReviewerPdfWorkerLocked_();
+    scheduleReviewerPdfWorkerLocked_(1000);
     return {
       status: "success",
       message: "Reviewer PDF background processor is initialized.",
@@ -2772,7 +2825,7 @@ function cleanReviewerPdfJobs_(properties, now) {
       return;
     }
     if (!job || !Number.isFinite(Number(job.expiresAt)) || job.expiresAt <= now) {
-      if (job && job.outputFileId) {
+      if (job && job.outputFileId && job.persistentOutput !== true) {
         try {
           permanentlyDeleteReviewerPdfOutput_(job.outputFileId);
         } catch (error) {
@@ -2879,6 +2932,7 @@ function enqueueReviewerPdfRequest_(data) {
       sessionId: String(data.sessionId || ""),
       eventId: String(data.eventId || ""),
       fileId: fileId,
+      fileName: String(source.driveFile.name || "Reviewer PDF"),
       sourceVersion: source.sourceVersion,
       status: "queued",
       createdAt: now,
@@ -2888,7 +2942,7 @@ function enqueueReviewerPdfRequest_(data) {
     queue.push(jobId);
     properties.setProperty(REVIEWER_PDF_QUEUE_PROPERTY, JSON.stringify(queue));
     try {
-      scheduleReviewerPdfWorkerLocked_();
+      scheduleReviewerPdfWorkerLocked_(1000);
     } catch (error) {
       properties.deleteProperty(reviewerPdfJobPropertyKey_(jobId));
       queue.pop();
@@ -2944,16 +2998,6 @@ function getReviewerPdfJobStatus_(data) {
     lock.releaseLock();
   }
 
-  var currentSource = getReviewerPdfSource_(job.fileId);
-  if (
-    currentSource.error ||
-    currentSource.sourceVersion !== job.sourceVersion
-  )
-    return errorResponse(
-      "The PDF source changed or is no longer authorized. Request it again.",
-      "PDF_SOURCE_CHANGED",
-    );
-
   if (job.status === "queued" || job.status === "processing") {
     if (
       job.status === "queued" ||
@@ -2984,15 +3028,35 @@ function getReviewerPdfJobStatus_(data) {
   if (job.status !== "complete" || !job.outputFileId)
     return errorResponse("PDF job has an invalid state.", "PDF_JOB_INVALID");
 
+  var currentSource = getReviewerPdfSource_(job.fileId);
+  if (
+    currentSource.error ||
+    currentSource.sourceVersion !== job.sourceVersion
+  )
+    return errorResponse(
+      "The PDF source changed or is no longer authorized. Request it again.",
+      "PDF_SOURCE_CHANGED",
+    );
+
   var outputFile;
   try {
-    outputFile = DriveApp.getFileById(job.outputFileId);
+    var outputMetadata = Drive.Files.get(job.outputFileId, {
+      fields: "id,mimeType,parents,trashed,size",
+      supportsAllDrives: true,
+    });
     if (
-      outputFile.isTrashed() ||
-      outputFile.getMimeType() !== "application/pdf" ||
-      outputFile.getSize() > MRH_REVIEWER_PDF_MAX_OUTPUT_BYTES
+      !outputMetadata ||
+      outputMetadata.trashed ||
+      outputMetadata.mimeType !== "application/pdf" ||
+      Number(outputMetadata.size) > MRH_REVIEWER_PDF_MAX_OUTPUT_BYTES ||
+      (outputMetadata.parents || []).map(String).indexOf(
+        REVIEWER_PDF_OUTPUT_FOLDER_ID,
+      ) < 0
     )
-      throw new Error("The prepared PDF is unavailable or exceeds the delivery limit.");
+      throw new Error("The prepared PDF is not in the configured delivery folder.");
+    if (!reviewerPdfOutputIsPrivate_(job.outputFileId))
+      throw new Error("The prepared PDF is no longer private.");
+    outputFile = DriveApp.getFileById(job.outputFileId);
     var outputBytes = outputFile.getBlob().getBytes();
     if (
       !outputBytes.length ||
@@ -3003,7 +3067,7 @@ function getReviewerPdfJobStatus_(data) {
     var encodedOutput = Utilities.base64Encode(outputBytes);
     var cleanupLock = LockService.getScriptLock();
     if (!cleanupLock.tryLock(10000))
-      throw new Error("The downloaded PDF cleanup is busy.");
+      throw new Error("The PDF delivery lock is busy.");
     try {
       var currentJobRaw = getScriptProps().getProperty(
         reviewerPdfJobPropertyKey_(job.jobId),
@@ -3015,8 +3079,6 @@ function getReviewerPdfJobStatus_(data) {
         currentJob.outputFileId !== job.outputFileId
       )
         throw new Error("The PDF download session ended before delivery.");
-      permanentlyDeleteReviewerPdfOutput_(job.outputFileId);
-      getScriptProps().deleteProperty(reviewerPdfJobPropertyKey_(job.jobId));
     } finally {
       cleanupLock.releaseLock();
     }
@@ -3069,7 +3131,7 @@ function cleanupReviewerPdfJobsForSession_(sessionId) {
         return;
       }
       if (!job || job.sessionId !== normalizedSessionId) return;
-      if (job.outputFileId) {
+      if (job.outputFileId && job.persistentOutput !== true) {
         try {
           permanentlyDeleteReviewerPdfOutput_(job.outputFileId);
         } catch (error) {
@@ -3225,20 +3287,23 @@ async function processReviewerPdfQueue(event) {
       )
         throw reviewerPdfError_("The PDF processor returned invalid output.", "PDF_PROCESSING_FAILED");
 
-      outputFile = DriveApp.createFile(
-        Utilities.newBlob(outputBytes, "application/pdf", "MRH PDF " + job.jobId + ".pdf"),
+      var outputName = String(job.fileName || "Reviewer PDF")
+        .replace(/\.pdf$/i, "")
+        .replace(/[\u0000-\u001f\u007f]/g, " ")
+        .replace(/[\\/:*?"<>|]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 180) || "Reviewer PDF";
+      if (!reviewerPdfOutputFolderIsPrivate_())
+        throw reviewerPdfError_("The configured PDF output folder is not private.", "PDF_OUTPUT_NOT_PRIVATE");
+      outputFile = DriveApp.getFolderById(REVIEWER_PDF_OUTPUT_FOLDER_ID).createFile(
+        Utilities.newBlob(
+          outputBytes,
+          "application/pdf",
+          outputName + " - " + job.jobId.slice(0, 12) + ".pdf",
+        ),
       );
-      var outputPermissions = listReviewerPdfPermissions_(outputFile.getId());
-      var outputOwner = String(Session.getEffectiveUser().getEmail() || "").toLowerCase();
-      if (
-        !outputOwner ||
-        outputPermissions.length !== 1 ||
-        outputPermissions.some(function (permission) {
-          return permission.type !== "user" ||
-            String(permission.emailAddress || "").toLowerCase() !== outputOwner ||
-            permission.role !== "owner";
-        })
-      )
+      if (!reviewerPdfOutputIsPrivate_(outputFile.getId()))
         throw reviewerPdfError_("The temporary derivative is not private.", "PDF_OUTPUT_NOT_PRIVATE");
 
       var completionLock = LockService.getScriptLock();
@@ -3259,6 +3324,7 @@ async function processReviewerPdfQueue(event) {
           updatedJob.status = "complete";
           delete updatedJob.processingAt;
           updatedJob.outputFileId = outputFile.getId();
+          updatedJob.persistentOutput = true;
           updatedJob.pageCount = Number(response.pageCount || 0);
           getScriptProps().setProperty(
             reviewerPdfJobPropertyKey_(job.jobId),
@@ -3344,7 +3410,7 @@ async function processReviewerPdfQueue(event) {
     var properties = getScriptProps();
     var remainingQueue = cleanReviewerPdfJobs_(properties, Date.now());
     if (remainingQueue.length) {
-      scheduleReviewerPdfWorkerLocked_();
+      scheduleReviewerPdfWorkerLocked_(1000);
     } else {
       var allProperties = properties.getProperties();
       var nextCleanupAt = 0;

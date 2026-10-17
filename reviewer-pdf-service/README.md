@@ -3,11 +3,13 @@
 Online preview returns the authorized source PDF without creating a derivative;
 the browser overlays the verified account name and email while viewing.
 Watermarked bytes are generated only after the user selects Download. An
-on-demand trigger processes the session-bound download job, and the delivery
-request permanently deletes its private Drive output before returning the
-download bytes. Sign-out and page-exit cleanup remove remaining outputs for
-that session; a ten-minute expiry cleanup is the fallback if the browser
-disconnects. `doPost` always returns a normal Apps Script `TextOutput`.
+on-demand trigger processes the session-bound job and stores each verified
+derivative in the configured private Drive folder. The delivery request reads
+the PDF back from that folder and returns its bytes; generated PDFs are retained
+there after delivery. Sign-out and page-exit cleanup remove job state and cancel
+unfinished work, but do not remove completed PDFs. Failed or cancelled
+intermediate files are deleted, with expiry cleanup as a fallback if the
+browser disconnects. `doPost` always returns a normal Apps Script `TextOutput`.
 No Cloud Run processor, paid API, CDN, or runtime package download is required.
 
 ## Dependency and license
@@ -47,20 +49,29 @@ email; this path does not run PDF processing or create Drive files.
 `get_reviewer_pdf` is used only by the explicit Download action. It queues a
 random, session-bound job. `processReviewerPdfQueue` runs from an on-demand
 one-time trigger, rechecks the session and approval, watermarks and verifies
-every page, and stores a private temporary derivative in Drive. The browser
-polls `get_reviewer_pdf_job`; that request rechecks approval, session
-ownership, source membership, and source version. It permanently deletes the
-private derivative before returning its bytes. Sign-out and page-exit cleanup
-permanently delete any remaining outputs for the session; job expiry after ten
-minutes is a cleanup fallback. The active queue is capped at three. If a
-queued job's worker trigger is overdue by more than one minute, polling
+every page, and stores the output in Drive folder
+`10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl`. The folder and its parent folders must
+remain private to the Apps Script execution owner: the worker and delivery
+request check the generated file and folder ancestry and fail closed if access
+is shared. The authorized delivery
+request verifies the file is still in that folder, reads it by file ID, and
+returns its bytes without deleting the saved PDF. Sign-out and page-exit cleanup
+cancel unfinished work and clear session job state, but completed PDFs remain
+in the folder. Job state
+expires after ten minutes; it does not expire the generated PDF. The active
+queue is capped at three. A newly queued job requests a worker trigger after
+one second, although Google's trigger scheduling and PDF processing time still
+affect the actual wait. While a job is pending, polling checks authorization
+and job state without repeatedly traversing the source file's Drive ancestry.
+If a queued job's worker trigger is overdue by more than one minute, polling
 replaces the stale trigger instead of leaving the job pending indefinitely.
 
 Each physical page watermark contains only the verified account's full name
 and email on two separate lines, repeated in a compact two-column by
-five-row pattern. Every stamp is checked after saving. No derivative is cached or reused. The
-authoritative index is cached only by its Drive file ID and last-modified
-timestamp, and checked again for each protected request.
+five-row pattern. Every stamp is checked after saving. A derivative is not
+reused across separate download jobs. The authoritative index is cached only
+by its Drive file ID and last-modified timestamp, and checked again for each
+protected request.
 Run `setupReviewerPdfDelivery()` once from the Apps Script editor as the
 deployment owner to authorize and initialize on-demand worker triggers.
 Without setup, requests fail closed with `PDF_PROCESSOR_NOT_CONFIGURED`.

@@ -104,7 +104,7 @@ assert.doesNotMatch(
 );
 assert.match(
   backend,
-  /function setupReviewerPdfDelivery\(\)[\s\S]*?REVIEWER_PDF_WORKER_READY_PROPERTY[\s\S]*?scheduleReviewerPdfWorkerLocked_\(\)[\s\S]*?function enqueueReviewerPdfRequest_\([\s\S]*?authorizeReviewerPdfRequest_\(data\)/,
+  /function setupReviewerPdfDelivery\(\)[\s\S]*?REVIEWER_PDF_WORKER_READY_PROPERTY[\s\S]*?scheduleReviewerPdfWorkerLocked_\(\s*1000\s*\)[\s\S]*?function enqueueReviewerPdfRequest_\([\s\S]*?authorizeReviewerPdfRequest_\(data\)/,
   "PDF jobs must run through an on-demand trigger after explicit setup and fresh authorization",
 );
 assert.match(
@@ -116,6 +116,16 @@ assert.match(
   backend,
   /function scheduleReviewerPdfWorkerLocked_\([\s\S]*?\.after\(delay\)\s*\.create\(\)/,
   "the worker must use bounded, on-demand triggers instead of polling continuously",
+);
+assert.match(
+  backend,
+  /function scheduleReviewerPdfWorkerLocked_\(delayMs\)[\s\S]*?Math\.max\(1000, Number\(delayMs\) \|\| 1000\)/,
+  "new PDF jobs should request the earliest supported worker trigger",
+);
+assert.match(
+  backend,
+  /function getReviewerPdfJobStatus_\([\s\S]*?if \(job\.status === "queued" \|\| job\.status === "processing"\)[\s\S]*?return jsonResponse\(\{ status: "pending", jobId: jobId \}\)[\s\S]*?var currentSource = getReviewerPdfSource_\(job\.fileId\)/,
+  "pending polls must not repeatedly traverse the protected PDF source hierarchy",
 );
 assert.match(
   frontend,
@@ -134,7 +144,7 @@ assert.match(
 );
 assert.match(
   backend,
-  /async function processReviewerPdfQueue\(\w+\)[\s\S]*?await handleGetReviewerPdfRequest\([\s\S]*?listReviewerPdfPermissions_\([\s\S]*?PDF_OUTPUT_NOT_PRIVATE/,
+  /async function processReviewerPdfQueue\(\w+\)[\s\S]*?await handleGetReviewerPdfRequest\([\s\S]*?reviewerPdfOutputIsPrivate_\([\s\S]*?PDF_OUTPUT_NOT_PRIVATE/,
   "the background worker must await watermarking and reject non-private derivatives",
 );
 assert.match(
@@ -144,8 +154,23 @@ assert.match(
 );
 assert.match(
   backend,
-  /function getReviewerPdfJobStatus_\([\s\S]*?Utilities\.base64Encode\(outputBytes\)[\s\S]*?permanentlyDeleteReviewerPdfOutput_\(job\.outputFileId\)/,
-  "a generated download must be permanently deleted from Drive before its bytes are returned",
+  /const REVIEWER_PDF_OUTPUT_FOLDER_ID = "10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl"[\s\S]*?DriveApp\.getFolderById\(REVIEWER_PDF_OUTPUT_FOLDER_ID\)\.createFile/,
+  "generated watermarked PDFs must be saved in the configured Drive folder",
+);
+assert.match(
+  backend,
+  /function getReviewerPdfJobStatus_\([\s\S]*?Drive\.Files\.get\(job\.outputFileId[\s\S]*?REVIEWER_PDF_OUTPUT_FOLDER_ID[\s\S]*?DriveApp\.getFileById\(job\.outputFileId\)[\s\S]*?Utilities\.base64Encode\(outputBytes\)/,
+  "delivery must read the saved PDF from the configured Drive folder",
+);
+assert.doesNotMatch(
+  backend.match(/function getReviewerPdfJobStatus_\([\s\S]*?\n\}/)?.[0] || "",
+  /permanentlyDeleteReviewerPdfOutput_/,
+  "successful delivery must retain the generated PDF in the output folder",
+);
+assert.match(
+  backend,
+  /if \(job\.outputFileId && job\.persistentOutput !== true\)[\s\S]*?permanentlyDeleteReviewerPdfOutput_/,
+  "only temporary or legacy outputs may be deleted during session cleanup",
 );
 assert.match(
   backend,
@@ -308,6 +333,11 @@ assert.match(
   "only the explicit download action may enqueue and save a physical watermarked PDF",
 );
 assert.match(
+  reviewerDownload,
+  /let pollDelayMs = 1000[\s\S]*?Math\.min\(2500, Math\.round\(pollDelayMs \* 1\.35\)\)/,
+  "browser polling should start promptly and use a shorter capped backoff",
+);
+assert.match(
   frontend,
   /function sendReviewerPdfCleanupBeacon\(\)[\s\S]*?navigator\.sendBeacon[\s\S]*?cleanup_reviewer_pdf_jobs/,
   "the browser must request session cleanup when the active page exits",
@@ -369,8 +399,8 @@ assert.match(
 );
 assert.match(
   setupGuide,
-  /processReviewerPdfQueue[\s\S]*?setupReviewerPdfDelivery/,
-  "the setup guide must document the synchronous polling and trigger setup",
+  /10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl[\s\S]*?one second[\s\S]*?setupReviewerPdfDelivery/,
+  "the setup guide must document output storage, faster trigger requests, and setup",
 );
 assert.equal(
   servicePackage.devDependencies?.["pdf-lib"],

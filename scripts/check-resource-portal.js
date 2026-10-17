@@ -603,8 +603,8 @@ assert.match(
 );
 assert.match(
   index,
-  /id="resource-dashboard-filter-category"[^>]*role="group"[\s\S]*?data-category="all"[\s\S]*?data-category="PRELIMS"[\s\S]*?data-category="MIDTERMS"[\s\S]*?data-category="FINALS"/,
-  "the category segmented control should provide All, PRELIMS, MIDTERMS, and FINALS",
+  /id="resource-dashboard-filter-category"[^>]*role="group"[\s\S]*?data-category="PRELIMS"[\s\S]*?data-category="MIDTERMS"[\s\S]*?data-category="FINALS"[\s\S]*?data-category="all"/,
+  "the category segmented control should provide PRELIMS, MIDTERMS, FINALS, then All",
 );
 assert.match(
   appCore,
@@ -859,7 +859,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /options\.unshift\(\{\s*value:\s*"all",\s*label:\s*"All"\s*\}\)[\s\S]*?button\.dataset\.filterValue = value[\s\S]*?control\.replaceChildren\(\.\.\.buttons\)/,
+  /options\.push\(\{\s*value:\s*"all",\s*label:\s*"All"\s*\}\)[\s\S]*?button\.dataset\.filterValue = value[\s\S]*?control\.replaceChildren\(\.\.\.buttons\)/,
   "year and semester segments should retain All as a selectable option",
 );
 assert.match(
@@ -1022,6 +1022,12 @@ const context = {
   },
   DriveApp: {
     getFolderById(id) {
+      if (id === "10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl")
+        return {
+          createFile(blob) {
+            return context.DriveApp.createFile(blob);
+          },
+        };
       dashboardDriveLookupCount += 1;
       assert.equal(id, "1cP2FBOW-Jryu9eknJgDjUZcxx9qwC22Z");
       return {
@@ -1461,6 +1467,7 @@ const pdfJobRecord = (jobId, status, options = {}) =>
     expiresAt: options.expiresAt || pdfJobNow + 600000,
     processingAt: options.processingAt,
     outputFileId: options.outputFileId,
+    persistentOutput: options.persistentOutput,
   });
 pdfJobProperties.set(
   "MRH_REVIEWER_PDF_QUEUE_v1",
@@ -1487,11 +1494,43 @@ pdfJobProperties.set(
     outputFileId: "expired-output",
   }),
 );
+pdfJobProperties.set(
+  pdfJobPrefix + "persistent-expired",
+  pdfJobRecord("persistent-expired", "complete", {
+    expiresAt: pdfJobNow - 1,
+    outputFileId: "retained-output",
+    persistentOutput: true,
+  }),
+);
 const deletedTemporaryOutputs = [];
 let temporaryOutputDeleteFailures = 0;
 context.getScriptProps = () => pdfJobPropertyStore;
 context.Drive = {
   Files: {
+    get(fileId) {
+      if (fileId === "private-derivative-id")
+        return {
+          id: fileId,
+          mimeType: "application/pdf",
+          parents: ["10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl"],
+          trashed: false,
+          size: 8,
+        };
+      if (fileId === "10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl")
+        return {
+          id: fileId,
+          mimeType: "application/vnd.google-apps.folder",
+          parents: ["output-parent-id"],
+          trashed: false,
+        };
+      assert.equal(fileId, "output-parent-id");
+      return {
+        id: fileId,
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [],
+        trashed: false,
+      };
+    },
     delete(fileId, options) {
       deletedTemporaryOutputs.push([fileId, options]);
       if (temporaryOutputDeleteFailures > 0) {
@@ -1523,6 +1562,11 @@ assert.equal(pdfJobProperties.has(pdfJobPrefix + "expired"), false);
 assert.deepEqual(
   JSON.parse(JSON.stringify(deletedTemporaryOutputs)),
   [["expired-output", { supportsAllDrives: true }]],
+);
+assert.equal(
+  deletedTemporaryOutputs.some(([fileId]) => fileId === "retained-output"),
+  false,
+  "expired job state must not delete a generated PDF retained in the output folder",
 );
 
 context.reviewerPdfQueueConfigured_ = () => true;
@@ -1707,11 +1751,14 @@ const completedPdfJob = JSON.parse(
 assert.equal(completedPdfJob.status, "complete", JSON.stringify(completedPdfJob));
 assert.equal(completedPdfJob.outputFileId, "private-derivative-id");
 assert.equal(derivativeFile.blob.mimeType, "application/pdf");
-assert.equal(derivativeFile.blob.name, `MRH PDF ${workerJobId}.pdf`);
+assert.equal(
+  derivativeFile.blob.name,
+  `Reviewer PDF - ${workerJobId.slice(0, 12)}.pdf`,
+);
 assert.equal(
   scheduledPdfWorkerDelays.length,
   1,
-  "completed private derivatives must schedule a one-time expiry cleanup",
+  "completed output jobs must schedule metadata expiry without deleting the PDF",
 );
 
 const cleanupRetryJobId = "e".repeat(96);
@@ -1875,8 +1922,49 @@ assert.equal(
 );
 assert.equal(
   deletedTemporaryOutputs.some(([fileId]) => fileId === "private-derivative-id"),
+  false,
+  "delivery must retain the generated PDF in the configured output folder",
+);
+context.listReviewerPdfPermissions_ = (fileId) => [
+  {
+    type: "user",
+    emailAddress: fileId === "output-parent-id"
+      ? "other@example.com"
+      : "owner@example.com",
+    role: fileId === "output-parent-id" ? "writer" : "owner",
+  },
+];
+assert.equal(
+  JSON.parse(
+    context.getReviewerPdfJobStatus_({
+      jobId: workerJobId,
+      sessionId: workerSessionId,
+    }).text,
+  ).code,
+  "PDF_DELIVERY_FAILED",
+  "delivery must reject a generated PDF whose parent folder became shared",
+);
+context.listReviewerPdfPermissions_ = () => [
+  { type: "user", emailAddress: "owner@example.com", role: "owner" },
+];
+assert.equal(
+  JSON.parse(pdfJobProperties.get(pdfJobPrefix + workerJobId)).persistentOutput,
   true,
-  "the delivered derivative must be permanently deleted before returning bytes",
+  "completed job state must identify PDFs that must survive expiry and session cleanup",
+);
+for (const key of pdfJobProperties.keys()) {
+  if (
+    key.startsWith(pdfJobPrefix) &&
+    key !== pdfJobPrefix + workerJobId
+  )
+    pdfJobProperties.delete(key);
+}
+pdfJobProperties.set("MRH_REVIEWER_PDF_QUEUE_v1", "[]");
+context.cleanupReviewerPdfJobsForSession_(workerSessionId);
+assert.equal(
+  deletedTemporaryOutputs.some(([fileId]) => fileId === "private-derivative-id"),
+  false,
+  "session cleanup must preserve completed PDFs in the output folder",
 );
 
 const nonPrivateJobId = "e".repeat(96);
@@ -1900,15 +1988,17 @@ pdfJobProperties.set(
 context.listReviewerPdfPermissions_ = () => [
   { type: "user", emailAddress: "other@example.com", role: "writer" },
 ];
+const derivativeBeforeSharedFolderJob = derivativeFile;
 await context.processReviewerPdfQueue();
 const rejectedPdfJob = JSON.parse(
   pdfJobProperties.get(pdfJobPrefix + nonPrivateJobId),
 );
 assert.equal(rejectedPdfJob.status, "failed");
 assert.equal(rejectedPdfJob.code, "PDF_OUTPUT_NOT_PRIVATE");
-assert.ok(
-  deletedTemporaryOutputs.some(([fileId]) => fileId === "private-derivative-id"),
-  "a derivative that is not private must be permanently deleted and never delivered",
+assert.equal(
+  derivativeFile,
+  derivativeBeforeSharedFolderJob,
+  "a shared output folder must be rejected before creating a PDF there",
 );
 
 let aclDeleteCount = 0;
