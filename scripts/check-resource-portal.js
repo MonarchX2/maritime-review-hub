@@ -322,8 +322,8 @@ assert.ok(
 );
 assert.match(
   resourceStyles,
-  /\.resource-reviewer-enrollment \.resource-reviewer-input-clear\s*\{[^}]*padding:\s*0;[^}]*color:\s*#64748b;[^}]*background:\s*transparent;/,
-  "the inline clear controls should override the enrollment button styling and remain transparent",
+  /\.resource-reviewer-enrollment \.resource-reviewer-input-clear\s*\{[^}]*padding:\s*0;[^}]*border-color:\s*#1e3a8a;[^}]*color:\s*#fff;[^}]*background:\s*#1e3a8a;/,
+  "the inline clear controls should retain the dark-blue enrollment button styling",
 );
 assert.match(
   appCore,

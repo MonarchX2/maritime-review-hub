@@ -2703,15 +2703,17 @@ button:active:not(:disabled) {
   align-self: auto;
   max-width: none;
   padding: 0;
-  color: #64748b;
-  background: transparent;
+  border-color: #1e3a8a;
+  color: #fff;
+  background: #1e3a8a;
   font: inherit;
 }
 
 .resource-reviewer-enrollment .resource-reviewer-input-clear:hover,
 .resource-reviewer-enrollment .resource-reviewer-input-clear:focus-visible {
-  color: #1e3a8a;
-  background: transparent;
+  border-color: #1e3a8a;
+  color: #fff;
+  background: #1e3a8a;
 }
 
 .resource-reviewer-form-actions {
