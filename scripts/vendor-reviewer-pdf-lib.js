@@ -30,10 +30,6 @@ if (installedPackage.version !== expectedVersion) {
 
 const vendorDirectory = path.join(packageRoot, "vendor");
 const backendDirectory = path.join(repositoryRoot, "backend");
-const websiteLicensePath = path.join(
-  repositoryRoot,
-  `pdf-lib-${expectedVersion}-LICENSE.md`,
-);
 fs.mkdirSync(vendorDirectory, { recursive: true });
 const bundlePath = path.join(
   packageRoot,
@@ -62,13 +58,8 @@ fs.writeFileSync(
   path.join(vendorDirectory, `pdf-lib-${expectedVersion}-LICENSE.md`),
   license,
 );
-fs.writeFileSync(
-  path.join(repositoryRoot, `pdf-lib-${expectedVersion}.min.js`),
-  bundle,
-);
-fs.writeFileSync(websiteLicensePath, license);
 fs.mkdirSync(backendDirectory, { recursive: true });
 fs.writeFileSync(path.join(backendDirectory, "PDFLib.js"), bundle);
 console.log(
-  `Vendored pdf-lib ${expectedVersion} (${bundle.length} bytes) for the website, GAS project, and test fixture.`,
+  `Vendored pdf-lib ${expectedVersion} (${bundle.length} bytes) for the Apps Script backend and local test fixture.`,
 );

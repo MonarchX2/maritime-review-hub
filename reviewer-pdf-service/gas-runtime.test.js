@@ -14,7 +14,6 @@ const bundlePath = path.join(
   "pdf-lib-1.17.1.min.js",
 );
 const helperPath = path.join(repositoryRoot, "backend", "ReviewerPdf.gs");
-const browserWorkerPath = path.join(repositoryRoot, "reviewer-pdf-worker.js");
 
 function createRuntime() {
   const context = vm.createContext({
@@ -28,29 +27,6 @@ function createRuntime() {
   });
   vm.runInContext(fs.readFileSync(helperPath, "utf8"), context, {
     filename: "ReviewerPdf.gs",
-  });
-  return context;
-}
-
-function createBrowserWorkerRuntime(messages) {
-  const context = vm.createContext({
-    console,
-    Date,
-    Math,
-    Promise,
-    Uint8Array,
-    Map,
-    importScripts: (scriptPath) => {
-      assert.equal(scriptPath, "./pdf-lib-1.17.1.min.js");
-      vm.runInContext(fs.readFileSync(bundlePath, "utf8"), context, {
-        filename: "pdf-lib-1.17.1.min.js",
-      });
-    },
-  });
-  context.self = context;
-  context.postMessage = (message) => messages.push(message);
-  vm.runInContext(fs.readFileSync(browserWorkerPath, "utf8"), context, {
-    filename: "reviewer-pdf-worker.js",
   });
   return context;
 }
@@ -149,10 +125,10 @@ test("the bundled library runs without Node or browser-only globals", async () =
     runtime,
   );
   delete runtime.__reviewerPdfBytes;
-  assert.equal(firstPageText.split(expectedWatermarkName).length - 1, 8);
+  assert.equal(firstPageText.split(expectedWatermarkName).length - 1, 6);
   assert.equal(
     firstPageText.split("Test.Reviewer@Example.com").length - 1,
-    8,
+    6,
   );
   assert.doesNotMatch(firstPageText, /AUTHORIZED USER:|Student Portal|\|/);
   assert.equal(
@@ -162,46 +138,6 @@ test("the bundled library runs without Node or browser-only globals", async () =
       .digest("hex"),
     originalHash,
     "the original bytes must remain unchanged",
-  );
-});
-
-test("the browser worker watermarks PDFs without blocking the page runtime", async () => {
-  const creator = createRuntime();
-  const original = await buildPdf(creator, [
-    [612, 792],
-    [792, 612],
-  ]);
-  const messages = [];
-  const worker = createBrowserWorkerRuntime(messages);
-  const sourceBuffer = original.buffer.slice(
-    original.byteOffset,
-    original.byteOffset + original.byteLength,
-  );
-
-  await worker.onmessage({
-    data: {
-      sourceBuffer,
-      identity: {
-        fullName: "Test Reviewer | Dept",
-        email: "Test.Reviewer@Example.com",
-      },
-    },
-  });
-
-  assert.equal(messages.length, 1);
-  assert.equal(messages[0].status, "success");
-  const result = new Uint8Array(messages[0].resultBuffer);
-  const verifier = createRuntime();
-  const verification = await verifier.verifyReviewerPdfWatermarks_(
-    Array.from(result, (byte) => (byte > 127 ? byte - 256 : byte)),
-    {
-      fullName: "Test Reviewer Dept",
-      email: "Test.Reviewer@Example.com",
-    },
-  );
-  assert.deepEqual(
-    JSON.parse(JSON.stringify(verification)),
-    { pageCount: 2, pagesWithWatermarks: 2 },
   );
 });
 

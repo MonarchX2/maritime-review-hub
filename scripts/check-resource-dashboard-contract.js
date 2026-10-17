@@ -34,7 +34,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /saveResourceDashboardFilters\(\);\s*if \(tabName !== "REVIEWERS"\) closeReviewerPdfPreview\(\);\s*resourceDashboardActiveTab = tabName;\s*activateResourceDashboardFilters\(tabName\);/,
+  /saveResourceDashboardFilters\(\);\s*saveResourceDashboardSection\(tabName\);\s*if \(tabName !== "REVIEWERS"\) closeReviewerPdfPreview\(\);\s*resourceDashboardActiveTab = tabName;\s*activateResourceDashboardFilters\(tabName\);/,
   "section switches should save the previous filters before activating the destination section's values",
 );
 const dashboardFilterStateStart = appCore.indexOf(
@@ -252,9 +252,9 @@ assert.equal(
   "a single-number Lesson X title must format instead of leaving the chip blank",
 );
 assert.equal(
-  getReviewerPdfLessonTitle("Lesson 00 (1615H - 12.10.26).pdf", "NAV7").lesson,
-  "Lesson 00",
-  "a separate COURSE cell and a title beginning with Lesson X must still render the chip",
+  getReviewerPdfLessonTitle("Lesson 00 (1615H - 12.10.26).pdf", "NAV7"),
+  null,
+  "a Lesson label must not be inferred unless the course column's value also matches the filename",
 );
 assert.deepEqual(
   JSON.parse(
@@ -270,20 +270,12 @@ assert.deepEqual(
     details: "1914H - 12.10.26",
     header: "Lesson 1-2 (1914H - 12.10.26)",
   },
-  "a title with an existing Lesson X before the course should preserve both chip lines",
+  "an existing Lesson X may be parsed before the filename's matched course",
 );
-assert.deepEqual(
-  JSON.parse(
-    JSON.stringify(
-      getReviewerPdfLessonTitle("Lesson X (1615H - 12.10.26).pdf", ""),
-    ),
-  ),
-  {
-    lesson: "Lesson X",
-    details: "1615H - 12.10.26",
-    header: "Lesson X (1615H - 12.10.26)",
-  },
-  "an already-labeled Lesson X should preserve its details as the second display line",
+assert.equal(
+  getReviewerPdfLessonTitle("Lesson X (1615H - 12.10.26).pdf", ""),
+  null,
+  "an existing Lesson label without a matched COURSE name must not be inferred",
 );
 assert.equal(
   getReviewerPdfLessonTitle(
@@ -843,8 +835,8 @@ assert.match(
 );
 assert.match(
   fs.readFileSync("backend/ReviewerPdf.gs", "utf8"),
-  /email = reviewerPdfSafeText_\(identity && identity\.email, 254\);[\s\S]*?Math\.min\(size\.width, size\.height\) \* 0\.4[\s\S]*?Math\.min\(24,[\s\S]*?\[0\.25, 0\.15\][\s\S]*?\[0\.75, 0\.15\][\s\S]*?\[0\.5, 0\.325\][\s\S]*?\[0\.25, 0\.5\][\s\S]*?\[0\.75, 0\.5\][\s\S]*?\[0\.5, 0\.675\][\s\S]*?\[0\.25, 0\.85\][\s\S]*?\[0\.75, 0\.85\][\s\S]*?opacity:\s*0\.18/,
-  "generated PDFs should preserve email case and use paired side stamps alternating with centered middle stamps",
+  /email = reviewerPdfSafeText_\(identity && identity\.email, 254\);[\s\S]*?Math\.max\(40, size\.width \* 0\.46\)[\s\S]*?Math\.min\(8,[\s\S]*?\[0\.035, 0\.035, "left", "bottom"\][\s\S]*?\[0\.965, 0\.035, "right", "bottom"\][\s\S]*?\[0\.5, 0\.035, "center", "bottom"\][\s\S]*?\[0\.035, 0\.965, "left", "top"\][\s\S]*?\[0\.965, 0\.965, "right", "top"\][\s\S]*?\[0\.5, 0\.965, "center", "top"\][\s\S]*?opacity:\s*0\.18[\s\S]*?rotate: PDFLib\.degrees\(0\)/,
+  "generated PDFs should use six small horizontal watermarks at all corners and top/bottom center, preserving email case",
 );
 assert.match(
   resourceStyles,
@@ -1013,8 +1005,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(approved\) \{[\s\S]*?if \(resourceDashboardActiveTab === "REVIEWERS"\)\s*void loadReviewerDashboard\(\);\s*else void openResourceDashboardTab\("REVIEWERS"\);/,
-  "approved sign-in should open Reviewer resources without waiting for the table request",
+  /if \(approved\) \{[\s\S]*?if \(resourceDashboardActiveTab === "REVIEWERS"\)\s*void loadReviewerDashboard\(\);\s*else void openResourceDashboardTab\(getLastResourceDashboardSection\(\)\);/,
+  "approved sign-in should restore the saved portal section without waiting for its data request",
 );
 assert.match(
   appCore,
@@ -1048,8 +1040,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function openResourceDashboardTab\(tabName = "DEFAULT"\)[\s\S]*?hasReviewerSession =\s*!hasExplicitReviewerSignOut\(\) &&\s*Boolean\(reviewerSessionId \|\| getStoredReviewerSessionId\(\)\)[\s\S]*?tabName = hasReviewerSession \? "REVIEWERS" : "PROFILE"[\s\S]*?getStoredReviewerProfile\(\)[\s\S]*?populateReviewerProfile\(cachedProfile\)/,
-  "a saved reviewer session should show cached profile data and open Reviewers by default",
+  /function openResourceDashboardTab\(tabName = "DEFAULT"\)[\s\S]*?hasReviewerSession =\s*!hasExplicitReviewerSignOut\(\) &&\s*Boolean\(reviewerSessionId \|\| getStoredReviewerSessionId\(\)\)[\s\S]*?tabName = hasReviewerSession\s*\?\s*getLastResourceDashboardSection\(\)\s*:\s*"PROFILE"[\s\S]*?getStoredReviewerProfile\(\)[\s\S]*?populateReviewerProfile\(cachedProfile\)/,
+  "a saved reviewer session should show cached profile data and restore its last portal section",
 );
 assert.match(
   appCore,

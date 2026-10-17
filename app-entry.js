@@ -2,7 +2,7 @@
   "use strict";
 
   const APP_VERSION = "mrh-26.10.31-84829caa75f2";
-  const APP_DISPLAY_VERSION = "26.10.32";
+  const APP_DISPLAY_VERSION = "26.10.33";
   const UPDATE_QUERY_PARAMETER = "__mrh_update";
   const LEGACY_PAGES_BASE_PATH = "/maritime-review-hub/";
   const rootScope = typeof window !== "undefined" ? window : globalThis;
@@ -331,8 +331,6 @@
       "qr-transfer-core.js",
       "qr-vendor/qrcode-generator.js",
       "qr-vendor/jsQR.js",
-      "pdf-lib-1.17.1.min.js",
-      "reviewer-pdf-worker.js",
     ];
     const checks = assetNames.map(async (name) => {
       const assetUrl = new URL(name, baseUrl);

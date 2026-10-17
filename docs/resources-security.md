@@ -7,8 +7,8 @@ tabs. Folder listing and file preview requests are restricted to descendants
 of the public resource root, exclude protected Reviewer folders, and paginate
 large folders. Drive shortcuts are resolved only when their targets remain
 inside the same public resource tree; shortcuts to protected or out-of-tree
-targets are excluded. Files larger than the 5 MiB in-site preview limit remain
-listed but cannot be previewed. Reviewer dashboard rows are returned only
+targets are excluded. Files larger than the 32 MiB in-site preview transport
+limit remain listed but cannot be previewed. Reviewer dashboard rows are returned only
 after server-side account authorization. A folder name classifies resources;
 it does not authorize anyone to access them.
 
@@ -121,56 +121,48 @@ source ancestry before processing.
 
 The original PDF remains in Drive and is read only by the existing Apps
 Script execution identity. Online preview uses the authenticated
-`get_reviewer_pdf_preview` route to authorize the user, validate current index
-membership and protected Drive ancestry, and return the source bytes together
-with a verified identity and source version. The browser watermarks the PDF in
-a Web Worker, then uses those same watermarked bytes for preview and download.
-This avoids queue-trigger latency, backend PDF parsing and verification, and
-temporary Drive writes and reads. Repeat previews may reuse short-lived
-watermarked bytes held in the current tab only after the server freshly
-authorizes the user, revalidates the source version, and confirms the identity.
-The browser checks the response size, MIME type, source version, and PDF
-signature before processing. The source response is transported over HTTPS
-between Apps Script and the browser; that TLS encryption protects the network
-connection but does not conceal the PDF from the authorized browser or make
-the browser watermark tamper-proof. Additional client-side encryption with a
-key available to that same browser would not strengthen this boundary.
+`get_reviewer_pdf_preview` route to authorize the user and validate current
+index membership and protected Drive ancestry. It returns only a cache
+validation response or a queued-job identifier, never the source bytes. The
+Apps Script worker rechecks authorization and source version, watermarks and
+verifies the output, and saves each generated derivative in the private Drive
+folder `10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl`. Job polling rechecks the user,
+source version, output folder, and privacy before sending the watermarked PDF
+to the browser over HTTPS. Same-session requests for an unchanged source reuse
+a completed derivative for ten minutes; the current tab also retains the
+prepared output for preview and repeat downloads.
 
-Because the browser receives the original bytes, a technically capable
-authorized reviewer can save the source or modify/remove the watermark. The
-watermark is therefore attribution and leak deterrence, not an enforcement
-boundary. Backend watermark processing, job enqueue/poll endpoints, and their
-legacy trigger worker are disabled; stale worker triggers self-remove without
-processing. The normal browser-generated PDF is downloaded locally and is not
-archived into the Drive output folder.
-Reviewer preview surfaces request non-selectable content from the browser with
-`user-select: none`. The native PDF renderer is browser-controlled and may not
-honor page styles in every browser; this is a copying deterrent, not a security
-boundary. The frame and object URL are cleared when the preview closes,
-approval is lost, or the session ends.
+The clean original is never delivered to the browser, so browser-side
+decryption or watermark removal cannot recover it. TLS protects watermarked
+bytes in transit. Watermarks and disabled page-level selection deter casual
+copying but cannot prevent screenshots, screen recording, or all behavior of
+native PDF viewers. The preview frame and object URL are cleared when the
+preview closes, approval is lost, or the session ends.
 
-The `pdf-lib` 1.17.1 (MIT licensed) browser worker uses two lines (full name
-and email) in the paired-and-offset watermark pattern on each page. The
-outer paired marks remain diagonal; the middle-column marks are horizontal.
-The verified email's capitalization is preserved. `setupReviewerPdfDelivery()`
-is retained only as a shutdown helper: when run by the Apps Script owner, it
-removes old PDF worker triggers and clears the legacy worker state.
+The `pdf-lib` 1.17.1 (MIT licensed) Apps Script processor stamps each page with
+the verified account name and email at six small, horizontal placements: all
+four corners and the top and bottom centers. Generated watermarked files are
+kept in the configured Drive output folder as requested; job metadata expires
+after ten minutes, but does not delete those archived PDFs.
+`setupReviewerPdfDelivery()` verifies that the output folder is private to the
+script owner before enabling the worker. Browser POSTs use `cache: "no-store"`;
+personalized output is not placed in shared Apps Script or dashboard caches.
 
-The browser worker rejects sources over 8 MiB, outputs over 12 MiB, and files
-over 80 pages. These are implementation guards, not validated service limits.
-Maximum-size delivery and processing have not been tested against a
-representative protected file.
+The backend currently limits source files to 8 MiB, watermarked output to
+12 MiB, and documents to 80 pages. Public Modules/Syllabus in-site preview
+transport is limited to 32 MiB. These are implementation guards, not validated
+service limits. Queue startup, document complexity, Drive, and Apps Script
+quotas affect actual processing time; maximum-size delivery has not been
+measured end-to-end.
+
+The local bundle, MIT attribution, compatibility tests, backend setup, and
+deployment steps are documented in
+[the PDF setup and test guide](../reviewer-pdf-service/README.md). The
+production endpoint and private-folder setup still require verification
+against an active/revoked account and a representative protected PDF.
+The read-only Drive permission audit previously failed with an Apps Script
+storage `NOT_FOUND` error; no Drive permissions were changed.
 MODULES, SYLLABUS, and non-PDF resource flows remain unchanged.
-Browser POSTs use `cache: "no-store"`; personalized output is not placed in
-shared Apps Script or dashboard caches.
-
-The local bundle, MIT attribution, compatibility tests, browser worker, and
-deployment checklist are documented in
-[the PDF setup and test guide](../reviewer-pdf-service/README.md). The deployed
-production endpoint has not been tested end-to-end with a representative
-protected PDF or an active/revoked user through download and cleanup. The
-read-only Drive permission audit failed with an Apps Script storage
-`NOT_FOUND` error; no Drive permissions were changed.
 
 The Apps Script editor functions `auditReviewerPdfDrivePermissions()` and
 `applyReviewedReviewerPdfPermissionRevocations()` are separately invoked.

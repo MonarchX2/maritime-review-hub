@@ -18,6 +18,60 @@ assert.match(
   "version.json must define the editable semantic app version",
 );
 assert.match(
+  appCore,
+  /const RESOURCE_DASHBOARD_LAST_SECTION_KEY\s*=\s*"mrh_resource_dashboard_last_section_v1"/,
+  "the portal should persist the last selected content section",
+);
+assert.match(
+  appCore,
+  /function getLastResourceDashboardSection\(\)[\s\S]*?includes\(section\)[\s\S]*?function saveResourceDashboardSection\(section\)[\s\S]*?localStorage\.setItem/,
+  "section restoration must validate stored tabs and save valid selections",
+);
+assert.match(
+  appCore,
+  /tabName = hasReviewerSession\s*\?\s*getLastResourceDashboardSection\(\)\s*:\s*"PROFILE"/,
+  "an authenticated portal entry should restore the last selected section",
+);
+assert.match(
+  appCore,
+  /Boolean\(response\.nextPageToken\)\s*&&\s*response\.nextPageToken === pageToken/,
+  "folder pagination must not reject an empty next-page token",
+);
+assert.match(
+  appCore,
+  /const RESOURCE_PREVIEW_MAX_BYTES = 32 \* 1024 \* 1024/,
+  "the in-site preview limit should allow 32 MiB files",
+);
+assert.match(
+  backend,
+  /RESOURCE_PORTAL_MAX_PREVIEW_BYTES = 32 \* 1024 \* 1024/,
+  "the backend preview limit must match the frontend's 32 MiB bound",
+);
+const reviewerLessonParser =
+  appCore.match(
+    /function getReviewerPdfLessonTitle\([\s\S]*?\n  \}/,
+  )?.[0] || "";
+assert.match(
+  reviewerLessonParser,
+  /const sequenceAfterCourse = matchedCourse\s*\?[\s\S]*?const existingLesson = matchedCourse\s*\?[\s\S]*?const sequence = sequenceAfterCourse\s*\|\|\s*existingLesson\?\.\[1\]/,
+  "Lesson labels must require the COURSE-column match, with matched-course sequences preferred",
+);
+assert.match(
+  reviewerLessonParser,
+  /const existingLesson = matchedCourse\s*\?/,
+  "existing Lesson text may be used only when the filename also contains the COURSE-column value",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-folder-preview\s*\{[\s\S]*?--folder-preview-background:[\s\S]*?--folder-preview-accent:/,
+  "folder preview colors should use the site's themeable color tokens",
+);
+assert.match(
+  resourceStyles,
+  /\.dark \.resource-dashboard-folder-preview\s*\{[\s\S]*?--folder-preview-background:[\s\S]*?--folder-preview-accent:/,
+  "folder preview controls should have matching dark-theme colors",
+);
+assert.match(
   appVersion,
   /^mrh-[A-Za-z0-9._-]+$/,
   "version.json must define a valid generated release build identifier",
@@ -1300,12 +1354,6 @@ assert.match(
   assert.equal(pendingPreview.code, "ACCOUNT_PENDING");
   assert.equal(sourceDriveReads, 0, "pending reviewers must be denied before source read");
 
-  const sourcePdfBytes = Array.from(Buffer.from("%PDF-1.4\nAuthorized source", "ascii"));
-  let backendWatermarkCalls = 0;
-  context.watermarkReviewerPdfBytes_ = () => {
-    backendWatermarkCalls += 1;
-    throw new Error("Backend PDF watermarking must not run.");
-  };
   context.authorizeReviewerRequest_ = () => ({
     email: "reviewer@example.com",
     account: {
@@ -1315,19 +1363,26 @@ assert.match(
       rawAccountStatus: "TRUE",
     },
   });
+  let previewQueueCalls = 0;
+  context.enqueueReviewerPdfRequest_ = (request, previewContext) => {
+    previewQueueCalls += 1;
+    assert.equal(request.fileId, "reviewerPdf_123456");
+    assert.equal(previewContext.source.sourceVersion, "a".repeat(64));
+    assert.equal(previewContext.watermarkIdentity.fullName, "Rita A. Reviewer");
+    return context.jsonResponse({
+      status: "pending",
+      jobId: "b".repeat(96),
+      watermarked: true,
+    });
+  };
   context.getReviewerPdfSource_ = (fileId) => ({
     entry: { fileId, title: "Reviewer.pdf" },
     driveFile: { id: fileId, name: "Reviewer.pdf" },
     sourceVersion: "a".repeat(64),
   });
-  context.DriveApp.getFileById = (fileId) => {
-    assert.equal(fileId, "reviewerPdf_123456");
-    sourceDriveReads += 1;
-    return { getBlob: () => ({ getBytes: () => sourcePdfBytes }) };
-  };
   context.Utilities.base64Encode = (bytes) =>
     Buffer.from(bytes.map((byte) => byte & 255)).toString("base64");
-  const browserProcessingResponse = JSON.parse(
+  const queuedPreviewResponse = JSON.parse(
     context.handleGetReviewerPdfPreviewRequest_({
       eventId: "52345678-1234-4123-8123-123456789abc",
       fileId: "reviewerPdf_123456",
@@ -1335,21 +1390,13 @@ assert.match(
     }).text,
   );
   assert.equal(
-    browserProcessingResponse.status,
-    "success",
-    JSON.stringify(browserProcessingResponse),
+    queuedPreviewResponse.status,
+    "pending",
+    JSON.stringify(queuedPreviewResponse),
   );
-  assert.equal(browserProcessingResponse.clientProcessing, true);
-  assert.equal(browserProcessingResponse.mimeType, "application/pdf");
-  assert.equal(browserProcessingResponse.watermarked, undefined);
-  assert.equal(browserProcessingResponse.fullName, "Rita A. Reviewer");
-  assert.equal(browserProcessingResponse.email, "reviewer@example.com");
-  assert.equal(
-    Buffer.from(browserProcessingResponse.data, "base64").toString("ascii"),
-    Buffer.from(sourcePdfBytes).toString("ascii"),
-    "the backend must return authorized source bytes without watermark processing",
-  );
-  assert.equal(sourceDriveReads, 1);
+  assert.equal(queuedPreviewResponse.watermarked, true);
+  assert.equal(queuedPreviewResponse.data, undefined);
+  assert.equal(previewQueueCalls, 1);
 
   const cachedSourceResponse = JSON.parse(
     context.handleGetReviewerPdfPreviewRequest_({
@@ -1360,11 +1407,38 @@ assert.match(
     }).text,
   );
   assert.equal(cachedSourceResponse.cacheHit, true);
-  assert.equal(sourceDriveReads, 1, "a validated tab cache hit avoids Drive byte reads");
+  assert.equal(cachedSourceResponse.data, undefined);
+  assert.equal(previewQueueCalls, 1, "a validated cache hit does not requeue a PDF");
 
-  context.getScriptProps = () => ({ deleteProperty() {} });
+  const scriptProperties = new Map();
+  context.getScriptProps = () => ({
+    getProperty: (key) => scriptProperties.get(key) || null,
+    setProperty(key, value) { scriptProperties.set(key, value); },
+    deleteProperty(key) { scriptProperties.delete(key); },
+  });
   context.LockService = {
     getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }),
+  };
+  context.Session = {
+    getEffectiveUser: () => ({ getEmail: () => "owner@example.com" }),
+  };
+  context.Drive = {
+    Permissions: {
+      list: () => ({
+        permissions: [{
+          type: "user",
+          emailAddress: "owner@example.com",
+          role: "owner",
+        }],
+      }),
+    },
+    Files: {
+      get: (fileId) => ({
+        id: fileId,
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [],
+      }),
+    },
   };
   const scheduledPdfWorkerTriggers = [
     { getHandlerFunction: () => "processReviewerPdfQueue", getUniqueId: () => "old-trigger" },
@@ -1378,20 +1452,15 @@ assert.match(
       if (index >= 0) scheduledPdfWorkerTriggers.splice(index, 1);
     },
   };
-  const disabledSetup = context.setupReviewerPdfDelivery();
-  assert.equal(disabledSetup.status, "success");
+  const enabledSetup = context.setupReviewerPdfDelivery();
+  assert.equal(enabledSetup.status, "success");
+  assert.match(enabledSetup.message, /processing is enabled/);
+  assert.ok(
+    [...scriptProperties.keys()].some((key) => /WORKER_READY/.test(key)),
+    "setup must enable the worker only after the private output folder check",
+  );
   assert.equal(scheduledPdfWorkerTriggers.length, 0);
   assert.deepEqual(deletedPdfWorkerTriggers, ["old-trigger"]);
-  for (const legacyResponse of [
-    context.enqueueReviewerPdfRequest_({}, {}),
-    context.getReviewerPdfJobStatus_({}),
-    await context.handleGetReviewerPdfRequest({}),
-  ]) {
-    assert.equal(JSON.parse(legacyResponse.text).code, "PDF_BACKEND_PROCESSING_DISABLED");
-  }
-  await context.processReviewerPdfQueue();
-  assert.equal(scheduledPdfWorkerTriggers.length, 0);
-  assert.equal(backendWatermarkCalls, 0);
 
   let aclDeleteCount = 0;
   const aclReport = {
@@ -1778,7 +1847,7 @@ assert.match(
     [unrelatedJobId],
   );
 
-  console.log("Resource dashboard, in-site folder, cleanup, and browser-side PDF checks passed.");
+  console.log("Resource dashboard, in-site folder, cleanup, and server-side PDF checks passed.");
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

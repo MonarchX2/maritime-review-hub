@@ -149,7 +149,7 @@ var RESOURCE_DASHBOARD_CATEGORIES = {
 var RESOURCE_PORTAL_PRIVATE_FOLDER_PATTERN =
   /^REVIEWERS v\d{2}\.\d{2}\.\d{2}$/;
 var RESOURCE_PORTAL_MAX_ITEMS = 1000;
-var RESOURCE_PORTAL_MAX_PREVIEW_BYTES = 5 * 1024 * 1024;
+var RESOURCE_PORTAL_MAX_PREVIEW_BYTES = 32 * 1024 * 1024;
 var MRH_REVIEWER_ACL_PRESERVE_PRINCIPALS_PROPERTY =
   "MRH_REVIEWER_ACL_PRESERVE_PRINCIPALS";
 var RESOURCE_PORTAL_LISTING_CACHE_TTL_SECONDS = 30;
@@ -2337,123 +2337,6 @@ function getReviewerPdfIndexEntries_() {
   return entries;
 }
 
-async function runReviewerPdfWatermarkProofOfConcept() {
-  throw new Error("Backend PDF watermark processing has been disabled.");
-  /*
-  var email = String(
-    Session.getEffectiveUser().getEmail() || "",
-  ).trim().toLowerCase();
-  var account = email ? findMRHAccount_(email, true) : null;
-  if (!account || account.accountStatus !== "TRUE")
-    throw new Error(
-      "The Apps Script execution identity must be an active ACCOUNTS user to run this proof of concept.",
-    );
-  if (typeof PDFLib === "undefined" || !PDFLib.PDFDocument)
-    throw new Error("The locally bundled PDF library has not been installed.");
-
-  var document = await PDFLib.PDFDocument.create();
-  var font = await document.embedFont(PDFLib.StandardFonts.Helvetica);
-  var alphabet =
-    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-  var seed = 984231;
-  function nextProofCharacter() {
-    seed = (seed * 48271) % 2147483647;
-    return alphabet.charAt(seed % alphabet.length);
-  }
-  var proofText = "";
-  for (var characterIndex = 0; characterIndex < 30000; characterIndex++)
-    proofText += nextProofCharacter();
-  for (var pageIndex = 0; pageIndex < 20; pageIndex++) {
-    var page = document.addPage(
-      pageIndex % 2 === 0 ? [612, 792] : [792, 612],
-    );
-    page.drawText("Private Apps Script PDF watermark proof page " + (pageIndex + 1), {
-      x: 24,
-      y: 700,
-      size: 14,
-      font: font,
-    });
-    page.drawText(proofText, {
-      x: 18,
-      y: 420,
-      size: 2,
-      font: font,
-    });
-  }
-  var generatedSource = await document.save({ useObjectStreams: false });
-  if (
-    !generatedSource.length ||
-    generatedSource.length > MRH_REVIEWER_PDF_MAX_BYTES
-  )
-    throw new Error(
-      "The generated proof PDF does not fit the current 8 MiB source limit.",
-    );
-
-  var signedSource = Array.prototype.map.call(generatedSource, function (byte) {
-    return byte > 127 ? byte - 256 : byte;
-  });
-  var fileName =
-    "MRH private Reviewer PDF proof " + Utilities.getUuid() + ".pdf";
-  var sourceFile = DriveApp.createFile(
-    Utilities.newBlob(signedSource, "application/pdf", fileName),
-  );
-  var startedAt = Date.now();
-  var sourceHashBefore = "";
-  var sourceHashAfter = "";
-  try {
-    var sourcePermissions = listReviewerPdfPermissions_(sourceFile.getId());
-    var hasUnexpectedAccess = sourcePermissions.some(function (permission) {
-      return (
-        permission.type !== "user" ||
-        (permission.emailAddress || "").toLowerCase() !== email ||
-        permission.role !== "owner"
-      );
-    });
-    if (hasUnexpectedAccess)
-      throw new Error(
-        "The temporary proof source is not private to the Apps Script execution identity.",
-      );
-    var sourceBytes = sourceFile.getBlob().getBytes();
-    sourceHashBefore = sha256Hex(
-      Utilities.base64Encode(sourceBytes),
-    );
-    var identity = reviewerPdfWatermarkIdentity_(account, email);
-    var derivative = await watermarkReviewerPdfBytes_(sourceBytes, identity);
-    var verification = await verifyReviewerPdfWatermarks_(
-      derivative.bytes,
-      identity,
-    );
-    if (
-      verification.pageCount !== 20 ||
-      verification.pagesWithWatermarks !== 20
-    )
-      throw new Error(
-        "The proof derivative does not contain a verified watermark on every page.",
-      );
-    sourceHashAfter = sha256Hex(
-      Utilities.base64Encode(sourceFile.getBlob().getBytes()),
-    );
-    if (sourceHashBefore !== sourceHashAfter)
-      throw new Error("The private source PDF changed during watermarking.");
-    return {
-      status: "success",
-      library: "pdf-lib 1.17.1 (MIT)",
-      inputBytes: sourceBytes.length,
-      outputBytes: derivative.bytes.length,
-      pageCount: verification.pageCount,
-      pagesWithWatermarks: verification.pagesWithWatermarks,
-      sourceUnchanged: true,
-      tempSourceTrashed: true,
-      executionMs: Date.now() - startedAt,
-      memoryUseBytes: null,
-      watermarkedPdfBase64: Utilities.base64Encode(derivative.bytes),
-    };
-  } finally {
-    sourceFile.setTrashed(true);
-  }
-  */
-}
-
 function listReviewerPdfPermissions_(fileId) {
   var permissions = [];
   var pageToken = "";
@@ -2677,17 +2560,19 @@ function scheduleReviewerPdfWorkerLocked_(delayMs) {
 function setupReviewerPdfDelivery() {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000))
-    throw new Error("Reviewer PDF shutdown is busy. Try again.");
+    throw new Error("Reviewer PDF setup is busy. Try again.");
   try {
+    if (!reviewerPdfOutputFolderIsPrivate_())
+      throw new Error("The configured PDF output folder must be private to the script owner.");
     ScriptApp.getProjectTriggers().forEach(function (trigger) {
       if (trigger.getHandlerFunction() === REVIEWER_PDF_WORKER_HANDLER)
         ScriptApp.deleteTrigger(trigger);
     });
-    getScriptProps().deleteProperty(REVIEWER_PDF_WORKER_READY_PROPERTY);
     getScriptProps().deleteProperty(REVIEWER_PDF_WORKER_SCHEDULE_PROPERTY);
+    getScriptProps().setProperty(REVIEWER_PDF_WORKER_READY_PROPERTY, "true");
     return {
       status: "success",
-      message: "Backend PDF watermark processing is disabled.",
+      message: "Private Reviewer PDF processing is enabled.",
     };
   } catch (error) {
     getScriptProps().deleteProperty(REVIEWER_PDF_WORKER_READY_PROPERTY);
@@ -2744,61 +2629,17 @@ function handleGetReviewerPdfPreviewRequest_(data) {
     return jsonResponse({
       status: "success",
       cacheHit: true,
-      clientProcessing: true,
       mimeType: "application/pdf",
       sourceVersion: source.sourceVersion,
       fullName: identity.fullName,
       email: identity.email,
+      watermarked: true,
     });
   }
-  var sourceBytes;
-  try {
-    sourceBytes = DriveApp.getFileById(fileId).getBlob().getBytes();
-  } catch (error) {
-    Logger.log(JSON.stringify({
-      event: "reviewer_pdf_source_read_failed",
-      correlationId: String(data.eventId || ""),
-      errorName: String(error && error.name || "Error"),
-      durationMs: Date.now() - startedAt,
-    }));
-    return reviewerPdfFailure_(
-      data,
-      startedAt,
-      "PDF_SOURCE_UNAVAILABLE",
-      "The authorized PDF source could not be read. Please try again.",
-    );
-  }
-  if (
-    !sourceBytes.length ||
-    sourceBytes.length > MRH_REVIEWER_PDF_MAX_BYTES ||
-    !sourceBytes.slice(0, 1024).some(function (byte, index, bytes) {
-      return String.fromCharCode(byte) === "%" &&
-        String.fromCharCode(bytes[index + 1] || 0) === "P" &&
-        String.fromCharCode(bytes[index + 2] || 0) === "D" &&
-        String.fromCharCode(bytes[index + 3] || 0) === "F" &&
-        String.fromCharCode(bytes[index + 4] || 0) === "-";
-    })
-  )
-    return reviewerPdfFailure_(
-      data,
-      startedAt,
-      "INVALID_PDF",
-      "The source PDF is invalid or too large.",
-    );
-  Logger.log(JSON.stringify({
-    event: "reviewer_pdf_source_delivered",
-    correlationId: String(data.eventId || ""),
-    durationMs: Date.now() - startedAt,
-    sourceBytes: sourceBytes.length,
-  }));
-  return jsonResponse({
-    status: "success",
-    mimeType: "application/pdf",
-    sourceVersion: source.sourceVersion,
-    fullName: identity.fullName,
-    email: identity.email,
-    clientProcessing: true,
-    data: Utilities.base64Encode(sourceBytes),
+  return enqueueReviewerPdfRequest_(data, {
+    authorization: authorization,
+    source: source,
+    watermarkIdentity: identity,
   });
 }
 
@@ -2880,11 +2721,6 @@ function permanentlyDeleteReviewerPdfOutput_(fileId) {
 }
 
 function enqueueReviewerPdfRequest_(data, previewContext) {
-  return errorResponse(
-    "PDF watermark processing now runs in the reviewer’s browser. Reload the portal and request the PDF again.",
-    "PDF_BACKEND_PROCESSING_DISABLED",
-  );
-  /*
   if (!/^[a-f0-9]{96}$/i.test(String(data && data.sessionId || "")))
     return errorResponse(
       "A valid access session is required for PDF delivery.",
@@ -2930,6 +2766,61 @@ function enqueueReviewerPdfRequest_(data, previewContext) {
     var properties = getScriptProps();
     var queue = cleanReviewerPdfJobs_(properties, now);
     var allProperties = properties.getProperties();
+    var matchingJob = null;
+    Object.keys(allProperties).some(function (key) {
+      if (key.indexOf(REVIEWER_PDF_JOB_PROPERTY_PREFIX) !== 0) return false;
+      var candidate;
+      try {
+        candidate = JSON.parse(allProperties[key]);
+      } catch (error) {
+        return false;
+      }
+      if (
+        candidate &&
+        candidate.sessionId === String(data.sessionId || "") &&
+        candidate.fileId === fileId &&
+        candidate.sourceVersion === source.sourceVersion &&
+        Number(candidate.expiresAt) > now &&
+        ["queued", "processing"].indexOf(candidate.status) !== -1
+      ) {
+        matchingJob = candidate;
+        return true;
+      }
+      if (
+        candidate &&
+        candidate.sessionId === String(data.sessionId || "") &&
+        candidate.fileId === fileId &&
+        candidate.sourceVersion === source.sourceVersion &&
+        candidate.status === "complete" &&
+        candidate.persistentOutput === true &&
+        Number(candidate.expiresAt) > now
+      ) {
+        matchingJob = candidate;
+        return true;
+      }
+      return false;
+    });
+    if (matchingJob) {
+      if (matchingJob.status !== "complete") {
+        try {
+          scheduleReviewerPdfWorkerLocked_(1000);
+        } catch (error) {
+          Logger.log("[enqueueReviewerPdfRequest_] Could not reschedule the PDF worker.");
+          return errorResponse(
+            "PDF preparation could not be scheduled. Please try again.",
+            "PDF_PROCESSOR_UNAVAILABLE",
+          );
+        }
+      }
+      return jsonResponse({
+        status: "pending",
+        jobId: matchingJob.jobId,
+        sourceVersion: source.sourceVersion,
+        fullName: watermarkIdentity.fullName,
+        email: watermarkIdentity.email,
+        watermarked: true,
+      });
+    }
     var activeCount = Object.keys(allProperties).filter(function (key) {
       if (key.indexOf(REVIEWER_PDF_JOB_PROPERTY_PREFIX) !== 0) return false;
       var job = null;
@@ -2990,15 +2881,9 @@ function enqueueReviewerPdfRequest_(data, previewContext) {
   } finally {
     lock.releaseLock();
   }
-  */
 }
 
 function getReviewerPdfJobStatus_(data) {
-  return errorResponse(
-    "Backend PDF processing is disabled. Request the PDF again from the Reviewer portal.",
-    "PDF_BACKEND_PROCESSING_DISABLED",
-  );
-  /*
   if (!/^[a-f0-9]{96}$/i.test(String(data && data.sessionId || "")))
     return errorResponse(
       "A valid access session is required for PDF delivery.",
@@ -3067,6 +2952,7 @@ function getReviewerPdfJobStatus_(data) {
   if (job.status !== "complete" || !job.outputFileId)
     return errorResponse("PDF job has an invalid state.", "PDF_JOB_INVALID");
 
+  var deliveryStage = "source_validation";
   var currentSource = getReviewerPdfSource_(job.fileId);
   if (
     currentSource.error ||
@@ -3079,6 +2965,7 @@ function getReviewerPdfJobStatus_(data) {
 
   var outputFile;
   try {
+    deliveryStage = "output_metadata";
     var outputMetadata = Drive.Files.get(job.outputFileId, {
       fields: "id,mimeType,parents,trashed,size",
       supportsAllDrives: true,
@@ -3093,8 +2980,10 @@ function getReviewerPdfJobStatus_(data) {
       ) < 0
     )
       throw new Error("The prepared PDF is not in the configured delivery folder.");
+    deliveryStage = "output_privacy";
     if (!reviewerPdfOutputIsPrivate_(job.outputFileId))
-      throw new Error("The prepared PDF is no longer private.");
+    throw new Error("The prepared PDF is no longer private.");
+    deliveryStage = "output_read";
     outputFile = DriveApp.getFileById(job.outputFileId);
     var outputBytes = outputFile.getBlob().getBytes();
     if (
@@ -3104,6 +2993,7 @@ function getReviewerPdfJobStatus_(data) {
     )
       throw new Error("The prepared PDF is invalid.");
     var encodedOutput = Utilities.base64Encode(outputBytes);
+    deliveryStage = "job_revalidation";
     var cleanupLock = LockService.getScriptLock();
     if (!cleanupLock.tryLock(10000))
       throw new Error("The PDF delivery lock is busy.");
@@ -3131,15 +3021,20 @@ function getReviewerPdfJobStatus_(data) {
       watermarked: Boolean(job.fullName && job.email),
     });
   } catch (error) {
-    Logger.log("[getReviewerPdfJobStatus_] Output delivery failed: " + String(
-      error && error.name || "Error",
-    ));
+    Logger.log(JSON.stringify({
+      event: "reviewer_pdf_output_delivery_failed",
+      correlationId: String(data && data.eventId || ""),
+      stage: deliveryStage,
+      reasonCode: String(
+        error && error.code || "PDF_DELIVERY_" + deliveryStage.toUpperCase(),
+      ),
+      errorName: String(error && error.name || "Error"),
+    }));
     return errorResponse(
       "The prepared PDF could not be delivered safely. Please request it again.",
       "PDF_DELIVERY_FAILED",
     );
   }
-  */
 }
 
 function cleanupReviewerPdfJobsForSession_(sessionId) {
@@ -3250,14 +3145,6 @@ function cleanupReviewerPdfJobsRequest_(data) {
 }
 
 async function processReviewerPdfQueue(event) {
-  ScriptApp.getProjectTriggers().forEach(function (trigger) {
-    if (trigger.getHandlerFunction() === REVIEWER_PDF_WORKER_HANDLER)
-      ScriptApp.deleteTrigger(trigger);
-  });
-  getScriptProps().deleteProperty(REVIEWER_PDF_WORKER_SCHEDULE_PROPERTY);
-  Logger.log("Ignored legacy Reviewer PDF trigger; backend watermarking is disabled.");
-  return;
-  /*
   var workerStartedAt = Date.now();
   var startupLock = LockService.getScriptLock();
   if (!startupLock.tryLock(10000)) return;
@@ -3305,18 +3192,19 @@ async function processReviewerPdfQueue(event) {
 
     var outputFile = null;
     try {
-      var result = await handleGetReviewerPdfRequest({
+      var response = await handleGetReviewerPdfRequest({
         sessionId: job.sessionId,
         eventId: job.eventId,
         fileId: job.fileId,
       }, job.sourceVersion);
-      var response = JSON.parse(result.getContent());
+      if (response && typeof response.getContent === "function")
+        response = JSON.parse(response.getContent());
       if (
         !response ||
         response.status !== "success" ||
         response.mimeType !== "application/pdf" ||
         response.sourceVersion !== job.sourceVersion ||
-        typeof response.data !== "string"
+        !Array.isArray(response.bytes)
       )
         throw reviewerPdfError_(
           response && response.message || "The PDF could not be prepared safely.",
@@ -3331,7 +3219,7 @@ async function processReviewerPdfQueue(event) {
           "The active session ended before the PDF download completed.",
           "SESSION_INVALID",
         );
-      var outputBytes = Utilities.base64Decode(response.data);
+      var outputBytes = response.bytes;
       if (
         !outputBytes.length ||
         outputBytes.length > MRH_REVIEWER_PDF_MAX_OUTPUT_BYTES ||
@@ -3499,15 +3387,9 @@ async function processReviewerPdfQueue(event) {
   } finally {
     finishLock.releaseLock();
   }
-  */
 }
 
 async function handleGetReviewerPdfRequest(data, expectedSourceVersion) {
-  return errorResponse(
-    "Backend PDF watermarking is disabled. Request the PDF from the Reviewer portal.",
-    "PDF_BACKEND_PROCESSING_DISABLED",
-  );
-  /*
   var startedAt = Date.now();
   var authorization = authorizeReviewerPdfRequest_(data);
   if (authorization.error) {
@@ -3660,13 +3542,13 @@ async function handleGetReviewerPdfRequest(data, expectedSourceVersion) {
     outputBytes: outputBytes.length,
     pages: processed.pageCount,
   }));
-  return jsonResponse({
+  return {
     status: "success",
     mimeType: "application/pdf",
     sourceVersion: source.sourceVersion,
-    data: Utilities.base64Encode(outputBytes),
-  });
-  */
+    bytes: outputBytes,
+    pageCount: processed.pageCount,
+  };
 }
 
 function auditReviewerPdfDrivePermissions() {
@@ -4240,7 +4122,7 @@ function handleGetResourcePreviewRequest(data) {
     ].indexOf(mimeType) !== -1;
   if (!isGoogleWorkspaceFile && file.getSize() > RESOURCE_PORTAL_MAX_PREVIEW_BYTES)
     return errorResponse(
-      "This file is larger than the 5 MB in-site preview limit.",
+      "This file exceeds the 32 MiB in-site preview transport limit.",
       "FILE_TOO_LARGE",
     );
 
@@ -4254,7 +4136,7 @@ function handleGetResourcePreviewRequest(data) {
   var bytes = blob.getBytes();
   if (bytes.length > RESOURCE_PORTAL_MAX_PREVIEW_BYTES)
     return errorResponse(
-      "This file is larger than the 5 MB in-site preview limit.",
+      "This file exceeds the 32 MiB in-site preview transport limit.",
       "FILE_TOO_LARGE",
     );
 

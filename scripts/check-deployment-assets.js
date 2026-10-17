@@ -94,7 +94,14 @@ try {
   assert.equal(
     fs.existsSync(path.join(outputDir, "reviewer-pdf-service")),
     false,
-    "the browser-only PDF processing package must not be shipped to the website",
+    "the backend PDF processing package must not be shipped to the website",
+  );
+  assert.equal(
+    fs.readdirSync(outputDir).some((name) =>
+      /^(?:reviewer-pdf-worker|pdf-lib-1\.17\.1\.min)\./.test(name),
+    ),
+    false,
+    "the website must not publish client-side PDF watermarking assets",
   );
   assert.match(
     fs.readFileSync(path.join(outputDir, "404.html"), "utf8"),
@@ -151,25 +158,11 @@ try {
     .readdirSync(outputDir)
     .find((name) => /^app-core\.[0-9a-f]{16}\.js$/.test(name));
   assert.ok(deployedAppCore, "the deployment must include the hashed app core");
-  assert.match(
+  assert.doesNotMatch(
     fs.readFileSync(path.join(outputDir, deployedAppCore), "utf8"),
-    /new URL\(\s*"reviewer-pdf-worker\.[0-9a-f]{16}\.js"/,
-    "app core must load the content-hashed PDF worker lazily",
+    /PDFDocument\.load|new globalScope\.Worker/,
+    "the deployed app core must not load client-side PDF processing",
   );
-  const deployedPdfWorker = fs
-    .readdirSync(outputDir)
-    .find((name) => /^reviewer-pdf-worker\.[0-9a-f]{16}\.js$/.test(name));
-  assert.ok(deployedPdfWorker, "the deployment must include the PDF worker");
-  assert.match(
-    fs.readFileSync(path.join(outputDir, deployedPdfWorker), "utf8"),
-    /importScripts\("\.\/pdf-lib-1\.17\.1\.min\.[0-9a-f]{16}\.js"\)/,
-    "the PDF worker must import the content-hashed library bundle",
-  );
-  assert.ok(
-    fs.existsSync(path.join(outputDir, "pdf-lib-1.17.1-LICENSE.md")),
-    "the deployed PDF library must include its MIT license",
-  );
-
   const worker = fs.readFileSync(path.join(outputDir, "sw.js"), "utf8");
   for (const match of worker.matchAll(/["']\.\/([^"']+)["']/g)) {
     assertFileExists(match[1].split(/[?#]/, 1)[0]);

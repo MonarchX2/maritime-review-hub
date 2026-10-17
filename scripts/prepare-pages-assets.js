@@ -101,7 +101,6 @@ const runtimeTextFiles = [
   "app-core.js",
   "sw.js",
   "qr-transfer-core.js",
-  "reviewer-pdf-worker.js",
   "styles.css",
   "tailwind.generated.css",
   "qr-vendor/qrcode-generator.js",
@@ -149,14 +148,11 @@ const assets = getHashedAssets(outputDir).sort((left, right) => {
   const rank = (name) =>
     name.startsWith("qr-vendor/")
       ? 0
-      : name === "pdf-lib-1.17.1.min.js"
-        ? 1
-        : name === "qr-transfer-core.js" ||
-            name === "reviewer-pdf-worker.js"
-          ? 2
-          : name === "app-entry.js"
-            ? 4
-            : 3;
+      : name === "qr-transfer-core.js"
+        ? 2
+        : name === "app-entry.js"
+          ? 4
+          : 3;
   return rank(left) - rank(right) || left.localeCompare(right);
 });
 const names = new Set();

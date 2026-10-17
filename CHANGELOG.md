@@ -1,5 +1,21 @@
 # Changelog
 
+## 26.10.33 - 2026-10-17
+
+### Improved
+
+- Keep Reviewer PDF originals on the private Apps Script backend; deliver only
+  verified watermarked PDFs and retain generated copies in the configured
+  private Drive folder.
+- Reuse completed PDF derivatives, avoid an unnecessary base64 conversion in
+  the worker, and apply smaller horizontal identity marks at all four corners
+  and the top and bottom center.
+- Restore the last Student Portal section for signed-in users, fix first-page
+  folder pagination, and raise the in-site preview transport limit to 32 MiB.
+- Match folder previews to the site theme, enforce course-matched lesson
+  labels, clear the download notice after three seconds, and remove obsolete
+  browser-side PDF processing assets.
+
 ## 26.10.32 - 2026-10-17
 
 ### Improved
