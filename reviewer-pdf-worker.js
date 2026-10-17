@@ -5,14 +5,6 @@ importScripts("./pdf-lib-1.17.1.min.js");
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 const MAX_OUTPUT_BYTES = 12 * 1024 * 1024;
 const MAX_PAGES = 80;
-const WATERMARK_PLACEMENTS = [
-  [0.035, 0.035, "left", "bottom"],
-  [0.965, 0.035, "right", "bottom"],
-  [0.5, 0.035, "center", "bottom"],
-  [0.035, 0.965, "left", "top"],
-  [0.965, 0.965, "right", "top"],
-  [0.5, 0.965, "center", "top"],
-];
 
 function sanitizeWatermarkText(value, maxLength) {
   return String(value || "")
@@ -39,8 +31,18 @@ async function createWatermarkedPdf(sourceBuffer, identity) {
     .replace(/\s+/g, " ")
     .trim();
   const email = sanitizeWatermarkText(identity?.email, 254);
-  if (!fullName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-    throw new Error("Verified account details are required to watermark this PDF.");
+  const downloadFileName = sanitizeWatermarkText(
+    identity?.downloadFileName,
+    255,
+  );
+  if (
+    !fullName ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+    !/^[^<>:"/\\|?*\u0000-\u001f]{1,255}\.pdf$/i.test(downloadFileName)
+  )
+    throw new Error(
+      "Verified account details and backend filename are required to watermark this PDF.",
+    );
 
   let pdf;
   try {
@@ -69,51 +71,153 @@ async function createWatermarkedPdf(sourceBuffer, identity) {
 
   pages.forEach((page) => {
     const size = page.getSize();
-    const maxWidth = Math.max(40, size.width * 0.46);
+    const watermarkTextLines = [];
     let fontSize = Math.max(
-      5,
-      Math.min(8, Math.min(size.width, size.height) * 0.015),
+      6,
+      Math.min(12, Math.min(size.width, size.height) * 0.02),
     );
-    while (
-      lines.some((line) => textWidth(line, fontSize) > maxWidth) &&
-      fontSize > 5
-    )
-      fontSize = Math.max(5, fontSize - 0.5);
-    if (lines.some((line) => textWidth(line, fontSize) > maxWidth))
-      throw new Error("Account details do not fit the watermark area.");
-
-    const lineHeight = fontSize * 1.15;
-    if (lines.length * lineHeight > size.height * 0.08)
-      throw new Error("Account details do not fit the watermark area.");
-
-    WATERMARK_PLACEMENTS.forEach(
-      ([columnFraction, rowFraction, alignment, verticalAlignment]) => {
-        const blockHeight = lineHeight * (lines.length - 1);
-        const firstLineY =
-          verticalAlignment === "top"
-            ? size.height * rowFraction - fontSize
-            : size.height * rowFraction + blockHeight;
-        lines.forEach((line, index) => {
-          const measuredWidth = textWidth(line, fontSize);
-          let x = size.width * columnFraction;
-          if (alignment === "left") x += size.width * 0.012;
-          if (alignment === "right")
-            x -= measuredWidth + size.width * 0.012;
-          if (alignment === "center") x -= measuredWidth / 2;
-          page.drawText(line, {
-            x,
-            y: firstLineY - index * lineHeight,
-            size: fontSize,
-            font,
-            color: PDFLib.rgb(0.24, 0.24, 0.24),
-            opacity: 0.18,
-            rotate: PDFLib.degrees(0),
-          });
+    const getFontSize = (maxWidth, maximum = fontSize, minimum = 3.5) => {
+      let selectedFontSize = maximum;
+      while (
+        lines.some((line) => textWidth(line, selectedFontSize) > maxWidth) &&
+        selectedFontSize > minimum
+      )
+        selectedFontSize = Math.max(minimum, selectedFontSize - 0.5);
+      if (lines.some((line) => textWidth(line, selectedFontSize) > maxWidth))
+        throw new Error("Account details do not fit the watermark area.");
+      return selectedFontSize;
+    };
+    const drawBlock = (centerX, centerY, angle, blockFontSize) => {
+      const lineHeight = blockFontSize * 1.15;
+      const radians = (angle * Math.PI) / 180;
+      const cos = Math.cos(radians);
+      const sin = Math.sin(radians);
+      lines.forEach((line, index) => {
+        const localX = -textWidth(line, blockFontSize) / 2;
+        const localY =
+          ((lines.length - 1) / 2 - index) * lineHeight -
+          blockFontSize * 0.35;
+        watermarkTextLines.push({
+          line,
+          size: blockFontSize,
+          matrix: [
+            cos,
+            sin,
+            -sin,
+            cos,
+            centerX + localX * cos - localY * sin,
+            centerY + localX * sin + localY * cos,
+          ],
         });
-      },
+      });
+    };
+
+    const shortSide = Math.min(size.width, size.height);
+    const interiorFontSize = getFontSize(
+      shortSide * 0.4,
+      fontSize,
+      5.5,
     );
+    const perimeterFontSize = getFontSize(
+      Math.min(size.width * 0.32, size.height * 0.32),
+      interiorFontSize * 0.8,
+      3.5,
+    );
+    const smallFontSize = getFontSize(
+      Math.min(size.width * 0.32, size.height * 0.32),
+      perimeterFontSize * 0.7,
+      2.5,
+    );
+    const perimeterMargin = perimeterFontSize * 2.5;
+    [0.17, 0.5, 0.83].forEach((x) => {
+      drawBlock(
+        size.width * x,
+        size.height - perimeterMargin,
+        0,
+        perimeterFontSize,
+      );
+      drawBlock(size.width * x, perimeterMargin, 0, perimeterFontSize);
+    });
+    [0.17, 0.5, 0.83].forEach((y) => {
+      drawBlock(
+        perimeterMargin,
+        size.height * y,
+        90,
+        perimeterFontSize,
+      );
+      drawBlock(
+        size.width - perimeterMargin,
+        size.height * y,
+        90,
+        perimeterFontSize,
+      );
+    });
+
+    const interiorTextWidth = Math.max(
+      ...lines.map((line) => textWidth(line, interiorFontSize)),
+    );
+    const interiorLineHeight = interiorFontSize * 1.15;
+    const diagonalAngle = -25;
+    const diagonalRadians = (diagonalAngle * Math.PI) / 180;
+    const diagonalHeight =
+      interiorTextWidth * Math.abs(Math.sin(diagonalRadians)) +
+      interiorLineHeight * Math.abs(Math.cos(diagonalRadians));
+    const targetRowSpacing = Math.max(
+      shortSide * 0.18,
+      diagonalHeight * 1.3,
+    );
+    const firstRowY = size.height * 0.12;
+    const lastRowY = size.height * 0.88;
+    const rowCount = Math.max(
+      2,
+      Math.floor((lastRowY - firstRowY) / targetRowSpacing) + 1,
+    );
+    const rowSpacing = (lastRowY - firstRowY) / (rowCount - 1);
+
+    for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+      const y = firstRowY + rowIndex * rowSpacing;
+      [0.23, 0.77].forEach((x) => {
+        drawBlock(
+          size.width * x,
+          y,
+          diagonalAngle,
+          interiorFontSize,
+        );
+      });
+      if (rowIndex < rowCount - 1) {
+        const centerY = y + rowSpacing / 2;
+        drawBlock(size.width * 0.5, centerY, 0, interiorFontSize);
+        [0.12, 0.88].forEach((x) => {
+          drawBlock(size.width * x, centerY, 0, smallFontSize);
+        });
+      }
+      drawBlock(size.width * 0.5, y, 0, smallFontSize);
+    }
+
+    page.setFont(font);
+    const [, fontKey] = page.getFont();
+    const opacityKey = page.maybeEmbedGraphicsState({ opacity: 0.18 });
+    const operators = [
+      PDFLib.pushGraphicsState(),
+      PDFLib.setGraphicsState(opacityKey),
+      PDFLib.beginText(),
+      PDFLib.setFillingColor(PDFLib.rgb(0.24, 0.24, 0.24)),
+    ];
+    watermarkTextLines.forEach(({ line, size: blockFontSize, matrix }) => {
+      operators.push(
+        PDFLib.setFontAndSize(fontKey, blockFontSize),
+        PDFLib.setTextMatrix(...matrix),
+        PDFLib.showText(font.encodeText(line)),
+      );
+    });
+    operators.push(PDFLib.endText(), PDFLib.popGraphicsState());
+    page.pushOperators(...operators);
   });
 
+  pdf.setAuthor(fullName);
+  pdf.setTitle(downloadFileName);
+  pdf.setSubject(email);
+  pdf.setKeywords([fullName, email]);
   const watermarkedBytes = await pdf.save({ useObjectStreams: true });
   if (
     watermarkedBytes.byteLength < 5 ||

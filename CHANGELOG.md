@@ -1,5 +1,30 @@
 # Changelog
 
+## 26.11.0 - 2026-10-17
+
+### Added
+
+- Populate the Student Portal SUBJECTS catalogue with centralized course
+  titles, ordering labels, searchable entries, and a consistently centered
+  table with an always-visible Year column.
+- Add inline clear controls to reviewer name fields.
+
+### Improved
+
+- Keep Semester selectable across all four Student Portal sections when Year
+  is set to All, and preserve valid semester choices when changing years.
+- Make reviewer Middle Initial optional, clear the entire value on deletion,
+  and show Resubmit for denied profiles.
+- Support combined resource-index data, numeric sequence ordering, and fixed
+  3.1 catalogue terms for the designated courses.
+- Refine in-site resource navigation, reviewer activity logging, and browser
+  PDF watermark processing.
+
+### Fixed
+
+- Prevent an unavailable saved semester from leaving the Subjects catalogue
+  empty after changing the Year filter.
+
 ## 26.10.35 - 2026-10-17
 
 ### Improved

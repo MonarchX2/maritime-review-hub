@@ -50,9 +50,19 @@ assert.match(
   "only the authorized preview route may return validated source bytes for client processing",
 );
 assert.match(
+  backend,
+  /reviewerPdfDownloadName_\(\s*source\.entry\.title,[\s\S]*?downloadFileName:\s*downloadFileName/,
+  "the backend should derive the download name from its indexed filename and verified account identity",
+);
+assert.match(
   previewHandler,
   /event:\s*"PROTECTED_PDF_VIEW"[\s\S]*?resource:\s*source\.entry\.title/,
   "protected PDF access logs should identify the resource without recording its Drive ID",
+);
+assert.match(
+  appCoreDownload,
+  /link\.download = activePdf\.downloadFileName/,
+  "the browser must use the backend-provided download filename as-is",
 );
 assert.doesNotMatch(
   backend,
@@ -91,8 +101,43 @@ assert.match(
 );
 assert.match(
   worker,
-  /\[0\.035, 0\.035, "left", "bottom"\][\s\S]*?\[0\.965, 0\.035, "right", "bottom"\][\s\S]*?\[0\.5, 0\.035, "center", "bottom"\][\s\S]*?\[0\.035, 0\.965, "left", "top"\][\s\S]*?\[0\.965, 0\.965, "right", "top"\][\s\S]*?\[0\.5, 0\.965, "center", "top"\][\s\S]*?rotate:\s*PDFLib\.degrees\(0\)/,
-  "every page must receive six small horizontal corner and top/bottom-center watermark placements",
+  /const drawBlock = \(centerX, centerY, angle, blockFontSize\)[\s\S]*?watermarkTextLines\.push\([\s\S]*?page\.pushOperators\(\.\.\.operators\)/,
+  "each page should batch positioned and rotated watermarks into one operator stream",
+);
+[
+  "[0.17, 0.5, 0.83]",
+  "size.height - perimeterMargin",
+  "size.width - perimeterMargin",
+  "const firstRowY = size.height * 0.12",
+  "const lastRowY = size.height * 0.88",
+  "shortSide * 0.18",
+  "diagonalHeight * 1.3",
+  "Math.floor((lastRowY - firstRowY) / targetRowSpacing) + 1",
+  "[0.23, 0.77].forEach((x)",
+  "y + rowSpacing / 2",
+  "[0.12, 0.88].forEach((x)",
+  "drawBlock(size.width * 0.5, y, 0, smallFontSize)",
+  "Math.min(12, Math.min(size.width, size.height) * 0.02)",
+  "interiorFontSize * 0.8",
+  "perimeterFontSize * 0.7",
+  "shortSide * 0.4",
+  "const diagonalAngle = -25",
+  "const localX = -textWidth(line, blockFontSize) / 2",
+  "PDFLib.setTextMatrix(...matrix)",
+  "PDFLib.showText(font.encodeText(line))",
+  "page.pushOperators(...operators)",
+  "interiorFontSize",
+  "smallFontSize",
+].forEach((placement) => {
+  assert.ok(
+    worker.includes(placement),
+    `the watermark layout should include ${placement}`,
+  );
+});
+assert.match(
+  worker,
+  /pdf\.setAuthor\(fullName\);[\s\S]*?pdf\.setTitle\(downloadFileName\);[\s\S]*?pdf\.setSubject\(email\);[\s\S]*?pdf\.setKeywords\(\[fullName, email\]\);[\s\S]*?pdf\.save/,
+  "watermarked PDFs should include the backend-provided filename, verified name, and email in metadata before saving",
 );
 assert.match(
   frontend,

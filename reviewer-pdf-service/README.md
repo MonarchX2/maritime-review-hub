@@ -7,10 +7,29 @@ PDF derivatives. No `PDFs` Drive folder is required.
 The backend validates the active reviewer session, approval status, indexed
 file ID, PDF type, and protected Drive ancestry, then returns the clean source
 PDF and verified account name/email over HTTPS. It does no PDF parsing or
-transformation. The browser worker adds six
-small horizontal watermarks to each page: one at each corner and one at the
-top and bottom center. The watermarked bytes are used for both online preview
-and repeat downloads.
+transformation. The browser worker lays out perimeter marks (three
+horizontal marks along both the top and bottom and three vertical marks along
+each side, inset equally from their edge) around a larger interior pattern.
+Interior diagonal rows are sized and spaced for each page, use two consistently
+angled marks per row, and always start and end with a pair. Horizontal marks
+fill the center positions between diagonal rows. Smaller-than-perimeter marks
+sit on both sides of each centerline mark and horizontally between each
+diagonal pair. All perimeter marks use a smaller font than the interior
+diagonals and center marks, and are sized up to 80% of the interior font when
+the text fits. Diagonal marks occupy only the two
+interior side columns at a shallow 25-degree angle, leaving the middle column
+for horizontal marks. The diagonal pairs and centerline marks span the page's
+interior height instead of clustering around its center. Every line is centered
+within its watermark block. Each page's watermark text is emitted in one
+batched PDF text object with shared font-opacity setup, reducing repeated
+drawing and graphics-state operators. The same prepared bytes are used for
+online preview and repeat downloads. The verified account name is stored as
+the PDF author, the backend-provided download filename is stored as its title,
+and the verified email is stored as its subject and a keyword. The backend
+creates download filenames by placing the account's uppercase last name before
+the indexed resource title and uppercase first name after it, each name in
+square brackets (for example, `[REVIEWER] Lesson 1 [RITA].pdf`); the browser
+does not derive names from local profile or dashboard values.
 
 HTTPS protects source bytes in transit. Because the browser must receive and
 process those bytes, an authorized user who controls their browser can inspect
@@ -42,9 +61,10 @@ npm test --prefix reviewer-pdf-service
 ```
 
 The tests execute the browser worker in an isolated JavaScript context with
-the pinned library. They cover portrait and landscape pages, six watermark
-placements, invalid identity and input, page limits, source immutability, and
-a synthetic 20-page PDF. `npm run check:deployment-assets` verifies that the
+the pinned library. They cover portrait and landscape pages, dynamic watermark
+density and rotations, invalid identity and input, page limits, source
+immutability, and a synthetic 20-page PDF. `npm run check:deployment-assets`
+verifies that the
 worker and library are content-hashed and deployable.
 
 ## Request and processing flow

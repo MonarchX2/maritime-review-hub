@@ -1715,11 +1715,14 @@ function getReviewerAccountStatusResponse_(identity) {
 }
 
 function hasCompleteReviewerProfile_(account) {
+  var middleInitial = String(account && account.middleInitial || "").trim();
   return Boolean(
     account &&
       String(account.lastName || "").trim() &&
       String(account.firstName || "").trim() &&
-      /^[A-Za-z]\.$/.test(String(account.middleInitial || "").trim()),
+      (!middleInitial ||
+        /^[A-Za-z]\.$/.test(middleInitial) ||
+        /^N\/A$/i.test(middleInitial)),
   );
 }
 
@@ -2001,12 +2004,14 @@ function handleReviewerEnrollmentRequest(data) {
   var middleInitial = cleanText(data && data.middleInitial, 10);
   if (!lastName || !firstName)
     return errorResponse("Enter your last name and first name.", "BAD_REQUEST");
-  if (!/^[A-Za-z]\.$/.test(middleInitial))
+  if (middleInitial && !/^[A-Za-z]\.$/.test(middleInitial) && !/^N\/A$/i.test(middleInitial))
     return errorResponse(
-      "Middle Initial must be exactly one letter followed by a period.",
+      "Middle Initial must be one letter and a period.",
       "BAD_REQUEST",
     );
-  middleInitial = middleInitial.toUpperCase();
+  middleInitial = /^N\/A$/i.test(middleInitial)
+    ? ""
+    : middleInitial.toUpperCase();
 
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000))
@@ -2101,24 +2106,12 @@ function handleReviewerEnrollmentRequest(data) {
         .setValues([accountValues]);
     } else {
       var targetRow = findFirstEmptyMRHAccountRow_(sheet);
-      if (targetRow <= sheet.getLastRow()) {
-        sheet
-          .getRange(targetRow, 1, 1, MRH_ACCOUNTS_HEADERS.length)
-          .setValues([accountValues]);
-      } else {
-        var appendResult = Sheets.Spreadsheets.Values.append(
-          { values: [accountValues] },
-          config.spreadsheetId,
-          MRH_ACCOUNTS_SHEET_NAME + "!A:G",
-          { valueInputOption: "RAW", insertDataOption: "INSERT_ROWS" },
-        );
-        if (
-          !appendResult ||
-          !appendResult.updates ||
-          Number(appendResult.updates.updatedRows) !== 1
-        )
-          throw new Error("The account review request could not be saved.");
-      }
+      var maxRows = sheet.getMaxRows();
+      if (targetRow > maxRows)
+        sheet.insertRowsAfter(maxRows, targetRow - maxRows);
+      sheet
+        .getRange(targetRow, 1, 1, MRH_ACCOUNTS_HEADERS.length)
+        .setValues([accountValues]);
     }
     invalidateMRHAccountCache_(config.spreadsheetId, verified.identity.email);
     var account = {
@@ -2456,6 +2449,33 @@ function reviewerPdfFailure_(data, startedAt, code, message) {
   return errorResponse(message, code);
 }
 
+function reviewerPdfDownloadName_(fileName, firstName, lastName) {
+  var title = String(fileName || "")
+    .normalize("NFKC")
+    .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, " ")
+    .replace(/\breviewers?\b/gi, "")
+    .replace(/\s+/g, " ")
+    .replace(/\.pdf$/i, "")
+    .replace(/[. ]+$/g, "")
+    .trim()
+    .slice(0, 140);
+  var safeFirstName = String(firstName || "")
+    .normalize("NFKC")
+    .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 50);
+  var safeLastName = String(lastName || "")
+    .normalize("NFKC")
+    .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 50);
+  if (!safeFirstName || !safeLastName) return "";
+  return "[" + safeLastName.toUpperCase() + "] " + (title || "PDF") + " [" +
+    safeFirstName.toUpperCase() + "].pdf";
+}
+
 function handleGetReviewerPdfPreviewRequest_(data) {
   var startedAt = Date.now();
   var authorization = authorizeReviewerPdfRequest_(data);
@@ -2489,6 +2509,19 @@ function handleGetReviewerPdfPreviewRequest_(data) {
       "Verified account details are required.",
     );
   }
+  var downloadFileName = reviewerPdfDownloadName_(
+    source.entry.title,
+    authorization.account.firstName,
+    authorization.account.lastName,
+  );
+  if (!downloadFileName) {
+    return reviewerPdfFailure_(
+      data,
+      startedAt,
+      "BAD_REQUEST",
+      "Verified account and resource names are required.",
+    );
+  }
   var cachedSourceVersion = String(data && data.cachedSourceVersion || "");
   if (/^[a-f0-9]{64}$/i.test(cachedSourceVersion) && cachedSourceVersion === source.sourceVersion)
     return jsonResponse({
@@ -2498,7 +2531,10 @@ function handleGetReviewerPdfPreviewRequest_(data) {
       mimeType: "application/pdf",
       sourceVersion: source.sourceVersion,
       fullName: fullName,
+      firstName: authorization.account.firstName,
+      lastName: authorization.account.lastName,
       email: authorization.email,
+      downloadFileName: downloadFileName,
     });
 
   var sourceBytes;
@@ -2547,7 +2583,10 @@ function handleGetReviewerPdfPreviewRequest_(data) {
     mimeType: "application/pdf",
     sourceVersion: source.sourceVersion,
     fullName: fullName,
+    firstName: authorization.account.firstName,
+    lastName: authorization.account.lastName,
     email: authorization.email,
+    downloadFileName: downloadFileName,
     deliveryMode: "source",
     data: Utilities.base64Encode(sourceBytes),
   });
@@ -2971,7 +3010,7 @@ function getResourceFolderBreadcrumbs(folder) {
 }
 
 function getResourceListingCacheKey(folderId, pageToken) {
-  return "mrh_resource_listing_v2_" +
+  return "mrh_resource_listing_v3_" +
     sha256Hex(String(folderId || "") + "\n" + String(pageToken || ""));
 }
 
@@ -3043,7 +3082,7 @@ function handleListPublicResourcesRequest(data) {
     pageSize: RESOURCE_PORTAL_MAX_ITEMS,
     pageToken: pageToken || undefined,
     fields:
-      "nextPageToken,files(id,name,mimeType,modifiedTime,shortcutDetails(targetId,targetMimeType))",
+      "nextPageToken,files(id,name,mimeType,modifiedTime,thumbnailLink,shortcutDetails(targetId,targetMimeType))",
     corpora: "user",
   });
   if (!driveResponse || !Array.isArray(driveResponse.files))
@@ -3084,6 +3123,8 @@ function handleListPublicResourcesRequest(data) {
     };
     if (!isFolder && driveItem.modifiedTime)
       item.modifiedTime = String(driveItem.modifiedTime);
+    if (!isFolder && driveItem.thumbnailLink)
+      item.thumbnailLink = String(driveItem.thumbnailLink);
     items.push(item);
   }
 

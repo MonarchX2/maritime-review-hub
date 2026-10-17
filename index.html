@@ -711,16 +711,24 @@
               id="resource-dashboard-return"
               class="resource-dashboard-return"
               onclick="navigate('dashboard')"
-              aria-label="Return to main menu"
-              title="Return to main menu"
+              aria-label="Home"
+              title="Home"
             >
-              <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
-              <span>Return</span>
+              <i class="fa-solid fa-house" aria-hidden="true"></i>
             </button>
             <span class="resource-dashboard-title" aria-label="Student Portal">
-              <i class="fa-solid fa-house" aria-hidden="true"></i>
               <span>Student Portal</span>
             </span>
+            <button
+              type="button"
+              id="resource-dashboard-course-names-toggle"
+              class="resource-dashboard-course-names-toggle"
+              aria-pressed="false"
+              aria-label="Display course codes. Toggle display."
+              title="Showing course codes"
+            >
+              COURSE
+            </button>
             <button
               type="button"
               id="resource-dashboard-profile-nav"
@@ -742,6 +750,15 @@
           </div>
           <div class="resource-portal-shell">
             <aside class="resource-portal-sidebar" aria-label="Dashboard tabs">
+              <button
+                type="button"
+                id="resource-dashboard-subjects-nav"
+                class="resource-portal-nav-item"
+                onclick="openResourceDashboardTab('SUBJECTS')"
+              >
+                <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+                Subjects
+              </button>
               <button
                 type="button"
                 id="resource-dashboard-syllabus-nav"
@@ -779,6 +796,74 @@
               class="resource-portal-browser resource-dashboard-browser"
               aria-label="Resource dashboard"
             >
+              <section
+                id="resource-dashboard-subjects-content"
+                class="resource-dashboard-listing resource-dashboard-subjects-listing"
+                aria-label="Subjects course catalogue"
+                hidden
+              >
+                <div class="resource-portal-toolbar resource-dashboard-subjects-toolbar">
+                  <div class="resource-dashboard-filters">
+                    <div class="resource-dashboard-control resource-dashboard-term-control">
+                      <span>Year</span>
+                      <span
+                        id="resource-dashboard-subjects-filter-year"
+                        class="resource-dashboard-segmented-control resource-dashboard-term-segments"
+                        role="group"
+                        aria-label="Subjects year filter"
+                      ></span>
+                    </div>
+                    <div class="resource-dashboard-control resource-dashboard-term-control">
+                      <span>Semester</span>
+                      <span
+                        id="resource-dashboard-subjects-filter-semester"
+                        class="resource-dashboard-segmented-control resource-dashboard-semester-segments"
+                        role="group"
+                        aria-label="Subjects semester filter"
+                      ></span>
+                    </div>
+                    <div class="resource-portal-search resource-dashboard-subjects-search-row">
+                      <label class="sr-only" for="resource-dashboard-subjects-search">Search subjects</label>
+                      <input
+                        id="resource-dashboard-subjects-search"
+                        type="search"
+                        placeholder="Search subjects"
+                        autocomplete="off"
+                        autocapitalize="characters"
+                      />
+                      <button
+                        type="button"
+                        id="resource-dashboard-subjects-search-clear"
+                        class="resource-dashboard-subjects-search-clear"
+                        aria-label="Clear subjects search"
+                        title="Clear search"
+                        disabled
+                      >
+                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <p
+                  id="resource-dashboard-subjects-status"
+                  class="resource-portal-status"
+                  role="status"
+                  aria-live="polite"
+                >Loading subjects…</p>
+                <div class="resource-dashboard-table-scroll">
+                  <div class="resource-dashboard-table-frame">
+                    <table class="resource-dashboard-table">
+                      <thead>
+                        <tr id="resource-dashboard-subjects-head">
+                          <th scope="col" class="resource-dashboard-column-course">Course</th>
+                          <th scope="col">Subjects</th>
+                        </tr>
+                      </thead>
+                      <tbody id="resource-dashboard-subjects-body"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </section>
               <div id="resource-dashboard-content" hidden>
                 <section
                   id="resource-reviewers-locked-panel"
@@ -801,6 +886,7 @@
                     Sign In
                   </button>
                 </section>
+                <div class="resource-dashboard-listing">
                 <div class="resource-portal-toolbar">
                   <div class="resource-dashboard-filters">
                     <label
@@ -954,6 +1040,7 @@
                 <p class="resource-dashboard-update-note">
                   File updates may take up to a minute.
                 </p>
+                </div>
               </div>
               <section
                 id="resource-dashboard-profile"
@@ -1011,13 +1098,6 @@
                       aria-live="polite"
                       hidden
                     ></div>
-                    <button
-                      type="button"
-                      id="resource-reviewer-signout"
-                      class="resource-profile-signout-button"
-                    >
-                      Sign out
-                    </button>
                   </div>
                   <form
                     id="resource-reviewer-enrollment-form"
@@ -1026,25 +1106,43 @@
                   >
                     <label>
                       <span>Last Name</span>
-                      <input
-                        id="resource-reviewer-last-name"
-                        name="lastName"
-                        autocomplete="family-name"
-                        autocapitalize="words"
-                        maxlength="100"
-                        required
-                      />
+                      <div class="resource-reviewer-input-wrap">
+                        <input
+                          id="resource-reviewer-last-name"
+                          name="lastName"
+                          autocomplete="family-name"
+                          autocapitalize="words"
+                          maxlength="100"
+                          required
+                        />
+                        <button
+                          type="button"
+                          class="resource-reviewer-input-clear"
+                          aria-label="Clear Last Name"
+                        >
+                          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                        </button>
+                      </div>
                     </label>
                     <label>
                       <span>First Name</span>
-                      <input
-                        id="resource-reviewer-first-name"
-                        name="firstName"
-                        autocomplete="given-name"
-                        autocapitalize="words"
-                        maxlength="100"
-                        required
-                      />
+                      <div class="resource-reviewer-input-wrap">
+                        <input
+                          id="resource-reviewer-first-name"
+                          name="firstName"
+                          autocomplete="given-name"
+                          autocapitalize="words"
+                          maxlength="100"
+                          required
+                        />
+                        <button
+                          type="button"
+                          class="resource-reviewer-input-clear"
+                          aria-label="Clear First Name"
+                        >
+                          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                        </button>
+                      </div>
                     </label>
                     <p
                       id="resource-reviewer-email-name-warning"
@@ -1059,16 +1157,24 @@
                     </p>
                     <label>
                       <span>Middle Initial</span>
-                      <input
-                        id="resource-reviewer-middle-initial"
-                        name="middleInitial"
-                        autocomplete="additional-name"
-                        autocapitalize="characters"
-                        maxlength="2"
-                        pattern="[A-Za-z]\."
-                        title="Enter exactly one letter followed by a period."
-                        required
-                      />
+                      <div class="resource-reviewer-input-wrap">
+                        <input
+                          id="resource-reviewer-middle-initial"
+                          name="middleInitial"
+                          autocomplete="additional-name"
+                          autocapitalize="characters"
+                          maxlength="3"
+                          pattern="[A-Za-z]\."
+                          title="Optional. Enter one letter followed by a period."
+                        />
+                        <button
+                          type="button"
+                          class="resource-reviewer-input-clear"
+                          aria-label="Clear Middle Initial"
+                        >
+                          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                        </button>
+                      </div>
                     </label>
                     <div class="resource-reviewer-form-actions">
                       <button type="submit">
@@ -1091,6 +1197,14 @@
                       hidden
                     ></p>
                   </form>
+                  <button
+                    type="button"
+                    id="resource-reviewer-signout"
+                    class="resource-profile-signout-button"
+                    hidden
+                  >
+                    Sign Out
+                  </button>
                 </div>
               </section>
             </section>
@@ -2337,6 +2451,31 @@
             <div id="about-changelog-entries" class="mt-3">
               <!-- ABOUT CHANGELOG START -->
                 <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.11.0
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Added
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Populate the Student Portal SUBJECTS catalogue with centralized course titles, ordering labels, searchable entries, and a consistently centered table with an always-visible Year column.</li>
+                  <li>Add inline clear controls to reviewer name fields.</li>
+                </ul>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Improved
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Keep Semester selectable across all four Student Portal sections when Year is set to All, and preserve valid semester choices when changing years.</li>
+                  <li>Make reviewer Middle Initial optional, clear the entire value on deletion, and show Resubmit for denied profiles.</li>
+                  <li>Support combined resource-index data, numeric sequence ordering, and fixed 3.1 catalogue terms for the designated courses.</li>
+                  <li>Refine in-site resource navigation, reviewer activity logging, and browser PDF watermark processing.</li>
+                </ul>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Prevent an unavailable saved semester from leaving the Subjects catalogue empty after changing the Year filter.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 26.10.35
                 </h5>
                 <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
@@ -2359,6 +2498,7 @@
                   <li>Remove Apps Script PDF parsing, queue polling, generated Drive derivatives, and the <code>PDFs</code> output-folder requirement. Keep a one-time helper to retire legacy queue triggers and Script Properties.</li>
                   <li>Deliver source PDFs only through the authenticated, HTTPS-protected Reviewer endpoint. Document the browser-source visibility trade-off and restore content-hashed worker and <code>pdf-lib</code> assets.</li>
                 </ul>
+                <div id="about-changelog-older" class="hidden">
                 <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 26.10.33
                 </h5>
@@ -2371,7 +2511,6 @@
                   <li>Restore the last Student Portal section for signed-in users, fix first-page folder pagination, and raise the in-site preview transport limit to 32 MiB.</li>
                   <li>Match folder previews to the site theme, enforce course-matched lesson labels, clear the download notice after three seconds, and remove obsolete browser-side PDF processing assets.</li>
                 </ul>
-                <div id="about-changelog-older" class="hidden">
                 <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 26.10.32
                 </h5>

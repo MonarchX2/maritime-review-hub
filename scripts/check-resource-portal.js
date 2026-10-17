@@ -163,7 +163,7 @@ assert.match(
 );
 assert.match(
   index,
-  /class="resource-dashboard-topbar"[\s\S]*?resource-dashboard-title" aria-label="Student Portal"[\s\S]*?fa-house[\s\S]*?<span>Student Portal<\/span>[\s\S]*?id="resource-dashboard-profile-nav"[^>]*onclick="openResourceDashboardTab\('PROFILE'\)"[^>]*aria-label="Profile"[\s\S]*?<\/button>\s*<\/div>\s*<div class="resource-portal-shell">/,
+  /class="resource-dashboard-topbar"[\s\S]*?resource-dashboard-title" aria-label="Student Portal"[\s\S]*?<span>Student Portal<\/span>[\s\S]*?id="resource-dashboard-profile-nav"[^>]*onclick="openResourceDashboardTab\('PROFILE'\)"[^>]*aria-label="Profile"[\s\S]*?<\/button>\s*<\/div>\s*<div class="resource-portal-shell">/,
   "the Profile button should sit to the right of the Student Portal title, outside the resource tabs",
 );
 assert.match(
@@ -184,7 +184,7 @@ assert.doesNotMatch(
 );
 assert.match(
   index,
-  /id="resource-dashboard-content" hidden[\s\S]*?id="resource-dashboard-profile"[^>]*class="resource-profile-screen"[^>]*aria-label="Profile settings"(?![^>]*hidden)[\s\S]*?resource-reviewer-auth-status[\s\S]*?resource-reviewer-signin-button[\s\S]*?resource-profile-account-details[\s\S]*?resource-profile-name[\s\S]*?resource-profile-email[\s\S]*?resource-reviewer-signout[\s\S]*?resource-reviewer-enrollment-form/,
+  /id="resource-dashboard-content" hidden[\s\S]*?id="resource-dashboard-profile"[^>]*class="resource-profile-screen"[^>]*aria-label="Profile settings"(?![^>]*hidden)[\s\S]*?resource-reviewer-auth-status[\s\S]*?resource-reviewer-signin-button[\s\S]*?resource-profile-account-details[\s\S]*?resource-profile-name[\s\S]*?resource-profile-email[\s\S]*?resource-reviewer-enrollment-form[\s\S]*?resource-reviewer-signout/,
   "Profile should remain the signed-out fallback with login/enrollment controls",
 );
 assert.doesNotMatch(
@@ -229,8 +229,18 @@ assert.doesNotMatch(
 );
 assert.match(
   index,
-  /Middle Initial[\s\S]*?name="middleInitial"[\s\S]*?maxlength="2"[\s\S]*?pattern="\[A-Za-z\]\\\."[\s\S]*?required/,
-  "profile should require a middle initial consisting of one letter and a period",
+  /Middle Initial[\s\S]*?name="middleInitial"[\s\S]*?maxlength="3"[\s\S]*?pattern="\[A-Za-z\]\\\."/,
+  "profile should allow a blank optional middle initial or a single initial",
+);
+const middleInitialInput =
+  index.match(
+    /<input\s+id="resource-reviewer-middle-initial"[\s\S]*?\/>/,
+  )?.[0] || "";
+assert.ok(middleInitialInput, "the middle-initial input should be present");
+assert.doesNotMatch(
+  middleInitialInput,
+  /\brequired\b/,
+  "native form validation must allow a blank optional middle initial",
 );
 const middleInitialPattern = /^[A-Z]\.$/;
 assert.deepEqual(
@@ -245,8 +255,8 @@ assert.deepEqual(
 );
 assert.match(
   index,
-  /title="Enter exactly one letter followed by a period\."/,
-  "the middle-initial hint should not imply that only one specific letter is accepted",
+  /title="Optional\. Enter one letter followed by a period\."/,
+  "the middle-initial hint should describe the optional field",
 );
 const middleInitialNormalizer =
   appCore.match(
@@ -254,10 +264,11 @@ const middleInitialNormalizer =
   )?.[0] || "";
 assert.ok(
   middleInitialNormalizer.includes(
-    'input.value.toLocaleUpperCase().replace(/[^A-Z]/g, "")',
+    'value.replace(/[^A-Z]/g, "")',
   ) &&
+    middleInitialNormalizer.includes('if (value === "N/A")') &&
     middleInitialNormalizer.includes(
-      'event?.inputType?.startsWith("delete") && letters.length === 1',
+      'event?.inputType?.startsWith("delete")',
     ) &&
     middleInitialNormalizer.includes("`${initial}.`") &&
     middleInitialNormalizer.includes("? initial"),
@@ -270,8 +281,10 @@ const normalizeMiddleInitial = new Function(
   ["a", {}, "A."],
   ["smith", {}, "S."],
   ["a..", {}, "A."],
-  ["b", { inputType: "deleteContentBackward" }, "B"],
+  ["ab", { inputType: "deleteContentBackward" }, ""],
+  ["A.", { inputType: "deleteContentBackward" }, ""],
   ["", { inputType: "deleteContentBackward" }, ""],
+  ["N/A", {}, ""],
 ].forEach(([value, event, expected]) => {
   const input = { value };
   normalizeMiddleInitial(input, event);
@@ -285,6 +298,27 @@ assert.match(
   appCore,
   /middleInitialInput\.addEventListener\("input", normalizeMiddleInitial\)[\s\S]*?middleInitialInput\.addEventListener\("change",[\s\S]*?middleInitialInput\.addEventListener\("blur",/,
   "autofilled middle initials should be normalized on input, change, blur, and submit",
+);
+assert.match(
+  index,
+  /resource-reviewer-input-wrap[\s\S]*?id="resource-reviewer-last-name"[\s\S]*?resource-reviewer-input-clear[\s\S]*?id="resource-reviewer-first-name"[\s\S]*?resource-reviewer-input-clear[\s\S]*?id="resource-reviewer-middle-initial"[\s\S]*?resource-reviewer-input-clear/,
+  "name-entry inputs should each have an inline clear button on the right",
+);
+const reviewerInputClearButtons = [
+  ...index.matchAll(
+    /<button\b[^>]*class="resource-reviewer-input-clear"[\s\S]*?<\/button>/g,
+  ),
+].map(([button]) => button);
+assert.equal(
+  reviewerInputClearButtons.length,
+  3,
+  "all three name inputs should have a clear button",
+);
+assert.ok(
+  reviewerInputClearButtons.every(
+    (button) => !/(?:^|\s)hidden(?:\s|=|>)/.test(button),
+  ),
+  "name-input clear buttons should be visible before typing",
 );
 assert.match(
   appCore,
@@ -448,21 +482,19 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(!lastName \|\| !firstName \|\| !\/\^\[A-Z\]\\\.\$\/\.test\(middleInitial\)\)/,
-  "profile submission should reject a middle initial that is not one letter and a period",
+  /if \(\s*!lastName \|\|\s*!firstName \|\|\s*\(middleInitial && !\/\^\[A-Z\]\\\.\$\/\.test\(middleInitial\)\)\s*\)/,
+  "profile submission should accept a blank optional middle initial and validate provided initials",
 );
 const enrollmentHandler =
   appCore.match(
     /async function requestReviewerEnrollment\(event\)[\s\S]*?(?=\n  async function )/,
   )?.[0] || "";
 assert.ok(
-  enrollmentHandler.includes(
-    'if (!lastName || !firstName || !/^[A-Z]\\.$/.test(middleInitial))',
-  ) &&
-    enrollmentHandler.indexOf(
-      'if (!lastName || !firstName || !/^[A-Z]\\.$/.test(middleInitial))',
-    ) < enrollmentHandler.indexOf("globalScope.AppNetwork.callBackend"),
-  "the frontend should reject invalid name formats before calling the backend",
+  !enrollmentHandler.includes('middleInitialInput.value = "N/A"') &&
+    enrollmentHandler.includes("middleInitial && !/^[A-Z]\\.$/.test(middleInitial)") &&
+    enrollmentHandler.indexOf("middleInitial && !/^[A-Z]\\.$/.test(middleInitial)") <
+      enrollmentHandler.indexOf("globalScope.AppNetwork.callBackend"),
+  "the frontend should leave an optional middle initial blank and reject invalid provided values",
 );
 assert.match(
   appCore,
@@ -510,13 +542,13 @@ assert.doesNotMatch(
 );
 assert.match(
   index,
-  /id="resource-profile-access-status"[^>]*hidden[\s\S]*?id="resource-reviewer-signout"[^>]*class="resource-profile-signout-button"[\s\S]*?Sign out/,
-  "Sign out should be centered below the access status without a redundant Edit control",
+  /id="resource-reviewer-enrollment-form"[\s\S]*?<\/form>\s*<button[^>]*id="resource-reviewer-signout"[^>]*class="resource-profile-signout-button"[^>]*hidden[^>]*>\s*Sign Out/,
+  "Sign Out should appear directly below the name verification form's Verify action and remain hidden until a reviewer session is verified",
 );
 assert.match(
   appCore,
-  /form\.hidden = !\(\s*accountStatus === "NOT_FOUND" \|\| accountStatus === "DENIED"\s*\)[\s\S]*?accountStatus === "NOT_FOUND"\s*\? "Verify"[\s\S]*?accountStatus === "DENIED"\s*\?\s*"Submit"/,
-  "unverified accounts should see a Verify submit action and denied accounts can resubmit without an Edit button",
+  / form\.hidden = !\(\s*accountStatus === "NOT_FOUND" \|\| accountStatus === "DENIED"\s*\)[\s\S]*?accountStatus === "NOT_FOUND"\s*\? "Verify"[\s\S]*?accountStatus === "DENIED"\s*\?\s*"Resubmit"/,
+  "unverified accounts should see a Verify action and denied accounts a Resubmit action without an Edit button",
 );
 assert.doesNotMatch(
   index + appCore,
@@ -592,8 +624,8 @@ assert.doesNotMatch(
 );
 assert.match(
   index,
-  /resource-dashboard-topbar[\s\S]*?id="resource-dashboard-return"[\s\S]*?aria-label="Return to main menu"[\s\S]*?<span>Return<\/span>[\s\S]*?resource-dashboard-title" aria-label="Student Portal"[\s\S]*?fa-house[\s\S]*?<span>Student Portal<\/span>[\s\S]*?resource-portal-shell/,
-  "the dashboard should place a Return button and Student Portal label above and outside its card",
+  /resource-dashboard-topbar[\s\S]*?id="resource-dashboard-return"[\s\S]*?aria-label="Home"[\s\S]*?fa-house[\s\S]*?resource-dashboard-title" aria-label="Student Portal"[\s\S]*?<span>Student Portal<\/span>[\s\S]*?resource-portal-shell/,
+  "the dashboard should place a home button and Student Portal label above and outside its card",
 );
 assert.match(
   index,
@@ -613,7 +645,12 @@ assert.doesNotMatch(
 assert.match(
   index,
   /<span class="resource-dashboard-title" aria-label="Student Portal">[\s\S]*?<span>Student Portal<\/span>\s*<\/span>/,
-  "the dashboard title should retain its accessible text and a home icon",
+  "the dashboard title should retain its accessible text without a redundant home icon",
+);
+assert.doesNotMatch(
+  index.match(/<span class="resource-dashboard-title" aria-label="Student Portal">[\s\S]*?<\/span>/)?.[0] || "",
+  /fa-house/,
+  "the redundant home icon should not appear beside the Student Portal title",
 );
 assert.doesNotMatch(
   index,
@@ -693,8 +730,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /resourceDashboardSelectedCategories = \{\s*MODULES: "all",\s*REVIEWERS: "all",\s*SYLLABUS: "all",\s*\}/,
-  "the category filter should default to All",
+  /resourceDashboardSelectedCategories = \{\s*MODULES: "PRELIMS",\s*REVIEWERS: "all",\s*SYLLABUS: "all",\s*SUBJECTS: "all",\s*\}/,
+  "the Modules category filter should default to PRELIMS",
 );
 assert.match(
   appCore,
@@ -758,7 +795,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /resourceTitle\.replace\(\/\\\.pdf\$\/i,\s*""\)/,
+  /cleanResourceDisplayName\(resourceTitle\)\.replace\(\/\\\.pdf\$\/i,\s*""\)/,
   "PDF buttons should omit the extension from their visible title",
 );
 assert.match(
@@ -788,8 +825,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-return span\s*\{\s*display:\s*none;/,
-  "small screens should show the return arrow without its text label",
+  /\.resource-dashboard-return i\s*\{[^}]*font-size:\s*1rem;/,
+  "the home navigation control should display its home icon",
 );
 assert.match(
   resourceStyles,
@@ -934,13 +971,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(!hasTermFilter \|\| resourceDashboardSelectedYear === "all"\)\s*return true;[\s\S]*?year === resourceDashboardSelectedYear &&\s*\(resourceDashboardSelectedSemester === "all" \|\|\s*semester === resourceDashboardSelectedSemester\)/,
-  "All Year Levels should show every row; specific years should filter by semester",
+  /if \(!hasTermFilter\) return true;[\s\S]*?\(resourceDashboardSelectedYear === "all" \|\|\s*year === resourceDashboardSelectedYear\) &&\s*\(resourceDashboardSelectedSemester === "all" \|\|\s*semester === resourceDashboardSelectedSemester\)/,
+  "All Year Levels should retain semester filtering while skipping only the year constraint",
 );
 assert.match(
   appCore,
-  /\.filter\(\s*\(term\) => term\.split\("\."\)\[0\] === resourceDashboardSelectedYear/,
-  "semester options should reflect the selected year",
+  /\.filter\(\s*\(term\) =>\s*allYearLevelsSelected \|\|\s*term\.split\("\."\)\[0\] === resourceDashboardSelectedYear/,
+  "semester options should reflect the selected year, or all available years when Year is All",
 );
 assert.match(
   appCore,
@@ -955,12 +992,12 @@ assert.match(
 assert.match(
   resourceStyles,
   /\.resource-dashboard-filters\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/,
-  "Year and Semester should sit side by side above a full-width category segmented control",
+  "Year and Semester should share the first filter row",
 );
 assert.match(
   resourceStyles,
   /#resource-dashboard-category-filter\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*width:\s*100%;/,
-  "the category control should span the full filter row",
+  "Category should span the second filter row",
 );
 assert.doesNotMatch(
   index,
@@ -969,7 +1006,7 @@ assert.doesNotMatch(
 );
 assert.match(
   appCore,
-  /if \(!hasTermFilter \|\| resourceDashboardSelectedYear === "all"\)\s*return true;/,
+  /if \(!hasTermFilter\) return true;/,
   "tabs without year data should remain visible without term filtering",
 );
 assert.match(
@@ -1363,7 +1400,7 @@ assert.match(
   });
   context.appendMRHAccessLog_ = () => true;
   context.getReviewerPdfSource_ = (fileId) => ({
-    entry: { fileId, title: "Reviewer.pdf" },
+    entry: { fileId, title: "NAV7 Lesson 1.pdf" },
     driveFile: { id: fileId, name: "Reviewer.pdf" },
     sourceVersion: "a".repeat(64),
   });
@@ -1386,7 +1423,30 @@ assert.match(
   assert.equal(sourceResponse.deliveryMode, "source");
   assert.equal(sourceResponse.mimeType, "application/pdf");
   assert.equal(sourceResponse.fullName, "Rita A. Reviewer");
+  assert.equal(sourceResponse.firstName, "Rita");
+  assert.equal(sourceResponse.lastName, "Reviewer");
   assert.equal(sourceResponse.email, "reviewer@example.com");
+  assert.equal(
+    context.reviewerPdfDownloadName_(
+      "NAV7 Lesson 1.pdf",
+      "Rita",
+      "Reviewer",
+    ),
+    "[REVIEWER] NAV7 Lesson 1 [RITA].pdf",
+  );
+  assert.equal(
+    context.reviewerPdfDownloadName_(
+      "Lesson: 1?.pdf",
+      "Rita",
+      "Reviewer",
+    ),
+    "[REVIEWER] Lesson 1 [RITA].pdf",
+    "the backend should sanitize resource names before constructing download filenames",
+  );
+  assert.equal(
+    sourceResponse.downloadFileName,
+    "[REVIEWER] NAV7 Lesson 1 [RITA].pdf",
+  );
   assert.deepEqual([...Buffer.from(sourceResponse.data, "base64")], sourceBytes);
   assert.equal(sourceResponse.watermarked, undefined);
   assert.equal(sourceDriveReads, 1);
@@ -1401,6 +1461,14 @@ assert.match(
   );
   assert.equal(cachedSourceResponse.cacheHit, true);
   assert.equal(cachedSourceResponse.deliveryMode, "source");
+  assert.equal(cachedSourceResponse.fullName, "Rita A. Reviewer");
+  assert.equal(cachedSourceResponse.firstName, "Rita");
+  assert.equal(cachedSourceResponse.lastName, "Reviewer");
+  assert.equal(cachedSourceResponse.email, "reviewer@example.com");
+  assert.equal(
+    cachedSourceResponse.downloadFileName,
+    "[REVIEWER] NAV7 Lesson 1 [RITA].pdf",
+  );
   assert.equal(cachedSourceResponse.data, undefined);
   assert.equal(sourceDriveReads, 1, "validated browser cache avoids another source download");
 

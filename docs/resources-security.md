@@ -219,7 +219,7 @@ To initialize sign-in and access logging:
    obsolete reviewer status-email trigger and queued notification properties.
    Reviewer access changes are reflected through the website's account-status
    checks; the backend does not send access-status emails.
-6. On first sign-in, a user submits `Last Name`, `First Name`, and
+6. On first sign-in, a user submits `Last Name`, `First Name`, and optionally
    `Middle Initial`. The backend verifies the Google identity and saves one
    account row per verified email with `Active=FALSE`. Reviewer resources stay
    locked until an administrator changes `Active` to `TRUE`. Set `Active` to

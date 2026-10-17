@@ -24,8 +24,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /resourceDashboardSelectedCategories = \{\s*MODULES: "all",\s*REVIEWERS: "all",\s*SYLLABUS: "all"/,
-  "each Student Portal section should have a separate saved category selection",
+  /resourceDashboardSelectedCategories = \{\s*MODULES: "PRELIMS",\s*REVIEWERS: "all",\s*SYLLABUS: "all"/,
+  "Modules should default to PRELIMS while other sections default to All",
 );
 assert.match(
   appCore,
@@ -159,7 +159,7 @@ assert.doesNotMatch(
 assert.match(
   appCore,
   /function updateResourceDashboardFilterIndicators\(\)[\s\S]*?getBoundingClientRect\(\)[\s\S]*?selectedRect\.left - controlRect\.left - control\.clientLeft[\s\S]*?selectedRect\.top - controlRect\.top - control\.clientTop[\s\S]*?"--filter-indicator-height"[\s\S]*?if \(!control\.classList\.contains\("has-filter-indicator"\)\)[\s\S]*?requestAnimationFrame\(revealIndicator\)[\s\S]*?setTimeout\(revealIndicator, 0\)/,
-  "the active filter highlight should align to the selected segment inside the bordered control and animate only after initial render",
+  "the active filter highlight should align to the selected segment inside the bordered control",
 );
 assert.match(
   appCore,
@@ -173,8 +173,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-segmented-control::before[\s\S]*?left 420ms[\s\S]*?prefers-reduced-motion:\s*reduce[\s\S]*?transition:\s*none/,
-  "the active filter highlight should slide at a relaxed speed while respecting reduced-motion settings",
+  /\.resource-dashboard-segmented-control::before\s*\{[^}]*transition:\s*none;/,
+  "the filter highlight should appear in place without sliding into its selected segment",
 );
 const folderRenderer =
   appCore.match(
@@ -182,28 +182,33 @@ const folderRenderer =
   )?.[0] || "";
 assert.match(
   folderRenderer,
-  /Up one level[\s\S]*?aria-label", "Folder view"[\s\S]*?\["list", "List view"[\s\S]*?\["grid", "Grid view"/,
-  "folder previews should hide the full path while retaining parent navigation and list/grid controls",
+  /aria-label", "Folder view"[\s\S]*?\["list", "List view"[\s\S]*?\["grid", "Grid view"[\s\S]*?thumbnailLink/,
+  "folder previews should provide list/grid controls and use available file thumbnails",
 );
 assert.doesNotMatch(
   folderRenderer,
-  /listing\.breadcrumbs\.forEach/,
-  "folder previews must not render the full breadcrumb path",
+  /Up one level/,
+  "folder previews should not show a redundant parent navigation button",
+);
+assert.match(
+  backend,
+  /thumbnailLink,shortcutDetails[\s\S]*?item\.thumbnailLink = String\(driveItem\.thumbnailLink\)/,
+  "the resource listing should provide Drive thumbnails for grid previews",
 );
 assert.match(
   appCore,
-  /resourceDashboardSelectedSemester === "all"[\s\S]*?resource-dashboard-course-term[\s\S]*?`BSMT \$\{year\}\.\$\{semester\}`/,
-  "course rows should show their BSMT term as a secondary line when Semester is All",
-);
-assert.match(
-  appCore,
-  /"All BSMT Year levels"[\s\S]*?`BSMT \$\{selectedYearName\} Year`[\s\S]*?`BSMT \$\{resourceDashboardSelectedYear\}\.\$\{resourceDashboardSelectedSemester\}`/,
-  "filter summaries should use the requested BSMT year and term labels",
+  /if \(\s*columnName === "course" &&\s*yearColumnIndex >= 0\s*\)[\s\S]*?resource-dashboard-course-term[\s\S]*?`BSMT \$\{year\}\.\$\{semester\}`/,
+  "course rows should always show their BSMT term as a secondary line",
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-course-term\s*\{[^}]*font-weight:\s*400;/,
-  "the BSMT subtitle should be non-bold",
+  /\.resource-dashboard-course-term\s*\{[^}]*font-weight:\s*400;[^}]*font-style:\s*italic;/,
+  "the BSMT subtitle should be italic and non-bold",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-course-label,\s*\.resource-dashboard-course-term\s*\{[^}]*line-height:\s*1\.05;[\s\S]*?\.resource-dashboard-course-term\s*\{[^}]*margin:\s*-0\.1rem 0 0;/,
+  "the BSMT subtitle should sit closer to the course name",
 );
 assert.match(
   resourceStyles,
@@ -274,6 +279,16 @@ assert.ok(reviewerLessonTitleHelper, "Reviewer PDF lesson titles should have a s
 const getReviewerPdfLessonTitle = new Function(
   `${reviewerLessonTitleHelper[0]}; return getReviewerPdfLessonTitle;`,
 )();
+assert.match(
+  appCore,
+  /link\.download = activePdf\.downloadFileName/,
+  "Reviewer downloads should use the filename returned by the backend without deriving it from local data",
+);
+assert.match(
+  appCore,
+  /typeof response\.downloadFileName !== "string"[\s\S]*?The backend did not provide verified account and download metadata/,
+  "Reviewer preview should reject responses without authoritative backend download metadata",
+);
 assert.deepEqual(
   JSON.parse(
     JSON.stringify(
@@ -285,7 +300,7 @@ assert.deepEqual(
   ),
   {
     lesson: "Lesson 1-2",
-    details: "1914H - 12.10.26",
+    details: "(1914H - 12.10.26)",
     header: "Lesson 1-2 (1914H - 12.10.26)",
   },
   "Reviewer titles should split lesson and parenthetical details into compact display lines",
@@ -324,7 +339,7 @@ assert.deepEqual(
   ),
   {
     lesson: "Lesson 1-2",
-    details: "1914H - 12.10.26",
+    details: "(1914H - 12.10.26)",
     header: "Lesson 1-2 (1914H - 12.10.26)",
   },
   "an existing Lesson X may be parsed before the filename's matched course",
@@ -471,8 +486,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /hasSeenResourceChangeBadge\([\s\S]*?updatedAt,[\s\S]*?changeType,[\s\S]*?true,[\s\S]*?badge\.remove\(\)/,
-  "opening a marked resource should consume and remove its NEW or UPDATED badge exactly once",
+  /hasSeenResourceChangeBadge\([\s\S]*?updatedAt,[\s\S]*?changeType,[\s\S]*?true,[\s\S]*?badge\.remove\(\)[\s\S]*?link\.removeAttribute\("aria-label"\)[\s\S]*?\{ once: true, capture: true \}/,
+  "the first chip click should synchronously consume and remove its NEW or UPDATED badge before opening the resource",
 );
 assert.match(
   appCore,
@@ -790,7 +805,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(\s*resourceDashboardActiveTab === "REVIEWERS" &&\s*!nonEmptyRows\.length\s*\) \{\s*status\.textContent = "No review materials are currently available\."/,
+  /const hasNoReviewerMaterials =\s*resourceDashboardActiveTab === "REVIEWERS" && !nonEmptyRows\.length;\s*if \(hasNoReviewerMaterials\) \{\s*status\.textContent = "No review materials are currently available\."/,
   "Reviewer tables with no resources should show an empty state, while unavailable filters are disabled",
 );
 assert.doesNotMatch(
@@ -892,9 +907,36 @@ assert.match(
 );
 assert.match(
   fs.readFileSync("reviewer-pdf-worker.js", "utf8"),
-  /const WATERMARK_PLACEMENTS = \[[\s\S]*?\[0\.035, 0\.035, "left", "bottom"\][\s\S]*?\[0\.965, 0\.035, "right", "bottom"\][\s\S]*?\[0\.5, 0\.035, "center", "bottom"\][\s\S]*?\[0\.035, 0\.965, "left", "top"\][\s\S]*?\[0\.965, 0\.965, "right", "top"\][\s\S]*?\[0\.5, 0\.965, "center", "top"\][\s\S]*?\];[\s\S]*?const email = sanitizeWatermarkText\(identity\?\.email, 254\);[\s\S]*?Math\.max\(40, size\.width \* 0\.46\)[\s\S]*?opacity:\s*0\.18[\s\S]*?rotate:\s*PDFLib\.degrees\(0\)/,
-  "browser-generated PDFs should use six small horizontal watermarks at all corners and top/bottom center, preserving email case",
+  /const email = sanitizeWatermarkText\(identity\?\.email, 254\);[\s\S]*?const drawBlock = \(centerX, centerY, angle, blockFontSize\)[\s\S]*?watermarkTextLines\.push\([\s\S]*?page\.pushOperators\(\.\.\.operators\)/,
+  "browser-generated PDFs should batch centered horizontal and rotated marks while preserving email case",
 );
+const watermarkWorker = fs.readFileSync("reviewer-pdf-worker.js", "utf8");
+[
+  "[0.17, 0.5, 0.83]",
+  "size.height - perimeterMargin",
+  "size.width - perimeterMargin",
+  "const firstRowY = size.height * 0.12",
+  "const lastRowY = size.height * 0.88",
+  "Math.floor((lastRowY - firstRowY) / targetRowSpacing) + 1",
+  "[0.23, 0.77].forEach((x)",
+  "y + rowSpacing / 2",
+  "[0.12, 0.88].forEach((x)",
+  "drawBlock(size.width * 0.5, y, 0, smallFontSize)",
+  "perimeterFontSize * 0.7",
+  "PDFLib.setTextMatrix(...matrix)",
+  "PDFLib.showText(font.encodeText(line))",
+  "page.pushOperators(...operators)",
+  "pdf.setAuthor(fullName)",
+  "pdf.setTitle(downloadFileName)",
+  "pdf.setSubject(email)",
+  "pdf.setKeywords([fullName, email])",
+  "interiorFontSize",
+].forEach((placement) => {
+  assert.ok(
+    watermarkWorker.includes(placement),
+    `the watermark layout should include ${placement}`,
+  );
+});
 assert.match(
   resourceStyles,
   /\.resource-portal-preview\.is-fullscreen\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0;[^}]*height:\s*100vh;[^}]*height:\s*100dvh/,
@@ -1112,7 +1154,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(\s*resourceDashboardActiveTab === "REVIEWERS" &&\s*!nonEmptyRows\.length\s*\) \{\s*status\.textContent = "No review materials are currently available\."/,
+  /const hasNoReviewerMaterials =\s*resourceDashboardActiveTab === "REVIEWERS" && !nonEmptyRows\.length;\s*if \(hasNoReviewerMaterials\) \{\s*status\.textContent = "No review materials are currently available\."/,
   "a successfully loaded empty Reviewer table should show an explicit empty state instead of a zero-row count",
 );
 assert.match(
@@ -1252,8 +1294,187 @@ assert.doesNotMatch(
 );
 assert.match(
   indexHtml,
-  /class="resource-dashboard-title" aria-label="Student Portal"[\s\S]*?fa-house[\s\S]*?id="resource-dashboard-syllabus-nav"[\s\S]*?id="resource-dashboard-reviewers-nav"[\s\S]*?fa-clipboard-list/,
-  "the portal title should retain a home icon and the tabs a lined-note Reviewer icon",
+  /id="resource-dashboard-subjects-nav"[\s\S]*?Subjects[\s\S]*?id="resource-dashboard-syllabus-nav"[\s\S]*?Syllabus[\s\S]*?id="resource-dashboard-modules-nav"[\s\S]*?Modules[\s\S]*?id="resource-dashboard-reviewers-nav"[\s\S]*?fa-clipboard-list/,
+  "the portal should show Subjects left of Syllabus alongside Modules and Reviewers",
+);
+assert.match(
+  indexHtml,
+  /id="resource-dashboard-return"[^>]*aria-label="Home"[\s\S]*?fa-house/,
+  "the return control should be a home icon instead of an arrow and text label",
+);
+assert.match(
+  indexHtml,
+  /id="resource-dashboard-course-names-toggle"[\s\S]*?id="resource-dashboard-profile-nav"/,
+  "the universal course display toggle should be immediately left of the profile control",
+);
+assert.match(
+  appCore,
+  /RESOURCE_DASHBOARD_COURSE_NAMES_KEY[\s\S]*?courseNamesToggle\.addEventListener\("click"[\s\S]*?renderResourceDashboardTab\(\)/,
+  "the course display preference should persist and rerender Student Portal resource sections",
+);
+assert.match(
+  appCore,
+  /courseNamesToggle\.textContent = selected \? "SUBJECTS" : "COURSE"/,
+  "the display toggle should use COURSE and SUBJECTS labels",
+);
+assert.match(
+  appCore,
+  /let resourceDashboardCourseNamesEnabled = false;[\s\S]*?localStorage\.getItem\(\s*RESOURCE_DASHBOARD_COURSE_NAMES_KEY/,
+  "the toggle should default to COURSE and restore the user's saved choice",
+);
+const subjectsPanel =
+  indexHtml.match(
+    /<section\s+id="resource-dashboard-subjects-content"[\s\S]*?<\/section>/,
+  )?.[0] || "";
+assert.ok(
+  [  "Subjects course catalogue", "resource-dashboard-subjects-filter-year",
+  "resource-dashboard-subjects-filter-semester",
+  "resource-dashboard-subjects-status",
+  "resource-dashboard-subjects-search",
+  "resource-dashboard-subjects-body"].every((marker) =>
+    subjectsPanel.includes(marker),
+  ),
+  "Subjects should be a separate populated tab with working filters, search, status, and the dashboard table format",
+);
+assert.doesNotMatch(
+  subjectsPanel,
+  /resource-dashboard-subjects-title|fa-book-open/,
+  "the Subjects section should not repeat a SUBJECTS title inside its panel",
+);
+assert.equal(
+  (subjectsPanel.match(/<th scope="col"/g) || []).length,
+  2,
+  "the Subjects catalogue should have exactly two columns",
+);
+assert.match(
+  subjectsPanel,
+  /class="resource-dashboard-column-course">Course<\/th>[\s\S]*?>Subjects<\/th>/,
+  "the Subjects catalogue should use Course and Subjects headers",
+);
+assert.match(
+  subjectsPanel,
+  /class="resource-portal-search resource-dashboard-subjects-search-row"[\s\S]*?id="resource-dashboard-subjects-search"[\s\S]*?autocapitalize="characters"[\s\S]*?id="resource-dashboard-subjects-search-clear"/,
+  "the Subjects search should occupy the full-width row below the term filters",
+);
+assert.doesNotMatch(
+  subjectsPanel,
+  /resource-dashboard-subjects-filter-category|resource-dashboard-subjects-search-toggle|resource-dashboard-subjects-search-popover/,
+  "the Subjects panel should no longer include a Category filter or floating search popover",
+);
+const subjectsRenderer =
+  appCore.match(
+    /function renderResourceDashboardSubjects\(\)[\s\S]*?(?=\n  async function loadResourceDashboard)/,
+  )?.[0] || "";
+assert.ok(
+  [
+    "resourceDashboardData?.MODULES",
+    "resource-dashboard-subjects-filter-year",
+    "resource-dashboard-subjects-filter-semester",
+    "resource-dashboard-subjects-body",
+    "Boolean(query) ||",
+    "search.value.toLocaleUpperCase()",
+    "search.setSelectionRange(start, end)",
+    "const searchActive = Boolean(query)",
+    "searchActive || (value !== \"all\" && !values.has(value))",
+    "resource-dashboard-subjects-search-clear",
+    "const uniqueEntries = buildCourseCatalogEntries(visibleEntries)",
+    "subjectsTable?.classList.toggle(\"is-search-active\", searchActive)",
+    "yearCell.textContent = entry.year",
+    "subjectsCell.textContent = entry.subject",
+    "courseCell.classList.add(\"resource-dashboard-column-course\")",
+    "row.append(yearCell, courseCell, subjectsCell)",
+  ].every((marker) => subjectsRenderer.includes(marker)),
+  "the Subjects tab should render unique course catalogue records with course codes and mapped names",
+);
+assert.match(
+  subjectsRenderer,
+  /resourceDashboardSelectedSemesters\.SUBJECTS === "all" \|\|\s*semesters\.has\(resourceDashboardSelectedSemesters\.SUBJECTS\)\s*\?\s*resourceDashboardSelectedSemesters\.SUBJECTS\s*:\s*"all"/,
+  "the Subjects renderer should retain a semester only when it is available for the selected year",
+);
+assert.match(
+  subjectsRenderer,
+  /"year",\s*\(value\) => \{\s*resourceDashboardSelectedYears\.SUBJECTS = value;\s*\},/,
+  "changing the Subjects year should not reset the semester selection",
+);
+assert.doesNotMatch(
+  subjectsRenderer,
+  /previewResourceFile\(|entry\.title/,
+  "the Subjects catalogue should not render or open resource entries",
+);
+assert.match(
+  appCore,
+  /leftTerm\.year - rightTerm\.year \|\|\s*leftTerm\.semester - rightTerm\.semester \|\|[\s\S]*?getRowOrderName\(left\)/,
+  "dashboard entries should sort by year and semester before filename sequence numbers",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-subjects-listing[\s\S]*?\.resource-dashboard-table\s*td\.resource-dashboard-column-subjects\s*\{[^}]*text-align:\s*left/,
+  "the Subjects column should be left aligned",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-subjects-listing \.resource-dashboard-table th\s*\{[^}]*text-align:\s*left/,
+  "both headers in the Subjects table should be left aligned",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-subjects-listing[\s\S]*?\.resource-dashboard-table-scroll\s*\{\s*display:\s*flex;\s*justify-content:\s*center/,
+  "the Subjects table should center its table frame without changing cell text alignment",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-subjects-listing[\s\S]*?th\.resource-dashboard-column-year,[\s\S]*?td\.resource-dashboard-column-year\s*\{\s*text-align:\s*center/,
+  "the always-visible Year column should be centered",
+);
+assert.match(
+  appCore,
+  /\.\.\.\["Year", "Course", "Subjects"\]\.map\([\s\S]*?row\.append\(yearCell, courseCell, subjectsCell\)/,
+  "the SUBJECTS table should always show the centered Year column to the left of Course",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-subjects-search-row\s*\{(?=[^}]*grid-column:\s*1\s*\/\s*-1;)(?=[^}]*align-items:\s*flex-end;)(?=[^}]*min-height:\s*3\.5rem;)(?=[^}]*width:\s*100%;)[^}]*\}/,
+  "the Subjects search row should retain the full-width Category filter slot height above the table",
+);
+assert.match(
+  appCore,
+  /status\.replaceChildren\(\);\s*status\.hidden = true;/,
+  "the Subjects section should hide the entry-count status after rendering",
+);
+assert.match(
+  appCore,
+  /button\.disabled =\s*searchActive \|\| \(value !== "all" && !values\.has\(value\)\);\s*button\.setAttribute\("aria-disabled", String\(button\.disabled\)\)/,
+  "Subjects unavailable filter options should be disabled accessibly",
+);
+assert.match(
+  appCore,
+  /function renderResourceDashboardSubjects\(\)[\s\S]*?updateResourceDashboardFilterIndicators\(\)/,
+  "the Subjects filters should update the shared active indicator",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-table th\.resource-dashboard-column-course\s*\{[^}]*text-align:\s*right;/,
+  "all COURSE headers should be right aligned",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-subjects-listing \.resource-dashboard-table th\s*\{[^}]*text-align:\s*left/,
+  "the Subjects table should override the global COURSE header alignment",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-subjects-listing \.resource-dashboard-table-frame\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*100%;[^}]*max-width:\s*100%;[^}]*margin-inline:\s*auto;[^}]*overflow:\s*clip;[\s\S]*?\.resource-dashboard-subjects-listing \.resource-dashboard-table\s*\{[^}]*width:\s*max-content;[^}]*margin-inline:\s*auto;/,
+  "the SUBJECTS table should center its content-width text layer in a full-width frame used for row pseudo-design",
+);
+assert.match(
+  indexHtml,
+  /id="resource-portal-preview-back"[^>]*aria-label="Back to folder"[\s\S]*?id="resource-portal-preview-close"[^>]*aria-label="Close preview"/,
+  "a module file preview should offer a back-to-folder control distinct from close",
+);
+assert.match(
+  appCore,
+  /resourceDashboardFolderReturn = resourceDashboardFolderListing;[\s\S]*?function closeResourcePreview[\s\S]*?resourceDashboardFolderReturn = null/,
+  "the module preview back control should restore the previous folder while close exits the preview",
 );
 assert.match(
   appCore,
@@ -1302,28 +1523,23 @@ assert.match(
 );
 assert.match(
   appCore,
-  /const allYearLevelsSelected = resourceDashboardSelectedYear === "all"[\s\S]*?if \(allYearLevelsSelected\)[\s\S]*?resourceDashboardSelectedSemester = "all"[\s\S]*?true,\s*true,\s*\["1",\s*"2"\],\s*\)/,
-  "All Year Levels should disable the semester segments and select all semesters",
+  /const allYearLevelsSelected = resourceDashboardSelectedYear === "all"[\s\S]*?allYearLevelsSelected \|\|\s*term\.split\("\."\)\[0\] === resourceDashboardSelectedYear[\s\S]*?resourceDashboardSelectedSemester = populateTermOptions\([\s\S]*?true,\s*false,\s*\["1",\s*"2"\]/,
+  "All Year Levels should keep semester segments enabled and populate them from all available years",
 );
 assert.match(
   appCore,
-  /if \(!hasTermFilter \|\| resourceDashboardSelectedYear === "all"\)\s*return true;[\s\S]*?year === resourceDashboardSelectedYear/,
-  "All Year Levels should include every row regardless of semester",
+  /if \(!hasTermFilter\) return true;[\s\S]*?\(resourceDashboardSelectedYear === "all" \|\|\s*year === resourceDashboardSelectedYear\) &&\s*\(resourceDashboardSelectedSemester === "all" \|\|\s*semester === resourceDashboardSelectedSemester\)/,
+  "All Year Levels should still allow filtering rows by selected semester",
 );
 assert.match(
   appCore,
-  /resourceDashboardSelectedYear === "all"\s*\?\s*"All BSMT Year levels"/,
-  "the dashboard status should use the requested All BSMT Year levels label",
+  /`Showing \$\{visibleRows\.length\} entries for `/,
+  "the dashboard status should show the visible entry count and selected term",
 );
 assert.match(
   appCore,
-  /const selectedYearName = \{\s*1: "First",\s*2: "Second",\s*3: "Third",\s*\}\[resourceDashboardSelectedYear\][\s\S]*?\?\s*`BSMT \$\{selectedYearName\} Year`/,
-  "all-semester status should use BSMT First, Second, or Third Year labels",
-);
-assert.match(
-  appCore,
-  /const summary = createResourceDashboardElement\(\s*"strong",\s*"",\s*selectedTerm,\s*\);\s*status\.replaceChildren\(\s*document\.createTextNode\(\s*`Showing \$\{visibleRows\.length\} of \$\{nonEmptyRows\.length\} rows for `,\s*\),\s*summary/,
-  "the dashboard row count should bold only the selected-term label",
+  /const summary = createResourceDashboardElement\([\s\S]*?selectedTerm/,
+  "the dashboard status should include the selected year/semester label",
 );
 assert.match(
   appCore,
@@ -1333,17 +1549,17 @@ assert.match(
 assert.match(
   resourceStyles,
   /\.resource-dashboard-filters\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);[\s\S]*?\.resource-dashboard-term-control\s*\{[^}]*width:\s*100%;[\s\S]*?\.resource-dashboard-semester-segments\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)[\s\S]*?\.resource-dashboard-segmented-control button\s*\{[^}]*overflow-x:\s*auto;[^}]*white-space:\s*nowrap;/,
-  "Year and Semester should fit side by side without filter labels spilling",
+  "Year and Semester filters should share the first row",
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-filters\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);[\s\S]*?#resource-dashboard-category-filter\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*width:\s*100%;[\s\S]*?\.resource-dashboard-category-segments\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/,
-  "the category segments should span the filter row beneath consistently sized controls",
+  /\.resource-dashboard-filters\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);[\s\S]*?#resource-dashboard-category-filter\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*width:\s*100%;[\s\S]*?\.resource-dashboard-category-segments\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/,
+  "the Category filter should span the second row beneath Year and Semester",
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-segmented-control::before\s*\{[^}]*background:\s*#2563eb;[^}]*transition:[\s\S]*?\.resource-dashboard-segmented-control button\.is-active\s*\{[^}]*color:\s*#fff;[^}]*background:\s*transparent;[\s\S]*?\.dark \.resource-dashboard-segmented-control\s*\{[^}]*background:\s*#334155;[\s\S]*?\.dark \.resource-dashboard-segmented-control button\.is-active\s*\{[^}]*background:\s*transparent;/,
-  "the segmented category selection should use an animated blue indicator in both themes",
+  /\.resource-dashboard-segmented-control::before\s*\{[^}]*background:\s*#2563eb;[^}]*transition:\s*none;[\s\S]*?\.resource-dashboard-segmented-control button\.is-active\s*\{[^}]*color:\s*#fff;[^}]*background:\s*transparent;[\s\S]*?\.dark \.resource-dashboard-segmented-control\s*\{[^}]*background:\s*#334155;[\s\S]*?\.dark \.resource-dashboard-segmented-control button\.is-active\s*\{[^}]*background:\s*transparent;/,
+  "the selected filter segment should use an immediate blue indicator in both themes",
 );
 assert.match(
   resourceStyles,
@@ -1352,13 +1568,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /#resource-reviewers-locked-panel:not\(\[hidden\]\)\s*~\s*\.resource-portal-toolbar\s*\{\s*display:\s*none;/,
-  "the empty dashboard toolbar spacing should be removed while the Reviewers section is locked",
-);
-assert.match(
-  resourceStyles,
-  /#resource-reviewers-locked-panel:not\(\[hidden\]\)\s*~\s*#resource-portal-status\s*~\s*\.resource-dashboard-table-scroll\s*\{\s*display:\s*none;/,
-  "the empty table frame should be hidden while the Reviewers section is locked",
+  /#resource-reviewers-locked-panel:not\(\[hidden\]\)\s*~\s*\.resource-dashboard-listing\s*\{\s*display:\s*none;/,
+  "the dashboard listing should be hidden while the Reviewers section is locked",
 );
 assert.match(
   resourceStyles,
@@ -1427,6 +1638,11 @@ assert.match(
 );
 assert.match(
   resourceStyles,
+  /\.resource-reviewer-enrollment \+ \.resource-profile-signout-button\s*\{\s*margin-top:\s*-1rem;/,
+  "the Sign Out button should sit directly below the Verify form when it is visible",
+);
+assert.match(
+  resourceStyles,
   /\.resource-reviewers-locked-panel\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*box-sizing:\s*border-box;/,
   "the locked prompt background should fill the dashboard width",
 );
@@ -1447,7 +1663,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /resourceDashboardActiveTab = tabName;[\s\S]*?dashboardContent\.hidden = tabName === "PROFILE"[\s\S]*?profileScreen\.hidden = tabName !== "PROFILE"[\s\S]*?lockedPanel\.hidden = tabName !== "REVIEWERS"[\s\S]*?if \(tabName === "PROFILE"\) \{\s*void logResourceDashboardAction\("PROFILE", "TAB_OPEN"\);\s*void initializeReviewerAuth\(\)[\s\S]*?if \(tabName === "REVIEWERS"\) \{\s*if \(!reviewerSessionId\) \{[\s\S]*?lockedPanel\.hidden = false[\s\S]*?setResourceDashboardStatus\(""\)/,
+  /resourceDashboardActiveTab = tabName;[\s\S]*?dashboardContent\.hidden =\s*tabName === "PROFILE" \|\| tabName === "SUBJECTS"[\s\S]*?subjectsContent\.hidden = tabName !== "SUBJECTS"[\s\S]*?profileScreen\.hidden = tabName !== "PROFILE"[\s\S]*?lockedPanel\.hidden = tabName !== "REVIEWERS"[\s\S]*?if \(tabName === "PROFILE"\) \{\s*void logResourceDashboardAction\("PROFILE", "TAB_OPEN"\);\s*void initializeReviewerAuth\(\)[\s\S]*?if \(tabName === "REVIEWERS"\) \{\s*if \(!reviewerSessionId\) \{[\s\S]*?lockedPanel\.hidden = false[\s\S]*?setResourceDashboardStatus\(""\)/,
   "signed-out users should see the locked Reviewer message in place without being redirected or shown a busy icon",
 );
 assert.match(
@@ -1498,7 +1714,7 @@ assert.match(
 assert.match(
   resourceStyles,
   /@media \(max-width: 520px\)[\s\S]*?\.resource-dashboard-title > span\s*\{\s*display:\s*inline;/,
-  "narrow layouts should retain the Student Portal title instead of replacing it with the home icon",
+  "narrow layouts should retain the Student Portal title text",
 );
 assert.match(
   resourceStyles,
@@ -1507,8 +1723,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-title > i\s*\{\s*display:\s*inline-block;/,
-  "the Student Portal home icon should remain visible on large screens too",
+  /\.resource-dashboard-title > i\s*\{\s*display:\s*none;/,
+  "the redundant Student Portal home icon should not render beside its title",
 );
 assert.match(
   appCore,
@@ -1620,8 +1836,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /const keepReviewerStatus = resourceDashboardActiveTab === "REVIEWERS"[\s\S]*?if \(!silent && !keepReviewerStatus\)[\s\S]*?if \(!cachedDashboard && !silent && !keepReviewerStatus\)/,
-  "public dashboard refreshes should not clear Reviewer rows or status",
+  /const keepReviewerStatus = resourceDashboardActiveTab === "REVIEWERS"[\s\S]*?if \(!silent && !keepReviewerStatus && !cachedDashboard\)[\s\S]*?if \(!cachedDashboard && !silent && !keepReviewerStatus\)/,
+  "cached public dashboard refreshes should not replace the visible status with a checking notification",
+);
+assert.doesNotMatch(
+  appCore,
+  /Checking for dashboard updates/,
+  "dashboard update checks should remain silent while cached content is visible",
 );
 assert.match(
   appCore,
@@ -1718,7 +1939,10 @@ assert.notEqual(
   "the dashboard tab normalizer should be complete",
 );
 const normalizeDashboardTabs = new Function(
-  `${appCore.slice(normalizerStart, functionEnd)}; return normalizeResourceDashboardTabs;`,
+  `${appCore.slice(
+    appCore.indexOf("  function normalizeResourceDashboardIndex("),
+    normalizerStart,
+  )}${appCore.slice(normalizerStart, functionEnd)}; return normalizeResourceDashboardTabs;`,
 )();
 const legacyTabs = normalizeDashboardTabs({
   MODULES: { columns: ["Year", "Course"], rows: [["3.1", "NAV6"]] },
@@ -1901,8 +2125,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /status\.textContent = `\$\{nonEmptyRows\.length\}[\s\S]*?status\.hidden = false;\s*status\.removeAttribute\("aria-busy"\)/,
-  "rendering the Syllabus or Modules summary should show the status after Reviewer loading hid it",
+  /const hasNoReviewerMaterials =[\s\S]*?status\.textContent = "No review materials are currently available\.";\s*status\.hidden = false;\s*\} else if \(\s*\["SYLLABUS", "MODULES", "REVIEWERS"\]\.includes\([\s\S]*?status\.replaceChildren\(\);\s*status\.hidden = true/,
+  "successful Syllabus, Modules, and Reviewer renders should hide the entry-count status while retaining the empty-reviewer notice",
+);
+assert.match(
+  appCore,
+  /resourceDashboardSelectedSemester === "all"[\s\S]*?resource-dashboard-course-term[\s\S]*?`BSMT \$\{year\}\.\$\{semester\}`/,
+  "the per-course BSMT term second line should remain available when Semester is All",
 );
 assert.match(
   appCore,
@@ -2034,13 +2263,13 @@ assert.doesNotMatch(
 );
 assert.match(
   appCore,
-  /if \(!hasTermFilter \|\| resourceDashboardSelectedYear === "all"\)\s*return true;[\s\S]*?year === resourceDashboardSelectedYear &&\s*\(resourceDashboardSelectedSemester === "all" \|\|\s*semester === resourceDashboardSelectedSemester\)/,
-  "All Year Levels should bypass year and semester filtering",
+  /if \(!hasTermFilter\) return true;[\s\S]*?\(resourceDashboardSelectedYear === "all" \|\|\s*year === resourceDashboardSelectedYear\) &&\s*\(resourceDashboardSelectedSemester === "all" \|\|\s*semester === resourceDashboardSelectedSemester\)/,
+  "All Year Levels should bypass only year filtering and continue applying semester filtering",
 );
 assert.match(
   appCore,
-  /\.filter\(\s*\(term\) => term\.split\("\."\)\[0\] === resourceDashboardSelectedYear/,
-  "semester options should reflect the selected year",
+  /\.filter\(\s*\(term\) =>\s*allYearLevelsSelected \|\|\s*term\.split\("\."\)\[0\] === resourceDashboardSelectedYear/,
+  "semester options should reflect the selected year, or all available years when Year is All",
 );
 assert.match(
   appCore,
@@ -2064,7 +2293,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /reviewerPdfMatch\s*\?\s*getReviewerPdfDisplayName\(fileTitle \|\| value\)/,
+  /reviewerPdfMatch\s*\?\s*cleanResourceDisplayName\(\s*getReviewerPdfDisplayName\(fileTitle \|\| value\)/,
   "Reviewer PDF table chips should format lesson details from the full resource title",
 );
 assert.match(
@@ -2074,8 +2303,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /isModuleFolderFallback\s*=\s*resourceDashboardActiveTab === "MODULES" &&\s*\(!titleInParentheses \|\| !resourceTitle\)[\s\S]*?isPdfResource\s*=\s*Boolean\(reviewerPdfMatch\)\s*\|\|\s*\(!isModuleFolderFallback[\s\S]*?isModuleFolderFallback\s*\?\s*"Folder"/,
-  "Module resources without a parenthesized title should use the Folder label and folder icon",
+  /isModuleFolderFallback\s*=\s*resourceDashboardActiveTab === "MODULES" &&\s*\(mimeType === "application\/vnd\.google-apps\.folder" \|\|\s*\(!mimeType && !hasFilenameExtension && !titleInParentheses\)\)[\s\S]*?isFolderResource\s*=\s*isModuleFolderFallback/,
+  "folder resources should use the Folder label without misclassifying named files when t is omitted",
 );
 assert.match(
   appCore,
@@ -2094,7 +2323,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /else void previewResourceFile\(fileId, fileName\)/,
+  /else\s+void previewResourceFile\(fileId, fileName, \{\s*course:/,
   "file chips should load content in the website preview instead of a Drive tab",
 );
 assert.match(
@@ -2119,8 +2348,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function renderResourceDashboardFolderListing\([\s\S]*?Up one level[\s\S]*?resource-dashboard-folder-load-more/,
-  "the in-site folder viewer must hide the full path, retain parent navigation, and support pagination",
+  /function renderResourceDashboardFolderListing\([\s\S]*?resource-dashboard-folder-view-toggle[\s\S]*?resource-dashboard-folder-load-more/,
+  "the in-site folder viewer should provide view controls and support pagination without an Up button",
 );
 assert.match(
   backend,
@@ -2163,13 +2392,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /resourceDashboardSelectedCategories = \{\s*MODULES: "all",\s*REVIEWERS: "all",\s*SYLLABUS: "all",\s*\}[\s\S]*?resourceDashboardCategorySelectionMade = \{\s*MODULES: false,\s*REVIEWERS: false,\s*SYLLABUS: false,\s*\}[\s\S]*?!resourceDashboardCategorySelectionMade\[resourceDashboardActiveTab\][\s\S]*?hasCategoryFilter[\s\S]*?availableCategories\.size > 0[\s\S]*?selectedCategory =\s*\["FINALS", "MIDTERMS", "PRELIMS"\]\.find/,
-  "each section should independently retain its category selection and choose a valid default",
+  /resourceDashboardSelectedCategories = \{\s*MODULES: "PRELIMS",\s*REVIEWERS: "all",\s*SYLLABUS: "all",\s*SUBJECTS: "all",\s*\}[\s\S]*?resourceDashboardCategorySelectionMade = \{\s*MODULES: false,\s*REVIEWERS: false,\s*SYLLABUS: false,\s*SUBJECTS: false,\s*\}[\s\S]*?!resourceDashboardCategorySelectionMade\[resourceDashboardActiveTab\][\s\S]*?hasCategoryFilter[\s\S]*?availableCategories\.size > 0[\s\S]*?selectedCategory =\s*\["PRELIMS", "MIDTERMS", "FINALS"\]\.find/,
+  "each section should independently retain its category selection and Modules should prefer PRELIMS by default",
 );
 assert.match(
   appCore,
-  /else if \(\s*selectedCategory !== "all" &&\s*!availableCategories\.has\(selectedCategory\)\s*\)\s*\{\s*selectedCategory =\s*\["FINALS", "MIDTERMS", "PRELIMS"\]\.find[\s\S]*?resourceDashboardSelectedCategories\[resourceDashboardActiveTab\]\s*=\s*selectedCategory/,
-  "an unavailable selected category should fall back to the highest-priority available category",
+  /else if \(\s*selectedCategory !== "all" &&\s*!availableCategories\.has\(selectedCategory\)\s*\)\s*\{\s*selectedCategory =\s*\["PRELIMS", "MIDTERMS", "FINALS"\]\.find[\s\S]*?resourceDashboardSelectedCategories\[resourceDashboardActiveTab\]\s*=\s*selectedCategory/,
+  "an unavailable selected category should fall back to PRELIMS before other available categories",
 );
 assert.match(
   appCore,
@@ -2243,8 +2472,8 @@ assert.match(
 );
 assert.doesNotMatch(
   resourceStyles,
-  /\.resource-dashboard-column-year/,
-  "dashboard styles should not retain a presentation rule for the removed Year column",
+  /^\.resource-dashboard-table\s+(?:th|td)\.resource-dashboard-column-year/m,
+  "the conditional SUBJECTS Year column should not add a global Year-column style",
 );
 assert.match(
   resourceStyles,
@@ -2345,7 +2574,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /resourceTitle\.replace\(\/\\\.pdf\$\/i,\s*""\)/,
+  /cleanResourceDisplayName\(resourceTitle\)\.replace\(\/\\\.pdf\$\/i,\s*""\)/,
   "button labels should omit the PDF extension",
 );
 assert.match(

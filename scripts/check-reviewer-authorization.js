@@ -133,6 +133,7 @@ const appendedRows = {
 function createSheet(rows) {
   return {
     getLastRow: () => rows.length,
+    getMaxRows: () => Math.max(rows.length, 100),
     getLastColumn: () =>
       rows.reduce((count, row) => Math.max(count, row.length), 0),
     getRange(startRow, startColumn, rowCount, columnCount) {
@@ -199,6 +200,9 @@ function createSheet(rows) {
     },
     deleteRows(startRow, count) {
       rows.splice(startRow - 1, count);
+    },
+    insertRowsAfter(afterRow, count) {
+      rows.splice(afterRow, 0, ...Array.from({ length: count }, () => []));
     },
     setName(name) {
       const oldName = Object.keys(sheets).find(
@@ -889,7 +893,6 @@ accountRows[1][4] = "TRUE";
 for (const [profileField, fieldName] of [
   [1, "last name"],
   [2, "first name"],
-  [3, "middle initial"],
 ]) {
   const populatedValue = accountRows[1][profileField];
   accountRows[1][profileField] = "";
@@ -905,6 +908,19 @@ for (const [profileField, fieldName] of [
   );
   accountRows[1][profileField] = populatedValue;
 }
+const populatedMiddleInitial = accountRows[1][3];
+accountRows[1][3] = "";
+clearTestCache();
+const optionalMiddleInitialStatus = post({
+  type: "get_reviewer_account_status",
+  sessionId: approved.sessionId,
+});
+assert.deepEqual(
+  [optionalMiddleInitialStatus.accountStatus, optionalMiddleInitialStatus.active],
+  ["TRUE", true],
+  "an approved account with no optional middle initial should remain verified",
+);
+accountRows[1][3] = populatedMiddleInitial;
 accountRows[1][1] = "";
 accountRows[1][2] = "";
 accountRows[1][3] = "";
@@ -1123,6 +1139,38 @@ assert.equal(
   accountRows.at(-1)[0],
   "second-reviewer@example.com",
   "a new account should reuse the first blank row instead of appending below existing accounts",
+);
+tokenClaims = validClaims("blank-middle@example.com");
+const expectedBlankMiddleRowIndex = accountRows.length;
+const blankMiddleInitialSubmission = post({
+  type: "request_reviewer_enrollment",
+  idToken: "blank-middle-user-token",
+  eventId: eventId("6"),
+  lastName: "Reviewer",
+  firstName: "Blank",
+  middleInitial: "",
+});
+assert.deepEqual(
+  [
+    blankMiddleInitialSubmission.status,
+    blankMiddleInitialSubmission.accountStatus,
+    blankMiddleInitialSubmission.active,
+  ],
+  ["success", "FALSE", false],
+  "blank middle initials should submit as pending requests",
+);
+const blankMiddleAccount = accountRows.find(
+  (row) => row[0] === "blank-middle@example.com",
+);
+assert.equal(
+  blankMiddleAccount[3],
+  "",
+  "the backend should persist an omitted middle initial as blank",
+);
+assert.equal(
+  accountRows.indexOf(blankMiddleAccount),
+  expectedBlankMiddleRowIndex,
+  "new accounts should use the next available blank row rather than skipping to a new row",
 );
 tokenClaims = validClaims("reviewer.with.unrelated.address@example.com");
 const mismatchedNameSubmission = post({

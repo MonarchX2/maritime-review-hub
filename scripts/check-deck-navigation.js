@@ -229,12 +229,12 @@ assert.match(
 );
 assert.match(
   indexSource,
-  /id="resource-dashboard-return"[\s\S]*?Return to main menu/,
-  "the Resource Dashboard should provide a return-to-main-menu control",
+  /id="resource-dashboard-return"[\s\S]*?aria-label="Home"[\s\S]*?fa-house/,
+  "the Resource Dashboard should provide a home-icon navigation control",
 );
 assert.match(
   indexSource,
-  /class="resource-dashboard-topbar"[\s\S]*?resource-dashboard-title" aria-label="Student Portal"[\s\S]*?fa-house[\s\S]*?id="resource-dashboard-profile-nav"[\s\S]*?is-active[\s\S]*?aria-current="page"[\s\S]*?id="resource-dashboard-content" hidden[\s\S]*?id="resource-dashboard-profile"[\s\S]*?resource-profile-screen/,
+  /class="resource-dashboard-topbar"[\s\S]*?resource-dashboard-title" aria-label="Student Portal"[\s\S]*?<span>Student Portal<\/span>[\s\S]*?id="resource-dashboard-profile-nav"[\s\S]*?is-active[\s\S]*?aria-current="page"[\s\S]*?id="resource-dashboard-content" hidden[\s\S]*?id="resource-dashboard-profile"[\s\S]*?resource-profile-screen/,
   "the Student Portal should open on Profile and keep the Profile control beside the title",
 );
 assert.match(

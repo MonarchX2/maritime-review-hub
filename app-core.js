@@ -5995,6 +5995,7 @@
   let resourcePortalStatusMessage = "";
   let resourcePortalPreviewObjectUrl = "";
   let resourcePortalPreviewIsReviewer = false;
+  let resourcePortalPreviewCourse = "";
   let resourcePortalReviewerPdf = null;
   let resourceDashboardFolderGeneration = 0;
   let resourceDashboardFolderListing = null;
@@ -6062,6 +6063,210 @@
     Math.ceil(RESOURCE_PREVIEW_MAX_BYTES / 3) * 4;
   const RESOURCE_DASHBOARD_CACHE_KEY = "resource_dashboard_cache_v1";
   const RESOURCE_DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 30000;
+  const RESOURCE_DASHBOARD_COURSE_NAMES_KEY =
+    "mrh_resource_dashboard_course_names_v1";
+  let resourceDashboardCourseNamesEnabled = false;
+  const COURSE_TITLES = {
+    SEAM5: "SHIP HANDLING AND MANEUVERING",
+    NGEC8: "ETHICS",
+    NAV6: "OPERATIONAL USE OF ECDIS",
+    NGEC10: "SOCIAL SCIENCE AND PHILOSOPHY",
+    "SHIP'S AUDIT": "SHIP AUDITING SYSTEM",
+    MARLAW: "MARITIME LAW",
+    NGEC3: "THE CONTEMPORARY WORLD",
+    "CME CA": "CME COURSE AUDIT",
+    NAV7: "VOYAGE PLANNING",
+    "SHIP OP.": "SHIP OPERATION AND SHIPYARD PRACTICE",
+    SEAM6: "ADVANCED TRIM, STABILITY, AND STRESS",
+    DWK: "DECKWATCHKEEPING WITH BRM",
+    NGEC2: "READING IN PHILIPPINE HISTORY",
+    NGEC11: "ART AND HUMANITIES",
+    NGEC6: "ART APPRECIATION",
+    NGEC1: "UNDERSTANDING THE SELF",
+    MARCOM: "MARITIME COMMUNICATION",
+    SEAM3: "CARGO HANDLING AND STOWAGE (NDG)",
+    MARENV: "MARINE ENVIRONMENT",
+    NAV3: "TERRESTRIAL AND COASTAL NAVIGATION 2",
+    RESEARCH: "MARITIME RESEARCH",
+    PATHFIT3: "OUTDOOR ACTIVITIES (BASIC SWIMMING)",
+    PATHFIT4: "OUTDOOR ACTIVITIES (ADVANCE SWIMMING)",
+    NAV4: "CELESTIAL NAVIGATION",
+    MGMT: "LEADERSHIP AND TEAMWORK",
+    RIZAL: "THE LIFE AND WORKS OF DR. JOSE RIZAL",
+    NAV5: "OPERATIONAL USE OF RADAR AND ARPA",
+    MARPOWER: "BASIC MARINE ENGINEERING",
+    NGEC5: "PURPOSIVE COMMUNICATION",
+    SEAM4: "CARGO HANDLING AND STOWAGE (DG)",
+    ROTC1: "National Service Training Program 1",
+    ICT1: "SOFTWARE APPLICATIONS",
+    NAV1: "NAVIGATIONAL INSTRUMENTS WITH COMPASSES",
+    SEAM1: "SHIP ROUTINES AND CONSTRUCTION",
+    IC1: "DCLC IDENTITY, VALUES, AND WAY OF THINKING",
+    NGEC9: "MATH, SCIENCE, AND TECHNOLOGY",
+    PATHFIT1: "MOVEMENT COMPETENCY TRAINING",
+    NGEC4: "MATHEMATICS IN THE MODERN WORLD",
+    ROTC2: "National Service Training Program 2",
+    METO: "METEOROLOGY AND OCEANOGRAPHY",
+    IC2: "MARITIME ETHICS",
+    NGEC7: "SCIENCE, TECHNOLOGY, AND SOCIETY",
+    COLREGS: "COLLISION REGULATIONS",
+    NAV2: "TERRESTRIAL AND COASTAL NAVIGATION 1",
+    PATHFIT2: "EXERCISE BASE FITNESS ACTIVITIES",
+    SEAM2: "TRIM, STABILITY, AND STRESS",
+  };
+
+  function getCourseCodeMatch(course) {
+    const original = String(course || "").trim();
+    const normalized = original.toLocaleUpperCase();
+    const legacyCode =
+      normalized === "ICT" ? "ICT1" : normalized.replace(/^NSTP(?=\d)/, "ROTC");
+    const keys = Object.keys(COURSE_TITLES).sort(
+      (left, right) => right.length - left.length,
+    );
+    const code = keys.find((key) =>
+      new RegExp(
+        `^${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|\\s|\\()`,
+        "i",
+      ).test(legacyCode),
+    );
+    if (code) {
+      const prefixLength =
+        normalized.startsWith("ICT") && code === "ICT1"
+          ? 3
+          : code.length;
+      return {
+        code,
+        suffix: original.slice(prefixLength),
+      };
+    }
+    const legacyShipOperation = /^SHIP OPERATION(?=$|\s|\()/i.exec(original);
+    if (legacyShipOperation)
+      return {
+        code: "SHIP OP.",
+        suffix: original.slice(legacyShipOperation[0].length),
+      };
+    const legacyNstp = /^NSTP(\d+)(?=$|\s|\()/i.exec(original);
+    if (legacyNstp)
+      return {
+        code: `ROTC${legacyNstp[1]}`,
+        suffix: original.slice(legacyNstp[0].length),
+      };
+    return null;
+  }
+
+  function getCourseTitle(course) {
+    const original = String(course || "").trim();
+    const match = getCourseCodeMatch(original);
+    return match
+      ? `${COURSE_TITLES[match.code] || match.code}${match.suffix}`
+      : original;
+  }
+
+  function buildCourseCatalogEntries(entries) {
+    const catalog = new Map();
+    entries.forEach((entry) => {
+      const originalCourse = cleanResourceDisplayName(entry.course);
+      const match = getCourseCodeMatch(originalCourse);
+      const course = match?.code || cleanResourceDisplayName(originalCourse);
+      const key = course.toLocaleUpperCase();
+      let catalogEntry = catalog.get(key);
+      if (!catalogEntry) {
+        catalogEntry = {
+          course,
+          subject: match
+            ? COURSE_TITLES[match.code] || match.code
+            : getCourseTitle(originalCourse),
+          suffixes: new Set(),
+          terms: new Set(),
+        };
+        catalog.set(key, catalogEntry);
+      }
+      const suffix = String(match?.suffix || "").trim();
+      if (suffix) catalogEntry.suffixes.add(suffix.toLocaleUpperCase());
+      if (entry.year && entry.semester)
+        catalogEntry.terms.add(`${entry.year}.${entry.semester}`);
+    });
+    return [...catalog.values()].map(({ course, subject, suffixes, terms }) => {
+      const suffixList = [...suffixes];
+      const termList = [...terms].sort((left, right) => {
+        const [leftYear, leftSemester] = left.split(".").map(Number);
+        const [rightYear, rightSemester] = right.split(".").map(Number);
+        return leftYear - rightYear || leftSemester - rightSemester;
+      });
+      const combinedSuffix = suffixList.length
+        ? suffixList.every((suffix) => /^\([^()]*\)$/.test(suffix))
+          ? ` (${suffixList
+              .map((suffix) => suffix.slice(1, -1))
+              .join(" / ")})`
+          : ` ${suffixList.join(" / ")}`
+        : "";
+      return {
+        course,
+        subject: `${subject}${combinedSuffix}`.toLocaleUpperCase(),
+        year: [
+          "NAV6",
+          "SEAM5",
+          "NGEC3",
+          "NGEC8",
+          "NGEC10",
+          "CME CA",
+          "MARLAW",
+          "SHIP'S AUDIT",
+        ].includes(course.toLocaleUpperCase())
+          ? "3.1"
+          : termList.join(" / "),
+      };
+    });
+  }
+
+  function getCourseHeading(
+    course,
+    useCourseNames = resourceDashboardCourseNamesEnabled,
+  ) {
+    const original = cleanResourceDisplayName(course);
+    if (useCourseNames) return getCourseTitle(original);
+    const match = getCourseCodeMatch(original);
+    return match ? `${match.code}${match.suffix}` : original;
+  }
+
+  function getCourseCodeFromBreadcrumbs(breadcrumbs, fallback = "") {
+    const trail = Array.isArray(breadcrumbs) ? breadcrumbs : [];
+    for (const crumb of [...trail].reverse()) {
+      const candidate = cleanResourceDisplayName(crumb?.name || "");
+      const match = getCourseCodeMatch(candidate);
+      if (match) return `${match.code}${match.suffix}`;
+    }
+    return cleanResourceDisplayName(fallback);
+  }
+
+  function extractLeadingOrderNumber(name) {
+    const match = /^\s*(\d+)(?:\.(\d+))?(?=\s*(?:#|[-_]|\.?\s|$))/.exec(
+      String(name || ""),
+    );
+    if (!match) return null;
+    const major = Number(match[1]);
+    const minor = match[2] === undefined ? 0 : Number(match[2]);
+    return Number.isSafeInteger(major) && Number.isSafeInteger(minor)
+      ? [major, minor]
+      : null;
+  }
+
+  function cleanResourceDisplayName(name) {
+    return String(name || "")
+      .replace(/^\s*\d+(?:\.\d+)?\s*(?:#\s*|[-_]\s*|\.?\s+|$)/, "")
+      .trim();
+  }
+
+  function compareResourceOrder(leftName, rightName) {
+    const leftOrder = extractLeadingOrderNumber(leftName);
+    const rightOrder = extractLeadingOrderNumber(rightName);
+    if (leftOrder !== null && rightOrder === null) return -1;
+    if (leftOrder === null && rightOrder !== null) return 1;
+    if (leftOrder !== null && rightOrder !== null)
+      return leftOrder[0] - rightOrder[0] || leftOrder[1] - rightOrder[1];
+    return 0;
+  }
+
   let studentPortalWelcomeNameObserver = null;
   let studentPortalWelcomeNameResizeHandler = null;
   let resourceDashboardAutoRefreshTimer = null;
@@ -6074,21 +6279,25 @@
     MODULES: "3",
     REVIEWERS: "3",
     SYLLABUS: "3",
+    SUBJECTS: "all",
   };
   const resourceDashboardSelectedSemesters = {
     MODULES: "2",
     REVIEWERS: "2",
     SYLLABUS: "2",
+    SUBJECTS: "all",
   };
   const resourceDashboardSelectedCategories = {
-    MODULES: "all",
+    MODULES: "PRELIMS",
     REVIEWERS: "all",
     SYLLABUS: "all",
+    SUBJECTS: "all",
   };
   const resourceDashboardCategorySelectionMade = {
     MODULES: false,
     REVIEWERS: false,
     SYLLABUS: false,
+    SUBJECTS: false,
   };
 
   function loadResourceDashboardFilters() {
@@ -6098,7 +6307,7 @@
           "null",
       );
       if (!saved || typeof saved !== "object") return;
-      ["MODULES", "REVIEWERS", "SYLLABUS"].forEach((tabName) => {
+      ["MODULES", "REVIEWERS", "SYLLABUS", "SUBJECTS"].forEach((tabName) => {
         const sectionFilters = saved.sections?.[tabName];
         const legacyFilters = saved;
         const year = sectionFilters?.year ?? legacyFilters.year;
@@ -6142,7 +6351,7 @@
         RESOURCE_DASHBOARD_FILTERS_KEY,
         JSON.stringify({
           sections: Object.fromEntries(
-            ["MODULES", "REVIEWERS", "SYLLABUS"].map((section) => [
+            ["MODULES", "REVIEWERS", "SYLLABUS", "SUBJECTS"].map((section) => [
               section,
               {
                 year: resourceDashboardSelectedYears[section],
@@ -6170,7 +6379,7 @@
           RESOURCE_DASHBOARD_LAST_SECTION_KEY,
         ) || "",
       );
-      return ["MODULES", "REVIEWERS", "SYLLABUS"].includes(section)
+      return ["SUBJECTS", "MODULES", "REVIEWERS", "SYLLABUS"].includes(section)
         ? section
         : "REVIEWERS";
     } catch (error) {
@@ -6183,7 +6392,8 @@
   }
 
   function saveResourceDashboardSection(section) {
-    if (!["MODULES", "REVIEWERS", "SYLLABUS"].includes(section)) return;
+    if (!["SUBJECTS", "MODULES", "REVIEWERS", "SYLLABUS"].includes(section))
+      return;
     try {
       globalScope.localStorage.setItem(
         RESOURCE_DASHBOARD_LAST_SECTION_KEY,
@@ -6198,7 +6408,8 @@
   }
 
   function activateResourceDashboardFilters(tabName) {
-    if (!["MODULES", "REVIEWERS", "SYLLABUS"].includes(tabName)) return;
+    if (!["MODULES", "REVIEWERS", "SYLLABUS", "SUBJECTS"].includes(tabName))
+      return;
     resourceDashboardSelectedYear =
       resourceDashboardSelectedYears[tabName] || "3";
     resourceDashboardSelectedSemester =
@@ -6854,7 +7065,11 @@
         restoreStoredReviewerDashboard(cachedProfile.email);
       }
     }
-    if (!["MODULES", "REVIEWERS", "SYLLABUS", "PROFILE"].includes(tabName))
+    if (
+      !["SUBJECTS", "MODULES", "REVIEWERS", "SYLLABUS", "PROFILE"].includes(
+        tabName,
+      )
+    )
       return false;
     if (
       tabName === "REVIEWERS" &&
@@ -6884,10 +7099,14 @@
     const syllabusNav = document.getElementById(
       "resource-dashboard-syllabus-nav",
     );
+    const subjectsNav = document.getElementById(
+      "resource-dashboard-subjects-nav",
+    );
     const profileNav = document.getElementById(
       "resource-dashboard-profile-nav",
     );
     [
+      [subjectsNav, tabName === "SUBJECTS"],
       [modulesNav, tabName === "MODULES"],
       [reviewersNav, tabName === "REVIEWERS"],
       [syllabusNav, tabName === "SYLLABUS"],
@@ -6902,6 +7121,9 @@
     const dashboardContent = document.getElementById(
       "resource-dashboard-content",
     );
+    const subjectsContent = document.getElementById(
+      "resource-dashboard-subjects-content",
+    );
     const profileScreen = document.getElementById("resource-dashboard-profile");
     const lockedPanel = document.getElementById(
       "resource-reviewers-locked-panel",
@@ -6909,7 +7131,10 @@
     const updateNote = document.querySelector(
       ".resource-dashboard-update-note",
     );
-    if (dashboardContent) dashboardContent.hidden = tabName === "PROFILE";
+    if (dashboardContent)
+      dashboardContent.hidden =
+        tabName === "PROFILE" || tabName === "SUBJECTS";
+    if (subjectsContent) subjectsContent.hidden = tabName !== "SUBJECTS";
     if (profileScreen) profileScreen.hidden = tabName !== "PROFILE";
     if (lockedPanel) lockedPanel.hidden = tabName !== "REVIEWERS";
     if (updateNote)
@@ -6920,6 +7145,10 @@
       return true;
     }
     void logResourceDashboardAction(tabName, "TAB_OPEN");
+    if (tabName === "SUBJECTS") {
+      if (resourceDashboardData) return renderResourceDashboardSubjects();
+      return loadResourceDashboard();
+    }
     if (tabName === "REVIEWERS") {
       if (!reviewerSessionId) {
         if (!hasExplicitReviewerSignOut()) {
@@ -7108,6 +7337,8 @@
   }
 
   function renderResourceDashboardTab() {
+    if (resourceDashboardActiveTab === "SUBJECTS")
+      return renderResourceDashboardSubjects();
     const tab = resourceDashboardData?.[resourceDashboardActiveTab];
     const status = document.getElementById("resource-portal-status");
     const tableHead = document.getElementById("resource-dashboard-table-head");
@@ -7210,12 +7441,20 @@
       );
       return displayValue !== "" || isResourceDashboardLink(linkUrl);
     };
+    const dashboardCourseColumnIndex = tab.columns.findIndex(
+      (column) => String(column).trim().toLocaleLowerCase() === "course",
+    );
     const nonEmptyRows = tab.rows
       .map((values, rowIndex) => ({ values, rowIndex }))
-      .filter(({ values, rowIndex }) =>
-        resourceColumnIndices.some((columnIndex) =>
-          hasCellValue(values, rowIndex, columnIndex),
-        ),
+      .filter(
+        ({ values, rowIndex }) =>
+          (dashboardCourseColumnIndex < 0 ||
+            String(values[dashboardCourseColumnIndex] || "")
+              .trim()
+              .toLocaleUpperCase() !== "TOTAL") &&
+          resourceColumnIndices.some((columnIndex) =>
+            hasCellValue(values, rowIndex, columnIndex),
+          ),
       );
     const hasCategoryFilter = ["MODULES", "REVIEWERS"].includes(
       resourceDashboardActiveTab,
@@ -7345,49 +7584,37 @@
       ["1", "2", "3"],
     );
     const allYearLevelsSelected = resourceDashboardSelectedYear === "all";
-    if (allYearLevelsSelected) {
-      resourceDashboardSelectedSemester = "all";
-      populateTermOptions(
-        semesterFilterControl,
-        new Set(),
-        "all",
-        "all",
-        true,
-        true,
-        ["1", "2"],
-      );
-    } else {
-      const semesters = new Set(
-        [...termValues]
-          .filter(
-            (term) => term.split(".")[0] === resourceDashboardSelectedYear,
-          )
-          .map((term) => term.split(".")[1]),
-      );
-      const orderedSemesters = [...semesters].sort(
-        (left, right) => Number(left) - Number(right),
-      );
-      const previousSemesters = orderedSemesters.filter(
-        (semester) => Number(semester) <= preferredSemester,
-      );
-      const fallbackSemester =
-        previousSemesters[previousSemesters.length - 1] ||
-        orderedSemesters[0] ||
-        "all";
-      resourceDashboardSelectedSemester = populateTermOptions(
-        semesterFilterControl,
-        semesters,
-        resourceDashboardSelectedSemester,
-        fallbackSemester,
-        true,
-        false,
-        ["1", "2"],
-      );
-    }
+    const semesters = new Set(
+      [...termValues]
+        .filter(
+          (term) =>
+            allYearLevelsSelected ||
+            term.split(".")[0] === resourceDashboardSelectedYear,
+        )
+        .map((term) => term.split(".")[1]),
+    );
+    const orderedSemesters = [...semesters].sort(
+      (left, right) => Number(left) - Number(right),
+    );
+    const previousSemesters = orderedSemesters.filter(
+      (semester) => Number(semester) <= preferredSemester,
+    );
+    const fallbackSemester =
+      previousSemesters[previousSemesters.length - 1] ||
+      orderedSemesters[0] ||
+      "all";
+    resourceDashboardSelectedSemester = populateTermOptions(
+      semesterFilterControl,
+      semesters,
+      resourceDashboardSelectedSemester,
+      fallbackSemester,
+      true,
+      false,
+      ["1", "2"],
+    );
 
     const matchesSelectedTerm = (values) => {
-      if (!hasTermFilter || resourceDashboardSelectedYear === "all")
-        return true;
+      if (!hasTermFilter) return true;
       const yearValue = String(values[yearColumnIndex] || "").trim();
       const combinedTerm = /^(\d+)\s*[./-]\s*(\d+)$/.exec(yearValue);
       const year = combinedTerm ? combinedTerm[1] : yearValue;
@@ -7397,7 +7624,8 @@
           ? String(values[semesterColumnIndex] || "").trim()
           : "";
       return (
-        year === resourceDashboardSelectedYear &&
+        (resourceDashboardSelectedYear === "all" ||
+          year === resourceDashboardSelectedYear) &&
         (resourceDashboardSelectedSemester === "all" ||
           semester === resourceDashboardSelectedSemester)
       );
@@ -7421,7 +7649,7 @@
       availableCategories.size > 0
     ) {
       selectedCategory =
-        ["FINALS", "MIDTERMS", "PRELIMS"].find((category) =>
+        ["PRELIMS", "MIDTERMS", "FINALS"].find((category) =>
           availableCategories.has(category),
         ) || "all";
       resourceDashboardSelectedCategories[resourceDashboardActiveTab] =
@@ -7433,7 +7661,7 @@
       !availableCategories.has(selectedCategory)
     ) {
       selectedCategory =
-        ["FINALS", "MIDTERMS", "PRELIMS"].find((category) =>
+        ["PRELIMS", "MIDTERMS", "FINALS"].find((category) =>
           availableCategories.has(category),
         ) || "all";
       resourceDashboardSelectedCategories[resourceDashboardActiveTab] =
@@ -7473,6 +7701,52 @@
         if (!phaseValue && !isResourceDashboardLink(phaseLink)) return false;
       }
       return true;
+    });
+    const getRowOrderName = ({ values, rowIndex }) => {
+      const orderColumnIndex =
+        selectedPhaseColumnIndex >= 0
+          ? selectedPhaseColumnIndex
+          : resourceColumnIndices.find((columnIndex) =>
+              hasCellValue(values, rowIndex, columnIndex),
+            );
+      return String(
+        tab.linkTitles?.[rowIndex]?.[orderColumnIndex] ||
+          values[orderColumnIndex] ||
+          "",
+      );
+    };
+    visibleRows.sort((left, right) => {
+      const termParts = (values) => {
+        const year = String(
+          yearColumnIndex >= 0 ? values[yearColumnIndex] || "" : "",
+        ).trim();
+        const combinedTerm = /^(\d+)\s*[./-]\s*(\d+)$/.exec(year);
+        return {
+          year: Number(combinedTerm?.[1] || year) || Number.MAX_SAFE_INTEGER,
+          semester:
+            Number(
+              combinedTerm?.[2] ||
+                (semesterColumnIndex >= 0
+                  ? values[semesterColumnIndex]
+                  : ""),
+            ) || Number.MAX_SAFE_INTEGER,
+        };
+      };
+      const leftTerm = termParts(left.values);
+      const rightTerm = termParts(right.values);
+      return (
+        leftTerm.year - rightTerm.year ||
+        leftTerm.semester - rightTerm.semester ||
+        compareResourceOrder(
+          getRowOrderName(left),
+          getRowOrderName(right),
+        ) ||
+        compareResourceOrder(
+          left.values[dashboardCourseColumnIndex],
+          right.values[dashboardCourseColumnIndex],
+        ) ||
+        left.rowIndex - right.rowIndex
+      );
     });
     const populatedColumnIndices = tab.columns
       .map((_, columnIndex) => columnIndex)
@@ -7581,21 +7855,32 @@
             titleInParentheses ? titleInParentheses[1] : fileTitle,
           ).trim();
           const resourceTitle = reviewerPdfMatch
-            ? getReviewerPdfDisplayName(fileTitle || value)
-            : rawResourceTitle;
+            ? cleanResourceDisplayName(
+                getReviewerPdfDisplayName(fileTitle || value),
+              )
+            : cleanResourceDisplayName(rawResourceTitle);
+          const mimeType = String(
+            tab.linkTypes?.[rowIndex]?.[index] || "",
+          );
+          const hasFilenameExtension = /\.(?:pdf|docx?|pptx?)$/i.test(
+            fileTitle,
+          );
           const isModuleFolderFallback =
             resourceDashboardActiveTab === "MODULES" &&
-            (!titleInParentheses || !resourceTitle);
+            (mimeType === "application/vnd.google-apps.folder" ||
+              (!mimeType && !hasFilenameExtension && !titleInParentheses));
           const isSyllabus = columnName.includes("syllabus");
           const isPdfResource =
             Boolean(reviewerPdfMatch) ||
-            (!isModuleFolderFallback &&
-              (isSyllabus || /\.pdf\b/i.test(fileTitle)));
+            isSyllabus ||
+            mimeType === "application/pdf" ||
+            /\.pdf\b/i.test(fileTitle);
           const linkLabel = isSyllabus
             ? "PDF"
             : isModuleFolderFallback
               ? "Folder"
-              : resourceTitle.replace(/\.pdf$/i, "") || "Open resource";
+              : cleanResourceDisplayName(resourceTitle).replace(/\.pdf$/i, "") ||
+                "Open resource";
           const icon = createResourceDashboardElement(
             "i",
             `fa-solid ${
@@ -7640,9 +7925,6 @@
           const isInSiteDashboardResource =
             resourceDashboardActiveTab === "MODULES" ||
             resourceDashboardActiveTab === "SYLLABUS";
-          const mimeType = String(
-            tab.linkTypes?.[rowIndex]?.[index] || "",
-          );
           const isFolderResource =
             isModuleFolderFallback ||
             mimeType === "application/vnd.google-apps.folder";
@@ -7681,8 +7963,8 @@
             ? reviewerPdfMatch[1]
             : getResourceDashboardFileId(linkUrl);
           const fileName =
-            resourceTitle ||
             fileTitle ||
+            resourceTitle ||
             (isResourceDashboardLink(value) ? "" : value) ||
             linkLabel;
           if (isInSiteDashboardResource) {
@@ -7707,7 +7989,13 @@
                 void previewResourceFile(fileId, fileName, {
                   folderId: fileId,
                 });
-              } else void previewResourceFile(fileId, fileName);
+              } else
+                void previewResourceFile(fileId, fileName, {
+                  course:
+                    resourceDashboardActiveTab === "MODULES"
+                      ? courseName
+                      : "",
+                });
             });
           }
           if (fileId) {
@@ -7781,7 +8069,7 @@
                 badge.remove();
                 link.removeAttribute("aria-label");
               },
-              { once: true },
+              { once: true, capture: true },
             );
             const linkWrap = createResourceDashboardElement(
               "span",
@@ -7793,7 +8081,13 @@
             cell.appendChild(link);
           }
         } else {
-          cell.textContent = value;
+          if (columnName === "course") {
+            cell.appendChild(
+              document.createTextNode(getCourseHeading(value)),
+            );
+          } else {
+            cell.textContent = cleanResourceDisplayName(value);
+          }
           if (
             columnName === "course" &&
             [
@@ -7814,7 +8108,6 @@
         }
         if (
           columnName === "course" &&
-          resourceDashboardSelectedSemester === "all" &&
           yearColumnIndex >= 0
         ) {
           const yearValue = String(values[yearColumnIndex] || "").trim();
@@ -7849,35 +8142,41 @@
       renderedRows,
     );
 
-    const selectedYearName = {
-      1: "First",
-      2: "Second",
-      3: "Third",
-    }[resourceDashboardSelectedYear];
-    const selectedTerm =
-      resourceDashboardSelectedYear === "all"
-        ? "All BSMT Year levels"
-        : resourceDashboardSelectedSemester === "all"
-          ? selectedYearName
-            ? `BSMT ${selectedYearName} Year`
-            : `BSMT Year ${resourceDashboardSelectedYear}`
-          : `BSMT ${resourceDashboardSelectedYear}.${resourceDashboardSelectedSemester}`;
-    if (
-      resourceDashboardActiveTab === "REVIEWERS" &&
-      !nonEmptyRows.length
-    ) {
+    const hasNoReviewerMaterials =
+      resourceDashboardActiveTab === "REVIEWERS" && !nonEmptyRows.length;
+    if (hasNoReviewerMaterials) {
       status.textContent = "No review materials are currently available.";
+      status.hidden = false;
+    } else if (
+      ["SYLLABUS", "MODULES", "REVIEWERS"].includes(
+        resourceDashboardActiveTab,
+      )
+    ) {
+      status.replaceChildren();
+      status.hidden = true;
     } else {
+      status.hidden = false;
       if (hasTermFilter) {
+        const selectedYearName = {
+          1: "First",
+          2: "Second",
+          3: "Third",
+        }[resourceDashboardSelectedYear];
+        const selectedTerm =
+          resourceDashboardSelectedYear === "all"
+            ? "All BSMT Year levels"
+            : resourceDashboardSelectedSemester === "all"
+              ? selectedYearName
+                ? `BSMT ${selectedYearName} Year`
+                : `BSMT Year ${resourceDashboardSelectedYear}`
+              : `BSMT ${resourceDashboardSelectedYear}.${resourceDashboardSelectedSemester}`;
         const summary = createResourceDashboardElement(
           "strong",
           "",
           selectedTerm,
         );
         status.replaceChildren(
-          document.createTextNode(
-            `Showing ${visibleRows.length} of ${nonEmptyRows.length} rows for `,
-          ),
+          document.createTextNode(`Showing ${visibleRows.length} entries for `),
           summary,
           document.createTextNode("."),
           document.createTextNode(
@@ -7885,12 +8184,11 @@
           ),
         );
       } else {
-        status.textContent = `${nonEmptyRows.length} ${
-          nonEmptyRows.length === 1 ? "row" : "rows"
-        }${tab.truncated ? " (showing the first 2,000)" : ""}`;
+        status.textContent = `Showing ${visibleRows.length} entries${
+          tab.truncated ? " (first 2,000 loaded)" : ""
+        }`;
       }
     }
-    status.hidden = false;
     status.removeAttribute("aria-busy");
     status.classList?.remove("resource-dashboard-status-stacked");
     updateResourceDashboardFilterIndicators();
@@ -8022,6 +8320,72 @@
 
   function initializeResourceDashboardControls() {
     initializeResourceDashboardAutoRefresh();
+    const courseNamesToggle = document.getElementById(
+      "resource-dashboard-course-names-toggle",
+    );
+    if (courseNamesToggle && !courseNamesToggle.dataset.initialized) {
+      try {
+        resourceDashboardCourseNamesEnabled =
+          globalScope.localStorage.getItem(
+            RESOURCE_DASHBOARD_COURSE_NAMES_KEY,
+          ) === "true";
+      } catch (error) {
+        (globalScope.DebugUtils || console).error(
+          "Unable to load the Student Portal course display preference.",
+          error,
+        );
+      }
+      const updateToggle = () => {
+        const selected = resourceDashboardCourseNamesEnabled;
+        courseNamesToggle.textContent = selected ? "SUBJECTS" : "COURSE";
+        courseNamesToggle.setAttribute("aria-pressed", String(selected));
+        courseNamesToggle.setAttribute(
+          "aria-label",
+          `Display ${selected ? "subjects" : "course codes"}. Toggle display.`,
+        );
+        courseNamesToggle.title = `Showing ${selected ? "subjects" : "course codes"}`;
+      };
+      courseNamesToggle.addEventListener("click", () => {
+        resourceDashboardCourseNamesEnabled =
+          !resourceDashboardCourseNamesEnabled;
+        try {
+          globalScope.localStorage.setItem(
+            RESOURCE_DASHBOARD_COURSE_NAMES_KEY,
+            String(resourceDashboardCourseNamesEnabled),
+          );
+        } catch (error) {
+          (globalScope.DebugUtils || console).error(
+            "Unable to save the Student Portal course display preference.",
+            error,
+          );
+        }
+        updateToggle();
+        if (
+          resourceDashboardData &&
+          ["SYLLABUS", "MODULES", "REVIEWERS"].includes(
+            resourceDashboardActiveTab,
+          )
+        ) {
+          renderResourceDashboardTab();
+          const preview = document.getElementById("resource-portal-preview");
+          const previewTitle = document.getElementById(
+            "resource-portal-preview-title",
+          );
+          const previewCourseHeading = previewTitle?.querySelector("span");
+          if (
+            preview &&
+            !preview.hidden &&
+            previewCourseHeading &&
+            resourcePortalPreviewCourse
+          )
+            previewCourseHeading.textContent = getCourseHeading(
+              resourcePortalPreviewCourse,
+            );
+        }
+      });
+      updateToggle();
+      courseNamesToggle.dataset.initialized = "true";
+    }
     if (!resourceDashboardFilterIndicatorResizeInstalled) {
       globalScope.addEventListener(
         "resize",
@@ -8129,10 +8493,11 @@
     );
     const nameParts = [firstName, middleInitial, lastName]
       .map(normalizeReviewerIdentityText)
-      .filter((part) => part.length >= 3);
+      .filter((part) => part.length >= 3 && part !== "na");
     if (nameParts.some((part) => localPart.includes(part))) return true;
     const initials = [firstName, middleInitial, lastName]
       .map(normalizeReviewerIdentityText)
+      .filter((part) => part !== "na")
       .filter(Boolean)
       .map((part) => part[0])
       .join("");
@@ -8150,7 +8515,16 @@
   }
 
   function normalizeReviewerMiddleInitialInput(input, event) {
-    const letters = input.value.toLocaleUpperCase().replace(/[^A-Z]/g, "");
+    if (event?.inputType?.startsWith("delete")) {
+      input.value = "";
+      return;
+    }
+    const value = input.value.trim().toLocaleUpperCase();
+    if (value === "N/A") {
+      input.value = "";
+      return;
+    }
+    const letters = value.replace(/[^A-Z]/g, "");
     if (!letters) {
       input.value = "";
       return;
@@ -8193,6 +8567,26 @@
       );
       middleInitialInput.dataset.middleInitialInitialized = "true";
     }
+    document
+      .querySelectorAll(".resource-reviewer-input-wrap")
+      .forEach((wrapper) => {
+        const input = wrapper.querySelector("input");
+        const clearButton = wrapper.querySelector(
+          ".resource-reviewer-input-clear",
+        );
+        if (
+          !input ||
+          !clearButton ||
+          clearButton.dataset.initialized
+        )
+          return;
+        clearButton.addEventListener("click", () => {
+          input.value = "";
+          updateReviewerEmailNameWarning();
+          input.focus();
+        });
+        clearButton.dataset.initialized = "true";
+      });
   }
 
   function updateReviewerEmailNameWarning() {
@@ -9111,7 +9505,7 @@
           accountStatus === "NOT_FOUND"
             ? "Verify"
             : accountStatus === "DENIED"
-              ? "Submit"
+              ? "Resubmit"
               : response.profileUpdated
                 ? "Save changes for approval"
                 : "Submit";
@@ -9382,18 +9776,23 @@
       firstNameInput.value = capitalizeReviewerName(
         firstNameInput.value,
       ).trim();
-    if (middleInitialInput)
+    if (middleInitialInput) {
       normalizeReviewerMiddleInitialInput(middleInitialInput);
+    }
     const lastName = String(lastNameInput?.value || "").trim();
     const firstName = String(firstNameInput?.value || "").trim();
     const middleInitial = String(middleInitialInput?.value || "").trim();
     updateReviewerEmailNameWarning();
-    if (!lastName || !firstName || !/^[A-Z]\.$/.test(middleInitial)) {
+    if (
+      !lastName ||
+      !firstName ||
+      (middleInitial && !/^[A-Z]\.$/.test(middleInitial))
+    ) {
       if (authStatus)
         authStatus.textContent =
           !lastName || !firstName
             ? "Enter your last name and first name."
-            : "Middle Initial must be exactly one letter followed by a period.";
+            : "Middle Initial must be one letter followed by a period.";
       if (!lastName) lastNameInput?.focus();
       else if (!firstName) firstNameInput?.focus();
       else middleInitialInput?.focus();
@@ -9937,19 +10336,175 @@
     return { ...nextTab, recentlyUpdatedCells };
   }
 
+  function normalizeResourceDashboardIndex(tabName, index) {
+    if (
+      !index ||
+      typeof index.b !== "string" ||
+      !index.d ||
+      typeof index.d !== "object" ||
+      Array.isArray(index.d)
+    )
+      return null;
+    const categories =
+      tabName === "SYLLABUS"
+        ? ["SYLLABUS"]
+        : ["PRELIMS", "MIDTERMS", "FINALS"];
+    const rowsByKey = new Map();
+    const termKeys = Object.keys(index.d)
+      .filter((key) => /^\d+(?:\.\d+)?$/.test(key))
+      .sort((left, right) => {
+        const [leftYear, leftSemester = 0] = left.split(".").map(Number);
+        const [rightYear, rightSemester = 0] = right.split(".").map(Number);
+        return leftYear - rightYear || leftSemester - rightSemester;
+      });
+    termKeys.forEach((term) => {
+      const termData = index.d[term];
+      if (!termData || typeof termData !== "object" || Array.isArray(termData))
+        return;
+      categories.forEach((category) => {
+        const courses = termData[category];
+        if (!courses || typeof courses !== "object" || Array.isArray(courses))
+          return;
+        Object.keys(courses).forEach((course) => {
+          if (String(course).trim().toLocaleUpperCase() === "TOTAL") return;
+          const item = courses[course];
+          if (!item || typeof item !== "object") return;
+          const rowKey = `${term}\u0000${course}`;
+          if (!rowsByKey.has(rowKey)) {
+            rowsByKey.set(rowKey, {
+              term,
+              course,
+              resources: Object.create(null),
+              sourceOrder: rowsByKey.size,
+            });
+          }
+          const title = String(
+            Array.isArray(item)
+              ? item[0] || course
+              : item.n || item.name || course,
+          ).trim();
+          const rawUrl = String(
+            Array.isArray(item)
+              ? item[1] || ""
+              : item.u || item.url || "",
+          ).trim();
+          const id = String(
+            Array.isArray(item) ? "" : item.i || item.id || "",
+          ).trim();
+          const url = /^https:\/\//i.test(rawUrl)
+            ? rawUrl
+            : /^[A-Za-z0-9_-]{10,200}$/.test(rawUrl)
+              ? `${index.b}${encodeURIComponent(rawUrl)}`
+              : !rawUrl && /^[A-Za-z0-9_-]{10,200}$/.test(id)
+                ? `${index.b}${encodeURIComponent(id)}`
+                : "";
+          let mimeType = "";
+          const rawType = String(
+            Array.isArray(item) ? item[3] || "" : item.t ?? "",
+          ).toLowerCase();
+          if (
+            (Array.isArray(item) && tabName === "MODULES") ||
+            ["1", "folder"].includes(rawType)
+          )
+            mimeType = "application/vnd.google-apps.folder";
+          else if (rawType === "pdf" || /\.pdf$/i.test(title))
+            mimeType = "application/pdf";
+          else if (rawType === "gdoc")
+            mimeType = "application/vnd.google-apps.document";
+          else if (rawType === "docx")
+            mimeType =
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+          else if (rawType === "doc")
+            mimeType = "application/msword";
+          rowsByKey.get(rowKey).resources[category] = {
+            title,
+            url: url && getResourceDashboardFileId(url) ? url : "",
+            mimeType,
+          };
+        });
+      });
+    });
+    const rows = [...rowsByKey.values()].sort((left, right) => {
+      const termOrder = left.term.localeCompare(right.term, undefined, {
+        numeric: true,
+      });
+      if (termOrder) return termOrder;
+      const resourceNames = (row) =>
+        categories
+          .map((category) => row.resources[category]?.title || "")
+          .find(Boolean) || "";
+      const order = compareResourceOrder(
+        resourceNames(left),
+        resourceNames(right),
+      );
+      return order || left.sourceOrder - right.sourceOrder;
+    });
+    const columns = ["Year", "Course", ...categories];
+    const values = [];
+    const links = [];
+    const linkTitles = [];
+    const linkTypes = [];
+    rows.forEach((row) => {
+      const rowValues = [row.term, row.course];
+      const rowLinks = ["", ""];
+      const rowTitles = ["", ""];
+      const rowTypes = ["", ""];
+      categories.forEach((category) => {
+        const resource = row.resources[category];
+        rowValues.push(resource?.title || "");
+        rowLinks.push(resource?.url || "");
+        rowTitles.push(resource?.title || "");
+        rowTypes.push(resource?.mimeType || "");
+      });
+      values.push(rowValues);
+      links.push(rowLinks);
+      linkTitles.push(rowTitles);
+      linkTypes.push(rowTypes);
+    });
+    return {
+      columns,
+      rows: values,
+      links,
+      linkTitles,
+      linkTypes,
+      truncated: false,
+    };
+  }
+
   function normalizeResourceDashboardTabs(tabs) {
+    if (!tabs || typeof tabs !== "object")
+      throw new Error("The dashboard service returned invalid data.");
+    const moduleTab =
+      Array.isArray(tabs.MODULES?.columns) && Array.isArray(tabs.MODULES?.rows)
+        ? tabs.MODULES
+        : normalizeResourceDashboardIndex("MODULES", tabs.MODULES);
+    const sourceReviewerTab =
+      Array.isArray(tabs.REVIEWERS?.columns) &&
+      Array.isArray(tabs.REVIEWERS?.rows)
+        ? tabs.REVIEWERS
+        : null;
+    const reviewerTab =
+      sourceReviewerTab ||
+      normalizeResourceDashboardIndex("REVIEWERS", tabs.REVIEWERS);
     const isValidTab = (tab) =>
       Array.isArray(tab?.columns) &&
       Array.isArray(tab?.rows) &&
       tab.rows.every(Array.isArray);
-    if (!isValidTab(tabs?.MODULES)) {
+    if (!isValidTab(moduleTab)) {
       throw new Error(
         "The dashboard service returned invalid data: missing or malformed MODULES tab.",
       );
     }
 
-    const normalized = { ...tabs };
-    const reviewerTab = isValidTab(tabs.REVIEWERS) ? tabs.REVIEWERS : null;
+    const normalized = { ...tabs, MODULES: moduleTab };
+    if (isValidTab(reviewerTab)) normalized.REVIEWERS = reviewerTab;
+    const sourceSyllabusTab =
+      isValidTab(tabs.SYLLABUS)
+        ? tabs.SYLLABUS
+        : normalizeResourceDashboardIndex(
+            "SYLLABUS",
+            tabs.SYLLABUS?.d ? tabs.SYLLABUS : tabs.REVIEWERS,
+          );
     const syllabusColumnIndex = reviewerTab
       ? reviewerTab.columns.findIndex((column) =>
           ["syllabus", "course syllabus"].includes(
@@ -9959,25 +10514,24 @@
           ),
         )
       : -1;
-    if (!isValidTab(normalized.SYLLABUS)) {
-      if (!reviewerTab) {
-        throw new Error(
-          "The dashboard service returned invalid data: missing or malformed SYLLABUS tab.",
-        );
-      }
-      const yearColumnIndex = reviewerTab.columns.findIndex(
-        (column) =>
-          String(column || "")
-            .trim()
-            .toLowerCase() === "year",
-      );
-      const courseColumnIndex = reviewerTab.columns.findIndex(
-        (column) =>
-          String(column || "")
-            .trim()
-            .toLowerCase() === "course",
-      );
-      if (syllabusColumnIndex >= 0) {
+    if (!isValidTab(sourceSyllabusTab)) {
+      const yearColumnIndex = reviewerTab
+        ? reviewerTab.columns.findIndex(
+            (column) =>
+              String(column || "")
+                .trim()
+                .toLowerCase() === "year",
+          )
+        : -1;
+      const courseColumnIndex = reviewerTab
+        ? reviewerTab.columns.findIndex(
+            (column) =>
+              String(column || "")
+                .trim()
+                .toLowerCase() === "course",
+          )
+        : -1;
+      if (reviewerTab && syllabusColumnIndex >= 0) {
         const syllabusRowIndexes = reviewerTab.rows
           .map((row, index) =>
             String(row[syllabusColumnIndex] || "").trim() ? index : -1,
@@ -10023,7 +10577,7 @@
           truncated: false,
         };
       }
-    }
+    } else normalized.SYLLABUS = sourceSyllabusTab;
     normalized.REVIEWERS = {
       columns: [],
       rows: [],
@@ -10056,6 +10610,293 @@
       return { ...tabs, REVIEWERS: reviewerTab };
     if (reviewerDashboardLoadedForEmail) reviewerDashboardLoadedForEmail = "";
     return tabs;
+  }
+
+  function renderResourceDashboardSubjects() {
+    const tab = resourceDashboardData?.MODULES;
+    const panel = document.getElementById(
+      "resource-dashboard-subjects-content",
+    );
+    const status = document.getElementById(
+      "resource-dashboard-subjects-status",
+    );
+    const search = document.getElementById(
+      "resource-dashboard-subjects-search",
+    );
+    const tableBody = document.getElementById(
+      "resource-dashboard-subjects-body",
+    );
+    const tableHead = document.getElementById(
+      "resource-dashboard-subjects-head",
+    );
+    if (!panel || !status || !tableBody || !tableHead) return false;
+    if (!tab) {
+      status.textContent = "Subject listings are unavailable.";
+      status.removeAttribute("aria-busy");
+      tableBody.replaceChildren();
+      return false;
+    }
+    panel.hidden = false;
+    const yearColumnIndex = tab.columns.findIndex(
+      (column) => String(column).trim().toLowerCase() === "year",
+    );
+    const semesterColumnIndex = tab.columns.findIndex(
+      (column) => String(column).trim().toLowerCase() === "semester",
+    );
+    const courseColumnIndex = tab.columns.findIndex(
+      (column) => String(column).trim().toLowerCase() === "course",
+    );
+    const categoryColumns = tab.columns
+      .map((column, index) => ({
+        category: String(column).trim().toUpperCase(),
+        index,
+      }))
+      .filter(({ category }) =>
+        ["PRELIMS", "MIDTERMS", "FINALS"].includes(category),
+      );
+    const getTerm = (values) => {
+      const yearValue = String(
+        yearColumnIndex >= 0 ? values[yearColumnIndex] || "" : "",
+      ).trim();
+      const combinedTerm = /^(\d+)\s*[./-]\s*(\d+)$/.exec(yearValue);
+      return {
+        year: combinedTerm
+          ? combinedTerm[1]
+          : yearValue,
+        semester: combinedTerm
+          ? combinedTerm[2]
+          : semesterColumnIndex >= 0
+            ? String(values[semesterColumnIndex] || "").trim()
+            : "",
+      };
+    };
+    const sourceRows = tab.rows
+      .map((values, rowIndex) => ({ values, rowIndex }))
+      .filter(
+        ({ values }) =>
+          Array.isArray(values) &&
+          String(
+            courseColumnIndex >= 0 ? values[courseColumnIndex] || "" : "",
+          )
+            .trim()
+            .toLocaleUpperCase() !== "TOTAL",
+      );
+    const entries = [];
+    sourceRows.forEach(({ values, rowIndex }) => {
+      const { year, semester } = getTerm(values);
+      const course = String(
+        courseColumnIndex >= 0 ? values[courseColumnIndex] || "" : "",
+      ).trim();
+      if (!course) return;
+      const categories = categoryColumns
+        .filter(({ index }) => {
+          const value = String(values[index] || "").trim();
+          const link = String(tab.links?.[rowIndex]?.[index] || value);
+          return value || isResourceDashboardLink(link);
+        })
+        .map(({ category, index }) => ({
+          category,
+          sourceName: String(
+            tab.linkTitles?.[rowIndex]?.[index] ||
+              values[index] ||
+              course,
+          ).trim(),
+        }));
+      if (!categories.length) return;
+      entries.push({
+        course,
+        year,
+        semester,
+        categories,
+        rowIndex,
+      });
+    });
+    const years = new Set(entries.map((entry) => entry.year).filter(Boolean));
+    const selectedYear = years.has(resourceDashboardSelectedYears.SUBJECTS)
+      ? resourceDashboardSelectedYears.SUBJECTS
+      : "all";
+    resourceDashboardSelectedYears.SUBJECTS = selectedYear;
+    const semesters = new Set(
+      entries
+        .filter(
+          (entry) => selectedYear === "all" || entry.year === selectedYear,
+        )
+        .map((entry) => entry.semester)
+        .filter(Boolean),
+    );
+    let selectedSemester =
+      resourceDashboardSelectedSemesters.SUBJECTS === "all" ||
+      semesters.has(resourceDashboardSelectedSemesters.SUBJECTS)
+        ? resourceDashboardSelectedSemesters.SUBJECTS
+        : "all";
+    resourceDashboardSelectedSemesters.SUBJECTS = selectedSemester;
+    const query = String(search?.value || "").trim().toLocaleLowerCase();
+    const searchActive = Boolean(query);
+
+    const renderFilterButtons = (id, values, selected, label, onSelect) => {
+      const control = document.getElementById(id);
+      if (!control) return;
+      const fixedChoices =
+        label === "year"
+          ? ["1", "2", "3"]
+          : label === "semester"
+            ? ["1", "2"]
+            : [];
+      const choices = [...new Set([...fixedChoices, ...values])].sort(
+        (left, right) =>
+          left.localeCompare(right, undefined, { numeric: true }),
+      );
+      choices.push("all");
+      control.replaceChildren(
+        ...choices.map((value) => {
+          const button = createResourceDashboardElement(
+            "button",
+            value === selected ? "is-active" : "",
+            value === "all"
+              ? "All"
+              : value,
+          );
+          button.type = "button";
+          button.dataset.filterValue = value;
+          button.setAttribute("aria-pressed", String(value === selected));
+          button.disabled =
+            searchActive || (value !== "all" && !values.has(value));
+          button.setAttribute("aria-disabled", String(button.disabled));
+          button.addEventListener("click", () => {
+            onSelect(value);
+            saveResourceDashboardFilters();
+            renderResourceDashboardSubjects();
+          });
+          return button;
+        }),
+      );
+    };
+    renderFilterButtons(
+      "resource-dashboard-subjects-filter-year",
+      new Set([...years, "1", "2", "3"]),
+      selectedYear,
+      "year",
+      (value) => {
+        resourceDashboardSelectedYears.SUBJECTS = value;
+      },
+    );
+    renderFilterButtons(
+      "resource-dashboard-subjects-filter-semester",
+      new Set([...semesters, "1", "2"]),
+      selectedSemester,
+      "semester",
+      (value) => {
+        resourceDashboardSelectedSemesters.SUBJECTS = value;
+      },
+    );
+    const termNumber = (value) => {
+      const number = Number(value);
+      return Number.isFinite(number) && number > 0
+        ? number
+        : Number.MAX_SAFE_INTEGER;
+    };
+    const visibleEntries = entries
+      .filter(
+        (entry) =>
+          Boolean(query) ||
+          ((selectedYear === "all" || entry.year === selectedYear) &&
+            (selectedSemester === "all" ||
+              entry.semester === selectedSemester)),
+      )
+      .filter((entry) => {
+        const searchText = [entry.course, getCourseTitle(entry.course)]
+          .join(" ")
+          .toLocaleLowerCase();
+        return !query || searchText.includes(query);
+      })
+      .sort((left, right) => {
+        const termOrder =
+          termNumber(left.year) - termNumber(right.year) ||
+          termNumber(left.semester) - termNumber(right.semester);
+        if (termOrder) return termOrder;
+        const courseSequenceOrder = compareResourceOrder(left.course, right.course);
+        if (courseSequenceOrder) return courseSequenceOrder;
+        const resourceSequenceOrder = compareResourceOrder(
+          left.categories[0]?.sourceName || "",
+          right.categories[0]?.sourceName || "",
+        );
+        if (resourceSequenceOrder) return resourceSequenceOrder;
+        return left.rowIndex - right.rowIndex;
+      });
+    const uniqueEntries = buildCourseCatalogEntries(visibleEntries);
+    const subjectsTable = tableBody.closest("table");
+    subjectsTable?.classList.toggle("is-search-active", searchActive);
+    tableHead.replaceChildren(
+      ...["Year", "Course", "Subjects"].map(
+        (label) => {
+          const header = document.createElement("th");
+          header.scope = "col";
+          if (label === "Year")
+            header.classList.add("resource-dashboard-column-year");
+          if (label === "Course")
+            header.classList.add("resource-dashboard-column-course");
+          header.textContent = label;
+          return header;
+        },
+      ),
+    );
+    tableBody.replaceChildren(
+      ...uniqueEntries.map((entry) => {
+        const row = document.createElement("tr");
+        row.dataset.search = `${entry.course} ${getCourseTitle(
+          entry.course,
+        )}`.toLocaleLowerCase();
+        const courseCell = document.createElement("td");
+        courseCell.classList.add("resource-dashboard-column-course");
+        courseCell.textContent = entry.course;
+        const yearCell = document.createElement("td");
+        yearCell.classList.add("resource-dashboard-column-year");
+        yearCell.textContent = entry.year;
+        const subjectsCell = document.createElement("td");
+        subjectsCell.classList.add("resource-dashboard-column-subjects");
+        subjectsCell.textContent = entry.subject;
+        row.append(yearCell, courseCell, subjectsCell);
+        return row;
+      }),
+    );
+    status.replaceChildren();
+    status.hidden = true;
+    status.removeAttribute("aria-busy");
+    if (search && !search.dataset.initialized) {
+      search.addEventListener("input", () => {
+        if (!search.isComposing) {
+          const start = search.selectionStart;
+          const end = search.selectionEnd;
+          const uppercaseValue = search.value.toLocaleUpperCase();
+          if (search.value !== uppercaseValue) {
+            search.value = uppercaseValue;
+            search.setSelectionRange(start, end);
+          }
+        }
+        renderResourceDashboardSubjects();
+      });
+      search.addEventListener("compositionend", () => {
+        search.value = search.value.toLocaleUpperCase();
+        renderResourceDashboardSubjects();
+      });
+      search.dataset.initialized = "true";
+    }
+    const clearSearchButton = document.getElementById(
+      "resource-dashboard-subjects-search-clear",
+    );
+    if (clearSearchButton && !clearSearchButton.dataset.initialized) {
+      clearSearchButton.addEventListener("click", () => {
+        if (!search) return;
+        search.value = "";
+        renderResourceDashboardSubjects();
+        search.focus();
+      });
+      clearSearchButton.dataset.initialized = "true";
+    }
+    if (clearSearchButton)
+      clearSearchButton.disabled = !String(search?.value || "").length;
+    updateResourceDashboardFilterIndicators();
+    return true;
   }
 
   async function loadResourceDashboard({ silent = false } = {}) {
@@ -10116,11 +10957,21 @@
         }
       }
     }
-    if (!silent && !keepReviewerStatus) {
-      status.textContent = cachedDashboard
-        ? "Checking for dashboard updates…"
-        : "Loading dashboard…";
+    if (!silent && !keepReviewerStatus && !cachedDashboard) {
+      status.textContent =
+        resourceDashboardActiveTab === "SUBJECTS"
+          ? "Loading subjects…"
+          : "Loading dashboard…";
       status.setAttribute("aria-busy", "true");
+      if (resourceDashboardActiveTab === "SUBJECTS") {
+        const subjectsStatus = document.getElementById(
+          "resource-dashboard-subjects-status",
+        );
+        if (subjectsStatus) {
+          subjectsStatus.textContent = "Loading subjects…";
+          subjectsStatus.setAttribute("aria-busy", "true");
+        }
+      }
     }
     if (!cachedDashboard && !silent && !keepReviewerStatus) {
       resourceDashboardData = null;
@@ -10196,10 +11047,21 @@
           return loadReviewerDashboard({ refresh: true });
         return true;
       } catch (error) {
-        if (!silent && !keepReviewerStatus)
-          status.textContent = `Unable to load dashboard: ${String(
+        if (!silent && !keepReviewerStatus) {
+          const errorMessage = `Unable to load dashboard: ${String(
             error?.message || error,
           )}`;
+          status.textContent = errorMessage;
+          if (resourceDashboardActiveTab === "SUBJECTS") {
+            const subjectsStatus = document.getElementById(
+              "resource-dashboard-subjects-status",
+            );
+            if (subjectsStatus) {
+              subjectsStatus.textContent = errorMessage;
+              subjectsStatus.setAttribute("aria-busy", "false");
+            }
+          }
+        }
         (globalScope.DebugUtils || console).error(
           "Unable to load the Resource Dashboard.",
           error,
@@ -10333,7 +11195,11 @@
         const current = createResourcePortalElement(
           "span",
           "truncate font-semibold text-gray-800 dark:text-gray-100",
-          crumb.name,
+        );
+        current.appendChild(
+          document.createTextNode(
+            getCourseHeading(crumb.name),
+          ),
         );
         current.setAttribute("aria-current", "location");
         navigation.appendChild(current);
@@ -10343,7 +11209,11 @@
       const button = createResourcePortalElement(
         "button",
         "truncate text-brand-700 hover:underline dark:text-brand-300",
-        crumb.name,
+      );
+      button.append(
+        document.createTextNode(
+          getCourseHeading(crumb.name),
+        ),
       );
       button.type = "button";
       button.addEventListener("click", () => {
@@ -10358,9 +11228,24 @@
     if (!list) return;
 
     list.replaceChildren();
-    items.forEach((item) => {
+    [...items]
+      .map((item, index) => ({ item, index }))
+      .sort(
+        (left, right) =>
+          compareResourceOrder(left.item.name, right.item.name) ||
+          left.index - right.index,
+      )
+      .forEach(({ item }) => {
       const row = createResourcePortalElement("li", "resource-portal-row");
-      row.dataset.search = String(item.name || "").toLocaleLowerCase();
+      const originalName = String(item.name || "");
+      const cleanedName = cleanResourceDisplayName(originalName);
+      const displayName =
+        item.type === "folder"
+          ? getCourseHeading(cleanedName)
+          : cleanedName;
+      row.dataset.search = `${originalName} ${displayName} ${cleanResourceDisplayName(
+        originalName,
+      )}`.toLocaleLowerCase();
       const icon = createResourcePortalElement(
         "i",
         item.type === "folder"
@@ -10383,8 +11268,8 @@
         const button = createResourcePortalElement(
           "button",
           "resource-portal-item-name",
-          item.name,
         );
+        button.appendChild(document.createTextNode(displayName));
         button.type = "button";
         button.addEventListener("click", () => {
           void loadResourcePortalFolder(item.id);
@@ -10394,8 +11279,8 @@
         const previewButton = createResourcePortalElement(
           "button",
           "resource-portal-item-name",
-          item.name,
         );
+        previewButton.appendChild(document.createTextNode(displayName));
         previewButton.type = "button";
         previewButton.addEventListener("click", () => {
           void previewResourceFile(item.id, item.name);
@@ -10493,10 +11378,11 @@
         : sequence.replace(/\s*-\s*/g, "-").trim();
     const lesson = `Lesson ${normalizedSequence}`;
     const details = /\(([^()]*)\)/.exec(title)?.[1]?.trim() || "";
+    const parenthesizedDetails = details ? `(${details})` : "";
     return {
       lesson,
-      details,
-      header: `${lesson}${details ? ` (${details})` : ""}`,
+      details: parenthesizedDetails,
+      header: `${lesson}${parenthesizedDetails ? ` ${parenthesizedDetails}` : ""}`,
     };
   }
 
@@ -10619,10 +11505,11 @@
         );
         const link = document.createElement("a");
         link.href = blobUrl;
-        link.download = `${getReviewerPdfDisplayName(activePdf.fileName).replace(
-          /\.pdf$/i,
-          "",
-        )}.pdf`;
+        if (!/^[^<>:"/\\|?*\u0000-\u001f]{1,255}\.pdf$/i.test(
+          String(activePdf.downloadFileName || ""),
+        ))
+          throw new Error("The backend did not provide a valid PDF download filename.");
+        link.download = activePdf.downloadFileName;
         link.hidden = true;
         document.body.appendChild(link);
         link.click();
@@ -10711,27 +11598,6 @@
 
     const controls = document.createElement("div");
     controls.className = "resource-dashboard-folder-controls";
-    if (listing.breadcrumbs.length > 1) {
-      const parentFolder = listing.breadcrumbs[listing.breadcrumbs.length - 2];
-      const backButton = document.createElement("button");
-      backButton.type = "button";
-      backButton.className = "resource-dashboard-folder-back";
-      backButton.textContent = "Up one level";
-      backButton.addEventListener("click", () => {
-        void logResourceDashboardAction(
-          "MODULES",
-          "FOLDER_OPEN",
-          "Up one level",
-          String(parentFolder.name || ""),
-        );
-        void loadResourceDashboardFolderPreview(
-          parentFolder.id,
-          frame,
-          status,
-        );
-      });
-      controls.appendChild(backButton);
-    }
     const viewToggle = document.createElement("div");
     viewToggle.className = "resource-dashboard-folder-view-toggle";
     viewToggle.setAttribute("role", "group");
@@ -10776,7 +11642,14 @@
 
     const items = document.createElement("ul");
     items.className = `resource-dashboard-folder-items is-${resourceDashboardFolderViewMode}`;
-    listing.items.forEach((item) => {
+    [...listing.items]
+      .map((item, index) => ({ item, index }))
+      .sort(
+        (left, right) =>
+          compareResourceOrder(left.item.name, right.item.name) ||
+          left.index - right.index,
+      )
+      .forEach(({ item }) => {
       const row = document.createElement("li");
       const button = document.createElement("button");
       button.type = "button";
@@ -10788,8 +11661,59 @@
           : "fa-solid fa-file-lines";
       icon.setAttribute("aria-hidden", "true");
       const name = document.createElement("span");
-      name.textContent = String(item.name || "Unnamed resource");
-      button.append(icon, name);
+      const originalName = String(item.name || "Unnamed resource");
+      name.appendChild(
+        document.createTextNode(
+          (item.type === "folder"
+            ? getCourseHeading(originalName)
+            : cleanResourceDisplayName(originalName)) ||
+            "Unnamed resource",
+        ),
+      );
+      let thumbnailUrl = "";
+      if (resourceDashboardFolderViewMode === "grid" && item.type === "file") {
+        try {
+          const parsedUrl = new URL(String(item.thumbnailLink || ""));
+          if (
+            parsedUrl.protocol === "https:" &&
+            (parsedUrl.hostname.endsWith(".googleusercontent.com") ||
+              parsedUrl.hostname === "drive.google.com") &&
+            !parsedUrl.username &&
+            !parsedUrl.password
+          )
+            thumbnailUrl = parsedUrl.href;
+        } catch (error) {
+          thumbnailUrl = "";
+        }
+      }
+      const isGridView = resourceDashboardFolderViewMode === "grid";
+      const isPdf = item.mimeType === "application/pdf";
+      if (thumbnailUrl) {
+        const thumbnail = document.createElement("img");
+        thumbnail.className = "resource-dashboard-folder-thumbnail";
+        thumbnail.src = thumbnailUrl;
+        thumbnail.alt = "";
+        thumbnail.loading = "lazy";
+        thumbnail.referrerPolicy = "no-referrer";
+        thumbnail.addEventListener("error", () => thumbnail.remove(), {
+          once: true,
+        });
+        button.append(thumbnail, name);
+      } else {
+        if (isGridView && item.type === "file") {
+          const fallback = document.createElement("span");
+          fallback.className = "resource-dashboard-folder-thumbnail-fallback";
+          if (!isPdf) {
+            const fallbackIcon = document.createElement("i");
+            fallbackIcon.className = "fa-solid fa-file-lines";
+            fallbackIcon.setAttribute("aria-hidden", "true");
+            fallback.appendChild(fallbackIcon);
+          }
+          button.append(fallback, name);
+        } else {
+          button.append(icon, name);
+        }
+      }
       button.addEventListener("click", () => {
         if (button.disabled) return;
         if (item.type === "folder") {
@@ -10808,23 +11732,34 @@
         resourceDashboardFolderReturn = resourceDashboardFolderListing;
         void previewResourceFile(item.id, item.name, {
           dashboardFolderFile: true,
+          course: getCourseCodeFromBreadcrumbs(
+            listing.breadcrumbs,
+            String(listing.folder?.name || ""),
+          ),
         });
       });
       row.appendChild(button);
       const itemType = document.createElement("span");
       itemType.className = "resource-dashboard-folder-item-type";
-      itemType.textContent =
-        item.type === "folder"
+      if (isGridView && item.type === "file" && isPdf) {
+        const pdfIcon = document.createElement("i");
+        pdfIcon.className = "fa-solid fa-file-pdf";
+        pdfIcon.setAttribute("aria-label", "PDF");
+        itemType.appendChild(pdfIcon);
+      } else {
+        itemType.textContent =
+          item.type === "folder"
           ? "Folder"
-          : item.mimeType === "application/pdf"
-            ? "PDF"
-            : item.mimeType === "application/vnd.google-apps.document"
-              ? "Google Doc"
-              : item.mimeType === "application/vnd.google-apps.spreadsheet"
-                ? "Google Sheet"
-                : item.mimeType === "application/vnd.google-apps.presentation"
-                  ? "Google Slides"
-                  : "File";
+            : isPdf
+              ? "PDF"
+              : item.mimeType === "application/vnd.google-apps.document"
+                ? "Google Doc"
+                : item.mimeType === "application/vnd.google-apps.spreadsheet"
+                  ? "Google Sheet"
+                  : item.mimeType === "application/vnd.google-apps.presentation"
+                    ? "Google Slides"
+                    : "File";
+      }
       row.appendChild(itemType);
       items.appendChild(row);
     });
@@ -10858,7 +11793,11 @@
       panel.appendChild(loadMore);
     }
     const title = document.getElementById("resource-portal-preview-title");
-    if (title) title.textContent = String(listing.folder?.name || "Folder");
+    if (title) {
+      const folderName = String(listing.folder?.name || "Folder");
+      title.replaceChildren();
+      title.appendChild(document.createTextNode(getCourseHeading(folderName)));
+    }
     return true;
   }
 
@@ -10930,7 +11869,10 @@
             !/^[A-Za-z0-9_-]{10,200}$/.test(String(item.id || "")) ||
             typeof item.name !== "string" ||
             !["file", "folder"].includes(item.type) ||
-            typeof item.mimeType !== "string",
+            typeof item.mimeType !== "string" ||
+            (item.thumbnailLink !== undefined &&
+              (typeof item.thumbnailLink !== "string" ||
+                item.thumbnailLink.length > 4096)),
         )
       )
         throw new Error("The folder service returned an invalid listing.");
@@ -10993,6 +11935,9 @@
     const downloadButton = document.getElementById(
       "resource-portal-preview-download",
     );
+    const backButton = document.getElementById(
+      "resource-portal-preview-back",
+    );
     if (!preview || !title || !frame) return false;
     reviewerPdfWorkerCancel?.();
     const closeButton = document.getElementById(
@@ -11026,34 +11971,48 @@
       });
       downloadButton.dataset.initialized = "true";
     }
-    const backButton = document.getElementById(
-      "resource-portal-preview-back",
-    );
     if (backButton && !backButton.dataset.initialized) {
       backButton.addEventListener("click", () => {
         const listing = resourceDashboardFolderReturn;
         const panel = getResourceDashboardFolderPanel(frame);
         if (!listing || !panel) return;
+        reviewerPdfWorkerCancel?.();
+        resourcePortalPreviewGeneration += 1;
+        resourceDashboardFolderGeneration += 1;
         resourceDashboardFolderReturn = null;
-        frame.removeAttribute("src");
+        resourcePortalPreviewIsReviewer = false;
+        resourcePortalPreviewCourse = "";
+        resourcePortalReviewerPdf = null;
         if (resourcePortalPreviewObjectUrl) {
           URL.revokeObjectURL(resourcePortalPreviewObjectUrl);
           resourcePortalPreviewObjectUrl = "";
         }
+        frame.removeAttribute("src");
         frame.hidden = true;
+        frame.title = `Preview of ${String(listing.folder?.name || "Folder")}`;
+        const previewTitle = document.getElementById(
+          "resource-portal-preview-title",
+        );
+        if (previewTitle)
+          previewTitle.textContent = String(listing.folder?.name || "Folder");
+        if (fileIcon) fileIcon.hidden = true;
+        if (downloadButton) {
+          downloadButton.hidden = true;
+          downloadButton.disabled = false;
+        }
+        backButton.hidden = true;
+        preview.classList.remove("is-reviewer-pdf", "is-module-preview");
         panel.hidden = false;
-        renderResourceDashboardFolderListing(listing, frame, status);
         if (status) {
           status.classList.remove("is-loading");
           status.textContent = "";
           status.hidden = true;
         }
-        backButton.hidden = true;
+        renderResourceDashboardFolderListing(listing, frame, status);
       });
       backButton.dataset.initialized = "true";
     }
     const folderPanel = getResourceDashboardFolderPanel(frame);
-    if (folderId || !dashboardFolderFile) resourceDashboardFolderReturn = null;
     if (backButton) backButton.hidden = !dashboardFolderFile;
     if (folderPanel) folderPanel.hidden = true;
     const reviewerRequestKey = reviewer
@@ -11073,9 +12032,14 @@
 
     preview.classList.remove("is-fullscreen");
     preview.classList.toggle("is-reviewer-pdf", reviewer);
+    preview.classList.toggle(
+      "is-module-preview",
+      dashboardFolderFile && !reviewer && !folderId,
+    );
     const previewGeneration = ++resourcePortalPreviewGeneration;
     resourceDashboardFolderGeneration += 1;
     resourcePortalPreviewIsReviewer = reviewer;
+    resourcePortalPreviewCourse = String(course || "").trim();
     resourcePortalReviewerPdf = null;
     if (downloadButton) {
       downloadButton.hidden = true;
@@ -11092,23 +12056,45 @@
     const previewLessonTitle = reviewer
       ? getReviewerPdfLessonTitle(fileName, course)
       : null;
+    const previewCourse = String(course || "").trim();
     const previewTitle = reviewer
-      ? `${String(course || "").trim() || "Reviewer"}\n${
-          previewLessonTitle?.header || getReviewerPdfDisplayName(fileName)
-        }`
-      : String(fileName || "File preview");
+      ? `${getCourseHeading(course) || "Reviewer"}\n${
+        previewLessonTitle?.header ||
+        cleanResourceDisplayName(getReviewerPdfDisplayName(fileName))
+      }`
+      : previewCourse
+        ? getCourseHeading(previewCourse)
+        : cleanResourceDisplayName(fileName) || "File preview";
     if (fileIcon)
       fileIcon.hidden = !(reviewer || /\.pdf$/i.test(String(fileName || "")));
     if (reviewer) {
       const courseLine = document.createElement("span");
-      courseLine.textContent = String(course || "").trim() || "Reviewer";
+      courseLine.appendChild(
+        document.createTextNode(getCourseHeading(course) || "Reviewer"),
+      );
       const lessonLine = document.createElement("span");
       lessonLine.className = "resource-portal-preview-title-details";
       lessonLine.textContent =
-        previewLessonTitle?.header || getReviewerPdfDisplayName(fileName);
+        previewLessonTitle?.header ||
+        cleanResourceDisplayName(getReviewerPdfDisplayName(fileName));
       title.replaceChildren(courseLine, lessonLine);
+    } else if (previewCourse) {
+      const courseLine = document.createElement("span");
+      courseLine.appendChild(
+        document.createTextNode(getCourseHeading(previewCourse)),
+      );
+      const resourceLine = document.createElement("span");
+      resourceLine.className = "resource-portal-preview-title-details";
+      resourceLine.appendChild(
+        document.createTextNode(
+          cleanResourceDisplayName(fileName) || "Resource preview",
+        ),
+      );
+      title.replaceChildren(courseLine, resourceLine);
     } else {
-      title.textContent = previewTitle;
+      const resourceLine = document.createElement("span");
+      resourceLine.appendChild(document.createTextNode(previewTitle));
+      title.replaceChildren(resourceLine);
     }
     frame.title = `Preview of ${previewTitle}`;
     preview.classList.add("is-fullscreen");
@@ -11156,7 +12142,11 @@
         (!cachedReviewerPdf ||
           cachedReviewerPdf.sourceVersion !== response.sourceVersion ||
           cachedReviewerPdf.fullName !== String(response.fullName || "") ||
-          cachedReviewerPdf.email !== String(response.email || ""))
+          cachedReviewerPdf.firstName !== String(response.firstName || "") ||
+          cachedReviewerPdf.lastName !== String(response.lastName || "") ||
+          cachedReviewerPdf.email !== String(response.email || "") ||
+          cachedReviewerPdf.downloadFileName !==
+            String(response.downloadFileName || ""))
       ) {
         response = await globalScope.AppNetwork.callBackend(
           {
@@ -11183,6 +12173,22 @@
             "The preview service returned invalid file data.",
         );
       }
+      if (
+        reviewer &&
+        (typeof response.fullName !== "string" ||
+          !response.fullName.trim() ||
+          typeof response.firstName !== "string" ||
+          !response.firstName.trim() ||
+          typeof response.lastName !== "string" ||
+          !response.lastName.trim() ||
+          typeof response.email !== "string" ||
+          !response.email.trim() ||
+          typeof response.downloadFileName !== "string" ||
+          !response.downloadFileName.trim())
+      )
+        throw new Error(
+          "The backend did not provide verified account and download metadata.",
+        );
 
       const responseMimeType = String(response.mimeType || "").toLowerCase();
       if (
@@ -11238,7 +12244,10 @@
           bytes = await watermarkReviewerPdfInWorker(bytes, {
             fullName: String(response.fullName || ""),
             email: String(response.email || ""),
+            downloadFileName: String(response.downloadFileName || ""),
           });
+          if (previewGeneration !== resourcePortalPreviewGeneration)
+            return false;
         }
       }
       if (
@@ -11260,7 +12269,10 @@
           bytes,
           sourceVersion: response.sourceVersion,
           fullName: String(response.fullName || ""),
+          firstName: String(response.firstName || ""),
+          lastName: String(response.lastName || ""),
           email: String(response.email || ""),
+          downloadFileName: String(response.downloadFileName || ""),
           expiresAt: Date.now() + 10 * 60 * 1000,
         });
         while (reviewerPdfPreviewCache.size > 2)
@@ -11293,6 +12305,11 @@
         resourcePortalReviewerPdf = {
           fileId: String(fileId || ""),
           fileName: getReviewerPdfDisplayName(fileName),
+          fullName: String(response.fullName || ""),
+          firstName: String(response.firstName || ""),
+          lastName: String(response.lastName || ""),
+          email: String(response.email || ""),
+          downloadFileName: String(response.downloadFileName || ""),
           bytes,
           sourceVersion: response.sourceVersion,
         };
@@ -11417,6 +12434,10 @@
     const preview = document.getElementById("resource-portal-preview");
     const frame = document.getElementById("resource-portal-preview-frame");
     const status = document.getElementById("resource-portal-preview-status");
+    const title = document.getElementById("resource-portal-preview-title");
+    const fileIcon = document.getElementById(
+      "resource-portal-preview-file-icon",
+    );
     const backButton = document.getElementById(
       "resource-portal-preview-back",
     );
@@ -11437,7 +12458,10 @@
       resourcePortalPreviewObjectUrl = "";
     }
     resourcePortalPreviewIsReviewer = false;
+    resourcePortalPreviewCourse = "";
     resourcePortalReviewerPdf = null;
+    if (title) title.textContent = "File preview";
+    if (fileIcon) fileIcon.hidden = true;
     if (downloadButton) {
       downloadButton.hidden = true;
       downloadButton.disabled = false;
@@ -11454,6 +12478,7 @@
     if (preview) {
       preview.classList.remove("is-fullscreen");
       preview.classList.remove("is-reviewer-pdf");
+      preview.classList.remove("is-module-preview");
       preview.setAttribute("role", "region");
       preview.removeAttribute("aria-modal");
       preview.hidden = true;
