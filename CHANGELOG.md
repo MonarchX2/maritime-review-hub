@@ -1,5 +1,23 @@
 # Changelog
 
+## 26.10.17-6 - 2026-10-17
+
+### Fixed
+
+- Prefill new Reviewer profiles from verified Google given/family-name claims
+  without overwriting existing account data or user edits.
+- Make account-status changes refresh faster, restore Reviewer rows directly
+  from the current session cache after reload, and display NEW/UPDATED badges
+  only once per tab session.
+- Poll visible account status every second and reduce the backend status-cache
+  fallback to two seconds; protected PDF requests still recheck authorization.
+- Expire resource-change indicators after 48 hours and allow larger authorized
+  Reviewer table snapshots in the per-session cache.
+- Show unverified signed-in users as Welcome, Guest, and display Reviewer
+  approval status beside their email in the dashboard welcome banner.
+- Tighten spacing between the greeting and email in the stacked small-screen
+  welcome banner.
+
 ## 26.10.17-5 - 2026-10-17
 
 ### Fixed

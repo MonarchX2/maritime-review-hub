@@ -214,7 +214,7 @@ var MRH_TOKEN_CACHE_MAX_TTL_SECONDS = 300;
 var MRH_RESOURCE_DASHBOARD_CACHE_TTL_SECONDS = 30;
 var MRH_RESOURCE_DASHBOARD_VERSION_CACHE_TTL_SECONDS = CACHE_TTL_SECONDS;
 var MRH_REVIEWER_DASHBOARD_VERSION_CACHE_TTL_SECONDS = CACHE_TTL_SECONDS;
-var MRH_ACCOUNT_CACHE_TTL_SECONDS = 5;
+var MRH_ACCOUNT_CACHE_TTL_SECONDS = 2;
 var MRH_ACCOUNT_CACHE_GENERATION_PROPERTY = "MRH_ACCOUNT_CACHE_GENERATION";
 var MRH_SPREADSHEET_TIME_ZONE = "Asia/Manila";
 var MRH_LOG_DEDUPE_TTL_SECONDS = 21600;
@@ -1568,6 +1568,8 @@ function verifyReviewerIdentityToken_(idToken, expectedClientId) {
           valid: true,
           email: String(cachedClaims.email).toLowerCase(),
           picture: getVerifiedGooglePicture_(cachedClaims.picture),
+          suggestedFirstName: cleanText(cachedClaims.suggestedFirstName, 100),
+          suggestedLastName: cleanText(cachedClaims.suggestedLastName, 100),
         };
     } catch (cacheError) {
       Logger.log("[verifyReviewerIdentityToken_] Removed invalid token cache data.");
@@ -1671,6 +1673,8 @@ function verifyReviewerIdentityToken_(idToken, expectedClientId) {
         JSON.stringify({
           email: email,
           picture: picture,
+          suggestedFirstName: cleanText(claims.given_name, 100),
+          suggestedLastName: cleanText(claims.family_name, 100),
           clientId: expectedClientId,
           expiresAt: expiresAt,
         }),
@@ -1680,7 +1684,13 @@ function verifyReviewerIdentityToken_(idToken, expectedClientId) {
       Logger.log("[verifyReviewerIdentityToken_] Token cache write failed.");
     }
   }
-  return { valid: true, email: email, picture: picture };
+  return {
+    valid: true,
+    email: email,
+    picture: picture,
+    suggestedFirstName: cleanText(claims.given_name, 100),
+    suggestedLastName: cleanText(claims.family_name, 100),
+  };
 }
 
 function getVerifiedGooglePicture_(value) {
@@ -1699,6 +1709,8 @@ function getReviewerAccountStatusResponse_(identity) {
     status: "success",
     email: identity.email,
     picture: identity.picture,
+    suggestedFirstName: cleanText(identity.suggestedFirstName, 100),
+    suggestedLastName: cleanText(identity.suggestedLastName, 100),
     accountStatus: accountStatus,
     active: Boolean(account && accountStatus === "TRUE"),
     lastName: account ? account.lastName : "",
@@ -1801,6 +1813,8 @@ function createReviewerSession_(identity) {
       JSON.stringify({
         email: identity.email,
         picture: identity.picture,
+        suggestedFirstName: cleanText(identity.suggestedFirstName, 100),
+        suggestedLastName: cleanText(identity.suggestedLastName, 100),
         createdAt: now,
         expiresAt: expiresAt,
       }),
@@ -1842,6 +1856,8 @@ function verifyReviewerSession_(sessionId) {
     valid: true,
     email: String(session.email).toLowerCase(),
     picture: getVerifiedGooglePicture_(session.picture),
+    suggestedFirstName: cleanText(session.suggestedFirstName, 100),
+    suggestedLastName: cleanText(session.suggestedLastName, 100),
   };
 }
 

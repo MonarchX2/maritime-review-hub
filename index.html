@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src blob: https://accounts.google.com; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com; img-src 'self' https: data: blob:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net https://accounts.google.com; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-26.10.17-5" />
+    <link rel="manifest" href="manifest.json?v=mrh-26.10.17-6" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,28 +253,28 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-26.10.17-5"
+      href="icon.svg?v=mrh-26.10.17-6"
       type="image/svg+xml"
     />
     <link
       rel="apple-touch-icon"
-      href="icon.svg?v=mrh-26.10.17-5"
+      href="icon.svg?v=mrh-26.10.17-6"
     />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-26.10.17-5"
+      href="tailwind.generated.css?v=mrh-26.10.17-6"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-26.10.17-5"
+      href="styles.css?v=mrh-26.10.17-6"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-26.10.17-5"
+      href="tailwind.generated.css?v=mrh-26.10.17-6"
       media="print"
       onload="
         this.media = 'all';
@@ -283,7 +283,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-26.10.17-5"
+      href="styles.css?v=mrh-26.10.17-6"
       media="print"
       onload="
         this.media = 'all';
@@ -388,7 +388,7 @@
               >
                 Welcome, Guest.
               </h1>
-              <p>
+              <p class="student-portal-welcome-identity">
                 <a
                   id="student-portal-welcome-signin"
                   class="student-portal-welcome-signin"
@@ -397,7 +397,21 @@
                   >Sign in</a
                 ><span id="student-portal-welcome-signin-hint">
                   to see your email address.</span
-                ><span id="student-portal-welcome-email" hidden></span>
+                ><span class="student-portal-welcome-email-line"
+                  ><span id="student-portal-welcome-email" hidden></span
+                  ><i
+                    id="student-portal-welcome-access-icon"
+                    class="student-portal-welcome-access-icon"
+                    aria-hidden="true"
+                    hidden
+                  ></i
+                ></span>
+                <span
+                  id="student-portal-welcome-verification"
+                  class="student-portal-welcome-verification"
+                  hidden
+                  >Unverified</span
+                >
               </p>
             </div>
           </div>
@@ -2314,6 +2328,19 @@
             <div id="about-changelog-entries" class="mt-3">
               <!-- ABOUT CHANGELOG START -->
                 <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.17-6
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Prefill new Reviewer profiles from verified Google given/family-name claims without overwriting existing account data or user edits.</li>
+                  <li>Make account-status changes refresh faster, restore Reviewer rows directly from the current session cache after reload, and display NEW/UPDATED badges only once per tab session.</li>
+                  <li>Expire resource-change indicators after 48 hours and allow larger authorized Reviewer table snapshots in the per-session cache.</li>
+                  <li>Show unverified signed-in users as Welcome, Guest, and display Reviewer approval status beside their email in the dashboard welcome banner.</li>
+                  <li>Tighten spacing between the greeting and email in the stacked small-screen welcome banner.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 26.10.17-5
                 </h5>
                 <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
@@ -2344,6 +2371,7 @@
                 <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
                   <li>Keep foreground approval checks responsive while reducing polling in hidden tabs, and extend the short-lived account cache with complete edit-trigger invalidation.</li>
                 </ul>
+                <div id="about-changelog-older" class="hidden">
                 <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 26.10.25
                 </h5>
@@ -2355,7 +2383,6 @@
                   <li>Match the online preview watermark to the generated PDF&#39;s two-column, five-row identity layout and reduce watermark opacity to 18% in both views.</li>
                   <li>Add privacy-safe request correlation IDs and bounded recovery for dashboard loading failures.</li>
                 </ul>
-                <div id="about-changelog-older" class="hidden">
                 <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 26.10.24
                 </h5>
@@ -3818,7 +3845,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 26.10.17-5</p>
+    <p id="site-version" class="site-version">Version 26.10.17-6</p>
 
     <div
       id="qr-transfer-modal"

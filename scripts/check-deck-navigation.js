@@ -358,6 +358,31 @@ assert.match(
 );
 assert.match(
   indexSource,
+  /class="student-portal-welcome-email-line"[\s\S]*?id="student-portal-welcome-email"/,
+  "the welcome banner should group the email into its own identity line",
+);
+assert.match(
+  indexSource,
+  /id="student-portal-welcome-access-icon"[\s\S]*?id="student-portal-welcome-verification"[\s\S]*?>\s*Unverified<\/span\s*>/,
+  "the welcome banner should provide an email-adjacent access icon and an Unverified label",
+);
+assert.match(
+  appCoreSource,
+  /function renderStudentPortalWelcome\([\s\S]*?accountStatus = ""[\s\S]*?TRUE:\s*\["fa-check", "is-granted", "Access granted"\][\s\S]*?FALSE:\s*\["fa-triangle-exclamation", "is-pending", "Access pending"\][\s\S]*?DENIED:\s*\["fa-xmark", "is-denied", "Access denied"\][\s\S]*?accountStatus !== "NOT_FOUND"/,
+  "the welcome banner should show approved, pending, denied, and unverified account states",
+);
+assert.match(
+  appCoreSource,
+  /renderStudentPortalWelcome\(\s*response\.accountStatus === "NOT_FOUND" \? "" : displayName,[\s\S]*?response\.accountStatus,/,
+  "unsubmitted Gmail profiles should show Welcome, Guest and status verification should follow backend account state",
+);
+assert.match(
+  stylesSource,
+  /\.student-portal-welcome-access-icon\.is-granted\s*\{[^}]*color:\s*#16a34a;[\s\S]*?\.student-portal-welcome-access-icon\.is-pending\s*\{[^}]*color:\s*#d97706;[\s\S]*?\.student-portal-welcome-access-icon\.is-denied\s*\{[^}]*color:\s*#dc2626;/,
+  "welcome access icons should use green, orange, and red status colors",
+);
+assert.match(
+  indexSource,
   /id="student-portal-welcome-picture"[\s\S]*?<span class="student-portal-deck-description">\s*Syllabus, Modules, and Reviewers/,
   "the dashboard should show a profile picture and requested Student Portal subtitle",
 );
@@ -405,6 +430,11 @@ assert.match(
   stylesSource,
   /\.student-portal-welcome-copy p\s*\{[^}]*margin:\s*0\.125rem 0 0;/,
   "the welcome email line should be tightly spaced below the greeting",
+);
+assert.match(
+  stylesSource,
+  /\.student-portal-welcome-container\.is-stacked \.student-portal-welcome-copy p\s*\{[^}]*margin-top:\s*0;[^}]*line-height:\s*1\.1;/,
+  "the stacked small-screen welcome email line should sit closer to the greeting",
 );
 assert.match(
   appCoreSource,

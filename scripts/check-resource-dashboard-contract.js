@@ -103,6 +103,16 @@ assert.match(
 );
 assert.match(
   appCore,
+  /const RESOURCE_DASHBOARD_UPDATED_TTL_MS = 48 \* 60 \* 60 \* 1000/,
+  "Reviewer NEW and UPDATED badges should expire after 48 hours",
+);
+assert.match(
+  appCore,
+  /const REVIEWER_DASHBOARD_CACHE_MAX_CHARS = 1000000[\s\S]*?function cacheReviewerDashboard\([\s\S]*?value\.length > REVIEWER_DASHBOARD_CACHE_MAX_CHARS/,
+  "the current-tab dashboard cache should support snapshots up to one megabyte",
+);
+assert.match(
+  appCore,
   /const reviewerDashboardTab = mergeResourceDashboardUpdates\(\s*"REVIEWERS"[\s\S]*?REVIEWERS: reviewerDashboardTab[\s\S]*?cacheReviewerDashboard\(reviewerAuthorizedEmail, reviewerDashboardTab\)/,
   "authorized resource table changes should be detected and cached for the current account",
 );
@@ -113,8 +123,18 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(recentlyUpdated && !isReviewerResource\) \{[\s\S]*?link\.classList\.add\("is-recently-updated"\)[\s\S]*?if \(recentlyUpdated && isReviewerResource\)[\s\S]*?resource-dashboard-change-badge/,
+  /if \(recentlyUpdated && !isReviewerResource\) \{[\s\S]*?link\.classList\.add\("is-recently-updated"\)[\s\S]*?if \(showReviewerChangeBadge && isReviewerResource\)[\s\S]*?resource-dashboard-change-badge/,
   "Reviewer resources should retain their original link style and show a separate change badge",
+);
+assert.match(
+  appCore,
+  /function hasSeenReviewerChangeBadge\(updateKey, updatedAt, changeType\)[\s\S]*?sessionStorage\.getItem\([\s\S]*?activeEntries\.some\([\s\S]*?sessionStorage\.setItem\(/,
+  "Reviewer badge visibility should be remembered once per active browser session",
+);
+assert.match(
+  appCore,
+  /const REVIEWER_CHANGE_BADGES_SEEN_KEY =\s*"mrh_reviewer_change_badges_seen_v1"/,
+  "Reviewer badge session tracking should use a dedicated session-storage key",
 );
 assert.match(
   resourceStyles,
@@ -129,8 +149,12 @@ const rowKeyFunction = appCore.match(
 const mergeUpdatesFunction = appCore.match(
   /function mergeResourceDashboardUpdates\(tabName, previousTab, nextTab\) \{([\s\S]*?)\n  \}/,
 );
+const reviewerBadgeSeenFunction = appCore.match(
+  /function hasSeenReviewerChangeBadge\(updateKey, updatedAt, changeType\) \{([\s\S]*?)\n  \}/,
+);
 assert.ok(rowKeyFunction, "resource dashboard row keys should be testable");
 assert.ok(mergeUpdatesFunction, "resource dashboard update comparison should be testable");
+assert.ok(reviewerBadgeSeenFunction, "Reviewer badge session tracking should be testable");
 let updateClock = 100000000;
 const getResourceDashboardRowKeys = new Function(
   `return function getResourceDashboardRowKeys(tab, tabName) {${rowKeyFunction[1]}\n}`,
@@ -142,7 +166,7 @@ const mergeResourceDashboardUpdates = new Function(
   `return function mergeResourceDashboardUpdates(tabName, previousTab, nextTab) {${mergeUpdatesFunction[1]}\n}`,
 )(
   getResourceDashboardRowKeys,
-  7 * 24 * 60 * 60 * 1000,
+  48 * 60 * 60 * 1000,
   { now: () => updateClock },
 );
 const dashboardTab = (title, link = "resource-file-id") => ({
@@ -223,7 +247,7 @@ assert.equal(
   "UPDATED",
   "replacing an existing resource should receive an UPDATED badge",
 );
-updateClock += 8 * 24 * 60 * 60 * 1000;
+updateClock += 48 * 60 * 60 * 1000 + 1;
 assert.deepEqual(
   mergeResourceDashboardUpdates(
     "MODULES",
@@ -231,7 +255,75 @@ assert.deepEqual(
     dashboardTab("02 Safety (Prelims).pdf"),
   ).recentlyUpdatedCells,
   {},
-  "recent-update indicators should expire after seven days",
+  "recent-update indicators should expire after 48 hours",
+);
+const reviewerBadgeSessionStorage = new Map();
+const reviewerBadgeStorage = {
+  getItem(key) {
+    return reviewerBadgeSessionStorage.get(key) || null;
+  },
+  setItem(key, value) {
+    reviewerBadgeSessionStorage.set(key, value);
+  },
+};
+const hasSeenReviewerChangeBadge = new Function(
+  "reviewerAuthorizedEmail",
+  "globalScope",
+  "RESOURCE_DASHBOARD_UPDATED_TTL_MS",
+  "REVIEWER_CHANGE_BADGES_SEEN_KEY",
+  "Date",
+  `return function hasSeenReviewerChangeBadge(updateKey, updatedAt, changeType) {${reviewerBadgeSeenFunction[1]}\n}`,
+)(
+  "reviewer@example.com",
+  { sessionStorage: reviewerBadgeStorage, DebugUtils: { warn() {} } },
+  48 * 60 * 60 * 1000,
+  "mrh_reviewer_change_badges_seen_v1",
+  { now: () => updateClock },
+);
+assert.equal(
+  hasSeenReviewerChangeBadge(newResourceKey, updateClock, "NEW"),
+  false,
+  "a new badge should be allowed on its first render in a session",
+);
+assert.equal(
+  hasSeenReviewerChangeBadge(newResourceKey, updateClock, "NEW"),
+  true,
+  "the same badge should be suppressed on later renders in that session",
+);
+assert.equal(
+  hasSeenReviewerChangeBadge(newResourceKey, updateClock + 1, "NEW"),
+  false,
+  "a distinct resource-change marker should show once in the same session",
+);
+const freshReviewerBadgeSessionStorage = new Map();
+const hasSeenReviewerChangeBadgeInFreshSession = new Function(
+  "reviewerAuthorizedEmail",
+  "globalScope",
+  "RESOURCE_DASHBOARD_UPDATED_TTL_MS",
+  "REVIEWER_CHANGE_BADGES_SEEN_KEY",
+  "Date",
+  `return function hasSeenReviewerChangeBadge(updateKey, updatedAt, changeType) {${reviewerBadgeSeenFunction[1]}\n}`,
+)(
+  "reviewer@example.com",
+  {
+    sessionStorage: {
+      getItem(key) {
+        return freshReviewerBadgeSessionStorage.get(key) || null;
+      },
+      setItem(key, value) {
+        freshReviewerBadgeSessionStorage.set(key, value);
+      },
+    },
+    DebugUtils: { warn() {} },
+  },
+  48 * 60 * 60 * 1000,
+  "mrh_reviewer_change_badges_seen_v1",
+  { now: () => updateClock },
+);
+assert.equal(
+  hasSeenReviewerChangeBadgeInFreshSession(newResourceKey, updateClock, "NEW"),
+  false,
+  "a new browser session should be able to show the badge once again",
 );
 assert.match(
   appCore,
@@ -256,8 +348,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /const REVIEWER_STATUS_POLL_INTERVAL_MS = 2000/,
-  "account approval changes should be refreshed at a two-second interval",
+  /const REVIEWER_STATUS_POLL_INTERVAL_MS = 1000/,
+  "visible account approval changes should be refreshed at a one-second interval",
 );
 assert.match(
   appCore,
@@ -278,6 +370,22 @@ assert.match(
   appCore,
   /function restoreStoredReviewerDashboard\(email\)[\s\S]*?getStoredReviewerDashboard\(email\)[\s\S]*?reviewerDashboardLoadedForEmail = reviewerAuthorizedEmail/,
   "cached dashboard rows should be hydrated before session restoration completes",
+);
+const openResourceDashboardTabSource =
+  appCore.match(
+    /function openResourceDashboardTab\(tabName = "DEFAULT"\) \{[\s\S]*?\n  \}/,
+  )?.[0] || "";
+const cachedProfileHydrationIndex = openResourceDashboardTabSource.indexOf(
+  "restoreStoredReviewerDashboard(cachedProfile.email)",
+);
+const reviewerRestoreBranchIndex = openResourceDashboardTabSource.indexOf(
+  "if (!reviewerSessionId)",
+  cachedProfileHydrationIndex,
+);
+assert.ok(
+  cachedProfileHydrationIndex >= 0 &&
+    reviewerRestoreBranchIndex > cachedProfileHydrationIndex,
+  "direct Reviewer tab entry should hydrate same-session cached rows before showing a loading state",
 );
 assert.match(
   appCore,

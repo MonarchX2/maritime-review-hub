@@ -221,6 +221,81 @@ assert.equal(
   "MARIA ANNE-MARIE O'BRIEN",
   "name input should convert every character to uppercase, not title case",
 );
+const reviewerNamePrefillFunction =
+  appCore.match(
+    /function prefillReviewerNameFromGoogle\(profile\) \{[\s\S]*?\n  \}/,
+  )?.[0] || "";
+assert.ok(reviewerNamePrefillFunction);
+const prefillReviewerNameFromGoogle = new Function(
+  "document",
+  "capitalizeReviewerName",
+  "updateReviewerEmailNameWarning",
+  `${reviewerNamePrefillFunction}; return prefillReviewerNameFromGoogle;`,
+);
+const prefillFields = {
+  "resource-reviewer-last-name": { value: "", dataset: {} },
+  "resource-reviewer-first-name": { value: "", dataset: {} },
+};
+prefillReviewerNameFromGoogle(
+  { getElementById: (id) => prefillFields[id] || null },
+  capitalizeReviewerName,
+  () => {},
+)({
+  accountStatus: "NOT_FOUND",
+  suggestedFirstName: "Rita",
+  suggestedLastName: "Reviewer",
+});
+assert.equal(
+  prefillFields["resource-reviewer-first-name"].value,
+  "RITA",
+  "verified Google given names should prefill an empty new-account field",
+);
+assert.equal(
+  prefillFields["resource-reviewer-last-name"].value,
+  "REVIEWER",
+  "verified Google family names should prefill an empty new-account field",
+);
+assert.equal(
+  prefillFields["resource-reviewer-first-name"].dataset.savedValue,
+  "RITA",
+  "the autofill value should be tracked so later refreshes preserve user edits",
+);
+prefillFields["resource-reviewer-first-name"].value = "MY EDIT";
+prefillFields["resource-reviewer-last-name"].value = "";
+prefillReviewerNameFromGoogle(
+  { getElementById: (id) => prefillFields[id] || null },
+  capitalizeReviewerName,
+  () => {},
+)({
+  accountStatus: "NOT_FOUND",
+  suggestedFirstName: "Different",
+  suggestedLastName: "Reviewer",
+});
+assert.equal(
+  prefillFields["resource-reviewer-first-name"].value,
+  "MY EDIT",
+  "Google suggestions must not overwrite a name already edited by the user",
+);
+prefillFields["resource-reviewer-last-name"].value = "";
+prefillReviewerNameFromGoogle(
+  { getElementById: (id) => prefillFields[id] || null },
+  capitalizeReviewerName,
+  () => {},
+)({
+  accountStatus: "TRUE",
+  suggestedFirstName: "Different",
+  suggestedLastName: "Reviewer",
+});
+assert.equal(
+  prefillFields["resource-reviewer-last-name"].value,
+  "",
+  "Google suggestions must not prefill or replace an existing account profile",
+);
+assert.match(
+  appCore,
+  /if \(!preserveEnrollmentDraft\) \{[\s\S]*?prefillReviewerNameFromGoogle\(\{\s*accountStatus,[\s\S]*?suggestedFirstName: response\.suggestedFirstName,[\s\S]*?suggestedLastName: response\.suggestedLastName/,
+  "Google names should be applied only after account-status form resets",
+);
 assert.match(
   appCore,
   /function initializeReviewerEnrollmentInputs\(\)[\s\S]*?resource-reviewer-last-name[\s\S]*?resource-reviewer-first-name[\s\S]*?normalizeReviewerNameInput\(input\);[\s\S]*?updateReviewerEmailNameWarning\(\);[\s\S]*?function updateReviewerEmailNameWarning\(\)[\s\S]*?reviewerEmailMatchesName\([\s\S]*?function openReviewerProfileEditor[\s\S]*?async function initializeReviewerAuth\(\) \{\s*initializeReviewerEnrollmentInputs\(\);\s*if \(reviewerAuthConfigPromise\)/,

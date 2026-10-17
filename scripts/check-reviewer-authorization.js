@@ -532,6 +532,8 @@ const validClaims = (email) => ({
   exp: String(Math.floor(Date.now() / 1000) + 300),
   email: email || "reviewer@example.com",
   email_verified: "true",
+  given_name: "Rita",
+  family_name: "Reviewer",
   picture: "https://lh3.googleusercontent.com/a/example-profile",
 });
 const post = (data) =>
@@ -811,6 +813,12 @@ assert.equal(
   "TRUE",
   "a saved application session should restore without a Google ID token",
 );
+const restoredApprovedProfile = post({
+  type: "restore_reviewer_session",
+  sessionId: approved.sessionId,
+});
+assert.equal(restoredApprovedProfile.suggestedFirstName, "Rita");
+assert.equal(restoredApprovedProfile.suggestedLastName, "Reviewer");
 assert.equal(
   post({
     type: "get_reviewer_account_status",
@@ -962,6 +970,25 @@ const notFound = post(
   authRequest("verify_reviewer_access", "new-user-token", eventId("2")),
 );
 assert.equal(notFound.accountStatus, "NOT_FOUND");
+assert.equal(notFound.suggestedFirstName, "Rita");
+assert.equal(notFound.suggestedLastName, "Reviewer");
+const restoredNewProfile = post({
+  type: "restore_reviewer_session",
+  sessionId: notFound.sessionId,
+});
+assert.equal(restoredNewProfile.accountStatus, "NOT_FOUND");
+assert.equal(restoredNewProfile.suggestedFirstName, "Rita");
+assert.equal(restoredNewProfile.suggestedLastName, "Reviewer");
+tokenClaims = validClaims("nameless-reviewer@example.com");
+delete tokenClaims.given_name;
+delete tokenClaims.family_name;
+const namelessProfile = post({
+  type: "get_reviewer_account_status",
+  idToken: "nameless-user-token",
+});
+assert.equal(namelessProfile.suggestedFirstName, "");
+assert.equal(namelessProfile.suggestedLastName, "");
+tokenClaims = validClaims("new-reviewer@example.com");
 const invalidMiddleInitial = post({
   type: "request_reviewer_enrollment",
   idToken: "new-user-token",
@@ -1541,11 +1568,11 @@ assert.equal(
 assert.ok(spreadsheetOpensAfterFirstStatusPoll > spreadsheetOpensBeforeStatusPoll);
 assert.equal(
   accountCacheTtlSeconds,
-  5,
+  2,
   "approval status cache should expire quickly even when an account edit trigger is unavailable",
 );
 liveAccount[4] = "TRUE";
-cacheNowMs += 5001;
+cacheNowMs += 2001;
 const spreadsheetOpensBeforeCacheExpiryPoll = spreadsheetOpenCount;
 assert.equal(
   post({
@@ -1590,6 +1617,27 @@ assert.equal(
   spreadsheetOpensBeforeInvalidatedStatusPoll + 1,
   "an ACCOUNTS edit should force exactly one fresh lookup for the next status poll",
 );
+for (const editedStatus of ["TRUE", "FALSE", "DENIED"]) {
+  liveAccount[4] = editedStatus;
+  context.mrhAccountsEdited({
+    source: { getId: () => spreadsheetId },
+    range: {
+      getSheet: () => ({ getName: () => "ACCOUNTS" }),
+      getLastRow: () => 2,
+      getColumn: () => 5,
+      getLastColumn: () => 5,
+    },
+  });
+  assert.equal(
+    post({
+      type: "get_reviewer_account_status",
+      idToken: "fresh-status-token",
+    }).accountStatus,
+    editedStatus,
+    `an ACCOUNTS edit should expose the ${editedStatus} status on the next poll`,
+  );
+}
+liveAccount[4] = "FALSE";
 for (const editedColumn of [1, 2, 3, 4, 5, 6, 7]) {
   const generationBeforeFieldEdit = context.getMRHAccountCacheGeneration_();
   context.mrhAccountsEdited({

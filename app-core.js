@@ -6054,7 +6054,7 @@
   let reviewerSessionRestorePending = false;
   let reviewerReauthenticationPromptAttempted = false;
   let reviewerSignOutStorageListenerInstalled = false;
-  const REVIEWER_STATUS_POLL_INTERVAL_MS = 2000;
+  const REVIEWER_STATUS_POLL_INTERVAL_MS = 1000;
   const REVIEWER_STATUS_BACKGROUND_POLL_INTERVAL_MS = 30000;
   const REVIEWER_EXPLICIT_SIGNOUT_KEY = "mrh_reviewer_explicit_signout_v1";
   const REVIEWER_EXPLICIT_SIGNOUT_COOKIE = "mrh_reviewer_explicit_signout_v1";
@@ -6065,7 +6065,10 @@
   const REVIEWER_PROFILE_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
   const REVIEWER_DASHBOARD_CACHE_KEY = "mrh_reviewer_dashboard_session_v1";
   const REVIEWER_DASHBOARD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-  const RESOURCE_DASHBOARD_UPDATED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  const RESOURCE_DASHBOARD_UPDATED_TTL_MS = 48 * 60 * 60 * 1000;
+  const REVIEWER_DASHBOARD_CACHE_MAX_CHARS = 1000000;
+  const REVIEWER_CHANGE_BADGES_SEEN_KEY =
+    "mrh_reviewer_change_badges_seen_v1";
   const REVIEWER_PDF_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
   const REVIEWER_PDF_MAX_SOURCE_BYTES = 2 * 1024 * 1024;
   const REVIEWER_PDF_MAX_BASE64_LENGTH =
@@ -6172,6 +6175,8 @@
         firstName: String(cached.firstName || "").slice(0, 100),
         middleInitial: String(cached.middleInitial || "").slice(0, 10),
         lastName: String(cached.lastName || "").slice(0, 100),
+        suggestedFirstName: String(cached.suggestedFirstName || "").slice(0, 100),
+        suggestedLastName: String(cached.suggestedLastName || "").slice(0, 100),
         picture: getReviewerProfilePictureUrl(cached.picture),
         accountStatus: ["TRUE", "FALSE", "DENIED", "NOT_FOUND"].includes(
           cached.accountStatus,
@@ -6195,6 +6200,8 @@
           firstName: String(response.firstName || "").slice(0, 100),
           middleInitial: String(response.middleInitial || "").slice(0, 10),
           lastName: String(response.lastName || "").slice(0, 100),
+          suggestedFirstName: String(response.suggestedFirstName || "").slice(0, 100),
+          suggestedLastName: String(response.suggestedLastName || "").slice(0, 100),
           picture: getReviewerProfilePictureUrl(response.picture),
           accountStatus: ["TRUE", "FALSE", "DENIED", "NOT_FOUND"].includes(
             response.accountStatus,
@@ -6274,7 +6281,7 @@
       cachedAt: Date.now(),
       tab,
     });
-    if (value.length > 90000) return false;
+    if (value.length > REVIEWER_DASHBOARD_CACHE_MAX_CHARS) return false;
     try {
       globalScope.sessionStorage.setItem(REVIEWER_DASHBOARD_CACHE_KEY, value);
       return true;
@@ -6295,6 +6302,48 @@
         "Unable to clear the current-tab reviewer dashboard cache.",
         error,
       );
+    }
+  }
+
+  function hasSeenReviewerChangeBadge(updateKey, updatedAt, changeType) {
+    const now = Date.now();
+    const marker = JSON.stringify([
+      reviewerAuthorizedEmail.toLowerCase(),
+      updateKey,
+      updatedAt,
+      changeType,
+    ]);
+    try {
+      const stored = JSON.parse(
+        globalScope.sessionStorage.getItem(REVIEWER_CHANGE_BADGES_SEEN_KEY) ||
+          "[]",
+      );
+      const activeEntries = Array.isArray(stored)
+        ? stored.filter(
+            (entry) =>
+              entry &&
+              typeof entry.marker === "string" &&
+              Number.isFinite(Number(entry.seenAt)) &&
+              Number(entry.seenAt) <= now &&
+              now - Number(entry.seenAt) <=
+                RESOURCE_DASHBOARD_UPDATED_TTL_MS,
+          )
+        : [];
+      const alreadySeen = activeEntries.some(
+        (entry) => entry.marker === marker,
+      );
+      if (!alreadySeen) activeEntries.push({ marker, seenAt: now });
+      globalScope.sessionStorage.setItem(
+        REVIEWER_CHANGE_BADGES_SEEN_KEY,
+        JSON.stringify(activeEntries),
+      );
+      return alreadySeen;
+    } catch (error) {
+      (globalScope.DebugUtils || console).warn(
+        "Unable to track Reviewer change badges for this session.",
+        error,
+      );
+      return false;
     }
   }
 
@@ -6605,6 +6654,7 @@
         const cachedProfile = getStoredReviewerProfile();
         if (cachedProfile) {
           populateReviewerProfile(cachedProfile);
+          prefillReviewerNameFromGoogle(cachedProfile);
           reviewerAccountStatus = cachedProfile.accountStatus;
           if (reviewerAccountStatus)
             setReviewerAccessEnabled(reviewerAccountStatus === "TRUE");
@@ -6619,6 +6669,18 @@
           if (signInButton) signInButton.hidden = true;
           if (authStatus) authStatus.textContent = "";
         }
+      }
+    }
+    if (
+      tabName === "REVIEWERS" &&
+      !reviewerSessionId &&
+      !hasExplicitReviewerSignOut()
+    ) {
+      const cachedProfile = getStoredReviewerProfile();
+      if (cachedProfile?.accountStatus === "TRUE") {
+        reviewerAccountStatus = cachedProfile.accountStatus;
+        reviewerAuthorizedEmail = cachedProfile.email;
+        restoreStoredReviewerDashboard(cachedProfile.email);
       }
     }
     if (!["MODULES", "REVIEWERS", "SYLLABUS", "PROFILE"].includes(tabName))
@@ -7311,6 +7373,14 @@
             updatedAt > 0 &&
             updatedAt <= Date.now() &&
             Date.now() - updatedAt <= RESOURCE_DASHBOARD_UPDATED_TTL_MS;
+          const showReviewerChangeBadge =
+            recentlyUpdated &&
+            resourceDashboardActiveTab === "REVIEWERS" &&
+            !hasSeenReviewerChangeBadge(
+              dashboardUpdateKey,
+              updatedAt,
+              changeType,
+            );
           const fileTitle = String(
             tab.linkTitles?.[rowIndex]?.[index] || "",
           ).trim();
@@ -7376,7 +7446,7 @@
               ),
             );
           }
-          if (recentlyUpdated && isReviewerResource) {
+          if (showReviewerChangeBadge && isReviewerResource) {
             const changeLabel = changeType === "NEW" ? "New" : "Updated";
             link.setAttribute(
               "aria-label",
@@ -7454,7 +7524,7 @@
               );
             });
           }
-          if (recentlyUpdated && isReviewerResource) {
+          if (showReviewerChangeBadge && isReviewerResource) {
             const badge = createResourceDashboardElement(
               "span",
               `resource-dashboard-change-badge is-${changeType.toLowerCase()}`,
@@ -8333,10 +8403,13 @@
         .filter(Boolean)
         .join(" ");
       renderStudentPortalWelcome(
-        displayName || cachedProfile.email,
+        cachedProfile.accountStatus === "NOT_FOUND"
+          ? ""
+          : displayName,
         cachedProfile.email,
         cachedProfile.picture,
         cachedProfile.lastName,
+        cachedProfile.accountStatus,
       );
     }
     toggle.addEventListener("click", () => {
@@ -8391,10 +8464,17 @@
     email,
     pictureUrl = "",
     lastName = "",
+    accountStatus = "",
   ) {
     const welcomeName = document.getElementById("student-portal-welcome-name");
     const welcomeEmail = document.getElementById(
       "student-portal-welcome-email",
+    );
+    const welcomeAccessIcon = document.getElementById(
+      "student-portal-welcome-access-icon",
+    );
+    const welcomeVerification = document.getElementById(
+      "student-portal-welcome-verification",
     );
     const welcomeSignIn = document.getElementById(
       "student-portal-welcome-signin",
@@ -8416,6 +8496,29 @@
       welcomeEmail.textContent = email;
       welcomeEmail.hidden = !isSignedIn;
     }
+    const accessIcon = {
+      TRUE: ["fa-check", "is-granted", "Access granted"],
+      FALSE: ["fa-triangle-exclamation", "is-pending", "Access pending"],
+      DENIED: ["fa-xmark", "is-denied", "Access denied"],
+    }[accountStatus];
+    if (welcomeAccessIcon) {
+      welcomeAccessIcon.className = [
+        "student-portal-welcome-access-icon",
+        accessIcon?.[1] || "",
+        accessIcon ? `fa-solid ${accessIcon[0]}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      welcomeAccessIcon.title = accessIcon?.[2] || "";
+      welcomeAccessIcon.setAttribute(
+        "aria-label",
+        accessIcon?.[2] || "",
+      );
+      welcomeAccessIcon.hidden = !isSignedIn || !accessIcon;
+    }
+    if (welcomeVerification)
+      welcomeVerification.hidden =
+        !isSignedIn || accountStatus !== "NOT_FOUND";
     if (welcomeSignIn) welcomeSignIn.hidden = isSignedIn;
     if (welcomeSignInHint) welcomeSignInHint.hidden = isSignedIn;
     if (welcomePicture) {
@@ -8464,10 +8567,11 @@
     const pictureUrl = getReviewerProfilePictureUrl(response.picture);
     reviewerProfilePictureUrl = pictureUrl;
     renderStudentPortalWelcome(
-      displayName || email,
+      response.accountStatus === "NOT_FOUND" ? "" : displayName,
       email,
       pictureUrl,
       response.lastName,
+      response.accountStatus,
     );
     [profilePicture, headerProfilePicture].forEach((image) => {
       if (!image) return;
@@ -8486,6 +8590,34 @@
     if (profilePictureFallback)
       profilePictureFallback.hidden = Boolean(pictureUrl);
     if (headerProfileIcon) headerProfileIcon.hidden = Boolean(pictureUrl);
+  }
+
+  function prefillReviewerNameFromGoogle(profile) {
+    if (profile?.accountStatus !== "NOT_FOUND") return false;
+    const lastNameInput = document.getElementById(
+      "resource-reviewer-last-name",
+    );
+    const firstNameInput = document.getElementById(
+      "resource-reviewer-first-name",
+    );
+    if (lastNameInput && !lastNameInput.value.trim() && profile.suggestedLastName) {
+      lastNameInput.value = capitalizeReviewerName(
+        profile.suggestedLastName,
+      ).trim();
+      lastNameInput.dataset.savedValue = lastNameInput.value;
+    }
+    if (
+      firstNameInput &&
+      !firstNameInput.value.trim() &&
+      profile.suggestedFirstName
+    ) {
+      firstNameInput.value = capitalizeReviewerName(
+        profile.suggestedFirstName,
+      ).trim();
+      firstNameInput.dataset.savedValue = firstNameInput.value;
+    }
+    updateReviewerEmailNameWarning();
+    return Boolean(lastNameInput?.value || firstNameInput?.value);
   }
 
   function renderReviewerProfileAccessStatus(accountStatus) {
@@ -8635,6 +8767,11 @@
         });
       }
     }
+    prefillReviewerNameFromGoogle({
+      accountStatus,
+      suggestedFirstName: response.suggestedFirstName,
+      suggestedLastName: response.suggestedLastName,
+    });
     updateReviewerEmailNameWarning();
     if (authStatus) authStatus.textContent = "";
     if (accountStatus !== "TRUE" && resourceDashboardActiveTab === "REVIEWERS")
@@ -9074,7 +9211,7 @@
       headerProfilePicture.removeAttribute("src");
     }
     if (headerProfileIcon) headerProfileIcon.hidden = false;
-    renderStudentPortalWelcome("", "");
+    renderStudentPortalWelcome("", "", "", "", "");
     setReviewerAuthStatus("Use Google to sign in and request access.");
     document
       .getElementById("resource-portal-status")

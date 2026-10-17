@@ -1077,6 +1077,57 @@ body.title-mode-clip {
   font-size: 0.875rem;
 }
 
+.student-portal-welcome-email-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.student-portal-welcome-access-icon {
+  font-size: 0.875rem;
+}
+
+.student-portal-welcome-access-icon.is-granted {
+  color: #16a34a;
+}
+
+.student-portal-welcome-access-icon.is-pending {
+  color: #d97706;
+}
+
+.student-portal-welcome-access-icon.is-denied {
+  color: #dc2626;
+}
+
+.student-portal-welcome-verification {
+  display: block;
+  color: #92400e;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+#student-portal-welcome-email[hidden],
+#student-portal-welcome-access-icon[hidden],
+#student-portal-welcome-verification[hidden] {
+  display: none;
+}
+
+.dark .student-portal-welcome-access-icon.is-granted {
+  color: #4ade80;
+}
+
+.dark .student-portal-welcome-access-icon.is-pending {
+  color: #fbbf24;
+}
+
+.dark .student-portal-welcome-access-icon.is-denied {
+  color: #f87171;
+}
+
+.dark .student-portal-welcome-verification {
+  color: #fbbf24;
+}
+
 .student-portal-welcome-copy .student-portal-welcome-signin {
   display: inline-block;
   margin-right: 0.375rem;
@@ -1253,6 +1304,11 @@ body.title-mode-clip {
   display: grid;
   width: 100%;
   justify-items: center;
+}
+
+.student-portal-welcome-container.is-stacked .student-portal-welcome-copy p {
+  margin-top: 0;
+  line-height: 1.1;
 }
 
 .student-portal-welcome-container.is-stacked .student-portal-welcome-toggle {
