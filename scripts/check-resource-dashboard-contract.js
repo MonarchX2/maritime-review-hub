@@ -215,13 +215,18 @@ assert.doesNotMatch(
 );
 assert.match(
   appCore,
-  /function scheduleReviewerStatusPolling\(\s*sessionId,\s*delay = REVIEWER_STATUS_POLL_INTERVAL_MS,[\s\S]*?type: "get_reviewer_account_status", sessionId[\s\S]*?applyReviewerAccountStatus\(response, sessionId, true\)[\s\S]*?Math\.max\(0, Number\(delay\) \|\| 0\)/,
+  /function scheduleReviewerStatusPolling\(\s*sessionId,\s*delay = REVIEWER_STATUS_POLL_INTERVAL_MS,[\s\S]*?normalizedDelay = Math\.max\(0, Number\(delay\) \|\| 0\)[\s\S]*?type: "get_reviewer_account_status", sessionId[\s\S]*?applyReviewerAccountStatus\(response, sessionId, true\)[\s\S]*?\}, pollDelay\)/,
   "the page should poll the server so administrator approval changes take effect while open",
 );
 assert.match(
   appCore,
   /const REVIEWER_STATUS_POLL_INTERVAL_MS = 2000/,
   "account approval changes should be refreshed at a two-second interval",
+);
+assert.match(
+  appCore,
+  /const REVIEWER_STATUS_BACKGROUND_POLL_INTERVAL_MS = 30000[\s\S]*?function scheduleReviewerStatusPolling\([\s\S]*?document\.visibilityState === "hidden"[\s\S]*?REVIEWER_STATUS_BACKGROUND_POLL_INTERVAL_MS/,
+  "background tabs should reduce approval polling while visible tabs remain responsive",
 );
 assert.match(
   appCore,
@@ -277,6 +282,11 @@ assert.match(
   resourceStyles,
   /\.resource-portal-preview\.is-expanded\s*\{[^}]*height:\s*calc\(100dvh - 2rem\)[\s\S]*?\.resource-portal-preview\.is-expanded \.resource-portal-preview-frame\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*width:\s*100%;[^}]*height:\s*100%/,
   "expanded PDF preview should fill the viewport with an absolutely sized frame",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-preview\.is-reviewer-pdf,\s*\.resource-portal-preview\.is-reviewer-pdf \.resource-portal-preview-frame,\s*\.resource-portal-preview\.is-reviewer-pdf \.resource-portal-preview-viewer\s*\{[^}]*user-select:\s*none;/,
+  "the Reviewer PDF preview should disable selection in its embedded viewer where supported",
 );
 assert.match(
   appCore,
@@ -375,8 +385,8 @@ assert.match(
 );
 assert.match(
   indexHtml,
-  /id="resource-dashboard-reviewers-nav"[\s\S]*?aria-label="Review Materials"[\s\S]*?title="Review materials"[\s\S]*?Review Materials/,
-  "the portal navigation label and accessible name should not expose the old terminology",
+  /id="resource-dashboard-reviewers-nav"[\s\S]*?aria-label="Review Materials"[\s\S]*?title="Review materials"[\s\S]*?disabled[\s\S]*?aria-disabled="true"[\s\S]*?Review Materials/,
+  "the portal navigation label should be dimmed and disabled until approval",
 );
 assert.match(
   appCore,
@@ -575,8 +585,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /`Year Level \$\{resourceDashboardSelectedYear\}\.\$\{resourceDashboardSelectedSemester\}`[\s\S]*?`Showing \$\{visibleRows\.length\} of \$\{nonEmptyRows\.length\} rows for \$\{selectedTerm\}`[\s\S]*?document\.createTextNode\("\."\)/,
-  "the dashboard row count should bold the selected-term summary and keep its final period separate",
+  /const summary = createResourceDashboardElement\(\s*"strong",\s*"",\s*selectedTerm,\s*\);\s*status\.replaceChildren\(\s*document\.createTextNode\(\s*`Showing \$\{visibleRows\.length\} of \$\{nonEmptyRows\.length\} rows for `,\s*\),\s*summary/,
+  "the dashboard row count should bold only the selected-term label",
 );
 assert.match(
   appCore,
@@ -1507,6 +1517,30 @@ const backendPath = require("node:path").join(
 );
 if (fs.existsSync(backendPath)) {
   const backend = fs.readFileSync(backendPath, "utf8");
+  const reviewerDashboardHandler = backend.match(
+    /function handleGetReviewerDashboardRequest\(data\) \{[\s\S]*?\n\}\n\nfunction protectReviewerDashboardTab_/,
+  )?.[0];
+  assert.ok(
+    reviewerDashboardHandler,
+    "the authorized Reviewer dashboard handler should be present",
+  );
+  assert.ok(
+    reviewerDashboardHandler.indexOf("file.getLastUpdated().getTime()") <
+      reviewerDashboardHandler.indexOf(
+        "reviewerCache.get(reviewerCacheKey)",
+      ),
+    "the Reviewer dashboard cache lookup must be keyed by the current Drive index timestamp",
+  );
+  assert.doesNotMatch(
+    reviewerDashboardHandler,
+    /mrh_reviewer_dashboard_latest_v2/,
+    "the Reviewer dashboard must not serve an unversioned latest cache entry",
+  );
+  assert.match(
+    reviewerDashboardHandler,
+    /reviewerCacheKey[\s\S]*?MRH_REVIEWER_DASHBOARD_VERSION_CACHE_TTL_SECONDS/,
+    "the current index version should continue using the bounded dashboard cache",
+  );
   assert.match(
     backend,
     /REVIEWER_SESSION_TTL_MS = 30 \* 24 \* 60 \* 60 \* 1000[\s\S]*?function createReviewerSession_\([\s\S]*?Utilities\.getUuid\(\)[\s\S]*?function verifyReviewerSession_\([\s\S]*?session\.expiresAt[\s\S]*?Date\.now\(\)/,
@@ -1524,7 +1558,7 @@ if (fs.existsSync(backendPath)) {
 }
 assert.match(
   network,
-  /const versionedPayload = \{ \.\.\.payload, appVersion \};\s*validateBackendPayload\(versionedPayload\)/,
+  /const requestId = createRequestId\(\);\s*const versionedPayload = \{ \.\.\.payload, appVersion, requestId \};\s*validateBackendPayload\(versionedPayload\)/,
   "the allowlisted dashboard request should pass the common payload validator",
 );
 

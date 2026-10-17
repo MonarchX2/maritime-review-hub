@@ -21,6 +21,8 @@ let spreadsheetTimeZone = "";
 let spreadsheetOpenCount = 0;
 let accountCacheTtlSeconds = 0;
 let reviewerDriveLookupCount = 0;
+let reviewerIndexReadCount = 0;
+let reviewerIndexModifiedAt = 1000;
 let scriptLockAcquisitionCount = 0;
 const driveFiles = new Map();
 const accountRows = [
@@ -304,10 +306,11 @@ const context = {
               hasFile = false;
               return {
                 getId: () => "reviewer-index-file",
-                getLastUpdated: () => new Date(1000),
+                getLastUpdated: () => new Date(reviewerIndexModifiedAt),
                 getBlob: () => ({
-                  getDataAsString: () =>
-                    JSON.stringify({
+                  getDataAsString: () => {
+                    reviewerIndexReadCount += 1;
+                    return JSON.stringify({
                       b: "https://drive.google.com/open?id=",
                       d: {
                         "3.2": {
@@ -320,7 +323,8 @@ const context = {
                           },
                         },
                       },
-                    }),
+                    });
+                  },
                 }),
               };
             },
@@ -337,6 +341,10 @@ const context = {
     },
   },
   LockService: {
+    getUserLock: () => ({
+      tryLock: () => true,
+      releaseLock() {},
+    }),
     getScriptLock: () => {
       scriptLockAcquisitionCount += 1;
       return {
@@ -632,6 +640,54 @@ assert.ok(
   ),
   "account cache trigger setup should preserve the five-minute deck safety sync",
 );
+assert.ok(
+  installedEditTriggers.some(
+    (trigger) =>
+      trigger.handler === "processReviewerStatusNotifications" &&
+      trigger.intervalMinutes === 1,
+  ),
+  "reviewer status emails should use an independent one-minute background worker",
+);
+const notificationRetryEmail = "notification-retry@example.com";
+const notificationRetryStateKey =
+  context.getReviewerStatusNotificationPropertyKey_(notificationRetryEmail);
+const notificationRetryPendingKey =
+  context.getReviewerStatusNotificationPendingKey_(notificationRetryEmail);
+properties.set(notificationRetryStateKey, "TRUE");
+context.updateReviewerStatusNotification_(notificationRetryEmail, "DENIED");
+const sendNotification = context.MailApp.sendEmail;
+let failNotificationOnce = true;
+context.MailApp.sendEmail = (message) => {
+  if (failNotificationOnce) {
+    failNotificationOnce = false;
+    throw new Error("simulated mail outage");
+  }
+  sentReviewerEmails.push(message);
+};
+const failedNotificationAttempt =
+  context.processReviewerStatusNotifications();
+assert.equal(failedNotificationAttempt.status, "success");
+assert.equal(
+  failedNotificationAttempt.processed,
+  0,
+  "failed notification delivery should remain queued for automatic retry",
+);
+assert.equal(properties.has(notificationRetryPendingKey), true);
+const recoveredNotificationAttempt =
+  context.processReviewerStatusNotifications();
+assert.equal(recoveredNotificationAttempt.status, "success");
+assert.equal(
+  recoveredNotificationAttempt.processed,
+  1,
+  "the notification worker should recover on its next attempt",
+);
+assert.equal(properties.has(notificationRetryPendingKey), false);
+assert.equal(
+  sentReviewerEmails.at(-1)?.subject,
+  "Maritime Review Hub resource access denied",
+);
+context.MailApp.sendEmail = sendNotification;
+sentReviewerEmails.length = 0;
 context.initializeMRHAccountsSpreadsheet();
 assert.deepEqual(
   Array.from(accountRows[0]),
@@ -1021,6 +1077,12 @@ assert.equal(
 );
 assert.equal(
   sentReviewerEmails.length,
+  0,
+  "account status responses must not wait for email delivery",
+);
+context.processReviewerStatusNotifications();
+assert.equal(
+  sentReviewerEmails.length,
   1,
   "a new enrollment should email the verified address that access is pending",
 );
@@ -1096,6 +1158,12 @@ assert.equal(
   "DENIED",
   "polling should observe administrator denial without stale account caching",
 );
+assert.equal(
+  sentReviewerEmails.length,
+  1,
+  "DENIED status propagation must return before mail delivery",
+);
+context.processReviewerStatusNotifications();
 assert.deepEqual(
   [
     sentReviewerEmails.length,
@@ -1164,6 +1232,7 @@ assert.equal(
   "FALSE",
   "a corrected denied profile must return to pending review",
 );
+context.processReviewerStatusNotifications();
 assert.deepEqual(
   [
     sentReviewerEmails.length,
@@ -1275,6 +1344,7 @@ assert.equal(
   "TRUE",
   "administrator approval should restore access after an edited profile is confirmed",
 );
+context.processReviewerStatusNotifications();
 assert.deepEqual(
   [
     sentReviewerEmails.length,
@@ -1283,7 +1353,7 @@ assert.deepEqual(
     sentReviewerEmails.at(-1)?.name,
   ],
   [
-    6,
+    5,
     "reviewer@example.com",
     "Maritime Review Hub resource access granted",
     "Maritime Review Hub",
@@ -1323,8 +1393,24 @@ assert.deepEqual(
 );
 assert.equal(
   reviewerDriveLookupCount,
+  2,
+  "each authorized dashboard request should verify the current Drive index version",
+);
+assert.equal(
+  reviewerIndexReadCount,
   1,
-  "authorized reviewer payload cache hits should skip Drive metadata lookups",
+  "an unchanged Drive index version should reuse its cached dashboard payload",
+);
+reviewerIndexModifiedAt += 1;
+assert.equal(
+  reviewerDashboardRequest().status,
+  "success",
+  "the dashboard should recover after a source index edit",
+);
+assert.equal(
+  reviewerIndexReadCount,
+  2,
+  "a changed Drive index timestamp must not reuse a stale dashboard cache entry",
 );
 for (const [resourceArea, eventSuffix] of [
   ["SYLLABUS", "a"],
@@ -1480,17 +1566,27 @@ assert.deepEqual(
 
 const originalDashboardHandler = context.handleGetReviewerDashboardRequest;
 context.handleGetReviewerDashboardRequest = () => {
-  throw new Error("private-token@example.com and sensitive-account-data");
+  const error = new Error(
+    "private-token@example.com and sensitive-account-data",
+  );
+  error.code = "REVIEWER_INDEX_MISSING";
+  throw error;
 };
 const backendLogCountBeforeFailure = backendLogs.length;
 const failedDashboardResponse = post({
   type: "get_reviewer_dashboard",
   eventId: eventId("a"),
+  requestId: eventId("b"),
   idToken: "private-id-token-not-for-logs",
   sessionId: "private-session-not-for-logs",
 });
 context.handleGetReviewerDashboardRequest = originalDashboardHandler;
 assert.equal(failedDashboardResponse.code, "SERVER_ERROR");
+assert.equal(
+  failedDashboardResponse.correlationId,
+  eventId("b"),
+  "server errors should return the request correlation ID supplied by the client",
+);
 assert.match(
   failedDashboardResponse.correlationId || "",
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
@@ -1499,6 +1595,7 @@ assert.match(
 const loggedFailure = backendLogs.slice(backendLogCountBeforeFailure).join("\n");
 assert.match(loggedFailure, /requestType=get_reviewer_dashboard/);
 assert.match(loggedFailure, new RegExp(failedDashboardResponse.correlationId));
+assert.match(loggedFailure, /reasonCode=REVIEWER_INDEX_MISSING/);
 assert.doesNotMatch(
   loggedFailure,
   /private-token|private-id-token|private-session|sensitive-account-data/,
@@ -1574,11 +1671,11 @@ assert.equal(
 assert.ok(spreadsheetOpensAfterFirstStatusPoll > spreadsheetOpensBeforeStatusPoll);
 assert.equal(
   accountCacheTtlSeconds,
-  3,
+  5,
   "approval status cache should expire quickly even when an account edit trigger is unavailable",
 );
 liveAccount[4] = "TRUE";
-cacheNowMs += 3001;
+cacheNowMs += 5001;
 const spreadsheetOpensBeforeCacheExpiryPoll = spreadsheetOpenCount;
 assert.equal(
   post({

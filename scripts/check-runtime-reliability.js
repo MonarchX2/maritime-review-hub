@@ -333,6 +333,16 @@ async function checkBackendErrorHandling() {
 
   let fetchCount = 0;
   let lastPostBody = "";
+  function getPostBodyWithoutRequestId() {
+    const body = JSON.parse(lastPostBody);
+    assert.match(
+      body.requestId,
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      "backend POST requests should include a privacy-safe correlation ID",
+    );
+    delete body.requestId;
+    return body;
+  }
   networkContext.fetch = async (_input, options) => {
     fetchCount += 1;
     lastPostBody = options.body;
@@ -355,16 +365,18 @@ async function checkBackendErrorHandling() {
   assert.equal(recoveredRequest.status, "ok");
   assert.equal(fetchCount, 3, "transient HTTP-200 backend envelopes should retry");
   assert.equal(
-    JSON.parse(lastPostBody).appVersion,
+    getPostBodyWithoutRequestId().appVersion,
     networkContext.__MRH_APP__.version,
     "every POST request must include the running app version",
   );
   let dashboardAttempts = 0;
-  const dashboardCorrelationId = "12345678-1234-4123-8123-123456789abc";
+  const dashboardRequestIds = [];
   networkContext.fetch = async (input, options) => {
     dashboardAttempts += 1;
     assert.equal(input, "https://example.test/backend");
     assert.equal(options.redirect, "follow");
+    const requestId = JSON.parse(options.body).requestId;
+    dashboardRequestIds.push(requestId);
     if (dashboardAttempts === 1) {
       return {
         ok: true,
@@ -376,7 +388,7 @@ async function checkBackendErrorHandling() {
             status: "error",
             code: "SERVER_ERROR",
             message: "Server error.",
-            correlationId: dashboardCorrelationId,
+            correlationId: requestId,
           });
         },
       };
@@ -410,8 +422,17 @@ async function checkBackendErrorHandling() {
     2,
     "a read-only dashboard request should recover from one transient server error",
   );
+  assert.match(
+    dashboardRequestIds[0],
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  );
+  assert.equal(
+    dashboardRequestIds[1],
+    dashboardRequestIds[0],
+    "safe retries should reuse the same request correlation ID",
+  );
   const diagnosticLogText = JSON.stringify(networkDiagnostics);
-  assert.match(diagnosticLogText, new RegExp(dashboardCorrelationId));
+  assert.match(diagnosticLogText, new RegExp(dashboardRequestIds[0]));
   assert.match(diagnosticLogText, /get_reviewer_dashboard/);
   assert.doesNotMatch(
     diagnosticLogText,
@@ -420,8 +441,9 @@ async function checkBackendErrorHandling() {
   );
 
   let notFoundAttempts = 0;
-  networkContext.fetch = async () => {
+  networkContext.fetch = async (_input, options) => {
     notFoundAttempts += 1;
+    lastPostBody = options.body;
     return {
       ok: false,
       status: 404,
@@ -446,22 +468,28 @@ async function checkBackendErrorHandling() {
       },
       { maxRetries: 2, baseRetryDelayMs: 0, maxRetryDelayMs: 0 },
     ),
-    (error) => error.status === 404 && error.code === "NOT_FOUND",
+    (error) =>
+      error.status === 404 &&
+      error.code === "NOT_FOUND" &&
+      error.correlationId === JSON.parse(lastPostBody).requestId,
   );
   assert.equal(
     notFoundAttempts,
     1,
     "permanent dashboard 404 responses must fail explicitly without retrying",
   );
-  networkContext.fetch = async () => ({
-    ok: false,
-    status: 404,
-    redirected: true,
-    url: "https://script.googleusercontent.com/macros/echo",
-    async text() {
-      return "<html>private-session-do-not-show</html>";
-    },
-  });
+  networkContext.fetch = async (_input, options) => {
+    lastPostBody = options.body;
+    return {
+      ok: false,
+      status: 404,
+      redirected: true,
+      url: "https://script.googleusercontent.com/macros/echo",
+      async text() {
+        return "<html>private-session-do-not-show</html>";
+      },
+    };
+  };
   await assert.rejects(
     network.callBackend(
       {
@@ -504,7 +532,7 @@ async function checkBackendErrorHandling() {
   assert.equal(resourcesResponse.status, "success");
   assert.equal(fetchCount, 1);
   assert.deepEqual(
-    JSON.parse(lastPostBody),
+    getPostBodyWithoutRequestId(),
     {
       type: "list_public_resources",
       folderId: "public-root",
@@ -518,7 +546,7 @@ async function checkBackendErrorHandling() {
   );
   assert.equal(privatePreviewResponse.status, "success");
   assert.deepEqual(
-    JSON.parse(lastPostBody),
+    getPostBodyWithoutRequestId(),
     {
       type: "get_resource_preview",
       fileId: "private-file-id",
@@ -532,7 +560,7 @@ async function checkBackendErrorHandling() {
     { type: "get_reviewer_auth_config" },
     { maxRetries: 0 },
   );
-  assert.deepEqual(JSON.parse(lastPostBody), {
+  assert.deepEqual(getPostBodyWithoutRequestId(), {
     type: "get_reviewer_auth_config",
     appVersion: networkContext.__MRH_APP__.version,
   });
@@ -544,7 +572,7 @@ async function checkBackendErrorHandling() {
     },
     { maxRetries: 0 },
   );
-  assert.deepEqual(JSON.parse(lastPostBody), {
+  assert.deepEqual(getPostBodyWithoutRequestId(), {
     type: "verify_reviewer_access",
     idToken: "test-google-id-token",
     eventId: reviewerEventId,
@@ -558,7 +586,7 @@ async function checkBackendErrorHandling() {
     },
     { maxRetries: 0 },
   );
-  assert.deepEqual(JSON.parse(lastPostBody), {
+  assert.deepEqual(getPostBodyWithoutRequestId(), {
     type: "log_module_access",
     idToken: "test-google-id-token",
     eventId: reviewerEventId,
@@ -573,7 +601,7 @@ async function checkBackendErrorHandling() {
     },
     { maxRetries: 0 },
   );
-  assert.deepEqual(JSON.parse(lastPostBody), {
+  assert.deepEqual(getPostBodyWithoutRequestId(), {
     type: "get_resource_dashboard",
     eventId: reviewerEventId,
     idToken: "test-google-id-token",
@@ -594,7 +622,7 @@ async function checkBackendErrorHandling() {
     },
     { maxRetries: 0 },
   );
-  assert.deepEqual(JSON.parse(lastPostBody), {
+  assert.deepEqual(getPostBodyWithoutRequestId(), {
     type: "log_resource_dashboard_action",
     eventId: reviewerEventId,
     resourceArea: "MODULES",
@@ -620,7 +648,7 @@ async function checkBackendErrorHandling() {
     },
     { maxRetries: 0 },
   );
-  assert.deepEqual(JSON.parse(lastPostBody), {
+  assert.deepEqual(getPostBodyWithoutRequestId(), {
     type: "log_resource_file_click",
     eventId: reviewerEventId,
     resourceArea: "SYLLABUS",

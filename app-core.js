@@ -6055,6 +6055,7 @@
   let reviewerReauthenticationPromptAttempted = false;
   let reviewerSignOutStorageListenerInstalled = false;
   const REVIEWER_STATUS_POLL_INTERVAL_MS = 2000;
+  const REVIEWER_STATUS_BACKGROUND_POLL_INTERVAL_MS = 30000;
   const REVIEWER_EXPLICIT_SIGNOUT_KEY = "mrh_reviewer_explicit_signout_v1";
   const REVIEWER_EXPLICIT_SIGNOUT_COOKIE = "mrh_reviewer_explicit_signout_v1";
   const REVIEWER_SESSION_STORAGE_KEY = "mrh_reviewer_session_v1";
@@ -7487,9 +7488,12 @@
         const summary = createResourceDashboardElement(
           "strong",
           "",
-          `Showing ${visibleRows.length} of ${nonEmptyRows.length} rows for ${selectedTerm}`,
+          selectedTerm,
         );
         status.replaceChildren(
+          document.createTextNode(
+            `Showing ${visibleRows.length} of ${nonEmptyRows.length} rows for `,
+          ),
           summary,
           document.createTextNode("."),
           document.createTextNode(
@@ -7766,9 +7770,13 @@
       document.getElementById("resource-reviewer-first-name"),
     ].forEach((input) => {
       if (!input || input.dataset.nameCapitalizationInitialized) return;
-      input.addEventListener("input", () => normalizeReviewerNameInput(input));
+      input.addEventListener("input", () => {
+        normalizeReviewerNameInput(input);
+        updateReviewerEmailNameWarning();
+      });
       input.dataset.nameCapitalizationInitialized = "true";
     });
+    updateReviewerEmailNameWarning();
     const middleInitialInput = document.getElementById(
       "resource-reviewer-middle-initial",
     );
@@ -7781,6 +7789,31 @@
       );
       middleInitialInput.dataset.middleInitialInitialized = "true";
     }
+  }
+
+  function updateReviewerEmailNameWarning() {
+    const warning = document.getElementById(
+      "resource-reviewer-email-name-warning",
+    );
+    if (!warning) return;
+    const firstName = document.getElementById(
+      "resource-reviewer-first-name",
+    )?.value;
+    const lastName = document.getElementById(
+      "resource-reviewer-last-name",
+    )?.value;
+    const hasName = Boolean(
+      String(firstName || "").trim() || String(lastName || "").trim(),
+    );
+    warning.hidden =
+      !hasName ||
+      !reviewerAuthorizedEmail ||
+      reviewerEmailMatchesName(
+        reviewerAuthorizedEmail,
+        firstName,
+        "",
+        lastName,
+      );
   }
 
   function openReviewerProfileEditor() {
@@ -8567,6 +8600,7 @@
         });
       }
     }
+    updateReviewerEmailNameWarning();
     if (authStatus) authStatus.textContent = "";
     if (accountStatus !== "TRUE" && resourceDashboardActiveTab === "REVIEWERS")
       openResourceDashboardTab("PROFILE");
@@ -8580,6 +8614,11 @@
     stopReviewerStatusPolling();
     if (!sessionId) return;
     const authGeneration = reviewerAuthGeneration;
+    const normalizedDelay = Math.max(0, Number(delay) || 0);
+    const pollDelay =
+      document.visibilityState === "hidden" && normalizedDelay > 0
+        ? REVIEWER_STATUS_BACKGROUND_POLL_INTERVAL_MS
+        : normalizedDelay;
     reviewerStatusPollTimer = globalScope.setTimeout(async () => {
       reviewerStatusPollTimer = null;
       if (
@@ -8644,7 +8683,7 @@
         )
           scheduleReviewerStatusPolling(sessionId);
       }
-    }, Math.max(0, Number(delay) || 0));
+    }, pollDelay);
   }
 
   async function completeReviewerSignIn(idToken) {
@@ -8793,6 +8832,7 @@
     const lastName = String(lastNameInput?.value || "").trim();
     const firstName = String(firstNameInput?.value || "").trim();
     const middleInitial = String(middleInitialInput?.value || "").trim();
+    updateReviewerEmailNameWarning();
     if (!lastName || !firstName || !/^[A-Z]\.$/.test(middleInitial)) {
       if (authStatus)
         authStatus.textContent =
@@ -8804,21 +8844,8 @@
       else middleInitialInput?.focus();
       return false;
     }
-    if (
-      !reviewerEmailMatchesName(
-        reviewerAuthorizedEmail,
-        firstName,
-        middleInitial,
-        lastName,
-      )
-    ) {
-      if (authStatus)
-        authStatus.textContent =
-          "The signed-in Google email does not appear to match this name. Use an email containing part of your first or last name, or matching initials.";
-      return false;
-    }
     const confirmed = await requestConfirmation(
-      "False information will strictly not be entertained and will be ignored and deleted. Confirm that the name entered here is accurate and matches your verified Google account and email before submitting.",
+      "False information will strictly not be entertained and will be ignored and deleted. Confirm that the name entered here is accurate and belongs to you before submitting.",
       "Confirm Your Name",
     );
     if (!confirmed) return false;
@@ -10068,6 +10095,7 @@
     if (reviewerRequest) reviewerPdfPreviewInFlight = reviewerRequest;
 
     preview.classList.remove("is-expanded");
+    preview.classList.toggle("is-reviewer-pdf", reviewer);
     if (expandButton) {
       expandButton.setAttribute("aria-pressed", "false");
       expandButton.setAttribute("aria-label", "Expand online viewer");
@@ -10333,6 +10361,7 @@
     }
     if (preview) {
       preview.classList.remove("is-expanded");
+      preview.classList.remove("is-reviewer-pdf");
       preview.setAttribute("role", "region");
       preview.removeAttribute("aria-modal");
       preview.hidden = true;

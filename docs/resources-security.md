@@ -121,8 +121,11 @@ with a dynamic 20-stamp overlay containing the verified full name and email on
 separate lines. The route checks the protected hierarchy once, then verifies
 the source version with a single Drive metadata lookup after reading the
 content; it does not block preview delivery on a spreadsheet access-log write.
-The frame and object URL are cleared when the preview closes, approval is lost,
-or the session ends.
+Reviewer preview surfaces request non-selectable content from the browser with
+`user-select: none`. The native PDF renderer is browser-controlled and may not
+honor page styles in every browser; this is a copying deterrent, not a security
+boundary. The frame and object URL are cleared when the preview closes,
+approval is lost, or the session ends.
 
 Only the explicit Download action calls `get_reviewer_pdf`. It creates a
 session-bound job for the asynchronous watermark worker; the worker rechecks
@@ -217,7 +220,11 @@ To initialize sign-in and access logging:
    private to administrators.
 5. Run `authorizeMRHReviewerStatusEmails()` from the Apps Script editor once
    and approve the send-mail permission. This authorization step is required
-   before the web app can send reviewer decision emails.
+   before the web app can send reviewer decision emails. Run `setupTriggers()`
+   once to install the account-sheet cache invalidation trigger and the
+   one-minute status-notification worker. Account-status responses no longer
+   wait for email delivery; the worker processes up to 20 queued messages per
+   invocation and retries transient mail failures on its next run.
 6. On first sign-in, a user submits `Last Name`, `First Name`, and
    `Middle Initial`. The backend verifies the Google identity and saves one
    account row per verified email with `Active=FALSE`. Reviewer resources stay
@@ -226,7 +233,7 @@ To initialize sign-in and access logging:
    correct their name, and resubmit it for review, which returns the account
    to `FALSE`. The exact account columns are `Email`, `Last Name`,
    `First Name`, `Middle Initial`, and `Active`.
-7. Enable the Apps Script Advanced Google service **Google Sheets API v4**
+6. Enable the Apps Script Advanced Google service **Google Sheets API v4**
    (the project manifest declares this service; enable the Google Sheets API
    in the linked Cloud project if prompted), and deploy a new web-app version.
    The repository selectively tracks the Apps Script runtime files under

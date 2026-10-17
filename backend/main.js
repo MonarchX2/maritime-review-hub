@@ -20,6 +20,7 @@ const REVIEWER_PDF_QUEUE_PROPERTY = "MRH_REVIEWER_PDF_QUEUE_v1";
 const REVIEWER_PDF_WORKER_READY_PROPERTY = "MRH_REVIEWER_PDF_WORKER_READY_v1";
 const REVIEWER_PDF_WORKER_SCHEDULE_PROPERTY = "MRH_REVIEWER_PDF_WORKER_SCHEDULED_AT";
 const REVIEWER_PDF_JOB_TTL_MS = 10 * 60 * 1000;
+const REVIEWER_PDF_CLEANUP_RETRY_MS = 60 * 1000;
 const REVIEWER_PDF_QUEUE_LIMIT = 3;
 const REVIEWER_PDF_WORKER_HANDLER = "processReviewerPdfQueue";
 const CACHE_FOLDER_ID_PROPERTY = "MRH_CACHE_FOLDER_ID";
@@ -113,6 +114,10 @@ function logBackendFailure_(handler, requestType, correlationId, error) {
     error && /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(String(error.name || ""))
       ? String(error.name)
       : "Error";
+  var reasonCode =
+    error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(String(error.code || ""))
+      ? String(error.code)
+      : "UNCLASSIFIED";
   Logger.log(
     "[MRH] failure handler=" +
       safeHandler +
@@ -120,6 +125,8 @@ function logBackendFailure_(handler, requestType, correlationId, error) {
       safeRequestType +
       " correlationId=" +
       correlationId +
+      " reasonCode=" +
+      reasonCode +
       " errorName=" +
       errorName,
   );
@@ -210,11 +217,13 @@ var MRH_REQUIRED_OAUTH_SCOPES = [
 var MRH_LOG_HEADER_CACHE_TTL_SECONDS = 60;
 var MRH_TOKEN_CACHE_MAX_TTL_SECONDS = 300;
 var MRH_RESOURCE_DASHBOARD_CACHE_TTL_SECONDS = 30;
-var MRH_REVIEWER_DASHBOARD_CACHE_TTL_SECONDS = 60;
 var MRH_RESOURCE_DASHBOARD_VERSION_CACHE_TTL_SECONDS = CACHE_TTL_SECONDS;
 var MRH_REVIEWER_DASHBOARD_VERSION_CACHE_TTL_SECONDS = CACHE_TTL_SECONDS;
-var MRH_ACCOUNT_CACHE_TTL_SECONDS = 3;
+var MRH_ACCOUNT_CACHE_TTL_SECONDS = 5;
 var MRH_ACCOUNT_CACHE_GENERATION_PROPERTY = "MRH_ACCOUNT_CACHE_GENERATION";
+var MRH_REVIEWER_STATUS_NOTIFICATION_PENDING_PREFIX =
+  "MRH_REVIEWER_STATUS_NOTIFICATION_PENDING_v1_";
+var MRH_REVIEWER_STATUS_NOTIFICATION_BATCH_SIZE = 20;
 var MRH_SPREADSHEET_TIME_ZONE = "Asia/Manila";
 var MRH_LOG_DEDUPE_TTL_SECONDS = 21600;
 
@@ -240,12 +249,14 @@ function getResourceDashboardCombinedIndex(fileName, file) {
   try {
     parsed = JSON.parse(file.getBlob().getDataAsString());
   } catch (error) {
-    throw new Error(
+    var invalidJsonError = new Error(
       "Resource dashboard index is invalid JSON (" +
         fileName +
         "): " +
         error.message,
     );
+    invalidJsonError.code = "RESOURCE_INDEX_INVALID_JSON";
+    throw invalidJsonError;
   }
   if (
     !parsed ||
@@ -256,9 +267,11 @@ function getResourceDashboardCombinedIndex(fileName, file) {
     typeof parsed.d !== "object" ||
     Array.isArray(parsed.d)
   ) {
-    throw new Error(
+    var unsupportedFormatError = new Error(
       "Resource dashboard index has an unsupported format: " + fileName,
     );
+    unsupportedFormatError.code = "RESOURCE_INDEX_UNSUPPORTED_FORMAT";
+    throw unsupportedFormatError;
   }
   return parsed;
 }
@@ -279,9 +292,11 @@ function getResourceDashboardExportUrl(item, base, fileName) {
       ? base + encodeURIComponent(rawUrl)
       : "";
   if (!url || !getResourceDashboardFileId(url)) {
-    throw new Error(
+    var invalidLinkError = new Error(
       "Resource dashboard index contains an invalid Drive link: " + fileName,
     );
+    invalidLinkError.code = "RESOURCE_INDEX_INVALID_LINK";
+    throw invalidLinkError;
   }
   return url;
 }
@@ -1712,17 +1727,31 @@ function getReviewerStatusNotificationPropertyKey_(email) {
   );
 }
 
+function getReviewerStatusNotificationPendingKey_(email) {
+  return (
+    MRH_REVIEWER_STATUS_NOTIFICATION_PENDING_PREFIX +
+    sha256Hex(String(email || "").trim().toLowerCase())
+  );
+}
+
 function updateReviewerStatusNotification_(
   email,
   accountStatus,
   lockAlreadyHeld,
 ) {
+  var normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) return;
   var propertyKey = getReviewerStatusNotificationPropertyKey_(email);
   var properties = getScriptProps();
   if (properties.getProperty(propertyKey) === accountStatus) return;
   var lock = lockAlreadyHeld ? null : LockService.getScriptLock();
-  if (lock && !lock.tryLock(10000))
-    throw new Error("Reviewer status notification is busy. Please retry.");
+  if (lock && !lock.tryLock(500)) {
+    Logger.log(JSON.stringify({
+      event: "reviewer_status_notification_deferred",
+      reasonCode: "STATUS_NOTIFICATION_LOCK_BUSY",
+    }));
+    return;
+  }
   try {
     var previousStatus = properties.getProperty(propertyKey);
     if (!previousStatus) {
@@ -1736,29 +1765,79 @@ function updateReviewerStatusNotification_(
       accountStatus === "FALSE" ||
       accountStatus === "DENIED"
     ) {
-      var subjectByStatus = {
-        TRUE: "Maritime Review Hub resource access granted",
-        FALSE: "Maritime Review Hub resource access pending",
-        DENIED: "Maritime Review Hub resource access denied",
-      };
-      var bodyByStatus = {
-        TRUE:
-          "Dear Maritime Review Hub user,\n\nYour resource access request has been approved. The requested materials are now available. Please sign in to your profile to continue.\n\nSincerely,\nMaritime Review Hub",
-        FALSE:
-          "Dear Maritime Review Hub user,\n\nThis message confirms that your resource access request has been received and is pending administrator review. We will notify you by email when a decision has been made.\n\nSincerely,\nMaritime Review Hub",
-        DENIED:
-          "Dear Maritime Review Hub user,\n\nAfter review, we are unable to approve your resource access request at this time. If you believe your submitted name details need correction, please sign in to your profile, update them, and resubmit your request for review.\n\nSincerely,\nMaritime Review Hub",
-      };
-      MailApp.sendEmail({
-        to: String(email || "").trim(),
-        subject: subjectByStatus[accountStatus],
-        body: bodyByStatus[accountStatus],
-        name: "Maritime Review Hub",
-      });
+      properties.setProperty(propertyKey, accountStatus);
+      properties.setProperty(
+        getReviewerStatusNotificationPendingKey_(normalizedEmail),
+        JSON.stringify({ email: normalizedEmail, status: accountStatus }),
+      );
     }
-    properties.setProperty(propertyKey, accountStatus);
   } finally {
     if (lock) lock.releaseLock();
+  }
+}
+
+function processReviewerStatusNotifications() {
+  var workerLock = LockService.getUserLock();
+  if (!workerLock.tryLock(1000))
+    return { status: "busy", processed: 0 };
+  try {
+    var properties = getScriptProps();
+    var pending = properties.getProperties();
+    var keys = Object.keys(pending).filter(function (key) {
+      return key.indexOf(MRH_REVIEWER_STATUS_NOTIFICATION_PENDING_PREFIX) === 0;
+    }).slice(0, MRH_REVIEWER_STATUS_NOTIFICATION_BATCH_SIZE);
+    var subjectByStatus = {
+      TRUE: "Maritime Review Hub resource access granted",
+      FALSE: "Maritime Review Hub resource access pending",
+      DENIED: "Maritime Review Hub resource access denied",
+    };
+    var bodyByStatus = {
+      TRUE:
+        "Dear Maritime Review Hub user,\n\nYour resource access request has been approved. The requested materials are now available. Please sign in to your profile to continue.\n\nSincerely,\nMaritime Review Hub",
+      FALSE:
+        "Dear Maritime Review Hub user,\n\nThis message confirms that your resource access request has been received and is pending administrator review. We will notify you by email when a decision has been made.\n\nSincerely,\nMaritime Review Hub",
+      DENIED:
+        "Dear Maritime Review Hub user,\n\nAfter review, we are unable to approve your resource access request at this time. If you believe your submitted name details need correction, please sign in to your profile, update them, and resubmit your request for review.\n\nSincerely,\nMaritime Review Hub",
+    };
+    var sent = 0;
+    keys.forEach(function (key) {
+      var notification;
+      try {
+        notification = JSON.parse(pending[key]);
+        if (
+          !notification ||
+          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(notification.email || "")) ||
+          !subjectByStatus[notification.status]
+        )
+          throw new Error("Invalid reviewer status notification.");
+        MailApp.sendEmail({
+          to: notification.email,
+          subject: subjectByStatus[notification.status],
+          body: bodyByStatus[notification.status],
+          name: "Maritime Review Hub",
+        });
+      } catch (error) {
+        Logger.log(JSON.stringify({
+          event: "reviewer_status_notification_failed",
+          reasonCode: "MAIL_DELIVERY_FAILED",
+          errorName: String(error && error.name || "Error"),
+        }));
+        return;
+      }
+      var lock = LockService.getScriptLock();
+      if (!lock.tryLock(10000)) return;
+      try {
+        if (properties.getProperty(key) === pending[key]) {
+          properties.deleteProperty(key);
+          sent += 1;
+        }
+      } finally {
+        lock.releaseLock();
+      }
+    });
+    return { status: "success", processed: sent };
+  } finally {
+    workerLock.releaseLock();
   }
 }
 
@@ -2200,48 +2279,26 @@ function handleGetReviewerDashboardRequest(data) {
   var authorization = authorizeReviewerRequest_(data, false);
   if (authorization.error) return authorization.error;
 
-  var reviewerCache = null;
-  try {
-    reviewerCache = CacheService.getScriptCache();
-    var latestReviewerTab = reviewerCache.get(
-      "mrh_reviewer_dashboard_latest_v2",
-    );
-    if (latestReviewerTab) {
-      var parsedLatestReviewerTab = JSON.parse(latestReviewerTab);
-      if (
-        parsedLatestReviewerTab &&
-        Array.isArray(parsedLatestReviewerTab.columns) &&
-        Array.isArray(parsedLatestReviewerTab.rows) &&
-        parsedLatestReviewerTab.rows.every(Array.isArray)
-      )
-        return jsonResponse({
-          status: "success",
-          email: authorization.email,
-          lastName: authorization.account.lastName,
-          firstName: authorization.account.firstName,
-          middleInitial: authorization.account.middleInitial,
-          tab: protectReviewerDashboardTab_(parsedLatestReviewerTab),
-        });
-      reviewerCache.remove("mrh_reviewer_dashboard_latest_v2");
-    }
-  } catch (cacheError) {
-    Logger.log("[handleGetReviewerDashboardRequest] Latest cache read failed.");
-  }
-
   var folder = DriveApp.getFolderById(RESOURCE_DASHBOARD_INDEX_FOLDER_ID);
   var fileName = RESOURCE_DASHBOARD_INDEX_FILES.REVIEWERS;
   var files = folder.getFilesByName(fileName);
-  if (!files.hasNext())
-    throw new Error("Resource dashboard index is missing: " + fileName);
+  if (!files.hasNext()) {
+    var missingIndexError = new Error(
+      "Resource dashboard index is missing: " + fileName,
+    );
+    missingIndexError.code = "REVIEWER_INDEX_MISSING";
+    throw missingIndexError;
+  }
   var file = files.next();
   var reviewerCacheKey =
     "mrh_reviewer_dashboard_v2_" +
     sha256Hex(
       String(file.getId()) + ":" + String(file.getLastUpdated().getTime()),
     );
-  var reviewerTab = null;
+
+  var reviewerCache = null;
   try {
-    if (!reviewerCache) reviewerCache = CacheService.getScriptCache();
+    reviewerCache = CacheService.getScriptCache();
     var cachedTab = reviewerCache.get(reviewerCacheKey);
     if (cachedTab) {
       var parsedTab = JSON.parse(cachedTab);
@@ -2251,32 +2308,34 @@ function handleGetReviewerDashboardRequest(data) {
         Array.isArray(parsedTab.rows) &&
         parsedTab.rows.every(Array.isArray)
       )
-        reviewerTab = parsedTab;
+        return jsonResponse({
+          status: "success",
+          email: authorization.email,
+          lastName: authorization.account.lastName,
+          firstName: authorization.account.firstName,
+          middleInitial: authorization.account.middleInitial,
+          tab: protectReviewerDashboardTab_(parsedTab),
+        });
+      reviewerCache.remove(reviewerCacheKey);
     }
   } catch (cacheError) {
     Logger.log("[handleGetReviewerDashboardRequest] Reviewer cache read failed.");
   }
-  if (!reviewerTab) {
-    var index = getResourceDashboardCombinedIndex(fileName, file);
-    reviewerTab = buildResourceDashboardTab("REVIEWERS", index);
-    reviewerTab = protectReviewerDashboardTab_(reviewerTab);
-    var reviewerJson = JSON.stringify(reviewerTab);
-    if (reviewerJson.length <= 90000) {
-      try {
-        if (!reviewerCache) reviewerCache = CacheService.getScriptCache();
-        reviewerCache.put(
-          reviewerCacheKey,
-          reviewerJson,
-          MRH_REVIEWER_DASHBOARD_VERSION_CACHE_TTL_SECONDS,
-        );
-        reviewerCache.put(
-          "mrh_reviewer_dashboard_latest_v2",
-          reviewerJson,
-          MRH_REVIEWER_DASHBOARD_CACHE_TTL_SECONDS,
-        );
-      } catch (cacheError) {
-        Logger.log("[handleGetReviewerDashboardRequest] Reviewer cache write failed.");
-      }
+
+  var index = getResourceDashboardCombinedIndex(fileName, file);
+  var reviewerTab = buildResourceDashboardTab("REVIEWERS", index);
+  reviewerTab = protectReviewerDashboardTab_(reviewerTab);
+  var reviewerJson = JSON.stringify(reviewerTab);
+  if (reviewerJson.length <= 90000) {
+    try {
+      if (!reviewerCache) reviewerCache = CacheService.getScriptCache();
+      reviewerCache.put(
+        reviewerCacheKey,
+        reviewerJson,
+        MRH_REVIEWER_DASHBOARD_VERSION_CACHE_TTL_SECONDS,
+      );
+    } catch (cacheError) {
+      Logger.log("[handleGetReviewerDashboardRequest] Reviewer cache write failed.");
     }
   }
   reviewerTab = protectReviewerDashboardTab_(reviewerTab);
@@ -3091,6 +3150,8 @@ function cleanupReviewerPdfJobsForSession_(sessionId) {
     return { status: "error", cleaned: 0 };
   var properties = getScriptProps();
   var removedJobIds = [];
+  var cancelledJobIds = [];
+  var retryDelayMs = REVIEWER_PDF_CLEANUP_RETRY_MS;
   var cleanupFailed = false;
   try {
     var allProperties = properties.getProperties();
@@ -3117,10 +3178,23 @@ function cleanupReviewerPdfJobsForSession_(sessionId) {
         try {
           permanentlyDeleteReviewerPdfOutput_(job.outputFileId);
         } catch (error) {
+          var retryAt = Date.now() + REVIEWER_PDF_CLEANUP_RETRY_MS;
+          var expiresAt = Number(job.expiresAt);
+          job.status = "cancelled";
+          delete job.processingAt;
+          job.expiresAt = Number.isFinite(expiresAt) && expiresAt > 0
+            ? Math.min(expiresAt, retryAt)
+            : retryAt;
+          properties.setProperty(key, JSON.stringify(job));
+          cancelledJobIds.push(String(job.jobId || ""));
+          retryDelayMs = Math.min(
+            retryDelayMs,
+            Math.max(10000, job.expiresAt - Date.now()),
+          );
           cleanupFailed = true;
           Logger.log(JSON.stringify({
             event: "reviewer_pdf_session_cleanup_failed",
-            reasonCode: "DRIVE_TRASH_FAILED",
+            reasonCode: "DRIVE_DELETE_FAILED",
           }));
           return;
         }
@@ -3133,15 +3207,26 @@ function cleanupReviewerPdfJobsForSession_(sessionId) {
         properties.deleteProperty(key);
       }
       removedJobIds.push(String(job.jobId || ""));
+      cancelledJobIds.push(String(job.jobId || ""));
     });
     properties.setProperty(
       REVIEWER_PDF_QUEUE_PROPERTY,
       JSON.stringify(
         queue.filter(function (jobId) {
-          return removedJobIds.indexOf(String(jobId)) < 0;
+          return cancelledJobIds.indexOf(String(jobId)) < 0;
         }),
       ),
     );
+    if (cleanupFailed) {
+      try {
+        scheduleReviewerPdfWorkerLocked_(retryDelayMs);
+      } catch (error) {
+        Logger.log(JSON.stringify({
+          event: "reviewer_pdf_session_cleanup_retry_schedule_failed",
+          reasonCode: "WORKER_SCHEDULE_FAILED",
+        }));
+      }
+    }
   } finally {
     lock.releaseLock();
   }
@@ -3382,9 +3467,14 @@ async function processReviewerPdfQueue(event) {
           Number(job.expiresAt) > 0
         ) {
           var cleanupAt = job.status === "cancelled"
-            ? Math.min(Date.now() + 60000, Number(job.expiresAt))
+            ? Number(job.expiresAt) > Date.now()
+              ? Math.min(
+                Date.now() + REVIEWER_PDF_CLEANUP_RETRY_MS,
+                Number(job.expiresAt),
+              )
+              : Date.now() + REVIEWER_PDF_CLEANUP_RETRY_MS
             : Number(job.expiresAt) <= Date.now()
-              ? Date.now() + 60000
+              ? Date.now() + REVIEWER_PDF_CLEANUP_RETRY_MS
               : Number(job.expiresAt);
           if (!nextCleanupAt || cleanupAt < nextCleanupAt)
             nextCleanupAt = cleanupAt;
@@ -5859,6 +5949,7 @@ function filterSummaryDataByAccess(summaryJsonString) {
 
 function doPost(e) {
   var requestType = "unknown";
+  var correlationId = createBackendCorrelationId_();
   try {
     if (!e || !e.postData || !e.postData.contents)
       return errorResponse("Request body is required.", "BAD_REQUEST");
@@ -5899,6 +5990,18 @@ function doPost(e) {
         "A valid event ID is required for this request.",
         "BAD_REQUEST",
       );
+    if (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(data.requestId || ""),
+    )
+    )
+    correlationId = String(data.requestId).toLowerCase();
+    else if (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(data.eventId || ""),
+    )
+    )
+    correlationId = String(data.eventId).toLowerCase();
     if (requestType === "get_reviewer_auth_config")
       return handleGetReviewerAuthorizationConfigRequest();
     if (requestType === "verify_reviewer_access")
@@ -5955,7 +6058,6 @@ function doPost(e) {
 
     return errorResponse("Unknown request type.", "UNKNOWN_REQUEST");
   } catch (error) {
-    var correlationId = createBackendCorrelationId_();
     logBackendFailure_("doPost", requestType, correlationId, error);
     return errorResponse(
       "Server error. Reference: " + correlationId + ".",
@@ -6043,6 +6145,7 @@ function setupTriggers() {
         handler === "scheduledDatabaseSync" ||
         handler === "uuidSheetEdited" ||
         handler === "mrhAccountsEdited" ||
+        handler === "processReviewerStatusNotifications" ||
         handler === "onEdit" ||
         handler === RESUME_TRIGGER_HANDLER
       ) {
@@ -6059,6 +6162,10 @@ function setupTriggers() {
         .forSpreadsheet(reviewerConfig.spreadsheetId)
         .onEdit()
         .create();
+      ScriptApp.newTrigger("processReviewerStatusNotifications")
+        .timeBased()
+        .everyMinutes(1)
+        .create();
     }
     ScriptApp.newTrigger("scheduledDatabaseSync")
       .timeBased()
@@ -6068,7 +6175,7 @@ function setupTriggers() {
     return {
       status: "success",
       message:
-        "Database triggers installed: UUID and account edit triggers plus 5-minute safety sync.",
+        "Database triggers installed: UUID and account edit triggers, reviewer status notifications, and 5-minute safety sync.",
     };
   } finally {
     lock.releaseLock();

@@ -1991,6 +1991,16 @@ button:active:not(:disabled) {
   margin: 0;
 }
 
+.resource-reviewer-email-name-warning {
+  margin: 0;
+  color: #92400e;
+  font-size: 0.875rem;
+}
+
+.resource-reviewer-email-name-warning[hidden] {
+  display: none;
+}
+
 .resource-reviewers-locked-panel {
   display: grid;
   justify-items: center;
@@ -2656,6 +2666,13 @@ button:active:not(:disabled) {
 .resource-portal-preview-frame {
   display: block;
   border: 0;
+}
+
+.resource-portal-preview.is-reviewer-pdf,
+.resource-portal-preview.is-reviewer-pdf .resource-portal-preview-frame,
+.resource-portal-preview.is-reviewer-pdf .resource-portal-preview-viewer {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .resource-portal-table-head,

@@ -30,6 +30,21 @@
   let backendPurgePromise = null;
   let deckSyncSnapshotSupported = null;
 
+  function createRequestId() {
+    const candidate = globalScope.crypto?.randomUUID?.();
+    if (
+      typeof candidate === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        candidate,
+      )
+    )
+      return candidate.toLowerCase();
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
+      const random = Math.floor(Math.random() * 16);
+      return (character === "x" ? random : (random & 3) | 8).toString(16);
+    });
+  }
+
   async function purgeAppOwnedData() {
     if (backendPurgePromise) return backendPurgePromise;
 
@@ -637,6 +652,7 @@
     idToken: 8192,
     sessionId: 96,
     eventId: 36,
+    requestId: 36,
     lastName: 100,
     firstName: 100,
     middleInitial: 10,
@@ -697,6 +713,7 @@
     if (!schema) throw new Error("Unsupported backend request type.");
 
     const allowed = new Set(schema.allowed);
+    allowed.add("requestId");
     Object.keys(payload).forEach((key) => {
       if (!allowed.has(key)) {
         throw new Error(`Unexpected backend field '${key}'.`);
@@ -767,6 +784,14 @@
       )
     ) {
       throw new Error("Backend field 'eventId' must be a UUID.");
+    }
+    if (
+      payload.requestId !== undefined &&
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        payload.requestId,
+      )
+    ) {
+      throw new Error("Backend field 'requestId' must be a UUID.");
     }
     if (
       payload.middleInitial !== undefined &&
@@ -895,7 +920,8 @@
     if (!url) throw new Error("Database URL is not configured.");
     const appVersion = String(globalScope.__MRH_APP__?.version || "").trim();
     if (!appVersion) throw new Error("Client app version is unavailable.");
-    const versionedPayload = { ...payload, appVersion };
+    const requestId = createRequestId();
+    const versionedPayload = { ...payload, appVersion, requestId };
     validateBackendPayload(versionedPayload);
 
     return defaultConnectionPool.request(
@@ -927,6 +953,15 @@
           if (backendError) await processBackendError(backendError);
           return result;
         } catch (error) {
+          const correlationId =
+            typeof error?.correlationId === "string" &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+              error.correlationId,
+            )
+              ? error.correlationId.toLowerCase()
+              : requestId;
+          if (error && typeof error === "object" && !error.correlationId)
+            error.correlationId = correlationId;
           const responseHost =
             String(response?.url || "").match(/^https?:\/\/([^/:?#]+)/i)?.[1] ||
             "";
@@ -940,7 +975,7 @@
             code: String(error?.code || "NETWORK_ERROR")
               .replace(/[^A-Za-z0-9_]/g, "")
               .slice(0, 40),
-            correlationId: error?.correlationId || "",
+            correlationId: correlationId,
           });
           throw error;
         }

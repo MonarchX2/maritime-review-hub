@@ -92,10 +92,10 @@ assert.match(
   /id="resource-dashboard-reviewers-nav"[\s\S]*?<i class="fa-solid fa-clipboard-list" aria-hidden="true"><\/i>/,
   "the Reviewers tab should use a lined-note icon",
 );
-assert.doesNotMatch(
+assert.match(
   index.match(/id="resource-dashboard-reviewers-nav"[^>]*>/)?.[0] || "",
-  /\baria-disabled\b|\bdisabled\b/,
-  "the Reviewers tab must not be semantically or natively disabled while signed out",
+  /\bdisabled\b[\s\S]*aria-disabled="true"/,
+  "Review Materials should start disabled before account status is verified",
 );
 assert.match(
   index,
@@ -142,6 +142,16 @@ assert.match(
   index,
   /class="resource-reviewer-form-actions"[\s\S]*?<button type="submit">[\s\S]*?id="resource-reviewer-enrollment-status"[^>]*role="status"/,
   "profile submission progress should appear beneath the enrollment action",
+);
+assert.match(
+  index,
+  /id="resource-reviewer-email-name-warning"[^>]*role="status"[^>]*aria-live="polite"[^>]*hidden[\s\S]*?name entered does not closely match your\s*email address/,
+  "the profile should provide a hidden, non-blocking live name/email warning",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-reviewer-email-name-warning\s*\{[^}]*color:\s*#92400e;/,
+  "the name/email mismatch should use a visible, non-blocking warning style",
 );
 assert.match(
   index,
@@ -213,8 +223,8 @@ assert.equal(
 );
 assert.match(
   appCore,
-  /function initializeReviewerEnrollmentInputs\(\)[\s\S]*?resource-reviewer-last-name[\s\S]*?resource-reviewer-first-name[\s\S]*?addEventListener\("input", \(\) => normalizeReviewerNameInput\(input\)\)[\s\S]*?function openReviewerProfileEditor[\s\S]*?async function initializeReviewerAuth\(\) \{\s*initializeReviewerEnrollmentInputs\(\);\s*if \(reviewerAuthConfigPromise\)/,
-  "profile name capitalization handlers should initialize as soon as the Profile tab opens, before auth configuration resolves",
+  /function initializeReviewerEnrollmentInputs\(\)[\s\S]*?resource-reviewer-last-name[\s\S]*?resource-reviewer-first-name[\s\S]*?normalizeReviewerNameInput\(input\);[\s\S]*?updateReviewerEmailNameWarning\(\);[\s\S]*?function updateReviewerEmailNameWarning\(\)[\s\S]*?reviewerEmailMatchesName\([\s\S]*?function openReviewerProfileEditor[\s\S]*?async function initializeReviewerAuth\(\) \{\s*initializeReviewerEnrollmentInputs\(\);\s*if \(reviewerAuthConfigPromise\)/,
+  "profile name/email validation should update while typing before auth configuration resolves",
 );
 assert.match(
   appCore,
@@ -225,6 +235,54 @@ assert.match(
   appCore,
   /function reviewerEmailMatchesName\(email, firstName, middleInitial, lastName\)[\s\S]*?part\.length >= 3[\s\S]*?localPart\.includes\(part\)[\s\S]*?initials\.length >= 2 && localPart\.includes\(initials\)/,
   "email/name matching should accept a meaningful name part or matching initials",
+);
+const reviewerMatchFunctions =
+  appCore.match(
+    /function normalizeReviewerIdentityText\(value\)[\s\S]*?function reviewerEmailMatchesName\(email, firstName, middleInitial, lastName\)[\s\S]*?\n  \}/,
+  )?.[0] || "";
+const reviewerEmailMatchesName = new Function(
+  `${reviewerMatchFunctions}; return reviewerEmailMatchesName;`,
+)();
+const reviewerWarningFunction =
+  appCore.match(
+    /function updateReviewerEmailNameWarning\(\)[\s\S]*?\n  \}/,
+  )?.[0] || "";
+const profileWarning = { hidden: true };
+let profileFirstName = "MARIA";
+let profileLastName = "SMITH";
+const profileFields = {
+  "resource-reviewer-email-name-warning": profileWarning,
+  "resource-reviewer-first-name": { get value() { return profileFirstName; } },
+  "resource-reviewer-last-name": { get value() { return profileLastName; } },
+};
+const updateReviewerEmailNameWarning = new Function(
+  "document",
+  "reviewerAuthorizedEmail",
+  "reviewerEmailMatchesName",
+  `${reviewerWarningFunction}; return updateReviewerEmailNameWarning;`,
+)(
+  { getElementById: (id) => profileFields[id] || null },
+  "maria.smith@example.com",
+  reviewerEmailMatchesName,
+);
+updateReviewerEmailNameWarning();
+assert.equal(profileWarning.hidden, true, "a strong email/name match should hide the warning");
+profileFirstName = "UNRELATED";
+profileLastName = "MISMATCH";
+updateReviewerEmailNameWarning();
+assert.equal(profileWarning.hidden, false, "changing a name to a mismatch should show the warning");
+profileFirstName = "";
+profileLastName = "";
+updateReviewerEmailNameWarning();
+assert.equal(profileWarning.hidden, true, "empty name fields should not show a mismatch warning");
+const enrollmentHandlerForEmailWarning =
+  appCore.match(
+    /async function requestReviewerEnrollment\(event\)[\s\S]*?(?=\n  async function )/,
+  )?.[0] || "";
+assert.doesNotMatch(
+  enrollmentHandlerForEmailWarning,
+  /if\s*\(\s*!reviewerEmailMatchesName/,
+  "a name/email mismatch warning must not block profile submission",
 );
 assert.match(
   appCore,
@@ -310,8 +368,8 @@ assert.doesNotMatch(
 );
 assert.match(
   appCore,
-  /const confirmed = await requestConfirmation\([\s\S]*?False information will strictly not be entertained[\s\S]*?ignored and deleted[\s\S]*?verified Google account and email[\s\S]*?if \(!confirmed\) return false;[\s\S]*?globalScope\.AppNetwork\.callBackend/,
-  "submitting a name should confirm its accuracy and warn against false information before contacting the backend",
+  /const confirmed = await requestConfirmation\([\s\S]*?False information will strictly not be entertained[\s\S]*?ignored and deleted[\s\S]*?name entered here is accurate and belongs to you[\s\S]*?if \(!confirmed\) return false;[\s\S]*?globalScope\.AppNetwork\.callBackend/,
+  "the single name-accuracy confirmation should not treat an email mismatch as a submission blocker",
 );
 assert.match(
   appCore,
@@ -638,8 +696,8 @@ assert.match(
 );
 assert.match(
   backend,
-  /function handleGetReviewerDashboardRequest\(data\)[\s\S]*?mrh_reviewer_dashboard_latest_v2[\s\S]*?return jsonResponse\(\{[\s\S]*?tab: protectReviewerDashboardTab_\(parsedLatestReviewerTab\)/,
-  "the reviewer endpoint should authorize each request before serving a cached payload",
+  /function handleGetReviewerDashboardRequest\(data\)[\s\S]*?authorizeReviewerRequest_\(data, false\)[\s\S]*?getFilesByName\(fileName\)[\s\S]*?file\.getLastUpdated\(\)\.getTime\(\)[\s\S]*?reviewerCache\.get\(reviewerCacheKey\)[\s\S]*?tab: protectReviewerDashboardTab_\(parsedTab\)/,
+  "the reviewer endpoint should authorize each request and check the current index version before serving cached rows",
 );
 assert.match(
   dashboardHandler,
@@ -648,8 +706,8 @@ assert.match(
 );
 assert.match(
   backend,
-  /reviewerCache\.put\(\s*reviewerCacheKey,\s*reviewerJson,\s*MRH_REVIEWER_DASHBOARD_VERSION_CACHE_TTL_SECONDS,\s*\)[\s\S]*?reviewerCache\.put\(\s*"mrh_reviewer_dashboard_latest_v2",\s*reviewerJson,\s*MRH_REVIEWER_DASHBOARD_CACHE_TTL_SECONDS,/,
-  "reviewer payload retention should not extend the short freshness window for the latest snapshot",
+  /reviewerCache\.put\(\s*reviewerCacheKey,\s*reviewerJson,\s*MRH_REVIEWER_DASHBOARD_VERSION_CACHE_TTL_SECONDS,\s*\)/,
+  "reviewer payloads should be cached only under their authoritative index version",
 );
 assert.match(
   backend,
@@ -1327,11 +1385,16 @@ pdfJobProperties.set(
   }),
 );
 const deletedTemporaryOutputs = [];
+let temporaryOutputDeleteFailures = 0;
 context.getScriptProps = () => pdfJobPropertyStore;
 context.Drive = {
   Files: {
     delete(fileId, options) {
       deletedTemporaryOutputs.push([fileId, options]);
+      if (temporaryOutputDeleteFailures > 0) {
+        temporaryOutputDeleteFailures -= 1;
+        throw new Error("transient Drive delete failure");
+      }
     },
   },
 };
@@ -1546,6 +1609,73 @@ assert.equal(
   scheduledPdfWorkerDelays.length,
   1,
   "completed private derivatives must schedule a one-time expiry cleanup",
+);
+
+const cleanupRetryJobId = "e".repeat(96);
+const cleanupRetryFileId = "retry-output-id";
+const cleanupRetrySessionId = "d".repeat(96);
+pdfJobProperties.set(
+  "MRH_REVIEWER_PDF_QUEUE_v1",
+  JSON.stringify([cleanupRetryJobId]),
+);
+pdfJobProperties.set(
+  pdfJobPrefix + cleanupRetryJobId,
+  JSON.stringify({
+    jobId: cleanupRetryJobId,
+    sessionId: cleanupRetrySessionId,
+    status: "complete",
+    outputFileId: cleanupRetryFileId,
+    expiresAt: Date.now() + 10 * 60 * 1000,
+  }),
+);
+scheduledPdfWorkerTriggers.splice(0, scheduledPdfWorkerTriggers.length);
+pdfJobPropertyStore.deleteProperty("MRH_REVIEWER_PDF_WORKER_SCHEDULED_AT");
+scheduledPdfWorkerDelays.length = 0;
+temporaryOutputDeleteFailures = 1;
+const partialSessionCleanup =
+  context.cleanupReviewerPdfJobsForSession_(cleanupRetrySessionId);
+assert.equal(partialSessionCleanup.status, "partial");
+const cleanupRetryJob = JSON.parse(
+  pdfJobProperties.get(pdfJobPrefix + cleanupRetryJobId),
+);
+assert.equal(cleanupRetryJob.status, "cancelled");
+assert.ok(
+  cleanupRetryJob.expiresAt <= Date.now() + 60 * 1000,
+  "failed session cleanup must expire the derivative promptly for retry",
+);
+assert.deepEqual(
+  JSON.parse(pdfJobProperties.get("MRH_REVIEWER_PDF_QUEUE_v1")),
+  [],
+  "a cancelled job with a failed derivative deletion must leave the worker queue",
+);
+assert.ok(
+  scheduledPdfWorkerDelays[0] <= 60 * 1000 &&
+    scheduledPdfWorkerDelays[0] >= 10 * 1000,
+  "failed session cleanup must schedule a bounded automatic retry",
+);
+
+temporaryOutputDeleteFailures = 0;
+pdfJobProperties.set(
+  pdfJobPrefix + cleanupRetryJobId,
+  JSON.stringify({
+    ...cleanupRetryJob,
+    expiresAt: Date.now() - 1,
+  }),
+);
+const cleanupRetryTrigger = scheduledPdfWorkerTriggers[0];
+await context.processReviewerPdfQueue({
+  triggerUid: cleanupRetryTrigger.getUniqueId(),
+});
+assert.equal(
+  pdfJobProperties.has(pdfJobPrefix + cleanupRetryJobId),
+  false,
+  "the cleanup worker must remove the temporary derivative and job after recovery",
+);
+assert.equal(
+  deletedTemporaryOutputs.filter(([fileId]) => fileId === cleanupRetryFileId)
+    .length,
+  2,
+  "a failed deletion must be retried once the cleanup worker runs",
 );
 
 context.authorizeReviewerRequest_ = () => ({

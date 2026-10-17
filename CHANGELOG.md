@@ -1,5 +1,29 @@
 # Changelog
 
+## 26.10.17-1 - 2026-10-17
+
+### Fixed
+
+- Key Reviewer dashboard payloads to the current Drive index timestamp so index
+  edits cannot return stale resource rows.
+- Correlate frontend requests and backend failures with privacy-safe request
+  IDs, and log safe resource-index reason codes without logging credentials.
+- Retry temporary PDF deletion failures promptly through the existing worker
+  without retaining cancelled jobs in the active queue.
+- Return account-status changes without waiting for notification email delivery;
+  process status messages through a bounded background worker.
+- Start Review Materials unavailable until an approved account status is known,
+  and show a live, non-blocking profile name/email mismatch warning.
+- Keep pagination counts regular-weight while emphasizing only the selected
+  term, and disable text selection on Reviewer PDF preview surfaces where the
+  embedded browser viewer honors page styles.
+
+### Improved
+
+- Keep foreground approval checks responsive while reducing polling in hidden
+  tabs, and extend the short-lived account cache with complete edit-trigger
+  invalidation.
+
 ## 26.10.25 - 2026-10-17
 
 ### Fixed

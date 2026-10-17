@@ -184,8 +184,13 @@ assert.doesNotMatch(
 );
 assert.match(
   backend,
-  /mrh_reviewer_dashboard_v2_[\s\S]*?mrh_reviewer_dashboard_latest_v2/,
-  "reviewer dashboard cache versions must not reuse legacy direct-URL cache entries",
+  /mrh_reviewer_dashboard_v2_[\s\S]*?file\.getLastUpdated\(\)\.getTime\(\)[\s\S]*?reviewerCache\.get\(reviewerCacheKey\)/,
+  "reviewer dashboard cache entries must be keyed by the current Drive version",
+);
+assert.doesNotMatch(
+  backend,
+  /mrh_reviewer_dashboard_latest_v2/,
+  "reviewer requests must not serve unversioned latest cache entries",
 );
 assert.match(
   pdfHelper,

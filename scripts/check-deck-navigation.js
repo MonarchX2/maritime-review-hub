@@ -358,7 +358,7 @@ assert.match(
 );
 assert.match(
   indexSource,
-  /id="student-portal-welcome-picture"[\s\S]*?<span class="student-portal-deck-description">\s*Syllabus, Modules, and Reviewers/,
+  /id="student-portal-welcome-picture"[\s\S]*?<span class="student-portal-deck-description">\s*Syllabus, Modules, and Review Materials/,
   "the dashboard should show a profile picture and requested Student Portal subtitle",
 );
 assert.match(
