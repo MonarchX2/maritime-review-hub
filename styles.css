@@ -1539,30 +1539,9 @@ input {
   container: dashboard-subject-heading / inline-size;
 }
 
-.dashboard-subject-icon {
-  display: none;
-  color: #3b82f6;
-}
-
-.dark .dashboard-subject-icon {
-  color: #60a5fa;
-}
-
-#view-dashboard:has(#globalModeToggle:checked) .dashboard-subject-icon {
-  color: #9333ea;
-}
-
-.dark #view-dashboard:has(#globalModeToggle:checked) .dashboard-subject-icon {
-  color: #c084fc;
-}
-
 @container dashboard-subject-heading (max-width: 3.5rem) {
   .dashboard-subject-label {
     display: none;
-  }
-
-  .dashboard-subject-icon {
-    display: inline-block;
   }
 }
 
@@ -1797,35 +1776,7 @@ button:active:not(:disabled) {
   min-height: 0;
 }
 
-.resource-portal-preview-watermark {
-  position: absolute;
-  z-index: 1;
-  inset: 0;
-  display: grid;
-  grid-template: repeat(10, 1fr) / repeat(2, minmax(0, 1fr));
-  overflow: hidden;
-  pointer-events: none;
-  user-select: none;
-}
-
-.resource-portal-preview-watermark span {
-  display: grid;
-  place-items: center;
-  min-width: 0;
-  padding: 0.15rem;
-  color: rgb(51 65 85 / 18%);
-  font-size: clamp(0.5rem, 0.9vw, 0.8rem);
-  font-weight: 700;
-  line-height: 1.15;
-  text-align: center;
-  text-transform: none;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  transform: rotate(-28deg);
-}
-
 .resource-portal-preview-frame[hidden],
-.resource-portal-preview-watermark[hidden],
 .resource-portal-preview-status[hidden],
 .resource-portal-preview-header button[hidden] {
   display: none;
@@ -2727,7 +2678,7 @@ button:active:not(:disabled) {
   border-radius: 0.6rem;
 }
 
-.resource-portal-preview.is-expanded {
+.resource-portal-preview.is-fullscreen {
   position: fixed;
   z-index: 1000;
   inset: 0;
@@ -2743,7 +2694,7 @@ button:active:not(:disabled) {
   box-shadow: 0 24px 80px rgb(15 23 42 / 0.38);
 }
 
-.resource-portal-preview.is-expanded .resource-portal-preview-frame {
+.resource-portal-preview.is-fullscreen .resource-portal-preview-frame {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -2751,7 +2702,7 @@ button:active:not(:disabled) {
   min-height: 0;
 }
 
-.resource-portal-preview.is-expanded .resource-portal-preview-viewer {
+.resource-portal-preview.is-fullscreen .resource-portal-preview-viewer {
   grid-row: 3;
   position: relative;
   width: 100%;
@@ -2821,12 +2772,6 @@ button:active:not(:disabled) {
 .resource-portal-preview.is-reviewer-pdf .resource-portal-preview-viewer {
   -webkit-user-select: none;
   -webkit-touch-callout: none;
-  user-select: none;
-}
-
-.resource-portal-preview.is-reviewer-pdf canvas {
-  pointer-events: none;
-  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -3035,6 +2980,8 @@ button:active:not(:disabled) {
 
 .resource-dashboard-link-button {
   display: inline-flex;
+  width: 100%;
+  height: 2.75rem;
   max-width: 24rem;
   gap: var(--resource-dashboard-space);
   min-height: 2rem;
@@ -3043,7 +2990,7 @@ button:active:not(:disabled) {
   align-items: center;
   border: 1px solid #bfdbfe;
   border-radius: 0.4rem;
-  padding: var(--resource-dashboard-space) var(--resource-dashboard-space-wide);
+  padding: 0.25rem var(--resource-dashboard-space-wide);
   overflow: hidden;
   color: #2563eb;
   background: #eff6ff;
@@ -3056,7 +3003,13 @@ button:active:not(:disabled) {
 
 .resource-dashboard-change-link-wrap {
   position: relative;
-  display: inline-flex;
+  display: flex;
+  width: 100%;
+  max-width: 24rem;
+}
+
+.resource-dashboard-change-link-wrap .resource-dashboard-link-button {
+  max-width: none;
 }
 
 .resource-dashboard-change-badge {
@@ -3407,7 +3360,7 @@ button:active:not(:disabled) {
   border-color: #334155;
 }
 
-.dark .resource-portal-preview.is-expanded {
+.dark .resource-portal-preview.is-fullscreen {
   border-color: #475569;
   background: #0f172a;
 }
@@ -3617,12 +3570,12 @@ button:active:not(:disabled) {
     min-height: 14rem;
   }
 
-  .resource-portal-preview.is-expanded {
+  .resource-portal-preview.is-fullscreen {
     inset: 0;
     border-radius: 0;
   }
 
-  .resource-portal-preview.is-expanded .resource-portal-preview-frame {
+  .resource-portal-preview.is-fullscreen .resource-portal-preview-frame {
     min-height: 0;
   }
 }

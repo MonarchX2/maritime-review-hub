@@ -12,6 +12,10 @@
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src blob: https://accounts.google.com; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com; img-src 'self' https: data: blob:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net https://accounts.google.com; worker-src 'self'"
     />
     <link rel="manifest" href="manifest.json?v=mrh-26.10.28-a8359061edd5" />
+    <meta
+      name="mrh-pdf-lib"
+      content="reviewer-pdf-service/vendor/pdf-lib-1.17.1.min.js"
+    />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -523,10 +527,6 @@
               <span class="dashboard-subject-label" aria-hidden="true"
                 >HOME</span
               >
-              <i
-                class="dashboard-subject-icon fa-solid fa-house"
-                aria-hidden="true"
-              ></i>
             </h2>
           </div>
 
@@ -921,17 +921,6 @@
                       </button>
                       <button
                         type="button"
-                        id="resource-portal-preview-expand"
-                        aria-label="Expand online viewer"
-                        title="Expand viewer"
-                      >
-                        <i
-                          class="fa-solid fa-up-right-and-down-left-from-center"
-                          aria-hidden="true"
-                        ></i>
-                      </button>
-                      <button
-                        type="button"
                         id="resource-portal-preview-close"
                         aria-label="Close preview"
                         title="Close preview"
@@ -955,12 +944,6 @@
                       referrerpolicy="no-referrer"
                       hidden
                     ></iframe>
-                    <div
-                      id="resource-portal-preview-watermark"
-                      class="resource-portal-preview-watermark"
-                      aria-hidden="true"
-                      hidden
-                    ></div>
                   </div>
                 </section>
                 <p class="resource-dashboard-update-note">

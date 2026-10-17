@@ -1,5 +1,24 @@
 # Changelog
 
+## 26.10.30 - 2026-10-17
+
+### Improved
+
+- Restore each user's Student Portal Year, Semester, and per-section Category
+  filters when they return.
+- Generate zoom-safe Reviewer preview watermarks in the browser, loading the
+  locally hosted PDF library only when a Reviewer PDF is opened.
+- Use eleven watermark stamps in two columns, with the three center stamps
+  alternating clearly between 32% and 68% page width. Browser previews and
+  generated PDFs share the same layout.
+- Keep the PDF viewer interactive for scrolling and zoom while retaining
+  selection restrictions on the site preview container.
+- Keep previews fullscreen without a fullscreen toggle, hide the native PDF
+  toolbar where supported, and hide HOME on narrow dashboard layouts instead
+  of replacing it with an icon.
+- Keep table chips uniform and show change badges until their resource is
+  opened. Confirm preview exit while a PDF download is preparing.
+
 ## 26.10.29 - 2026-10-17
 
 ### Fixed

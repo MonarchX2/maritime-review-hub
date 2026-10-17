@@ -92,8 +92,8 @@ assert.match(
 );
 assert.match(
   indexSource,
-  /<h2\s+aria-label="Home"[^>]*>[\s\S]*?<span class="dashboard-subject-label" aria-hidden="true"\s*>\s*HOME\s*<\/span\s*>[\s\S]*?class="dashboard-subject-icon fa-solid fa-house"/,
-  "the dashboard heading should identify Home with a house icon",
+  /<h2\s+aria-label="Home"[^>]*>[\s\S]*?<span class="dashboard-subject-label" aria-hidden="true"\s*>\s*HOME\s*<\/span\s*>[\s\S]*?<\/h2>/,
+  "the dashboard heading should retain its HOME label for narrow-screen hiding",
 );
 assert.match(
   appCoreSource,

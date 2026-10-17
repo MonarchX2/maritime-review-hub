@@ -11,6 +11,7 @@ const pdfHelper = fs.readFileSync("backend/ReviewerPdf.gs", "utf8");
 const bundledPdfLibrary = fs.readFileSync(
   "reviewer-pdf-service/vendor/pdf-lib-1.17.1.min.js",
 );
+const PDFLib = require("../reviewer-pdf-service/vendor/pdf-lib-1.17.1.min.js");
 const appsScriptPdfLibrary = fs.readFileSync("backend/PDFLib.js");
 const setupGuide = fs.readFileSync(
   "reviewer-pdf-service/README.md",
@@ -75,8 +76,8 @@ assert.match(
 );
 assert.match(
   backend,
-  /function handleGetReviewerPdfPreviewRequest_\(data\)[\s\S]*?authorizeReviewerPdfRequest_\(data\)[\s\S]*?getReviewerPdfSource_\(fileId\)[\s\S]*?data: Utilities\.base64Encode\(sourceBytes\)/,
-  "online preview must authorize and return only the current protected source bytes without watermark generation",
+  /function handleGetReviewerPdfPreviewRequest_\(data\)[\s\S]*?authorizeReviewerPdfRequest_\(data\)[\s\S]*?getReviewerPdfSource_\(fileId\)[\s\S]*?fullName: identity\.fullName[\s\S]*?email: identity\.email[\s\S]*?data: Utilities\.base64Encode\(sourceBytes\)/,
+  "online preview must authorize and return the validated source plus verified identity metadata",
 );
 assert.match(
   backend,
@@ -85,8 +86,8 @@ assert.match(
 );
 assert.match(
   backend,
-  /function handleGetReviewerPdfPreviewRequest_\(data\)[\s\S]*?authorizeReviewerPdfRequest_\(data\)[\s\S]*?getReviewerPdfSource_\(fileId\)[\s\S]*?cachedSourceVersion === source\.sourceVersion[\s\S]*?cacheHit: true[\s\S]*?DriveApp\.getFileById\(fileId\)\.getBlob\(\)\.getBytes\(\)/,
-  "a repeat preview may skip PDF transfer only after fresh authorization and current source-version validation",
+  /function handleGetReviewerPdfPreviewRequest_\(data\)[\s\S]*?cachedSourceVersion === source\.sourceVersion[\s\S]*?cacheHit: true/,
+  "a repeat preview may reuse bytes only after fresh authorization and current source-version validation",
 );
 assert.doesNotMatch(
   backend.match(
@@ -234,13 +235,13 @@ assert.match(
 );
 assert.match(
   pdfHelper,
-  /\[0\.25, 0\.75\]\.forEach\(function \(columnFraction\)[\s\S]*?\[0\.08, 0\.173, 0\.267, 0\.36, 0\.453, 0\.547, 0\.64, 0\.733, 0\.827, 0\.92\]\.forEach\(function \(rowFraction\)[\s\S]*?opacity: 0\.18/,
-  "downloaded PDFs should carry twenty compact, reduced-opacity two-line identity watermarks per page",
+  /Math\.min\(size\.width, size\.height\) \* 0\.3[\s\S]*?Math\.min\(18,[\s\S]*?\[0\.25, 0\.14\][\s\S]*?\[0\.75, 0\.14\][\s\S]*?\[0\.32, 0\.26\][\s\S]*?\[0\.25, 0\.38\][\s\S]*?\[0\.75, 0\.38\][\s\S]*?\[0\.68, 0\.5\][\s\S]*?\[0\.25, 0\.62\][\s\S]*?\[0\.75, 0\.62\][\s\S]*?\[0\.32, 0\.74\][\s\S]*?\[0\.25, 0\.86\][\s\S]*?\[0\.75, 0\.86\][\s\S]*?opacity: 0\.18/,
+  "downloaded PDFs should use the same compact two-column and staggered-center watermark positions as previews",
 );
 assert.match(
   pdfHelper,
-  /fullNameCount < 20[\s\S]*?emailCount < 20/,
-  "downloaded PDF watermark verification should require all twenty stamps on each page",
+  /fullNameCount < 11[\s\S]*?emailCount < 11/,
+  "downloaded PDF watermark verification should require all eleven stamps on each page",
 );
 assert.doesNotMatch(
   pdfHelper,
@@ -319,13 +320,28 @@ assert.match(
 );
 assert.match(
   reviewerPreview,
-  /bytes\.byteLength > REVIEWER_PDF_MAX_SOURCE_BYTES[\s\S]*?bytes\[0\] !== 0x25[\s\S]*?bytes\[4\] !== 0x2d/,
-  "preview responses must be bounded and begin with a PDF signature before rendering",
+  /sourceBytes\.byteLength > REVIEWER_PDF_MAX_SOURCE_BYTES[\s\S]*?sourceBytes\[0\] !== 0x25[\s\S]*?sourceBytes\[4\] !== 0x2d[\s\S]*?bytes\.byteLength > REVIEWER_PDF_MAX_OUTPUT_BYTES/,
+  "source and watermarked preview bytes must be bounded and start with a PDF signature",
 );
 assert.match(
   reviewerPreview,
-  /renderReviewerPdfWatermark\(response\.fullName, response\.email\)[\s\S]*?resourcePortalReviewerPdf/,
-  "online preview must display the verified identity as a dynamic viewer overlay",
+  /await watermarkReviewerPreviewPdfBytes\([\s\S]*?response\.fullName[\s\S]*?response\.email[\s\S]*?resourcePortalReviewerPdf/,
+  "online preview must embed the verified identity into PDF bytes before rendering",
+);
+assert.match(
+  reviewerPreview,
+  /cachedReviewerPdf\.fullName !== String\(response\.fullName \|\| ""\)[\s\S]*?cachedReviewerPdf\.email !== String\(response\.email \|\| ""\)[\s\S]*?type: "get_reviewer_pdf_preview"/,
+  "a cached derivative with an old identity must trigger a fresh source fetch",
+);
+assert.match(
+  frontend,
+  /async function watermarkReviewerPreviewPdfBytes\([\s\S]*?PDFDocument\.load[\s\S]*?page\.drawText[\s\S]*?await pdf\.save[\s\S]*?REVIEWER_PDF_MAX_OUTPUT_BYTES/,
+  "the browser must create and size-check a zoom-safe watermarked PDF derivative",
+);
+assert.match(
+  frontend,
+  /function loadReviewerPdfLibrary\(\)[\s\S]*?meta\[name="mrh-pdf-lib"\][\s\S]*?script\.async = true[\s\S]*?globalScope\.PDFLib/,
+  "the browser should lazily load the locally hosted PDF library for previews",
 );
 assert.match(
   reviewerDownload,
@@ -428,4 +444,94 @@ assert.doesNotMatch(
   "the Cloud Run processor must not remain a runtime dependency",
 );
 
-console.log("Reviewer PDF security contract checks passed.");
+async function verifyClientWatermarkRuntime() {
+  const placementPattern =
+    /(\[\s*\[0\.25,\s*0\.14\][\s\S]*?\[0\.75,\s*0\.86\],?\s*\])\.forEach/;
+  const frontendPlacements = frontend.match(placementPattern)?.[1];
+  const backendPlacements = pdfHelper.match(placementPattern)?.[1];
+  assert.ok(frontendPlacements && backendPlacements);
+  assert.deepEqual(
+    JSON.parse(frontendPlacements.replace(/,\s*([\]}])/g, "$1")),
+    JSON.parse(backendPlacements.replace(/,\s*([\]}])/g, "$1")),
+    "frontend preview and backend download must use identical watermark positions",
+  );
+  const watermarkSizingPattern =
+    /Math\.max\(\s*40,\s*Math\.min\(size\.width,\s*size\.height\)\s*\*\s*([0-9.]+)\s*\)[\s\S]*?Math\.min\(\s*([0-9.]+),\s*Math\.min\(size\.width,\s*size\.height\)\s*\*\s*([0-9.]+)\s*\)/;
+  assert.deepEqual(
+    frontend.match(watermarkSizingPattern)?.slice(1),
+    pdfHelper.match(watermarkSizingPattern)?.slice(1),
+    "frontend preview and backend download must use identical watermark sizing",
+  );
+  assert.match(
+    frontendPlacements,
+    /\[0\.32,\s*0\.26\][\s\S]*?\[0\.68,\s*0\.5\][\s\S]*?\[0\.32,\s*0\.74\]/,
+    "center watermark stamps should alternate horizontally to avoid diagonal alignment",
+  );
+
+  const watermarkStart = frontend.indexOf(
+    "  async function watermarkReviewerPreviewPdfBytes(",
+  );
+  const watermarkEnd = frontend.indexOf(
+    "\n  async function previewResourceFile(",
+    watermarkStart,
+  );
+  assert.ok(watermarkStart >= 0 && watermarkEnd > watermarkStart);
+  const watermarkFunction = frontend.slice(watermarkStart, watermarkEnd);
+  const createWatermarker = new Function(
+    "PDFLib",
+    "REVIEWER_PDF_MAX_SOURCE_BYTES",
+    "REVIEWER_PDF_MAX_OUTPUT_BYTES",
+    `const loadReviewerPdfLibrary = () => Promise.resolve(PDFLib);\n${watermarkFunction}\nreturn watermarkReviewerPreviewPdfBytes;`,
+  );
+  const watermarkPdf = createWatermarker(
+    PDFLib,
+    2 * 1024 * 1024,
+    4 * 1024 * 1024,
+  );
+  const sourcePdf = await PDFLib.PDFDocument.create();
+  sourcePdf.addPage([612, 792]).drawText("Preview sample");
+  const outputBytes = await watermarkPdf(
+    await sourcePdf.save(),
+    "Reviewer Example",
+    "Reviewer.Name@Example.com",
+  );
+  assert.equal(String.fromCharCode(...outputBytes.slice(0, 5)), "%PDF-");
+  const outputPdf = await PDFLib.PDFDocument.load(outputBytes);
+  assert.equal(outputPdf.getPageCount(), 1);
+
+  const page = outputPdf.getPages()[0];
+  const content = outputPdf.context.lookup(page.node.Contents());
+  const streams =
+    content instanceof PDFLib.PDFArray
+      ? content.asArray()
+      : [page.node.Contents()];
+  const decodedContent = streams
+    .map((streamReference) =>
+      PDFLib.decodePDFRawStream(
+        outputPdf.context.lookup(streamReference),
+      )
+        .decode()
+        .reduce((text, byte) => text + String.fromCharCode(byte), ""),
+    )
+    .join("\n")
+    .replace(/<([0-9a-fA-F]+)> Tj/g, (_match, hex) =>
+      hex.match(/.{2}/g).map((byte) => String.fromCharCode(parseInt(byte, 16))).join(""),
+    );
+  assert.equal(
+    decodedContent.split("Reviewer Example").length - 1,
+    11,
+    "the preview PDF should include eleven embedded name stamps",
+  );
+  assert.equal(
+    decodedContent.split("Reviewer.Name@Example.com").length - 1,
+    11,
+    "the preview PDF should preserve the verified email's letter case on all stamps",
+  );
+}
+
+verifyClientWatermarkRuntime()
+  .then(() => console.log("Reviewer PDF security contract checks passed."))
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

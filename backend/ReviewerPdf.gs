@@ -102,13 +102,19 @@ async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
     var sine = Math.sin(angle);
     pages.forEach(function (page) {
       var size = page.getSize();
-      var maxWidth = Math.max(80, size.width * 0.88);
-      var fontSize = Math.max(9, Math.min(20, Math.min(size.width, size.height) * 0.04));
+      var maxWidth = Math.max(
+        40,
+        Math.min(size.width, size.height) * 0.3,
+      );
+      var fontSize = Math.max(
+        8,
+        Math.min(18, Math.min(size.width, size.height) * 0.04),
+      );
       while (
         watermarkLines.some(function (line) {
           return textWidth(line, fontSize) > maxWidth;
         }) &&
-        fontSize > 9
+        fontSize > 8
       ) {
         fontSize -= 1;
       }
@@ -122,20 +128,32 @@ async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
       var blockHeight = lines.length * fontSize * 1.25;
       if (blockHeight > size.height * 0.25)
         throw reviewerPdfError_("Account details do not fit the watermark area.", "WATERMARK_TEXT_TOO_LONG");
-      [0.25, 0.75].forEach(function (columnFraction) {
-        [0.08, 0.173, 0.267, 0.36, 0.453, 0.547, 0.64, 0.733, 0.827, 0.92].forEach(function (rowFraction) {
-          lines.forEach(function (line, index) {
-            var measuredWidth = textWidth(line, fontSize);
-            var lineOffset = ((lines.length - 1) / 2 - index) * fontSize * 1.25;
-            page.drawText(line, {
-              x: size.width * columnFraction - measuredWidth * cosine / 2,
-              y: size.height * rowFraction + lineOffset + measuredWidth * sine / 2,
-              size: fontSize,
-              font: font,
-              color: PDFLib.rgb(0.24, 0.24, 0.24),
-              opacity: 0.18,
-              rotate: PDFLib.degrees(-28),
-            });
+      [
+        [0.25, 0.14],
+        [0.75, 0.14],
+        [0.32, 0.26],
+        [0.25, 0.38],
+        [0.75, 0.38],
+        [0.68, 0.5],
+        [0.25, 0.62],
+        [0.75, 0.62],
+        [0.32, 0.74],
+        [0.25, 0.86],
+        [0.75, 0.86],
+      ].forEach(function (placement) {
+        var columnFraction = placement[0];
+        var rowFraction = placement[1];
+        lines.forEach(function (line, index) {
+          var measuredWidth = textWidth(line, fontSize);
+          var lineOffset = ((lines.length - 1) / 2 - index) * fontSize * 1.25;
+          page.drawText(line, {
+            x: size.width * columnFraction - measuredWidth * cosine / 2,
+            y: size.height * rowFraction + lineOffset + measuredWidth * sine / 2,
+            size: fontSize,
+            font: font,
+            color: PDFLib.rgb(0.24, 0.24, 0.24),
+            opacity: 0.18,
+            rotate: PDFLib.degrees(-28),
           });
         });
       });
@@ -206,8 +224,8 @@ async function verifyReviewerPdfWatermarks_(bytes, identity) {
       emailCount += streamText.split(email).length - 1;
     });
     if (
-      fullNameCount < 20 ||
-      emailCount < 20
+      fullNameCount < 11 ||
+      emailCount < 11
     )
       throw reviewerPdfError_("A page is missing the verified identity watermark.", "WATERMARK_VERIFICATION_FAILED");
     pagesWithWatermarks += 1;

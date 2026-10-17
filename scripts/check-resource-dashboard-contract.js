@@ -6,6 +6,21 @@ const appConfig = fs.readFileSync("app-config.js", "utf8");
 const network = fs.readFileSync("app-core-network.js", "utf8");
 const indexHtml = fs.readFileSync("index.html", "utf8");
 const resourceStyles = fs.readFileSync("styles.css", "utf8");
+assert.match(
+  appCore,
+  /const RESOURCE_DASHBOARD_FILTERS_KEY =\s*"mrh_resource_dashboard_filters_v1";[\s\S]*?function loadResourceDashboardFilters\(\)[\s\S]*?localStorage\.getItem\(RESOURCE_DASHBOARD_FILTERS_KEY\)[\s\S]*?function saveResourceDashboardFilters\(\)[\s\S]*?localStorage\.setItem\(\s*RESOURCE_DASHBOARD_FILTERS_KEY/,
+  "Student Portal filter selections should be restored and persisted in local storage",
+);
+assert.match(
+  appCore,
+  /resourceDashboardSelectedCategories\[tabName\] = category;[\s\S]*?resourceDashboardCategorySelectionMade\[tabName\] = true;/,
+  "restored per-tab categories should be retained instead of replaced with the automatic default",
+);
+assert.match(
+  appCore,
+  /resourceDashboardSelectedYear = button\.dataset\.filterValue;[\s\S]*?saveResourceDashboardFilters\(\);[\s\S]*?resourceDashboardSelectedSemester = button\.dataset\.filterValue;[\s\S]*?saveResourceDashboardFilters\(\);[\s\S]*?resourceDashboardSelectedCategories\[resourceDashboardActiveTab\] =\s*button\.dataset\.category;[\s\S]*?saveResourceDashboardFilters\(\)/,
+  "year, semester, and category changes should be saved as soon as the user selects them",
+);
 const fileIdHelper = appCore.match(
   /function getResourceDashboardFileId\(value\) \{[\s\S]*?\n  \}/,
 );
@@ -252,8 +267,18 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function hasSeenResourceChangeBadge\(updateKey, updatedAt, changeType\)[\s\S]*?sessionStorage\.getItem\([\s\S]*?activeEntries\.some\([\s\S]*?sessionStorage\.setItem\(/,
-  "resource badge visibility should be remembered once per active browser session",
+  /function hasSeenResourceChangeBadge\([\s\S]*?markSeen = false[\s\S]*?sessionStorage\.getItem\([\s\S]*?activeEntries\.some\([\s\S]*?if \(markSeen && !alreadySeen\)[\s\S]*?sessionStorage\.setItem\(/,
+  "resource badge visibility should persist only after a user opens the marked resource",
+);
+assert.match(
+  appCore,
+  /hasSeenResourceChangeBadge\([\s\S]*?updatedAt,[\s\S]*?changeType,[\s\S]*?true,[\s\S]*?badge\.remove\(\)/,
+  "opening a marked resource should consume and remove its NEW or UPDATED badge exactly once",
+);
+assert.match(
+  appCore,
+  /closeButton\.addEventListener\("click", \(\) => \{\s*void closeResourcePreview\(\{ confirmDuringDownload: true \}\);[\s\S]*?async function closeResourcePreview\(\{ confirmDuringDownload = false \} = \{\}\)[\s\S]*?if \(confirmDuringDownload && reviewerPdfDownloadInFlight\)[\s\S]*?requestConfirmation\([\s\S]*?PDF download is being prepared[\s\S]*?if \(!confirmed\) return false/,
+  "the exit button should confirm while PDF preparation is active, without interrupting other preview navigation",
 );
 assert.match(
   appCore,
@@ -274,7 +299,7 @@ const mergeUpdatesFunction = appCore.match(
   /function mergeResourceDashboardUpdates\(tabName, previousTab, nextTab\) \{([\s\S]*?)\n  \}/,
 );
 const resourceBadgeSeenFunction = appCore.match(
-  /function hasSeenResourceChangeBadge\(updateKey, updatedAt, changeType\) \{([\s\S]*?)\n  \}/,
+  /function hasSeenResourceChangeBadge\([\s\S]*?\) \{([\s\S]*?)\n  \}/,
 );
 assert.ok(rowKeyFunction, "resource dashboard row keys should be testable");
 assert.ok(mergeUpdatesFunction, "resource dashboard update comparison should be testable");
@@ -478,7 +503,7 @@ const hasSeenResourceChangeBadge = new Function(
   "RESOURCE_DASHBOARD_UPDATED_TTL_MS",
   "RESOURCE_CHANGE_BADGES_SEEN_KEY",
   "Date",
-  `return function hasSeenResourceChangeBadge(updateKey, updatedAt, changeType) {${resourceBadgeSeenFunction[1]}\n}`,
+  `return function hasSeenResourceChangeBadge(updateKey, updatedAt, changeType, markSeen = false) {${resourceBadgeSeenFunction[1]}\n}`,
 )(
   "reviewer@example.com",
   { sessionStorage: reviewerBadgeStorage, DebugUtils: { warn() {} } },
@@ -492,9 +517,29 @@ assert.equal(
   "a new badge should be allowed on its first render in a session",
 );
 assert.equal(
+  reviewerBadgeSessionStorage.size,
+  0,
+  "rendering a badge should not consume its one-time visibility",
+);
+assert.equal(
+  hasSeenResourceChangeBadge(newResourceKey, updateClock, "NEW"),
+  false,
+  "the badge should remain visible through later renders until opened",
+);
+assert.equal(
+  hasSeenResourceChangeBadge(newResourceKey, updateClock, "NEW", true),
+  false,
+  "opening the resource should mark the badge as seen",
+);
+assert.equal(
+  reviewerBadgeSessionStorage.size,
+  1,
+  "opening the resource should persist the one-time badge state",
+);
+assert.equal(
   hasSeenResourceChangeBadge(newResourceKey, updateClock, "NEW"),
   true,
-  "the same badge should be suppressed on later renders in that session",
+  "the badge should remain suppressed after the resource was opened",
 );
 assert.equal(
   hasSeenResourceChangeBadge(
@@ -512,7 +557,7 @@ const hasSeenResourceChangeBadgeInFreshSession = new Function(
   "RESOURCE_DASHBOARD_UPDATED_TTL_MS",
   "RESOURCE_CHANGE_BADGES_SEEN_KEY",
   "Date",
-  `return function hasSeenResourceChangeBadge(updateKey, updatedAt, changeType) {${resourceBadgeSeenFunction[1]}\n}`,
+  `return function hasSeenResourceChangeBadge(updateKey, updatedAt, changeType, markSeen = false) {${resourceBadgeSeenFunction[1]}\n}`,
 )(
   "reviewer@example.com",
   {
@@ -647,49 +692,29 @@ assert.match(
   "fresh dashboard data should refresh the current-tab cache",
 );
 assert.match(
-  appCore,
-  /function renderReviewerPdfWatermark\(fullName, email\)[\s\S]*?String\(email \|\| ""\)\.trim\(\)[\s\S]*?Array\.from\(\{ length: 20 \}[\s\S]*?line\.textContent = text;[\s\S]*?watermark\.hidden = false;/,
-  "online PDF preview should repeat the original-case two-line identity watermark 20 times",
-);
-assert.match(
-  resourceStyles,
-  /\.resource-portal-preview-watermark\s*\{[^}]*grid-template:\s*repeat\(10,\s*1fr\)\s*\/\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
-  "the online PDF watermark should use an even, centered two-column by ten-row layout",
-);
-assert.match(
-  resourceStyles,
-  /\.resource-portal-preview-watermark span\s*\{[^}]*font-size:\s*clamp\(0\.5rem,\s*0\.9vw,\s*0\.8rem\)[^}]*text-align:\s*center;[^}]*text-transform:\s*none;/,
-  "the repeated preview watermark should fit each column and preserve email letter case",
-);
-assert.match(
-  resourceStyles,
-  /\.resource-portal-preview-watermark span\s*\{[^}]*color:\s*rgb\(51 65 85 \/ 18%\)/,
-  "online preview watermarks should use the reduced 18 percent opacity",
-);
-assert.match(
   fs.readFileSync("backend/ReviewerPdf.gs", "utf8"),
-  /email = reviewerPdfSafeText_\(identity && identity\.email, 254\);[\s\S]*?\[0\.25, 0\.75\]\.forEach[\s\S]*?\[0\.08, 0\.173, 0\.267, 0\.36, 0\.453, 0\.547, 0\.64, 0\.733, 0\.827, 0\.92\]\.forEach[\s\S]*?opacity:\s*0\.18/,
-  "generated PDFs should preserve email case and apply 20 watermarks in two columns",
+  /email = reviewerPdfSafeText_\(identity && identity\.email, 254\);[\s\S]*?Math\.min\(size\.width, size\.height\) \* 0\.3[\s\S]*?Math\.min\(18,[\s\S]*?\[0\.25, 0\.14\][\s\S]*?\[0\.75, 0\.14\][\s\S]*?\[0\.32, 0\.26\][\s\S]*?\[0\.25, 0\.38\][\s\S]*?\[0\.75, 0\.38\][\s\S]*?\[0\.68, 0\.5\][\s\S]*?\[0\.25, 0\.62\][\s\S]*?\[0\.75, 0\.62\][\s\S]*?\[0\.32, 0\.74\][\s\S]*?\[0\.25, 0\.86\][\s\S]*?\[0\.75, 0\.86\][\s\S]*?opacity:\s*0\.18/,
+  "generated PDFs should preserve email case and use the same two-column and staggered-center watermark layout",
 );
 assert.match(
   resourceStyles,
-  /\.resource-portal-preview\.is-expanded\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0;[^}]*height:\s*100vh;[^}]*height:\s*100dvh/,
-  "expanded PDF preview should fill the dynamic viewport",
+  /\.resource-portal-preview\.is-fullscreen\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0;[^}]*height:\s*100vh;[^}]*height:\s*100dvh/,
+  "the PDF preview should fill the dynamic viewport whenever it is open",
 );
 assert.match(
   resourceStyles,
-  /\.resource-portal-preview\.is-expanded \.resource-portal-preview-viewer\s*\{[^}]*grid-row:\s*3;/,
-  "expanded PDF preview should reserve the third grid row for the viewer even when its status message is hidden",
+  /\.resource-portal-preview\.is-fullscreen \.resource-portal-preview-viewer\s*\{[^}]*grid-row:\s*3;/,
+  "fullscreen PDF preview should reserve the third grid row for the viewer even when status is hidden",
 );
 assert.match(
   resourceStyles,
-  /\.resource-portal-preview\.is-expanded \.resource-portal-preview-frame\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*width:\s*100%;[^}]*height:\s*100%/,
-  "the expanded PDF frame should fill the visible viewer area",
+  /\.resource-portal-preview\.is-fullscreen \.resource-portal-preview-frame\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*width:\s*100%;[^}]*height:\s*100%/,
+  "the fullscreen PDF frame should fill the visible viewer area",
 );
 assert.match(
   appCore,
-  /preview\.hidden = false;\s*toggleResourceViewer\(\)[\s\S]*?frame\.hidden = false;[\s\S]*?frame\.src = resourcePortalPreviewObjectUrl;/,
-  "the online preview should open expanded and assign the PDF source after the viewer becomes visible",
+  /preview\.classList\.add\("is-fullscreen"\)[\s\S]*?preview\.setAttribute\("aria-modal", "true"\)[\s\S]*?preview\.hidden = false;[\s\S]*?frame\.hidden = false;[\s\S]*?frame\.src = reviewer\s*\? `\$\{resourcePortalPreviewObjectUrl\}#toolbar=0&navpanes=0&scrollbar=0`/,
+  "the online preview should open fullscreen and hide the browser PDF toolbar when supported",
 );
 assert.match(
   appCore,
@@ -703,13 +728,33 @@ assert.match(
 );
 assert.match(
   appCore,
-  /frame\.hidden = false;[\s\S]*?requestAnimationFrame\(resolve\)[\s\S]*?frame\.src = resourcePortalPreviewObjectUrl/,
-  "the PDF frame should be visible and laid out before assigning the mobile-compatible blob URL",
+  /frame\.hidden = false;[\s\S]*?requestAnimationFrame\(resolve\)[\s\S]*?frame\.src = reviewer\s*\? `\$\{resourcePortalPreviewObjectUrl\}#toolbar=0&navpanes=0&scrollbar=0`/,
+  "the PDF frame should be visible and laid out before assigning its protected blob URL",
+);
+assert.doesNotMatch(
+  appCore + indexHtml,
+  /toggleResourceViewer|resource-portal-preview-expand/,
+  "the online preview should not expose a fullscreen/windowed toggle",
+);
+assert.match(
+  resourceStyles,
+  /@container dashboard-subject-heading \(max-width: 3\.5rem\)\s*\{\s*\.dashboard-subject-label\s*\{\s*display:\s*none;/,
+  "the narrow dashboard should hide HOME text without replacing it with an icon",
 );
 assert.match(
   resourceStyles,
   /\.resource-portal-preview\.is-reviewer-pdf,\s*\.resource-portal-preview\.is-reviewer-pdf \.resource-portal-preview-frame,\s*\.resource-portal-preview\.is-reviewer-pdf \.resource-portal-preview-viewer\s*\{[^}]*user-select:\s*none;/,
   "the Reviewer PDF preview should disable selection in its embedded viewer where supported",
+);
+assert.doesNotMatch(
+  resourceStyles,
+  /\.resource-portal-preview\.is-reviewer-pdf \.resource-portal-preview-frame\s*\{[^}]*pointer-events:\s*none/,
+  "Reviewer PDF frame should preserve native scrolling and zoom interaction",
+);
+assert.match(
+  appCore,
+  /frame\.tabIndex = 0;/,
+  "Reviewer PDF frames should remain keyboard-focusable for native viewer controls",
 );
 assert.match(
   appCore,
@@ -720,6 +765,16 @@ assert.match(
   resourceStyles,
   /\.resource-dashboard-link-primary,\s*\.resource-dashboard-link-secondary\s*\{[^}]*display:\s*block;[^}]*line-height:\s*1;/,
   "Reviewer table chips should use two tightly stacked lines with zero vertical gap",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-link-button\s*\{[^}]*width:\s*100%;[^}]*height:\s*2\.75rem;/,
+  "resource chips should share a consistent fixed height and fill their table column",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-change-link-wrap\s*\{[^}]*display:\s*flex;[^}]*width:\s*100%;[\s\S]*?\.resource-dashboard-change-link-wrap \.resource-dashboard-link-button\s*\{[^}]*max-width:\s*none;/,
+  "badged chips should keep the same column width as unbadged chips",
 );
 assert.match(
   resourceStyles,

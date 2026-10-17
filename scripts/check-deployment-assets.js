@@ -15,7 +15,14 @@ function listHashableAssets(directory, relativeDirectory = "") {
     const relativePath = path.posix.join(relativeDirectory, entry.name);
     const absolutePath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
-      if (!relativeDirectory && entry.name === "qr-vendor") {
+      if (!relativeDirectory && entry.name === "reviewer-pdf-service") {
+        files.push(
+          ...listHashableAssets(
+            path.join(absolutePath, "vendor"),
+            "reviewer-pdf-service/vendor",
+          ),
+        );
+      } else if (!relativeDirectory && entry.name === "qr-vendor") {
         files.push(...listHashableAssets(absolutePath, relativePath));
       }
       continue;
@@ -111,6 +118,16 @@ try {
         `immutable runtime assets must not depend on query-string cache busting: ${match[1]}`,
       );
     }
+    const pdfLibraryPath = html.match(
+      /<meta\s+name="mrh-pdf-lib"\s+content="([^"]+)"/,
+    )?.[1];
+    assert.ok(pdfLibraryPath, "the local PDF processing library must be configured");
+    assertFileExists(pdfLibraryPath);
+    assert.match(
+      pdfLibraryPath,
+      /\.min\.[0-9a-f]{16}\.js$/,
+      "the local PDF processing library must use its content hash",
+    );
   }
 
   const manifest = JSON.parse(
