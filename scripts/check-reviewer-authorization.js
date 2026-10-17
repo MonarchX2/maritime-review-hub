@@ -777,6 +777,7 @@ assert.deepEqual(
 );
 
 tokenClaims = validClaims();
+const signInLogCountBefore = appendedRows["SIGN-IN"].length;
 const approved = post(
   authRequest("verify_reviewer_access", "approved-token", eventId("1")),
 );
@@ -806,6 +807,21 @@ assert.equal(
   "successful Google sign-in should create a bounded application session",
 );
 assert.equal(
+  appendedRows["SIGN-IN"].length,
+  signInLogCountBefore,
+  "sign-in should return without waiting for the access-log spreadsheet write",
+);
+assert.equal(
+  post({
+    type: "log_reviewer_sign_in",
+    sessionId: approved.sessionId,
+    eventId: eventId("a"),
+  }).status,
+  "success",
+  "sign-in activity should be written in a separate authenticated request",
+);
+assert.equal(appendedRows["SIGN-IN"].length, signInLogCountBefore + 1);
+assert.equal(
   post({
     type: "restore_reviewer_session",
     sessionId: approved.sessionId,
@@ -827,8 +843,11 @@ assert.equal(
   "reviewer@example.com",
   "account status polling should validate an application session",
 );
-assert.equal(appendedRows["SIGN-IN"][1][6], "SIGN_IN:TRUE");
-assert.equal(appendedRows["SIGN-IN"][1].length, currentLogHeaders.length);
+assert.equal(appendedRows["SIGN-IN"][signInLogCountBefore][6], "SIGN_IN:TRUE");
+assert.equal(
+  appendedRows["SIGN-IN"][signInLogCountBefore].length,
+  currentLogHeaders.length,
+);
 const beforeStatusCheck = appendedRows["SIGN-IN"].length;
 assert.equal(
   post({

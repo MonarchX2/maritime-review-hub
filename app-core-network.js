@@ -526,6 +526,10 @@
       required: ["idToken", "eventId"],
       allowed: ["type", "idToken", "eventId", "appVersion"],
     },
+    log_reviewer_sign_in: {
+      required: ["sessionId", "eventId"],
+      allowed: ["type", "sessionId", "eventId", "appVersion"],
+    },
     restore_reviewer_session: {
       required: ["sessionId"],
       allowed: ["type", "sessionId", "appVersion"],

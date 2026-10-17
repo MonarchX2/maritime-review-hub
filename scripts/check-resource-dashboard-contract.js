@@ -708,6 +708,11 @@ assert.match(
 );
 assert.match(
   resourceStyles,
+  /\.resource-dashboard-table td\.resource-dashboard-column-course\s*\{[^}]*font-weight:\s*700;/,
+  "all text in the COURSE table column should be bold",
+);
+assert.match(
+  resourceStyles,
   /\.resource-portal-preview-title\s*\{[^}]*white-space:\s*pre-line/,
   "Reviewer preview headers should display course and lesson on separate lines",
 );
@@ -730,6 +735,21 @@ assert.match(
   appCore,
   /function signOutReviewer\(explicit = true[\s\S]*?clearStoredReviewerDashboard\(\)/,
   "sign-out should remove reviewer data cached in the current tab",
+);
+assert.match(
+  appCore,
+  /function signOutReviewer\(explicit = true[\s\S]*?if \(resourceDashboardActiveTab === "REVIEWERS"\)\s*renderResourceDashboardTab\(\)/,
+  "signing out while viewing Reviewers should immediately render its locked panel",
+);
+assert.doesNotMatch(
+  appCore.match(/function signOutReviewer\(explicit = true[\s\S]*?\n  async function loadReviewerDashboard/)?.[0] || "",
+  /resourceDashboardActiveTab = "MODULES"/,
+  "sign-out must not unexpectedly switch the active Reviewer section to Modules",
+);
+assert.doesNotMatch(
+  appCore.match(/async function restoreReviewerSession\(requestedSessionId = ""\)[\s\S]*?\n  function setReviewerAccessEnabled/)?.[0] || "",
+  /openResourceDashboardTab\("PROFILE"\)/,
+  "an expired saved session should keep the Reviewer tab active and show its locked panel",
 );
 assert.match(
   appCore,
@@ -763,8 +783,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(approved\) \{[\s\S]*?if \(resourceDashboardActiveTab === "REVIEWERS"\)\s*await loadReviewerDashboard\(\);\s*else await openResourceDashboardTab\("REVIEWERS"\);/,
-  "approved sign-in should open Reviewer resources instead of leaving the user on Profile",
+  /if \(approved\) \{[\s\S]*?if \(resourceDashboardActiveTab === "REVIEWERS"\)\s*void loadReviewerDashboard\(\);\s*else void openResourceDashboardTab\("REVIEWERS"\);/,
+  "approved sign-in should open Reviewer resources without waiting for the table request",
+);
+assert.match(
+  appCore,
+  /type:\s*"log_reviewer_sign_in"[\s\S]*?sessionId,[\s\S]*?eventId:\s*signInEventId[\s\S]*?\.catch\(\(error\) => \{[\s\S]*?Unable to record reviewer sign-in activity/,
+  "sign-in audit logging should run outside the blocking authentication request",
 );
 assert.doesNotMatch(
   appCore,
@@ -1851,6 +1876,11 @@ assert.match(
   network,
   /log_resource_dashboard_action:\s*\{\s*required:\s*\["eventId",\s*"resourceArea",\s*"action"\][\s\S]*?"year"[\s\S]*?"semester"[\s\S]*?"category"/,
   "dashboard activity requests should validate filter and tab actions with structured context",
+);
+assert.match(
+  network,
+  /log_reviewer_sign_in:\s*\{\s*required:\s*\["sessionId",\s*"eventId"\]/,
+  "reviewer sign-in audit records should use the verified application session",
 );
 assert.match(
   resourceStyles,

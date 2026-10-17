@@ -8303,8 +8303,6 @@
           if (authStatus)
             authStatus.textContent =
               "Your saved access session expired or was revoked. Sign in with Google again.";
-          if (resourceDashboardActiveTab !== "PROFILE")
-            openResourceDashboardTab("PROFILE");
         } else {
           const signInButton = document.getElementById(
             "resource-reviewer-signin-button",
@@ -8981,11 +8979,12 @@
       retryButton.disabled = true;
     }
     try {
+      const signInEventId = createResourceEventId();
       const response = await globalScope.AppNetwork.callBackend(
         {
           type: "verify_reviewer_access",
           idToken,
-          eventId: createResourceEventId(),
+          eventId: signInEventId,
         },
         { timeoutMs: 30000, maxRetries: 0 },
       );
@@ -9005,11 +9004,24 @@
       if (reviewerVerificationRetryToken === idToken)
         reviewerVerificationRetryToken = "";
       const approved = applyReviewerAccountStatus(response, sessionId);
+      void globalScope.AppNetwork.callBackend(
+        {
+          type: "log_reviewer_sign_in",
+          sessionId,
+          eventId: signInEventId,
+        },
+        { timeoutMs: 15000, maxRetries: 0 },
+      ).catch((error) => {
+        (globalScope.DebugUtils || console).error(
+          "Unable to record reviewer sign-in activity.",
+          error,
+        );
+      });
       scheduleReviewerStatusPolling(sessionId);
       if (approved) {
         if (resourceDashboardActiveTab === "REVIEWERS")
-          await loadReviewerDashboard();
-        else await openResourceDashboardTab("REVIEWERS");
+          void loadReviewerDashboard();
+        else void openResourceDashboardTab("REVIEWERS");
       }
       return approved;
     } catch (error) {
@@ -9319,10 +9331,8 @@
     document
       .getElementById("resource-portal-status")
       ?.classList?.remove("resource-dashboard-status-stacked");
-    if (resourceDashboardActiveTab === "REVIEWERS") {
-      resourceDashboardActiveTab = "MODULES";
+    if (resourceDashboardActiveTab === "REVIEWERS")
       renderResourceDashboardTab();
-    }
     if (explicit) globalScope.google?.accounts?.id?.disableAutoSelect?.();
     return true;
   }

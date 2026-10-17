@@ -1,5 +1,15 @@
 # Changelog
 
+## 26.10.27 - 2026-10-17
+
+### Fixed
+
+- Bold all text in the resource dashboard COURSE column.
+- Keep the Reviewers section selected and immediately show its locked panel
+  when a saved reviewer session expires or is revoked.
+- Return control from sign-in as soon as the authenticated session is ready;
+  record sign-in activity separately without blocking entry to Reviewers.
+
 ## 26.10.26 - 2026-10-17
 
 ### Improved

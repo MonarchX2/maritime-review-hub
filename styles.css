@@ -3005,6 +3005,7 @@ button:active:not(:disabled) {
 
 .resource-dashboard-table td.resource-dashboard-column-course {
   text-align: right;
+  font-weight: 700;
 }
 
 .resource-dashboard-table .resource-dashboard-link-cell {

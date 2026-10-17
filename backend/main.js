@@ -1890,6 +1890,17 @@ function handleReviewerSignInRequest(data) {
   var verified = verifyReviewerRequestIdentity_(data);
   if (verified.error) return verified.error;
   var response = getReviewerAccountStatusResponse_(verified.identity);
+  var session = createReviewerSession_(verified.identity);
+  if (session.error) return session.error;
+  response.sessionId = session.sessionId;
+  response.expiresAt = session.expiresAt;
+  return jsonResponse(response);
+}
+
+function handleLogReviewerSignInRequest(data) {
+  var verified = verifyReviewerRequestIdentity_(data);
+  if (verified.error) return verified.error;
+  var response = getReviewerAccountStatusResponse_(verified.identity);
   var account = response.accountStatus === "NOT_FOUND"
     ? { email: response.email }
     : {
@@ -1904,11 +1915,7 @@ function handleReviewerSignInRequest(data) {
     data && data.eventId,
     "SIGN_IN:" + response.accountStatus,
   );
-  var session = createReviewerSession_(verified.identity);
-  if (session.error) return session.error;
-  response.sessionId = session.sessionId;
-  response.expiresAt = session.expiresAt;
-  return jsonResponse(response);
+  return jsonResponse({ status: "success" });
 }
 
 function handleRestoreReviewerSessionRequest(data) {
@@ -5958,6 +5965,7 @@ function doPost(e) {
     if (
       [
         "verify_reviewer_access",
+        "log_reviewer_sign_in",
         "request_reviewer_enrollment",
         "get_reviewer_dashboard",
         "get_reviewer_pdf_preview",
@@ -5993,6 +6001,8 @@ function doPost(e) {
       return handleGetReviewerAuthorizationConfigRequest();
     if (requestType === "verify_reviewer_access")
       return handleReviewerSignInRequest(data);
+    if (requestType === "log_reviewer_sign_in")
+      return handleLogReviewerSignInRequest(data);
     if (requestType === "restore_reviewer_session")
       return handleRestoreReviewerSessionRequest(data);
     if (requestType === "sign_out_reviewer")
