@@ -590,28 +590,6 @@ async function checkBackendErrorHandling() {
     },
     "native Drive preview requests should pass request validation without sending file bytes",
   );
-  await network.callBackend(
-    {
-      type: "grant_resource_temporary_access",
-      sessionId: "verified-session-id",
-      eventId: "12345678-1234-4123-8123-123456789abc",
-      fileId: "private-file-id",
-      resourceArea: "MODULES",
-    },
-    { maxRetries: 0 },
-  );
-  assert.deepEqual(
-    getPostBodyWithoutRequestId(),
-    {
-      type: "grant_resource_temporary_access",
-      sessionId: "verified-session-id",
-      eventId: "12345678-1234-4123-8123-123456789abc",
-      fileId: "private-file-id",
-      resourceArea: "MODULES",
-      appVersion: networkContext.__MRH_APP__.version,
-    },
-    "temporary-access requests should pass only the verified session, file, area, and event ID",
-  );
 
   const reviewerEventId = "12345678-1234-4123-8123-123456789abc";
   await network.callBackend(

@@ -1,5 +1,5 @@
 {
-  "version": "26.11.2",
+  "version": "26.11.3",
   "scripts": {
     "sync:version": "node scripts/sync-package-version.js",
     "sync:about-changelog": "node scripts/sync-about-changelog.js",

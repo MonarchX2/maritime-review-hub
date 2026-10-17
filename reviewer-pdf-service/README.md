@@ -83,6 +83,18 @@ worker and library are content-hashed and deployable.
    Download actions. It renders the prepared PDF with the bundled PDF.js
    renderer rather than an embedded browser PDF plug-in.
 
+Opening the REVIEWERS tab starts the watermark worker and loads its PDF library
+while the reviewer browses, so selecting a PDF does not pay that startup cost.
+The worker stays available until the reviewer leaves that tab. Browser console
+timings report authorization/source request round-trip duration, base64 decoding,
+watermark processing, preview setup, and the PDF.js first-page render on mobile.
+On desktop, the native PDF frame-load timing is reported separately because
+the browser's built-in PDF viewer does not expose its actual first-page render.
+Apps Script logs `reviewer_pdf_request_timing` with authorization, index lookup,
+Drive ancestry, source read/validation, synchronous access logging, base64
+encoding, response construction, and total handler durations. These server
+measurements help distinguish backend time from browser/network transfer time.
+
 The source limit is 8 MiB, output limit 12 MiB, and page limit 80. Worker
 startup and document complexity affect local processing time; the 20-page
 synthetic test is a regression check, not a guarantee for all devices or PDFs.

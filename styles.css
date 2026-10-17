@@ -3483,12 +3483,11 @@ button:active:not(:disabled) {
 }
 
 .resource-dashboard-link-button {
-  position: relative;
-  display: flex;
+  display: inline-flex;
   width: 100%;
   height: 2.75rem;
-  max-width: none;
-  justify-content: flex-start;
+  max-width: 24rem;
+  justify-content: center;
   gap: var(--resource-dashboard-space);
   min-height: 2rem;
   user-select: none;
@@ -3512,7 +3511,7 @@ button:active:not(:disabled) {
   position: relative;
   display: flex;
   width: 100%;
-  max-width: none;
+  max-width: 24rem;
 }
 
 .resource-dashboard-change-link-wrap .resource-dashboard-link-button {
@@ -3545,12 +3544,8 @@ button:active:not(:disabled) {
 }
 
 .resource-dashboard-link-icon {
-  position: absolute;
-  top: 50%;
-  left: var(--resource-dashboard-space-wide);
   flex: 0 0 auto;
   font-size: 0.8rem;
-  transform: translateY(-50%);
 }
 
 .resource-portal-preview-file-icon {
@@ -3566,23 +3561,11 @@ button:active:not(:disabled) {
 }
 
 .resource-dashboard-link-label {
-  display: flex;
-  flex: 1 1 0;
+  display: block;
   min-width: 0;
-  width: auto;
-  padding-inline: 1.1rem;
   overflow: hidden;
-  align-items: center;
-  justify-content: center;
   text-overflow: ellipsis;
-  text-align: center;
   white-space: normal;
-}
-
-.resource-dashboard-link-label-centered {
-  flex: 1 1 0;
-  justify-content: center;
-  text-align: center;
 }
 
 .resource-dashboard-link-primary,

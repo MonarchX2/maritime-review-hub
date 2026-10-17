@@ -2,6 +2,8 @@
 
 importScripts("./pdf-lib-1.17.1.min.js");
 
+self.postMessage({ status: "ready" });
+
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 const MAX_OUTPUT_BYTES = 12 * 1024 * 1024;
 const MAX_PAGES = 80;

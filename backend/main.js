@@ -2339,12 +2339,15 @@ function listReviewerPdfPermissions_(fileId) {
 
 function getReviewerPdfDriveHierarchy_(fileId) {
   var queue = [{ id: fileId, path: [] }];
+  var queueIndex = 0;
+  var visitedCount = 0;
   var visited = Object.create(null);
   var resources = [];
-  while (queue.length && Object.keys(visited).length < 100) {
-    var current = queue.shift();
+  while (queueIndex < queue.length && visitedCount < 100) {
+    var current = queue[queueIndex++];
     if (visited[current.id]) continue;
     visited[current.id] = true;
+    visitedCount += 1;
     var file = Drive.Files.get(current.id, {
       fields: "id,name,mimeType,parents,trashed,size,modifiedTime,headRevisionId,md5Checksum",
       supportsAllDrives: true,
@@ -2381,10 +2384,21 @@ function getReviewerPdfDriveHierarchy_(fileId) {
   return { insideRoot: false, path: resources };
 }
 
-function getReviewerPdfSource_(fileId) {
-  var entry = getReviewerPdfIndexEntries_().filter(function (candidate) {
-    return candidate.fileId === fileId;
-  })[0];
+function getReviewerPdfSource_(fileId, timings) {
+  var indexLookupStartedAt = Date.now();
+  var entries;
+  try {
+    entries = getReviewerPdfIndexEntries_();
+  } finally {
+    timings.indexLookupMs = Date.now() - indexLookupStartedAt;
+  }
+  var entry = null;
+  for (var entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
+    if (entries[entryIndex].fileId === fileId) {
+      entry = entries[entryIndex];
+      break;
+    }
+  }
   if (!entry)
     return {
       error: {
@@ -2392,7 +2406,13 @@ function getReviewerPdfSource_(fileId) {
         message: "This PDF is not listed in the current Reviewer index.",
       },
     };
-  var hierarchy = getReviewerPdfDriveHierarchy_(fileId);
+  var hierarchyStartedAt = Date.now();
+  var hierarchy;
+  try {
+    hierarchy = getReviewerPdfDriveHierarchy_(fileId);
+  } finally {
+    timings.driveHierarchyMs = Date.now() - hierarchyStartedAt;
+  }
   if (!hierarchy.insideRoot)
     return {
       error: {
@@ -2439,13 +2459,33 @@ function reviewerPdfSourceVersion_(driveFile) {
   );
 }
 
-function reviewerPdfFailure_(data, startedAt, code, message) {
+function logReviewerPdfRequestTiming_(data, startedAt, timings, outcome) {
+  Logger.log(JSON.stringify({
+    event: "reviewer_pdf_request_timing",
+    correlationId: String(data && data.eventId || ""),
+    outcome: outcome,
+    totalMs: Date.now() - startedAt,
+    authorizationMs: timings.authorizationMs,
+    indexLookupMs: timings.indexLookupMs,
+    driveHierarchyMs: timings.driveHierarchyMs,
+    sourceReadMs: timings.sourceReadMs,
+    sourceValidationMs: timings.sourceValidationMs,
+    accessLogMs: timings.accessLogMs,
+    base64EncodeMs: timings.base64EncodeMs,
+    responseBuildMs: timings.responseBuildMs,
+    sourceBytes: timings.sourceBytes,
+  }));
+}
+
+function reviewerPdfFailure_(data, startedAt, code, message, timings) {
   Logger.log(JSON.stringify({
     event: "reviewer_pdf_request_denied",
     correlationId: String(data && data.eventId || ""),
     reasonCode: code,
     durationMs: Date.now() - startedAt,
   }));
+  if (timings)
+    logReviewerPdfRequestTiming_(data, startedAt, timings, code);
   return errorResponse(message, code);
 }
 
@@ -2478,14 +2518,70 @@ function reviewerPdfDownloadName_(fileName, firstName, lastName) {
 
 function handleGetReviewerPdfPreviewRequest_(data) {
   var startedAt = Date.now();
-  var authorization = authorizeReviewerPdfRequest_(data);
-  if (authorization.error) return authorization.error;
+  var timings = {
+    authorizationMs: 0,
+    indexLookupMs: 0,
+    driveHierarchyMs: 0,
+    sourceReadMs: 0,
+    sourceValidationMs: 0,
+    accessLogMs: 0,
+    base64EncodeMs: 0,
+    responseBuildMs: 0,
+    sourceBytes: 0,
+  };
+  var authorizationStartedAt = Date.now();
+  var authorization;
+  try {
+    authorization = authorizeReviewerPdfRequest_(data);
+  } catch (error) {
+    timings.authorizationMs = Date.now() - authorizationStartedAt;
+    logReviewerPdfRequestTiming_(
+      data,
+      startedAt,
+      timings,
+      "AUTHORIZATION_FAILED",
+    );
+    throw error;
+  }
+  timings.authorizationMs = Date.now() - authorizationStartedAt;
+  if (authorization.error) {
+    logReviewerPdfRequestTiming_(
+      data,
+      startedAt,
+      timings,
+      authorization.error.code || "AUTHORIZATION_FAILED",
+    );
+    return authorization.error;
+  }
   var fileId = String(data && data.fileId || "").trim();
   if (!/^[A-Za-z0-9_-]{10,200}$/.test(fileId))
-    return reviewerPdfFailure_(data, startedAt, "BAD_REQUEST", "A valid PDF ID is required.");
-  var source = getReviewerPdfSource_(fileId);
+    return reviewerPdfFailure_(
+      data,
+      startedAt,
+      "BAD_REQUEST",
+      "A valid PDF ID is required.",
+      timings,
+    );
+  var source;
+  try {
+    source = getReviewerPdfSource_(fileId, timings);
+  } catch (error) {
+    logReviewerPdfRequestTiming_(
+      data,
+      startedAt,
+      timings,
+      "SOURCE_LOOKUP_FAILED",
+    );
+    throw error;
+  }
   if (source.error)
-    return reviewerPdfFailure_(data, startedAt, source.error.code, source.error.message);
+    return reviewerPdfFailure_(
+      data,
+      startedAt,
+      source.error.code,
+      source.error.message,
+      timings,
+    );
   var fullName = [
     authorization.account.firstName,
     authorization.account.middleInitial,
@@ -2507,6 +2603,7 @@ function handleGetReviewerPdfPreviewRequest_(data) {
       startedAt,
       "BAD_REQUEST",
       "Verified account details are required.",
+      timings,
     );
   }
   var downloadFileName = reviewerPdfDownloadName_(
@@ -2520,11 +2617,12 @@ function handleGetReviewerPdfPreviewRequest_(data) {
       startedAt,
       "BAD_REQUEST",
       "Verified account and resource names are required.",
+      timings,
     );
   }
   var cachedSourceVersion = String(data && data.cachedSourceVersion || "");
-  if (/^[a-f0-9]{64}$/i.test(cachedSourceVersion) && cachedSourceVersion === source.sourceVersion)
-    return jsonResponse({
+  if (/^[a-f0-9]{64}$/i.test(cachedSourceVersion) && cachedSourceVersion === source.sourceVersion) {
+    var cacheHitResponse = {
       status: "success",
       cacheHit: true,
       deliveryMode: "source",
@@ -2535,12 +2633,20 @@ function handleGetReviewerPdfPreviewRequest_(data) {
       lastName: authorization.account.lastName,
       email: authorization.email,
       downloadFileName: downloadFileName,
-    });
+    };
+    var cacheHitResponseStartedAt = Date.now();
+    var cacheHitOutput = jsonResponse(cacheHitResponse);
+    timings.responseBuildMs = Date.now() - cacheHitResponseStartedAt;
+    logReviewerPdfRequestTiming_(data, startedAt, timings, "CACHE_HIT");
+    return cacheHitOutput;
+  }
 
   var sourceBytes;
+  var sourceReadStartedAt = Date.now();
   try {
     sourceBytes = DriveApp.getFileById(fileId).getBlob().getBytes();
   } catch (error) {
+    timings.sourceReadMs = Date.now() - sourceReadStartedAt;
     Logger.log(JSON.stringify({
       event: "reviewer_pdf_source_read_failed",
       correlationId: String(data.eventId || ""),
@@ -2552,8 +2658,12 @@ function handleGetReviewerPdfPreviewRequest_(data) {
       startedAt,
       "PDF_SOURCE_UNAVAILABLE",
       "The authorized PDF source could not be read. Please try again.",
+      timings,
     );
   }
+  timings.sourceReadMs = Date.now() - sourceReadStartedAt;
+  timings.sourceBytes = sourceBytes.length;
+  var sourceValidationStartedAt = Date.now();
   if (
     !sourceBytes.length ||
     sourceBytes.length > MRH_REVIEWER_PDF_MAX_BYTES ||
@@ -2564,21 +2674,41 @@ function handleGetReviewerPdfPreviewRequest_(data) {
         String.fromCharCode(bytes[index + 3] || 0) === "F" &&
         String.fromCharCode(bytes[index + 4] || 0) === "-";
     })
-  )
-    return reviewerPdfFailure_(data, startedAt, "INVALID_PDF", "The source PDF is invalid or too large.");
+  ) {
+    timings.sourceValidationMs = Date.now() - sourceValidationStartedAt;
+    return reviewerPdfFailure_(
+        data,
+        startedAt,
+        "INVALID_PDF",
+        "The source PDF is invalid or too large.",
+        timings,
+    );
+  }
+  timings.sourceValidationMs = Date.now() - sourceValidationStartedAt;
 
-  appendMRHAccessLog_("REVIEWERS", authorization.account, String(data.eventId || ""), {
-    event: "PROTECTED_PDF_VIEW",
-    category: "REVIEWERS",
-    resource: source.entry.title,
-  });
-  Logger.log(JSON.stringify({
-    event: "reviewer_pdf_source_delivered",
-    correlationId: String(data.eventId || ""),
-    durationMs: Date.now() - startedAt,
-    sourceBytes: sourceBytes.length,
-  }));
-  return jsonResponse({
+  var accessLogStartedAt = Date.now();
+  try {
+    appendMRHAccessLog_(
+      "REVIEWERS",
+      authorization.account,
+      String(data.eventId || ""),
+      {
+        event: "PROTECTED_PDF_VIEW",
+        category: "REVIEWERS",
+        resource: source.entry.title,
+      },
+    );
+    timings.accessLogMs = Date.now() - accessLogStartedAt;
+  } catch (error) {
+    timings.accessLogMs = Date.now() - accessLogStartedAt;
+    logReviewerPdfRequestTiming_(data, startedAt, timings, "ACCESS_LOG_FAILED");
+    throw error;
+  }
+  var base64EncodeStartedAt = Date.now();
+  var encodedSource = Utilities.base64Encode(sourceBytes);
+  timings.base64EncodeMs = Date.now() - base64EncodeStartedAt;
+  var responseBuildStartedAt = Date.now();
+  var output = jsonResponse({
     status: "success",
     mimeType: "application/pdf",
     sourceVersion: source.sourceVersion,
@@ -2588,8 +2718,17 @@ function handleGetReviewerPdfPreviewRequest_(data) {
     email: authorization.email,
     downloadFileName: downloadFileName,
     deliveryMode: "source",
-    data: Utilities.base64Encode(sourceBytes),
+    data: encodedSource,
   });
+  timings.responseBuildMs = Date.now() - responseBuildStartedAt;
+  Logger.log(JSON.stringify({
+    event: "reviewer_pdf_source_delivered",
+    correlationId: String(data.eventId || ""),
+    durationMs: Date.now() - startedAt,
+    sourceBytes: sourceBytes.length,
+  }));
+  logReviewerPdfRequestTiming_(data, startedAt, timings, "SOURCE_DELIVERED");
+  return output;
 }
 
 function processReviewerPdfQueue() {
@@ -3243,220 +3382,6 @@ function handleGetResourcePreviewRequest(data) {
     data: Utilities.base64Encode(bytes),
   };
   return jsonResponse(preview);
-}
-
-function handleGrantResourceTemporaryAccessRequest_(data) {
-  var fileId = cleanText(data && data.fileId, 200);
-  var resourceArea = String(data && data.resourceArea || "");
-  var eventId = String(data && data.eventId || "");
-  if (!/^[A-Za-z0-9_-]{10,200}$/.test(fileId))
-    return errorResponse("Invalid file ID.", "BAD_REQUEST");
-  if (!["MODULES", "SYLLABUS"].includes(resourceArea))
-    return errorResponse("Temporary access is unavailable for this resource.", "BAD_REQUEST");
-  if (
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      eventId,
-    )
-  )
-    return errorResponse("A valid event ID is required.", "BAD_REQUEST");
-
-  var verified = verifyReviewerRequestIdentity_(data);
-  if (verified.error) return verified.error;
-
-  var file;
-  try {
-    file = DriveApp.getFileById(fileId);
-  } catch (error) {
-    return errorResponse("This file is unavailable.", "NOT_FOUND");
-  }
-  try {
-    if (!getResourceFileBreadcrumbs(file))
-      return errorResponse("This file is not available.", "FORBIDDEN");
-    var targetFileId = fileId;
-    var mimeType = String(file.getMimeType() || "").toLowerCase();
-    if (mimeType === "application/vnd.google-apps.shortcut") {
-      var shortcutMetadata;
-      try {
-        shortcutMetadata = Drive.Files.get(fileId, {
-          supportsAllDrives: true,
-          fields: "id,mimeType,shortcutDetails(targetId,targetMimeType)",
-        });
-      } catch (error) {
-        return errorResponse("This shortcut target is unavailable.", "NOT_FOUND");
-      }
-      targetFileId = String(
-        shortcutMetadata &&
-          shortcutMetadata.shortcutDetails &&
-          shortcutMetadata.shortcutDetails.targetId ||
-          "",
-      );
-      if (!/^[A-Za-z0-9_-]{10,200}$/.test(targetFileId))
-        return errorResponse("This shortcut target is unavailable.", "NOT_FOUND");
-      try {
-        file = DriveApp.getFileById(targetFileId);
-      } catch (error) {
-        return errorResponse("This shortcut target is unavailable.", "NOT_FOUND");
-      }
-      if (!getResourceFileBreadcrumbs(file))
-        return errorResponse("This file is not available.", "FORBIDDEN");
-      mimeType = String(file.getMimeType() || "").toLowerCase();
-    }
-    if (
-      mimeType === "application/vnd.google-apps.folder" ||
-      (resourceArea === "SYLLABUS" && mimeType !== "application/pdf")
-    )
-      return errorResponse(
-        "Temporary access is available only for files and Syllabus PDFs.",
-        "BAD_REQUEST",
-      );
-
-    var driveUrl = String(file.getUrl() || "");
-    if (
-      !/^https:\/\/(?:drive\.google\.com|docs\.google\.com)\/[^\s<>]+$/i.test(
-        driveUrl,
-      )
-    )
-      throw new Error("Drive returned an unexpected file URL.");
-
-    var email = String(verified.identity.email || "").trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      return errorResponse("A verified Google email is required.", "UNAUTHORIZED");
-    var urlFileIdMatch =
-      /\/d\/([A-Za-z0-9_-]{10,200})(?:\/|$)/.exec(driveUrl);
-    if (!urlFileIdMatch) {
-      var queryFileIdMatch = /[?&]id=([A-Za-z0-9_-]{10,200})(?:&|$)/.exec(
-        driveUrl,
-      );
-      urlFileIdMatch = queryFileIdMatch;
-    }
-    if (!urlFileIdMatch || urlFileIdMatch[1] !== targetFileId)
-      throw new Error("Drive returned a URL for a different file.");
-
-    var pageToken = "";
-    var permissions = [];
-    var permissionPageCount = 0;
-    do {
-      permissionPageCount++;
-      if (permissionPageCount > 100)
-        throw new Error("Drive returned too many permission pages.");
-      var options = {
-        pageSize: 100,
-        fields:
-          "nextPageToken,permissions(id,type,role,emailAddress,domain,deleted,expirationTime,permissionDetails(inherited))",
-        supportsAllDrives: true,
-      };
-      if (pageToken) options.pageToken = pageToken;
-      var permissionPage = Drive.Permissions.list(targetFileId, options);
-      permissions = permissions.concat(permissionPage.permissions || []);
-      var nextPageToken = String(permissionPage.nextPageToken || "");
-      if (nextPageToken && nextPageToken === pageToken)
-        throw new Error("Drive returned a repeated permission page token.");
-      pageToken = nextPageToken;
-    } while (pageToken);
-
-    var now = Date.now();
-    var hasActivePermission = function (permission) {
-      if (!permission || permission.deleted === true) return false;
-      if (!permission.expirationTime) return true;
-      var expirationTime = Date.parse(String(permission.expirationTime));
-      return isFinite(expirationTime) && expirationTime > now;
-    };
-    var existingUserPermission = permissions.find(function (permission) {
-      return (
-        hasActivePermission(permission) &&
-        permission.type === "user" &&
-        String(permission.emailAddress || "").trim().toLowerCase() === email
-      );
-    });
-    var alreadyPublic = permissions.some(function (permission) {
-      return (
-        hasActivePermission(permission) &&
-        permission.type === "anyone" &&
-        ["reader", "commenter", "writer", "organizer", "fileOrganizer"].includes(
-          String(permission.role || ""),
-        )
-      );
-    });
-    var emailDomain = email.split("@").pop();
-    var alreadyDomainShared = permissions.some(function (permission) {
-      return (
-        hasActivePermission(permission) &&
-        permission.type === "domain" &&
-        String(permission.domain || "").trim().toLowerCase() === emailDomain &&
-        ["reader", "commenter", "writer", "organizer", "fileOrganizer"].includes(
-          String(permission.role || ""),
-        )
-      );
-    });
-    if (existingUserPermission || alreadyPublic || alreadyDomainShared) {
-      return jsonResponse({
-        status: "success",
-        driveUrl: driveUrl,
-        targetFileId: targetFileId,
-        alreadyHadAccess: true,
-        expiresAt: existingUserPermission
-          ? String(existingUserPermission.expirationTime || "")
-          : "",
-      });
-    }
-
-    var expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    var createdPermission = Drive.Permissions.create(
-      {
-        type: "user",
-        role: "reader",
-        emailAddress: email,
-        expirationTime: expiresAt,
-      },
-      targetFileId,
-      {
-        sendNotificationEmail: false,
-        supportsAllDrives: true,
-        fields: "id,type,role,emailAddress,expirationTime",
-      },
-    );
-    var confirmedExpiry = Date.parse(
-      String(createdPermission && createdPermission.expirationTime || ""),
-    );
-    var requestedExpiry = Date.parse(expiresAt);
-    var permissionConfirmed =
-      !createdPermission ||
-      !createdPermission.id ||
-      createdPermission.type !== "user" ||
-      createdPermission.role !== "reader" ||
-      String(createdPermission.emailAddress || "").toLowerCase() !== email ||
-      !isFinite(confirmedExpiry) ||
-      Math.abs(confirmedExpiry - requestedExpiry) > 1000;
-    if (permissionConfirmed) {
-      if (createdPermission && createdPermission.id) {
-        try {
-          Drive.Permissions.delete(
-            targetFileId,
-            createdPermission.id,
-            { supportsAllDrives: true },
-          );
-        } catch (cleanupError) {
-          Logger.log(
-            "[handleGrantResourceTemporaryAccessRequest_] Could not remove an unconfirmed temporary permission.",
-          );
-        }
-      }
-      throw new Error("Drive did not confirm the temporary viewer permission.");
-    }
-    return jsonResponse({
-      status: "success",
-      driveUrl: driveUrl,
-      targetFileId: targetFileId,
-      alreadyHadAccess: false,
-      expiresAt: String(createdPermission.expirationTime),
-    });
-  } catch (error) {
-    Logger.log("[handleGrantResourceTemporaryAccessRequest_] Drive access grant failed.");
-    return errorResponse(
-      "Google Drive could not grant temporary access to this file. Check the file's sharing policy or ask its owner for access.",
-      "DRIVE_PERMISSION_FAILED",
-    );
-  }
 }
 
 function isSupportedClientVersion(value) {
@@ -5232,7 +5157,6 @@ function doPost(e) {
         "log_resource_file_click",
         "log_resource_dashboard_action",
         "get_resource_dashboard",
-        "grant_resource_temporary_access",
       ].indexOf(requestType) !== -1 &&
       !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
         String(data.eventId || ""),
@@ -5284,8 +5208,6 @@ function doPost(e) {
       return handleListPublicResourcesRequest(data);
     if (requestType === "get_resource_preview")
       return handleGetResourcePreviewRequest(data);
-    if (requestType === "grant_resource_temporary_access")
-      return handleGrantResourceTemporaryAccessRequest_(data);
     if (requestType === "get_deck") return handleGetDeckRequest(data);
     if (
       requestType === "verify_folder_access" ||

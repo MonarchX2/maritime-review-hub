@@ -6006,9 +6006,14 @@
   let resourceDashboardFolderListing = null;
   let resourceDashboardFolderReturn = null;
   let resourceDashboardFolderViewMode = "list";
-  const resourceDriveOpenRequests = new Set();
   const reviewerPdfPreviewCache = new Map();
   let reviewerPdfPreviewInFlight = null;
+  let reviewerPdfWorker = null;
+  let reviewerPdfWorkerReadyPromise = null;
+  let reviewerPdfWorkerReadyResolve = null;
+  let reviewerPdfWorkerReadyReject = null;
+  let reviewerPdfWorkerReadyTimer = 0;
+  let reviewerPdfWorkerOperation = null;
   let resourceDashboardData = null;
   let resourceDashboardActiveTab = "PROFILE";
   let resourceDashboardLoadingPromise = null;
@@ -7087,6 +7092,23 @@
     if (tabName !== "REVIEWERS") closeReviewerPdfPreview();
     resourceDashboardActiveTab = tabName;
     activateResourceDashboardFilters(tabName);
+    if (tabName === "REVIEWERS") {
+      void Promise.resolve()
+        .then(() =>
+          resourceDashboardActiveTab === "REVIEWERS"
+            ? warmReviewerPdfWorker()
+            : null,
+        )
+        .catch((error) => {
+          if (resourceDashboardActiveTab === "REVIEWERS")
+            (globalScope.DebugUtils || console).error(
+              "Unable to warm the Reviewer PDF processor.",
+              error,
+            );
+        });
+    } else {
+      terminateReviewerPdfWorker();
+    }
     if (tabName !== "REVIEWERS") {
       const status = document.getElementById("resource-portal-status");
       if (
@@ -7936,13 +7958,19 @@
           const isInSiteDashboardResource =
             resourceDashboardActiveTab === "MODULES" ||
             resourceDashboardActiveTab === "SYLLABUS";
+          const useLegacyInSiteDashboardPreview = false;
           const isFolderResource =
             isModuleFolderFallback ||
             mimeType === "application/vnd.google-apps.folder";
           link.href =
-            reviewerPdfMatch || isInSiteDashboardResource
+            reviewerPdfMatch ||
+            (isInSiteDashboardResource && useLegacyInSiteDashboardPreview)
               ? "#resource-portal-preview"
               : linkUrl;
+          if (isInSiteDashboardResource && !useLegacyInSiteDashboardPreview) {
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+          }
           link.draggable = false;
           ["auxclick", "copy", "contextmenu", "dragstart"].forEach((eventName) => {
             link.addEventListener(eventName, (event) => {
@@ -7978,7 +8006,10 @@
             resourceTitle ||
             (isResourceDashboardLink(value) ? "" : value) ||
             linkLabel;
-          if (isInSiteDashboardResource) {
+          if (
+            isInSiteDashboardResource &&
+            useLegacyInSiteDashboardPreview
+          ) {
             link.addEventListener("click", (event) => {
               event.preventDefault();
               if (!fileId) {
@@ -8001,8 +8032,12 @@
                   folderId: fileId,
                 });
               } else
-                void openResourceFileInDrive(fileId, fileName, {
-                  resourceArea,
+                void previewResourceFile(fileId, fileName, {
+                  course:
+                    resourceDashboardActiveTab === "MODULES"
+                      ? courseName
+                      : "",
+                  mimeType,
                 });
             });
           }
@@ -11443,6 +11478,7 @@
           }).promise;
           const outputScale = Math.min(window.devicePixelRatio || 1, 2);
           const visiblePages = new WeakMap();
+          let firstPageRendered = false;
           const renderPage = async (section) => {
             if (
               section.dataset.rendering === "true" ||
@@ -11475,6 +11511,13 @@
               }).promise;
               page.cleanup();
               status.hidden = true;
+              if (pageNumber === 1 && !firstPageRendered) {
+                firstPageRendered = true;
+                window.parent.postMessage(
+                  { type: "MRH_PDF_VIEWER_FIRST_PAGE_RENDERED" },
+                  location.origin,
+                );
+              }
               if (!visiblePages.get(section)) {
                 canvas.width = 0;
                 canvas.height = 0;
@@ -11674,121 +11717,6 @@
     return `${baseUrl}${encodeURIComponent(fileId)}/preview`;
   }
 
-  async function openResourceFileInDrive(
-    fileId,
-    fileName,
-    { resourceArea } = {},
-  ) {
-    if (
-      !/^[A-Za-z0-9_-]{10,200}$/.test(String(fileId || "")) ||
-      !["MODULES", "SYLLABUS"].includes(resourceArea)
-    ) {
-      setResourceDashboardStatus("This file cannot be opened in Google Drive.");
-      return false;
-    }
-    let sessionId =
-      reviewerSessionId || reviewerPendingEnrollmentSessionId;
-    if (
-      !sessionId &&
-      !hasExplicitReviewerSignOut() &&
-      getStoredReviewerSessionId()
-    ) {
-      await restoreReviewerSession();
-      sessionId =
-        reviewerSessionId || reviewerPendingEnrollmentSessionId;
-    }
-    if (!sessionId) {
-      resourceDriveOpenRequests.delete(fileId);
-      setResourceDashboardStatus(
-        "Sign in with Google from Profile to grant one-hour, read-only access. Reviewer approval is not required; return here and click the file again.",
-      );
-      return false;
-    }
-    if (resourceDriveOpenRequests.has(fileId)) return false;
-    resourceDriveOpenRequests.add(fileId);
-
-    const accountEmail =
-      reviewerAuthorizedEmail ||
-      getStoredReviewerProfile()?.email ||
-      "the signed-in Google account";
-    const safeName = cleanResourceDisplayName(fileName) || "this file";
-    if (typeof globalScope.confirm !== "function") {
-      resourceDriveOpenRequests.delete(fileId);
-      setResourceDashboardStatus(
-        "This browser cannot confirm the temporary Google Drive access request.",
-      );
-      return false;
-    }
-    if (
-      !globalScope.confirm(
-        `Open "${safeName}" in Google Drive? Maritime Review Hub will grant ${accountEmail} read-only access to this file for up to 1 hour. Existing access will not be changed.`,
-      )
-    ) {
-      resourceDriveOpenRequests.delete(fileId);
-      return false;
-    }
-
-    setResourceDashboardStatus("Granting temporary Google Drive access…", true);
-    try {
-      const response = await globalScope.AppNetwork.callBackend(
-        {
-          type: "grant_resource_temporary_access",
-          sessionId,
-          eventId: createResourceEventId(),
-          fileId,
-          resourceArea,
-        },
-        { timeoutMs: 30000, maxRetries: 0 },
-      );
-      if (
-        response?.status !== "success" ||
-        typeof response.driveUrl !== "string" ||
-        typeof response.alreadyHadAccess !== "boolean" ||
-        !/^[A-Za-z0-9_-]{10,200}$/.test(
-          String(response.targetFileId || ""),
-        )
-      )
-        throw new Error(
-          response?.message ||
-            "Google Drive did not confirm temporary access.",
-        );
-
-      const driveUrl = new URL(response.driveUrl);
-      const linkedFileId =
-        driveUrl.pathname.match(/\/d\/([A-Za-z0-9_-]{10,200})(?:\/|$)/)?.[1] ||
-        driveUrl.searchParams.get("id") ||
-        "";
-      if (
-        driveUrl.protocol !== "https:" ||
-        !["drive.google.com", "docs.google.com"].includes(
-          driveUrl.hostname,
-        ) ||
-        linkedFileId !== response.targetFileId
-      )
-        throw new Error("Google Drive returned an invalid file link.");
-
-      const expiryMessage = response.alreadyHadAccess
-        ? "You already have access. Opening the original Google Drive file."
-        : "Read-only access is active for up to 1 hour. Opening the original Google Drive file.";
-      setResourceDashboardStatus(expiryMessage);
-      globalScope.location.assign(driveUrl.href);
-      return true;
-    } catch (error) {
-      setResourceDashboardStatus(
-        `Unable to grant temporary Google Drive access: ${String(
-          error?.message || error,
-        )}`,
-      );
-      (globalScope.DebugUtils || console).error(
-        "Unable to grant temporary access to a Student Portal resource.",
-        error,
-      );
-      return false;
-    } finally {
-      resourceDriveOpenRequests.delete(fileId);
-    }
-  }
-
   function openDriveResourceViewer(
     title,
     fileId,
@@ -11958,7 +11886,32 @@
 
   let reviewerPdfWorkerCancel = null;
 
-  function watermarkReviewerPdfInWorker(sourceBytes, identity) {
+  function discardReviewerPdfWorker(
+    worker = reviewerPdfWorker,
+    error = new Error("The PDF processor was stopped before it was ready."),
+  ) {
+    if (!worker || reviewerPdfWorker !== worker) return;
+    const rejectReady = reviewerPdfWorkerReadyReject;
+    if (reviewerPdfWorkerReadyTimer) {
+      globalScope.clearTimeout(reviewerPdfWorkerReadyTimer);
+      reviewerPdfWorkerReadyTimer = 0;
+    }
+    worker.terminate();
+    reviewerPdfWorker = null;
+    reviewerPdfWorkerReadyPromise = null;
+    reviewerPdfWorkerReadyResolve = null;
+    reviewerPdfWorkerReadyReject = null;
+    reviewerPdfWorkerOperation = null;
+    rejectReady?.(error);
+  }
+
+  function terminateReviewerPdfWorker() {
+    reviewerPdfWorkerCancel?.();
+    if (reviewerPdfWorker) discardReviewerPdfWorker();
+  }
+
+  function getReviewerPdfWorker() {
+    if (reviewerPdfWorkerReadyPromise) return reviewerPdfWorkerReadyPromise;
     const basePath =
       typeof globalScope.__MRH_APP_BASE_PATH === "string"
         ? globalScope.__MRH_APP_BASE_PATH
@@ -11968,6 +11921,65 @@
       new URL(basePath, globalScope.location.origin),
     );
     const worker = new globalScope.Worker(workerUrl);
+    reviewerPdfWorker = worker;
+    reviewerPdfWorkerReadyPromise = new Promise((resolve, reject) => {
+      reviewerPdfWorkerReadyResolve = resolve;
+      reviewerPdfWorkerReadyReject = reject;
+    });
+    worker.onmessage = (event) => {
+      if (event.data?.status === "ready") {
+        if (reviewerPdfWorkerReadyTimer) {
+          globalScope.clearTimeout(reviewerPdfWorkerReadyTimer);
+          reviewerPdfWorkerReadyTimer = 0;
+        }
+        reviewerPdfWorkerReadyResolve?.();
+        reviewerPdfWorkerReadyResolve = null;
+        reviewerPdfWorkerReadyReject = null;
+        return;
+      }
+      const operation = reviewerPdfWorkerOperation;
+      if (!operation) return;
+      if (event.data?.status === "success" && event.data.resultBuffer) {
+        operation.finish(
+          operation.resolve,
+          new Uint8Array(event.data.resultBuffer),
+        );
+        return;
+      }
+      operation.finish(
+        operation.reject,
+        new Error(
+          String(event.data?.message || "The PDF could not be prepared."),
+        ),
+      );
+    };
+    const handleWorkerError = (event, message) => {
+      event?.preventDefault?.();
+      const error = new Error(message);
+      const operation = reviewerPdfWorkerOperation;
+      if (operation) operation.finish(operation.reject, error, true);
+      else discardReviewerPdfWorker(worker, error);
+    };
+    worker.onerror = (event) =>
+      handleWorkerError(event, "The PDF processor could not run.");
+    worker.onmessageerror = (event) =>
+      handleWorkerError(event, "The PDF processor returned invalid data.");
+    reviewerPdfWorkerReadyTimer = globalScope.setTimeout(
+      () =>
+        discardReviewerPdfWorker(
+          worker,
+          new Error("The PDF processor did not become ready in time."),
+        ),
+      30000,
+    );
+    return reviewerPdfWorkerReadyPromise;
+  }
+
+  function warmReviewerPdfWorker() {
+    return getReviewerPdfWorker();
+  }
+
+  function watermarkReviewerPdfInWorker(sourceBytes, identity) {
     const sourceBuffer =
       sourceBytes.byteOffset === 0 &&
       sourceBytes.byteLength === sourceBytes.buffer.byteLength
@@ -11979,51 +11991,78 @@
     return new Promise((resolve, reject) => {
       let settled = false;
       let timeout = 0;
-      const finish = (callback, value) => {
+      let worker = null;
+      let operation = null;
+      const finish = (callback, value, discardWorker = false) => {
         if (settled) return;
         settled = true;
         globalScope.clearTimeout(timeout);
-        worker.terminate();
+        if (reviewerPdfWorkerOperation === operation)
+          reviewerPdfWorkerOperation = null;
         if (reviewerPdfWorkerCancel === cancel)
           reviewerPdfWorkerCancel = null;
+        if (discardWorker && worker) discardReviewerPdfWorker(worker);
         callback(value);
       };
       const cancel = () =>
-        finish(reject, new Error("PDF preview processing was cancelled."));
-      reviewerPdfWorkerCancel = cancel;
-      timeout = globalScope.setTimeout(
-        () =>
-          finish(
-            reject,
-            new Error("PDF preparation took too long. Please request the file again."),
-          ),
-        120000,
-      );
-      worker.onmessage = (event) => {
-        if (event.data?.status === "success" && event.data.resultBuffer) {
-          finish(resolve, new Uint8Array(event.data.resultBuffer));
-          return;
-        }
         finish(
           reject,
-          new Error(
-            String(event.data?.message || "The PDF could not be prepared."),
-          ),
+          new Error("PDF preview processing was cancelled."),
+          Boolean(operation),
         );
-      };
-      worker.onerror = (event) => {
-        event.preventDefault();
-        finish(reject, new Error("The PDF processor could not run."));
-      };
-      worker.onmessageerror = () => {
-        finish(reject, new Error("The PDF processor returned invalid data."));
-      };
+      reviewerPdfWorkerCancel = cancel;
       try {
-        worker.postMessage({ sourceBuffer, identity }, [sourceBuffer]);
+        getReviewerPdfWorker()
+          .then(() => {
+            if (settled) return;
+            worker = reviewerPdfWorker;
+            if (!worker) {
+              finish(
+                reject,
+                new Error("The PDF processor could not be loaded."),
+              );
+              return;
+            }
+            operation = { finish, resolve, reject };
+            reviewerPdfWorkerOperation = operation;
+            timeout = globalScope.setTimeout(
+              () =>
+                finish(
+                  reject,
+                  new Error(
+                    "PDF preparation took too long. Please request the file again.",
+                  ),
+                  true,
+                ),
+              120000,
+            );
+            worker.postMessage({ sourceBuffer, identity }, [sourceBuffer]);
+          })
+          .catch((error) => finish(reject, error, Boolean(operation)));
       } catch (error) {
         finish(reject, error);
       }
     });
+  }
+
+  function getReviewerPdfTimingNow() {
+    return typeof globalScope.performance?.now === "function"
+      ? globalScope.performance.now()
+      : Date.now();
+  }
+
+  function logReviewerPdfPreviewTimings(timings, cacheHit) {
+    (globalScope.DebugUtils || console).info(
+      "Reviewer PDF preview timings.",
+      {
+        authorizationAndSourceRoundTripMs:
+          timings.authorizationAndSourceRoundTripMs,
+        decodeMs: timings.decodeMs,
+        watermarkMs: timings.watermarkMs,
+        previewSetupMs: timings.previewSetupMs,
+        cacheHit,
+      },
+    );
   }
 
   function renderReviewerPdfDownloadFallback(status, activePdf) {
@@ -12071,6 +12110,16 @@
       completed = true;
       clearRenderCheck();
       if (generation !== resourcePortalPreviewGeneration) return;
+      if (activePdf.timings?.previewStartedAt)
+        (globalScope.DebugUtils || console).info(
+          "Reviewer PDF preview frame-load timing.",
+          {
+            ...activePdf.timings,
+            previewFrameLoadMs:
+              getReviewerPdfTimingNow() -
+              activePdf.timings.previewStartedAt,
+          },
+        );
       status.replaceChildren();
       status.hidden = true;
     };
@@ -12306,8 +12355,14 @@
         void logResourceFileClick("MODULES", item.name, item.id, {
           category: "MODULES",
         });
-        void openResourceFileInDrive(item.id, item.name, {
-          resourceArea: "MODULES",
+        resourceDashboardFolderReturn = resourceDashboardFolderListing;
+        void previewResourceFile(item.id, item.name, {
+          dashboardFolderFile: true,
+          mimeType: item.mimeType,
+          course: getCourseCodeFromBreadcrumbs(
+            listing.breadcrumbs,
+            String(listing.folder?.name || ""),
+          ),
         });
       });
       row.appendChild(button);
@@ -12569,6 +12624,25 @@
           return;
         }
         if (
+          event.data?.type === "MRH_PDF_VIEWER_FIRST_PAGE_RENDERED" &&
+          resourcePortalReviewerPdf?.timings?.previewStartedAt
+        ) {
+          const timings = resourcePortalReviewerPdf.timings;
+          (globalScope.DebugUtils || console).info(
+            "Reviewer PDF first-page render timing.",
+            {
+              authorizationAndSourceRoundTripMs:
+                timings.authorizationAndSourceRoundTripMs,
+              decodeMs: timings.decodeMs,
+              watermarkMs: timings.watermarkMs,
+              previewSetupMs: timings.previewSetupMs,
+              firstPageRenderMs:
+                getReviewerPdfTimingNow() - timings.previewStartedAt,
+            },
+          );
+          return;
+        }
+        if (
           event.data?.type === "MRH_RESOURCE_PREVIEW_WEBSITE_FALLBACK"
         ) {
           const request = resourcePortalPreviewRequest;
@@ -12684,6 +12758,15 @@
       dashboardFolderFile && !reviewer && !folderId,
     );
     const previewGeneration = ++resourcePortalPreviewGeneration;
+    const reviewerPdfTimings = reviewer
+      ? {
+          authorizationAndSourceRoundTripMs: 0,
+          decodeMs: 0,
+          watermarkMs: 0,
+          previewSetupMs: 0,
+          previewStartedAt: 0,
+        }
+      : null;
     resourceDashboardFolderGeneration += 1;
     resourcePortalPreviewIsReviewer = reviewer;
     resourcePortalPreviewCourse = String(course || "").trim();
@@ -12799,6 +12882,9 @@
         }
         return false;
       }
+      const reviewerRequestStartedAt = reviewer
+        ? getReviewerPdfTimingNow()
+        : 0;
       let response = await globalScope.AppNetwork.callBackend(
         reviewer
           ? {
@@ -12839,6 +12925,9 @@
           { timeoutMs: 90000, maxRetries: 0 },
         );
       }
+      if (reviewer)
+        reviewerPdfTimings.authorizationAndSourceRoundTripMs =
+          getReviewerPdfTimingNow() - reviewerRequestStartedAt;
       if (previewGeneration !== resourcePortalPreviewGeneration) return false;
       const previewFolderPanel = getResourceDashboardFolderPanel(frame);
       if (previewFolderPanel) previewFolderPanel.hidden = true;
@@ -12923,13 +13012,21 @@
       let bytes;
       if (isReviewerCacheHit) {
         bytes = cachedReviewerPdf.bytes;
+        reviewerPdfTimings.decodeMs = 0;
+        reviewerPdfTimings.watermarkMs = 0;
       } else {
         if (
           !reviewer &&
           response.data.length > RESOURCE_PREVIEW_MAX_BASE64_LENGTH
         )
           throw new Error("The preview file exceeds the 32 MiB in-site transport limit.");
+        const decodeStartedAt = reviewer
+          ? getReviewerPdfTimingNow()
+          : 0;
         bytes = decodeBase64Bytes(response.data);
+        if (reviewer)
+          reviewerPdfTimings.decodeMs =
+            getReviewerPdfTimingNow() - decodeStartedAt;
         response.data = "";
         if (
           reviewer &&
@@ -12943,11 +13040,14 @@
         )
           throw new Error("The PDF service returned an invalid source PDF.");
         if (reviewer) {
+          const watermarkStartedAt = getReviewerPdfTimingNow();
           bytes = await watermarkReviewerPdfInWorker(bytes, {
             fullName: String(response.fullName || ""),
             email: String(response.email || ""),
             downloadFileName: String(response.downloadFileName || ""),
           });
+          reviewerPdfTimings.watermarkMs =
+            getReviewerPdfTimingNow() - watermarkStartedAt;
           if (previewGeneration !== resourcePortalPreviewGeneration)
             return false;
         }
@@ -12965,6 +13065,8 @@
         throw new Error(
           "The PDF service returned invalid content.",
         );
+      if (reviewer)
+        reviewerPdfTimings.previewReadyAt = getReviewerPdfTimingNow();
       if (reviewer && !isReviewerCacheHit) {
         reviewerPdfPreviewCache.delete(reviewerRequestKey);
         reviewerPdfPreviewCache.set(reviewerRequestKey, {
@@ -13018,6 +13120,7 @@
           downloadFileName: String(response.downloadFileName || ""),
           bytes,
           sourceVersion: response.sourceVersion,
+          timings: reviewerPdfTimings,
         };
         resourcePortalPreviewUrlOpened = false;
         if (downloadButton) {
@@ -13025,6 +13128,8 @@
           downloadButton.download = resourcePortalReviewerPdf.downloadFileName;
           downloadButton.hidden = false;
         }
+        if (reviewerPdfTimings)
+          reviewerPdfTimings.previewStartedAt = getReviewerPdfTimingNow();
         if (
           openMobileReviewerPdfBlobViewer(
             resourcePortalReviewerPdf,
@@ -13033,8 +13138,15 @@
             frame,
             status,
           )
-        )
+        ) {
+          reviewerPdfTimings.previewSetupMs =
+            getReviewerPdfTimingNow() - reviewerPdfTimings.previewReadyAt;
+          logReviewerPdfPreviewTimings(
+            reviewerPdfTimings,
+            isReviewerCacheHit,
+          );
           return true;
+        }
       } else {
         const isModulesFile = isModulesSection;
         const isSyllabusPdf =
@@ -13079,9 +13191,19 @@
           previewGeneration,
         );
       }
+      if (reviewer)
+        reviewerPdfTimings.previewStartedAt = getReviewerPdfTimingNow();
       frame.src = reviewer
         ? `${resourcePortalPreviewObjectUrl}#toolbar=0&navpanes=0&scrollbar=0`
         : resourcePortalPreviewObjectUrl;
+      if (reviewer) {
+        reviewerPdfTimings.previewSetupMs =
+          getReviewerPdfTimingNow() - reviewerPdfTimings.previewReadyAt;
+        logReviewerPdfPreviewTimings(
+          reviewerPdfTimings,
+          isReviewerCacheHit,
+        );
+      }
       if (status) {
         status.classList.remove("is-loading");
         if (!reviewer) {

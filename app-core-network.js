@@ -631,17 +631,6 @@
       required: ["fileId"],
       allowed: ["type", "fileId", "previewMode", "appVersion"],
     },
-    grant_resource_temporary_access: {
-      required: ["sessionId", "eventId", "fileId", "resourceArea"],
-      allowed: [
-        "type",
-        "sessionId",
-        "eventId",
-        "fileId",
-        "resourceArea",
-        "appVersion",
-      ],
-    },
     get_resource_dashboard: {
       required: ["eventId"],
       allowed: [

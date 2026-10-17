@@ -1,5 +1,15 @@
 # Changelog
 
+## 26.11.3 - 2026-10-17
+
+### Improved
+
+- Warm and reuse the Reviewer PDF worker while the REVIEWERS dashboard is open.
+- Measure backend authorization, Drive access, auditing, and PDF response
+  processing separately to identify preview latency bottlenecks.
+- Restore the public Drive-preview metadata response without downloading PDF
+  bytes through Apps Script.
+
 ## 26.11.2 - 2026-10-17
 
 ### Added
@@ -15,6 +25,17 @@
   existing access, and revoke grants that Drive does not confirm correctly.
 
 ## 26.11.1 - 2026-10-17
+
+### Improved
+
+- Stream Student Portal PDFs and unsupported Modules files through Drive's
+  native preview, with return navigation and an in-site PDF fallback.
+- Keep Reviewer PDF previews responsive on mobile with the bundled PDF.js
+  viewer and preserve native browser playback for audio and video files.
+- Show the Reviewer PDF download fallback only after a preview error or a
+  missing viewer-load signal.
+
+## 26.10.17-4 - 2026-10-17
 
 ### Improved
 

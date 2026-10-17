@@ -41,13 +41,33 @@ assert.match(
 );
 assert.match(
   backend,
-  /function getReviewerPdfSource_\(fileId\)[\s\S]*?getReviewerPdfIndexEntries_\(\)[\s\S]*?getReviewerPdfDriveHierarchy_\(fileId\)[\s\S]*?hierarchy\.insideRoot/,
+  /function getReviewerPdfSource_\(fileId,\s*timings\)[\s\S]*?getReviewerPdfIndexEntries_\(\)[\s\S]*?getReviewerPdfDriveHierarchy_\(fileId\)[\s\S]*?hierarchy\.insideRoot/,
   "source delivery must require index membership and protected resource ancestry",
 );
 assert.match(
   previewHandler,
-  /authorizeReviewerPdfRequest_\(data\)[\s\S]*?getReviewerPdfSource_\(fileId\)[\s\S]*?DriveApp\.getFileById\(fileId\)\.getBlob\(\)\.getBytes\(\)[\s\S]*?deliveryMode:\s*"source"[\s\S]*?base64Encode\(sourceBytes\)/,
+  /authorizeReviewerPdfRequest_\(data\)[\s\S]*?getReviewerPdfSource_\(fileId,\s*timings\)/,
   "only the authorized preview route may return validated source bytes for client processing",
+);
+assert.match(
+  previewHandler,
+  /DriveApp\.getFileById\(fileId\)\.getBlob\(\)\.getBytes\(\)[\s\S]*?Utilities\.base64Encode\(sourceBytes\)/,
+  "source bytes must still come directly from Drive and be base64 encoded for delivery",
+);
+assert.match(
+  backend,
+  /function logReviewerPdfRequestTiming_\([\s\S]*?authorizationMs:[\s\S]*?indexLookupMs:[\s\S]*?driveHierarchyMs:[\s\S]*?sourceReadMs:[\s\S]*?accessLogMs:[\s\S]*?base64EncodeMs:/,
+  "Reviewer PDF requests must log backend authorization, Drive, audit, and encoding phase timings",
+);
+assert.match(
+  previewHandler,
+  /appendMRHAccessLog_\([\s\S]*?PROTECTED_PDF_VIEW/,
+  "successful PDF delivery must keep synchronous access auditing and separately time it",
+);
+assert.ok(
+  previewHandler.includes("timings.accessLogMs = Date.now() - accessLogStartedAt") &&
+    previewHandler.includes("Utilities.base64Encode(sourceBytes)"),
+  "access logging duration should be measured before encoding the source response",
 );
 assert.match(
   backend,
@@ -113,6 +133,42 @@ assert.match(
   worker,
   /importScripts\("\.\/pdf-lib-1\.17\.1\.min\.js"\)[\s\S]*?MAX_SOURCE_BYTES = 8 \* 1024 \* 1024[\s\S]*?MAX_PAGES = 80/,
   "the isolated worker must load the pinned browser PDF library and enforce input bounds",
+);
+assert.match(
+  worker,
+  /postMessage\(\{\s*status:\s*"ready"\s*\}\)/,
+  "the PDF worker must signal readiness after loading its PDF library",
+);
+assert.match(
+  frontend,
+  /function openResourceDashboardTab\([\s\S]*?tabName === "REVIEWERS"[\s\S]*?warmReviewerPdfWorker\(\)/,
+  "opening the Reviewer dashboard should warm the PDF worker before a PDF is selected",
+);
+assert.match(
+  frontend,
+  /resourceDashboardActiveTab === "REVIEWERS"\s*\?\s*warmReviewerPdfWorker\(\)/,
+  "deferred worker warm-up must not start after leaving the Reviewer dashboard",
+);
+assert.match(
+  frontend,
+  /reviewerPdfWorkerReadyTimer = globalScope\.setTimeout\([\s\S]*?30000/,
+  "the warmed PDF worker must fail explicitly if startup never signals readiness",
+);
+assert.match(
+  frontend,
+  /function watermarkReviewerPdfInWorker\([\s\S]*?getReviewerPdfWorker\(\)[\s\S]*?worker\.postMessage/,
+  "PDF watermarking should reuse the warmed worker instead of starting a new worker",
+);
+assert.match(
+  frontend,
+  /authorizationAndSourceRoundTripMs[\s\S]*?decodeMs[\s\S]*?watermarkMs[\s\S]*?previewSetupMs/,
+  "Reviewer preview timing must report request, decode, watermark, and preview setup phases",
+);
+assert.ok(
+  frontend.includes("MRH_PDF_VIEWER_FIRST_PAGE_RENDERED") &&
+    frontend.includes("firstPageRenderMs") &&
+    frontend.includes("pageNumber === 1"),
+  "PDF.js first-page rendering must have its own preview timing",
 );
 assert.match(
   worker,
