@@ -10495,10 +10495,6 @@
     const previewLessonTitle = reviewer
       ? getReviewerPdfLessonTitle(fileName, course)
       : null;
-    title.classList.toggle(
-      "resource-portal-preview-title-has-details",
-      Boolean(reviewer && previewLessonTitle?.details),
-    );
     title.textContent = reviewer
       ? `${String(course || "").trim() || "Reviewer"}\n${
           previewLessonTitle?.header || getReviewerPdfDisplayName(fileName)

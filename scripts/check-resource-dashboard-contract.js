@@ -688,13 +688,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-portal-preview-title-has-details\s*\{\s*font-weight:\s*400/,
-  "the second line of Reviewer preview titles should not be bold",
-);
-assert.match(
-  appCore,
-  /title\.classList\.toggle\(\s*"resource-portal-preview-title-has-details",\s*Boolean\(reviewer && previewLessonTitle\?\.details\),?\s*\)/,
-  "the regular-weight preview title style should apply when a second line is present",
+  /\.resource-portal-preview\.is-reviewer-pdf\s+\.resource-portal-preview-title\s*\{\s*font-weight:\s*400/,
+  "Reviewer preview titles should use regular weight for both lines",
 );
 assert.match(
   appCore,

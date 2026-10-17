@@ -2770,7 +2770,7 @@ button:active:not(:disabled) {
   overflow-wrap: anywhere;
 }
 
-.resource-portal-preview-title-has-details {
+.resource-portal-preview.is-reviewer-pdf .resource-portal-preview-title {
   font-weight: 400;
 }
 

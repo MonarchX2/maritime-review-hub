@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.17-14 - 2026-10-17
+
+### Fixed
+
+- Use regular-weight text for both lines of the Reviewer PDF preview title.
+
 ## 26.10.17-13 - 2026-10-17
 
 ### Improved
