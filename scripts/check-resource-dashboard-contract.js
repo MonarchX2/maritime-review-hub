@@ -151,6 +151,11 @@ assert.match(
   /const authConfigRequest = globalScope\.AppNetwork\.callBackend\([\s\S]*?const googleIdentityClientRequest =[\s\S]*?const response = await authConfigRequest/,
   "the Google sign-in client should load while auth configuration is being fetched",
 );
+assert.match(
+  fs.readFileSync("app-core-network.js", "utf8"),
+  /priority:\s*options\.priority \?\?[\s\S]*?\["verify_reviewer_access", "restore_reviewer_session"\]\.includes/,
+  "sign-in and saved-session requests should bypass queued non-auth backend work",
+);
 const decodeBase64BytesHelper = appCore.match(
   /function decodeBase64Bytes\(encoded\) \{[\s\S]*?\n  \}/,
 );
@@ -643,13 +648,18 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function renderReviewerPdfWatermark\(fullName, email\)[\s\S]*?Array\.from\(\{ length: 10 \}/,
-  "online PDF preview should show ten two-line identity stamps",
+  /function renderReviewerPdfWatermark\(fullName, email\)[\s\S]*?line\.textContent = text;[\s\S]*?watermark\.hidden = false;/,
+  "online PDF preview should show one centered two-line identity watermark",
 );
 assert.match(
   resourceStyles,
-  /\.resource-portal-preview-watermark\s*\{[^}]*grid-template:\s*repeat\(5,\s*1fr\)\s*\/\s*repeat\(2,\s*1fr\)/,
-  "online PDF identity stamps should match the PDF's two-column, five-row grid",
+  /\.resource-portal-preview-watermark\s*\{[^}]*place-items:\s*center/,
+  "the online PDF identity watermark should stay centered over the document",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-preview-watermark span\s*\{[^}]*font-size:\s*clamp\(0\.875rem,\s*1\.3vw,\s*1\.15rem\)/,
+  "the online PDF watermark should be larger and readable",
 );
 assert.match(
   resourceStyles,
@@ -663,8 +673,23 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-portal-preview\.is-expanded\s*\{[^}]*height:\s*calc\(100dvh - 2rem\)[\s\S]*?\.resource-portal-preview\.is-expanded \.resource-portal-preview-frame\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*width:\s*100%;[^}]*height:\s*100%/,
+  /\.resource-portal-preview\.is-expanded\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*1rem;[\s\S]*?\.resource-portal-preview\.is-expanded \.resource-portal-preview-frame\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*width:\s*100%;[^}]*height:\s*100%/,
   "expanded PDF preview should fill the viewport with an absolutely sized frame",
+);
+assert.match(
+  appCore,
+  /const loadingIcon = document\.createElement\("i"\);[\s\S]*?loadingIcon\.className = "fa-solid fa-spinner fa-spin";[\s\S]*?loadingMessage\.textContent = "Loading online preview…"/,
+  "the online preview loading status should show a spinner before its text",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-preview-frame\[hidden\],[\s\S]*?\.resource-portal-preview-status\[hidden\],[\s\S]*?display:\s*none;/,
+  "the preview loading status should be hidden again after loading completes",
+);
+assert.match(
+  appCore,
+  /frame\.hidden = false;\s*frame\.src =\s*previewMimeType/,
+  "the PDF frame should be visible before its source is assigned",
 );
 assert.match(
   resourceStyles,

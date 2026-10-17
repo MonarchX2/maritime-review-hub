@@ -1061,6 +1061,39 @@ async function checkConnectionPoolConcurrency() {
   assert.equal(thirdStarted, true);
   assert.deepEqual(startOrder, ["during-reconnect", "second", "third"]);
   pool.destroy();
+
+  const priorityPool = networkContext.module.exports.createConnectionPool({
+    maxConnections: 1,
+    maxRetries: 0,
+    keepAlive: false,
+    autoReconnect: false,
+  });
+  let releasePriorityBlocker;
+  const blocker = priorityPool.request(
+    () =>
+      new Promise((resolve) => {
+        releasePriorityBlocker = resolve;
+      }),
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  const priorityOrder = [];
+  const standardRequest = priorityPool.request(async () => {
+    priorityOrder.push("standard");
+  });
+  const authRequest = priorityPool.request(
+    async () => {
+      priorityOrder.push("auth");
+    },
+    { priority: true },
+  );
+  releasePriorityBlocker();
+  await Promise.all([blocker, standardRequest, authRequest]);
+  assert.deepEqual(
+    priorityOrder,
+    ["auth", "standard"],
+    "priority auth requests should bypass queued non-auth backend work",
+  );
+  priorityPool.destroy();
 }
 
 async function checkConnectionPoolCleanupAndHealth() {

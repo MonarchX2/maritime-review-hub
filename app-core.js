@@ -10195,13 +10195,9 @@
     )
       throw new Error("The PDF preview watermark could not be displayed.");
     const text = `${normalizedName}\n${normalizedEmail}`;
-    watermark.replaceChildren(
-      ...Array.from({ length: 10 }, () => {
-        const line = document.createElement("span");
-        line.textContent = text;
-        return line;
-      }),
-    );
+    const line = document.createElement("span");
+    line.textContent = text;
+    watermark.replaceChildren(line);
     watermark.hidden = false;
   }
 
@@ -10523,7 +10519,12 @@
     preview.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
 
     if (status) {
-      status.textContent = "Loading online preview…";
+      const loadingIcon = document.createElement("i");
+      loadingIcon.className = "fa-solid fa-spinner fa-spin";
+      loadingIcon.setAttribute("aria-hidden", "true");
+      const loadingMessage = document.createElement("span");
+      loadingMessage.textContent = "Loading online preview…";
+      status.replaceChildren(loadingIcon, loadingMessage);
       status.hidden = false;
     }
     try {
@@ -10634,11 +10635,11 @@
       } else if (watermark) {
         watermark.hidden = true;
       }
+      frame.hidden = false;
       frame.src =
         previewMimeType === "application/pdf"
           ? `${resourcePortalPreviewObjectUrl}#toolbar=0&navpanes=0&scrollbar=0`
           : resourcePortalPreviewObjectUrl;
-      frame.hidden = false;
       if (status) {
         status.textContent = "";
         status.hidden = true;

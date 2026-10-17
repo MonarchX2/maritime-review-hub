@@ -394,7 +394,7 @@
       }
     }
 
-    function acquireConnection() {
+    function acquireConnection(priority = false) {
       if (poolDestroyed) {
         return Promise.reject(new Error("Connection pool has been destroyed."));
       }
@@ -404,7 +404,16 @@
       }
 
       return new Promise((resolve, reject) => {
-        queue.push({ resolve, reject });
+        const queuedRequest = { resolve, reject, priority };
+        if (priority) {
+          const firstStandardRequest = queue.findIndex(
+            (request) => !request.priority,
+          );
+          if (firstStandardRequest === -1) queue.push(queuedRequest);
+          else queue.splice(firstStandardRequest, 0, queuedRequest);
+        } else {
+          queue.push(queuedRequest);
+        }
       });
     }
 
@@ -421,7 +430,7 @@
 
       let acquired = false;
       try {
-        await acquireConnection();
+        await acquireConnection(Boolean(requestOptions.priority));
         acquired = true;
         if (reconnecting) await reconnectPromise;
         if (poolDestroyed) {
@@ -919,7 +928,7 @@
    */
   /**
    * @param {Record<string, unknown>} payload
-   * @param {{signal?: AbortSignal, timeoutMs?: number, maxRetries?: number}} [options]
+   * @param {{signal?: AbortSignal, timeoutMs?: number, maxRetries?: number, priority?: boolean}} [options]
    * @returns {Promise<Record<string, unknown>>}
    */
   async function callBackend(payload, options = {}) {
@@ -997,6 +1006,11 @@
         maxRetryDelayMs: Number(
           options.maxRetryDelayMs ?? DEFAULT_POOL_CONFIG.maxRetryDelayMs,
         ),
+        priority:
+          options.priority ??
+          ["verify_reviewer_access", "restore_reviewer_session"].includes(
+            String(payload.type || ""),
+          ),
       },
     );
   }

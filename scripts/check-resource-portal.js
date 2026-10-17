@@ -594,8 +594,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-portal-preview-file-icon\s*\{\s*color:\s*#dc2626;[\s\S]*?\.dark \.resource-portal-preview-file-icon\s*\{\s*color:\s*#fca5a5;/,
-  "the preview PDF icon should retain its existing light and dark theme colors",
+  /\.resource-portal-preview-file-icon\s*\{\s*color:\s*#dc2626;[\s\S]*?\.dark \.resource-portal-preview-file-icon\s*\{\s*color:\s*#dc2626;/,
+  "all PDF icons should remain dark red in the preview window in both themes",
 );
 assert.doesNotMatch(
   index.match(/id="resource-portal-preview"[\s\S]*?<\/section>/)?.[0] || "",

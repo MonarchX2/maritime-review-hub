@@ -1,5 +1,17 @@
 # Changelog
 
+## 26.10.26 - 2026-10-17
+
+### Improved
+
+- Use the same dark-red color for PDF icons in the preview window as on table
+  resource chips, in both themes.
+- Center and enlarge the online preview watermark, show a spinner while files
+  load, reveal the PDF frame before assigning its source, and stabilize the
+  expanded viewer layout.
+- Prioritize sign-in and saved-session restoration requests when the backend
+  connection pool is busy.
+
 ## 26.10.17-18 - 2026-10-17
 
 ### Fixed

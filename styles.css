@@ -1789,6 +1789,7 @@ button:active:not(:disabled) {
   position: relative;
   height: 70vh;
   min-height: 20rem;
+  min-width: 0;
 }
 
 .resource-portal-preview-viewer .resource-portal-preview-frame {
@@ -1801,7 +1802,7 @@ button:active:not(:disabled) {
   z-index: 1;
   inset: 0;
   display: grid;
-  grid-template: repeat(5, 1fr) / repeat(2, 1fr);
+  place-items: center;
   overflow: hidden;
   pointer-events: none;
   user-select: none;
@@ -1810,18 +1811,21 @@ button:active:not(:disabled) {
 .resource-portal-preview-watermark span {
   display: grid;
   place-items: center;
+  width: min(90%, 36rem);
   color: rgb(51 65 85 / 18%);
-  font-size: clamp(0.48rem, 0.8vw, 0.78rem);
+  font-size: clamp(0.875rem, 1.3vw, 1.15rem);
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 1.3;
   text-align: center;
   text-transform: uppercase;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   transform: rotate(-28deg);
 }
 
 .resource-portal-preview-frame[hidden],
 .resource-portal-preview-watermark[hidden],
+.resource-portal-preview-status[hidden],
 .resource-portal-preview-header button[hidden] {
   display: none;
 }
@@ -2694,11 +2698,18 @@ button:active:not(:disabled) {
 }
 
 .resource-portal-preview-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   margin: 0;
   padding: 0.75rem 1rem;
   color: #475569;
   background: #f8fafc;
   font-size: 0.72rem;
+}
+
+.resource-portal-preview-status .fa-spinner {
+  flex: 0 0 auto;
 }
 
 .resource-portal-status {
@@ -2719,8 +2730,6 @@ button:active:not(:disabled) {
   position: fixed;
   z-index: 1000;
   inset: 1rem;
-  height: calc(100vh - 2rem);
-  height: calc(100dvh - 2rem);
   box-sizing: border-box;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
@@ -3135,7 +3144,7 @@ button:active:not(:disabled) {
 }
 
 .dark .resource-portal-preview-file-icon {
-  color: #fca5a5;
+  color: #dc2626;
 }
 
 .dark .resource-dashboard-table .resource-dashboard-link-icon.fa-file-pdf {
