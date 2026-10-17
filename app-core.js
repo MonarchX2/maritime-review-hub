@@ -5993,7 +5993,8 @@
   let resourcePortalItemCount = 0;
   let resourcePortalStatusMessage = "";
   let resourcePortalPreviewObjectUrl = "";
-  let resourcePortalPreviewMobileOpened = false;
+  let resourcePortalPreviewBlobViewerUrl = "";
+  let resourcePortalPreviewUrlOpened = false;
   let resourcePortalPreviewIsReviewer = false;
   let resourcePortalPreviewCourse = "";
   let resourcePortalReviewerPdf = null;
@@ -11348,22 +11349,14 @@
       .trim() || "PDF";
   }
 
-  function clearResourcePortalPreviewMobileLink() {
-    if (typeof document === "undefined") return;
-    const mobileLink = document.getElementById(
-      "resource-portal-preview-mobile-open",
-    );
-    if (!mobileLink) return;
-    mobileLink.hidden = true;
-    mobileLink.removeAttribute("href");
-  }
-
   function releaseResourcePortalPreviewObjectUrl() {
     const objectUrl = resourcePortalPreviewObjectUrl;
+    const blobViewerUrl = resourcePortalPreviewBlobViewerUrl;
     resourcePortalPreviewObjectUrl = "";
-    clearResourcePortalPreviewMobileLink();
+    resourcePortalPreviewBlobViewerUrl = "";
+    if (blobViewerUrl) URL.revokeObjectURL(blobViewerUrl);
     if (!objectUrl) return;
-    if (resourcePortalPreviewMobileOpened) {
+    if (resourcePortalPreviewUrlOpened) {
       globalScope.setTimeout(
         () => URL.revokeObjectURL(objectUrl),
         5 * 60 * 1000,
@@ -11371,7 +11364,124 @@
     } else {
       URL.revokeObjectURL(objectUrl);
     }
-    resourcePortalPreviewMobileOpened = false;
+    resourcePortalPreviewUrlOpened = false;
+  }
+
+  function openMobileReviewerPdfBlobViewer(
+    activePdf,
+    title,
+    preview,
+    frame,
+    status,
+  ) {
+    if (
+      typeof globalScope.matchMedia !== "function" ||
+      !globalScope.matchMedia("(max-width: 640px), (pointer: coarse)").matches
+    )
+      return false;
+    if (
+      !activePdf ||
+      !reviewerSessionId ||
+      activePdf.sessionId !== reviewerSessionId ||
+      !resourcePortalPreviewObjectUrl ||
+      !preview ||
+      !frame
+    )
+      return false;
+
+    const pdfUrl = escapeHTML(resourcePortalPreviewObjectUrl);
+    const returnUrl = escapeHTML(globalScope.location.href);
+    const safeTitle = escapeHTML(title || "PDF Preview");
+    const downloadName = escapeHTML(activePdf.downloadFileName);
+    const viewerHtml = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="referrer" content="no-referrer">
+    <title>${safeTitle} - Maritime Review Hub</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; margin: 0; }
+      body {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        overflow: hidden;
+        background: #f1f5f9;
+        color: #0f172a;
+        font: 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      header {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        min-height: 56px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left));
+        border-bottom: 1px solid #cbd5e1;
+        background: #fff;
+      }
+      h1 { min-width: 0; margin: 0; overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+      nav { display: flex; flex: 0 0 auto; gap: 8px; }
+      a {
+        display: inline-flex;
+        min-height: 40px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #cbd5e1;
+        border-radius: 7px;
+        padding: 0 12px;
+        background: #fff;
+        color: #1d4ed8;
+        font-weight: 600;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      a:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+      iframe { display: block; width: 100%; height: 100%; border: 0; background: #64748b; }
+      @media (max-width: 520px) {
+        header { align-items: flex-start; flex-direction: column; gap: 6px; }
+        nav { width: 100%; }
+        nav a { flex: 1 1 0; padding-inline: 8px; font-size: 12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>${safeTitle}</h1>
+      <nav aria-label="PDF actions">
+        <a href="${returnUrl}" target="_top">Return to Website</a>
+        <a href="${pdfUrl}" download="${downloadName}">Download</a>
+        <a href="${pdfUrl}" target="_blank" rel="noopener noreferrer">Open PDF</a>
+      </nav>
+    </header>
+    <iframe title="${safeTitle}" src="${pdfUrl}"></iframe>
+  </body>
+</html>`;
+    const viewerUrl = URL.createObjectURL(
+      new Blob([viewerHtml], { type: "text/html;charset=utf-8" }),
+    );
+    resourcePortalPreviewBlobViewerUrl = viewerUrl;
+    try {
+      resourcePortalPreviewUrlOpened = true;
+      preview.classList.add("is-blob-viewer");
+      frame.title = title || "PDF Preview";
+      frame.hidden = false;
+      frame.src = viewerUrl;
+      if (status) {
+        status.classList.remove("is-loading");
+        status.hidden = true;
+      }
+    } catch (error) {
+      preview.classList.remove("is-blob-viewer");
+      resourcePortalPreviewBlobViewerUrl = "";
+      resourcePortalPreviewUrlOpened = false;
+      URL.revokeObjectURL(viewerUrl);
+      throw error;
+    }
+    return true;
   }
 
   function getReviewerPdfCourseHeading(course) {
@@ -11561,7 +11671,7 @@
       globalScope.clearTimeout(reviewerPdfDownloadStatusTimer);
       reviewerPdfDownloadStatusTimer = 0;
     }
-    resourcePortalPreviewMobileOpened = true;
+    resourcePortalPreviewUrlOpened = true;
     void logResourceDashboardAction(
       "REVIEWERS",
       "PDF_DOWNLOAD",
@@ -11942,13 +12052,11 @@
     const downloadButton = document.getElementById(
       "resource-portal-preview-download",
     );
-    const openMobileLink = document.getElementById(
-      "resource-portal-preview-mobile-open",
-    );
     const backButton = document.getElementById(
       "resource-portal-preview-back",
     );
     if (!preview || !title || !frame) return false;
+    preview.classList.remove("is-blob-viewer");
     reviewerPdfWorkerCancel?.();
     const closeButton = document.getElementById(
       "resource-portal-preview-close",
@@ -11978,21 +12086,6 @@
     if (downloadButton && !downloadButton.dataset.initialized) {
       downloadButton.addEventListener("click", downloadReviewerPdf);
       downloadButton.dataset.initialized = "true";
-    }
-    if (openMobileLink && !openMobileLink.dataset.initialized) {
-      openMobileLink.addEventListener("click", (event) => {
-        if (
-          !resourcePortalPreviewIsReviewer ||
-          !resourcePortalReviewerPdf ||
-          resourcePortalReviewerPdf.sessionId !== reviewerSessionId ||
-          !resourcePortalPreviewObjectUrl
-        ) {
-          event.preventDefault();
-          return;
-        }
-        resourcePortalPreviewMobileOpened = true;
-      });
-      openMobileLink.dataset.initialized = "true";
     }
     if (backButton && !backButton.dataset.initialized) {
       backButton.addEventListener("click", () => {
@@ -12344,16 +12437,22 @@
           bytes,
           sourceVersion: response.sourceVersion,
         };
-        resourcePortalPreviewMobileOpened = false;
-        if (openMobileLink) {
-          openMobileLink.href = resourcePortalPreviewObjectUrl;
-          openMobileLink.hidden = false;
-        }
+        resourcePortalPreviewUrlOpened = false;
         if (downloadButton) {
           downloadButton.href = resourcePortalPreviewObjectUrl;
           downloadButton.download = resourcePortalReviewerPdf.downloadFileName;
           downloadButton.hidden = false;
         }
+        if (
+          openMobileReviewerPdfBlobViewer(
+            resourcePortalReviewerPdf,
+            previewTitle,
+            preview,
+            frame,
+            status,
+          )
+        )
+          return true;
       }
       frame.hidden = false;
       await new Promise((resolve) => {
@@ -12513,6 +12612,7 @@
     }
     if (preview) {
       preview.classList.remove("is-fullscreen");
+      preview.classList.remove("is-blob-viewer");
       preview.classList.remove("is-reviewer-pdf");
       preview.classList.remove("is-module-preview");
       preview.setAttribute("role", "region");

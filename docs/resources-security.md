@@ -146,10 +146,12 @@ The `pdf-lib` 1.17.1 (MIT licensed) browser worker stamps each page with the
 verified account name and email at six small horizontal placements: the four
 corners and top/bottom center. Page-level selection restrictions deter casual
 copying where the browser viewer honors them, but cannot prevent screenshots,
-screen recording, or all native PDF viewer behavior. The preview frame,
-object URL, and in-memory prepared PDFs are cleared when the preview closes,
-approval is lost, or the session ends. Public Modules/Syllabus and non-PDF
-Reviewer flows remain unchanged.
+screen recording, or all native PDF viewer behavior. Mobile and touch devices
+use a same-tab Blob viewer with return, download, and direct-open actions
+outside the native PDF frame. The preview frame, object URL, and in-memory
+prepared PDFs are cleared when the preview closes, approval is lost, or the
+session ends. Public Modules/Syllabus and non-PDF Reviewer flows remain
+unchanged.
 
 The local bundle, MIT attribution, compatibility tests, and deployment steps
 are documented in

@@ -91,7 +91,7 @@ assert.match(
 );
 assert.match(
   appCoreDownload,
-  /const bytes = activePdf\?\.bytes[\s\S]*?bytes\.byteLength > REVIEWER_PDF_MAX_OUTPUT_BYTES[\s\S]*?activePdf\.sourceVersion[\s\S]*?resourcePortalPreviewMobileOpened = true/,
+  /const bytes = activePdf\?\.bytes[\s\S]*?bytes\.byteLength > REVIEWER_PDF_MAX_OUTPUT_BYTES[\s\S]*?activePdf\.sourceVersion[\s\S]*?resourcePortalPreviewUrlOpened = true/,
   "native download actions must validate and retain only the prepared, browser-watermarked PDF",
 );
 assert.match(

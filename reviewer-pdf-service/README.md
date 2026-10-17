@@ -78,9 +78,11 @@ worker and library are content-hashed and deployable.
 4. The website displays the prepared PDF in its in-site preview and reuses
    those same bytes for each download through a native download link. A
    persistent download link is also shown below the preview in case the
-   embedded PDF viewer fails. On mobile and touch devices, an additional
-   action opens the prepared PDF in a new browser tab for browsers that cannot
-   render PDFs inside the embedded preview.
+   embedded PDF viewer fails. On mobile and touch devices, the site opens a
+   standalone Blob-based viewer in the same tab with Return to Website,
+   Download, and Open PDF actions in its header. The viewer embeds the
+   prepared PDF and also offers a direct native-viewer link if the browser
+   cannot render PDFs inside an embedded frame.
 
 The source limit is 8 MiB, output limit 12 MiB, and page limit 80. Worker
 startup and document complexity affect local processing time; the 20-page

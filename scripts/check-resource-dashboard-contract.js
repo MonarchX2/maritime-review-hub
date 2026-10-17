@@ -949,8 +949,13 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-portal-preview-mobile-open\s*\{\s*display:\s*none !important;\s*\}[\s\S]*?@media \(max-width: 640px\), \(pointer: coarse\)[\s\S]*?a\.resource-portal-preview-mobile-open:not\(\[hidden\]\)\s*\{\s*display:\s*inline-grid !important;/,
-  "the PDF new-tab fallback should be visible only on mobile or touch devices",
+  /\.resource-portal-preview\.is-fullscreen\.is-blob-viewer[\s\S]*?\.resource-portal-preview-header,[\s\S]*?display:\s*none;[\s\S]*?\.resource-portal-preview-viewer\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0;[^}]*height:\s*100dvh/,
+  "the Blob PDF viewer should fill the mobile viewport and replace the outer preview header",
+);
+assert.doesNotMatch(
+  indexHtml,
+  /resource-portal-preview-mobile-open/,
+  "mobile devices should automatically open the standalone Blob viewer instead of showing a new-tab control",
 );
 assert.match(
   resourceStyles,
@@ -1014,8 +1019,8 @@ assert.match(
 );
 assert.match(
   indexHtml,
-  /<a\s+id="resource-portal-preview-download"[^>]*aria-label="Download PDF"[^>]*hidden[\s\S]*?<a\s+id="resource-portal-preview-mobile-open"[\s\S]*?aria-label="Open PDF in a new tab"[\s\S]*?target="_blank"[\s\S]*?rel="noopener noreferrer"[\s\S]*?referrerpolicy="no-referrer"[\s\S]*?id="resource-portal-preview-close"/,
-  "the preview should expose a native PDF download action and a mobile-only new-tab action",
+  /<a\s+id="resource-portal-preview-download"[^>]*aria-label="Download PDF"[^>]*hidden[\s\S]*?id="resource-portal-preview-close"/,
+  "the in-site preview should expose a native PDF download action",
 );
 assert.match(
   appCore,
@@ -1024,13 +1029,18 @@ assert.match(
 );
 assert.match(
   appCore,
-  /openMobileLink\.addEventListener\("click", \(event\) => \{[\s\S]*?!resourcePortalPreviewIsReviewer[\s\S]*?!resourcePortalReviewerPdf[\s\S]*?sessionId !== reviewerSessionId[\s\S]*?!resourcePortalPreviewObjectUrl[\s\S]*?event\.preventDefault\(\)[\s\S]*?resourcePortalPreviewMobileOpened = true[\s\S]*?openMobileLink\.href = resourcePortalPreviewObjectUrl/,
-  "the mobile PDF action should require the current reviewer session and use the watermarked native new-tab link",
+  /function openMobileReviewerPdfBlobViewer\([\s\S]*?matchMedia\("\(max-width: 640px\), \(pointer: coarse\)"\)\.matches[\s\S]*?activePdf\.sessionId !== reviewerSessionId[\s\S]*?Return to Website[\s\S]*?Download[\s\S]*?Open PDF[\s\S]*?<iframe title="\$\{safeTitle\}" src="\$\{pdfUrl\}"><\/iframe>[\s\S]*?preview\.classList\.add\("is-blob-viewer"\)[\s\S]*?frame\.src = viewerUrl/,
+  "mobile Reviewer PDFs should show a full-screen Blob viewer in the same tab with return, download, and native-open actions",
 );
 assert.match(
   appCore,
-  /function releaseResourcePortalPreviewObjectUrl\(\) \{[\s\S]*?if \(resourcePortalPreviewMobileOpened\) \{\s*globalScope\.setTimeout\([\s\S]*?URL\.revokeObjectURL\(objectUrl\)[\s\S]*?5 \* 60 \* 1000[\s\S]*?\} else \{\s*URL\.revokeObjectURL\(objectUrl\)/,
-  "the preview URL should remain valid briefly after opening a mobile PDF tab, then be revoked",
+  /openMobileReviewerPdfBlobViewer\(\s*resourcePortalReviewerPdf,\s*previewTitle,\s*preview,\s*frame,\s*status,\s*\)\s*\)\s*return true/,
+  "the standalone viewer should open automatically after the prepared PDF is validated on mobile",
+);
+assert.match(
+  appCore,
+  /function releaseResourcePortalPreviewObjectUrl\(\) \{[\s\S]*?if \(blobViewerUrl\) URL\.revokeObjectURL\(blobViewerUrl\);[\s\S]*?if \(resourcePortalPreviewUrlOpened\) \{\s*globalScope\.setTimeout\([\s\S]*?URL\.revokeObjectURL\(objectUrl\)[\s\S]*?5 \* 60 \* 1000[\s\S]*?\} else \{\s*URL\.revokeObjectURL\(objectUrl\)/,
+  "the viewer Blob should be revoked on close while retaining a prepared PDF URL briefly after download",
 );
 function extractAppFunction(name) {
   const start = appCore.indexOf(`  function ${name}(`);
@@ -1041,42 +1051,31 @@ function extractAppFunction(name) {
 function createPreviewUrlReleaser(opened) {
   const timers = [];
   const revoked = [];
-  const mobileLink = {
-    hidden: false,
-    href: "blob:preview",
-    removeAttribute(name) {
-      if (name === "href") this.href = "";
-    },
-  };
   const globalScope = {
     setTimeout(callback, delay) {
       timers.push({ callback, delay });
     },
   };
   const release = new Function(
-    "document",
     "URL",
     "globalScope",
     `
       let resourcePortalPreviewObjectUrl = "blob:preview";
-      let resourcePortalPreviewMobileOpened = ${opened};
-      ${extractAppFunction("clearResourcePortalPreviewMobileLink")}
+      let resourcePortalPreviewBlobViewerUrl = "";
+      let resourcePortalPreviewUrlOpened = ${opened};
       ${extractAppFunction("releaseResourcePortalPreviewObjectUrl")}
       return releaseResourcePortalPreviewObjectUrl;
     `,
   )(
-    { getElementById: () => mobileLink },
     { revokeObjectURL: (url) => revoked.push(url) },
     globalScope,
   );
-  return { release, timers, revoked, mobileLink };
+  return { release, timers, revoked };
 }
 const unopenedPreviewUrl = createPreviewUrlReleaser(false);
 unopenedPreviewUrl.release();
 assert.deepEqual(unopenedPreviewUrl.revoked, ["blob:preview"]);
 assert.equal(unopenedPreviewUrl.timers.length, 0);
-assert.equal(unopenedPreviewUrl.mobileLink.hidden, true);
-assert.equal(unopenedPreviewUrl.mobileLink.href, "");
 const openedPreviewUrl = createPreviewUrlReleaser(true);
 openedPreviewUrl.release();
 assert.deepEqual(openedPreviewUrl.revoked, []);
@@ -1084,6 +1083,112 @@ assert.equal(openedPreviewUrl.timers.length, 1);
 assert.equal(openedPreviewUrl.timers[0].delay, 5 * 60 * 1000);
 openedPreviewUrl.timers[0].callback();
 assert.deepEqual(openedPreviewUrl.revoked, ["blob:preview"]);
+class TestBlob {
+  constructor(parts, options) {
+    this.content = parts.join("");
+    this.type = options.type;
+  }
+}
+function escapeTestHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[character]);
+}
+const blobViewerState = {
+  created: [],
+  revoked: [],
+  blobViewerClassAdded: false,
+};
+const blobViewer = new Function(
+  "escapeHTML",
+  "URL",
+  "Blob",
+  "globalScope",
+  "reviewerSessionId",
+  "resourcePortalPreviewObjectUrl",
+  "resourcePortalPreviewUrlOpened",
+  "resourcePortalPreviewBlobViewerUrl",
+  `${extractAppFunction("openMobileReviewerPdfBlobViewer")}; return openMobileReviewerPdfBlobViewer;`,
+)(
+  escapeTestHtml,
+  {
+    createObjectURL(blob) {
+      blobViewerState.created.push(blob);
+      return "blob:viewer";
+    },
+    revokeObjectURL(url) {
+      blobViewerState.revoked.push(url);
+    },
+  },
+  TestBlob,
+  {
+    matchMedia: (query) => ({
+      matches: query === "(max-width: 640px), (pointer: coarse)",
+    }),
+    location: { href: 'https://example.test/mrh/?return=<safe&x="y"' },
+  },
+  "active-session",
+  "blob:prepared-pdf",
+  false,
+  "",
+);
+const blobViewerPreview = {
+  classList: {
+    add(className) {
+      blobViewerState.blobViewerClassAdded = className === "is-blob-viewer";
+    },
+  },
+};
+const blobViewerFrame = {
+  hidden: true,
+  src: "",
+};
+const blobViewerStatus = {
+  hidden: false,
+  classList: { remove() {} },
+};
+assert.equal(
+  blobViewer(
+    {
+      sessionId: "active-session",
+      downloadFileName: "course.pdf",
+    },
+    "NAV6 - <Unsafe> Course",
+    blobViewerPreview,
+    blobViewerFrame,
+    blobViewerStatus,
+  ),
+  true,
+);
+assert.equal(blobViewerFrame.src, "blob:viewer");
+assert.equal(blobViewerFrame.hidden, false);
+assert.equal(blobViewerStatus.hidden, true);
+assert.equal(blobViewerState.blobViewerClassAdded, true);
+assert.equal(blobViewerState.created.length, 1);
+assert.equal(
+  blobViewerState.created[0].type,
+  "text/html;charset=utf-8",
+);
+assert.match(
+  blobViewerState.created[0].content,
+  /href="https:\/\/example\.test\/mrh\/\?return=&lt;safe&amp;x=&quot;y&quot;" target="_top">Return to Website/,
+);
+assert.match(
+  blobViewerState.created[0].content,
+  /<h1>NAV6 - &lt;Unsafe&gt; Course<\/h1>/,
+);
+assert.match(
+  blobViewerState.created[0].content,
+  /<a href="blob:prepared-pdf" download="course\.pdf">Download<\/a>/,
+);
+assert.match(
+  blobViewerState.created[0].content,
+  /<iframe title="NAV6 - &lt;Unsafe&gt; Course" src="blob:prepared-pdf"><\/iframe>/,
+);
 assert.match(
   appCore,
   /preview\.addEventListener\(eventName, \(event\) => \{\s*if \(resourcePortalPreviewIsReviewer\) event\.preventDefault\(\)/,

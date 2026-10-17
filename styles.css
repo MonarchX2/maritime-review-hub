@@ -3026,8 +3026,7 @@ button:active:not(:disabled) {
 
 .resource-portal-refresh,
 .resource-portal-preview-header button,
-.resource-portal-preview-header .resource-portal-preview-download,
-.resource-portal-preview-header .resource-portal-preview-mobile-open {
+.resource-portal-preview-header .resource-portal-preview-download {
   display: inline-grid;
   flex: 0 0 auto;
   width: 2rem;
@@ -3042,8 +3041,7 @@ button:active:not(:disabled) {
 
 .resource-portal-refresh:hover,
 .resource-portal-preview-header button:hover,
-.resource-portal-preview-header .resource-portal-preview-download:hover,
-.resource-portal-preview-header .resource-portal-preview-mobile-open:hover {
+.resource-portal-preview-header .resource-portal-preview-download:hover {
   color: #1d4ed8;
   background: #f1f5f9;
 }
@@ -3131,6 +3129,23 @@ button:active:not(:disabled) {
   border-radius: 0;
   background: #fff;
   box-shadow: 0 24px 80px rgb(15 23 42 / 0.38);
+}
+
+.resource-portal-preview.is-fullscreen.is-blob-viewer
+  .resource-portal-preview-header,
+.resource-portal-preview.is-fullscreen.is-blob-viewer
+  .resource-portal-preview-status {
+  display: none;
+}
+
+.resource-portal-preview.is-fullscreen.is-blob-viewer
+  .resource-portal-preview-viewer {
+  position: fixed;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
 }
 
 .resource-portal-preview.is-fullscreen .resource-portal-preview-frame {
@@ -3221,12 +3236,6 @@ button:active:not(:disabled) {
   font-size: 1.1rem;
 }
 
-.resource-portal-preview.is-reviewer-pdf .resource-portal-preview-mobile-open {
-  width: 2.75rem;
-  height: 2.75rem;
-  font-size: 1.1rem;
-}
-
 .resource-portal-preview-actions {
   display: flex;
   flex: 0 0 auto;
@@ -3236,10 +3245,6 @@ button:active:not(:disabled) {
 .resource-portal-preview-frame {
   display: block;
   border: 0;
-}
-
-.resource-portal-preview-mobile-open {
-  display: none !important;
 }
 
 .resource-portal-preview.is-reviewer-pdf,
@@ -3847,8 +3852,7 @@ button:active:not(:disabled) {
 
 .dark .resource-portal-search,
 .dark .resource-portal-refresh,
-.dark .resource-portal-preview-header button,
-.dark .resource-portal-preview-header .resource-portal-preview-mobile-open {
+.dark .resource-portal-preview-header button {
   border-color: #475569;
   color: #cbd5e1;
   background: #0f172a;
@@ -4147,13 +4151,6 @@ button:active:not(:disabled) {
   .resource-portal-table-head span:last-child,
   .resource-portal-item-modified {
     display: none;
-  }
-}
-
-@media (max-width: 640px), (pointer: coarse) {
-  .resource-portal-preview-header
-    a.resource-portal-preview-mobile-open:not([hidden]) {
-    display: inline-grid !important;
   }
 }
 
