@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.10.17-17 - 2026-10-17
+
+### Fixed
+
+- Match PDF icons on table resource chips to the preview icon without changing
+  the preview icon styling.
+
 ## 26.10.17-16 - 2026-10-17
 
 ### Fixed

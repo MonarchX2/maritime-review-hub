@@ -584,13 +584,18 @@ assert.ok(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-link-icon\.fa-file-pdf,\s*\.resource-portal-preview-file-icon\s*\{\s*color:\s*#dc2626;/,
-  "the preview PDF icon should share the table chip icon color",
+  /\.resource-dashboard-table \.resource-dashboard-link-icon\.fa-file-pdf\s*\{\s*color:\s*#dc2626;/,
+  "PDF icons on the table chips should use the preview icon's light-theme color",
 );
 assert.match(
   resourceStyles,
-  /\.dark \.resource-dashboard-link-icon\.fa-file-pdf,\s*\.dark \.resource-portal-preview-file-icon\s*\{\s*color:\s*#fca5a5;/,
-  "the preview and table PDF icons should share the dark-theme color",
+  /\.dark \.resource-dashboard-table \.resource-dashboard-link-icon\.fa-file-pdf\s*\{\s*color:\s*#fca5a5;/,
+  "PDF icons on the table chips should use the preview icon's dark-theme color",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-preview-file-icon\s*\{\s*color:\s*#dc2626;[\s\S]*?\.dark \.resource-portal-preview-file-icon\s*\{\s*color:\s*#fca5a5;/,
+  "the preview PDF icon should retain its existing light and dark theme colors",
 );
 assert.doesNotMatch(
   index.match(/id="resource-portal-preview"[\s\S]*?<\/section>/)?.[0] || "",

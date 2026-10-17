@@ -3074,8 +3074,11 @@ button:active:not(:disabled) {
   font-size: 0.8rem;
 }
 
-.resource-dashboard-link-icon.fa-file-pdf,
 .resource-portal-preview-file-icon {
+  color: #dc2626;
+}
+
+.resource-dashboard-table .resource-dashboard-link-icon.fa-file-pdf {
   color: #dc2626;
 }
 
@@ -3131,8 +3134,11 @@ button:active:not(:disabled) {
   background: #1e3a8a;
 }
 
-.dark .resource-dashboard-link-icon.fa-file-pdf,
 .dark .resource-portal-preview-file-icon {
+  color: #fca5a5;
+}
+
+.dark .resource-dashboard-table .resource-dashboard-link-icon.fa-file-pdf {
   color: #fca5a5;
 }
 
