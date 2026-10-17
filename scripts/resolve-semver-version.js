@@ -146,7 +146,9 @@ function getReleaseContext(repositoryDir = rootDir, commitSha = process.env.GITH
     displayVersion,
     releaseVersion: `mrh-${displayVersion}-${sha}`,
     releaseTag: `v${displayVersion}`,
-    shouldTag: displayVersion !== taggedVersion,
+    shouldTag:
+      displayVersion !== taggedVersion &&
+      !tags.includes(`v${displayVersion}`),
   };
 }
 

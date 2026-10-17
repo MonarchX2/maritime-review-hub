@@ -215,6 +215,23 @@ try {
   const dateVersionBaseline = getReleaseContext(fixture);
   assert.equal(dateVersionBaseline.displayVersion, "26.10.15-6");
   assert.equal(dateVersionBaseline.releaseTag, "v26.10.15-6");
+
+  git(["tag", "v26.11.0"]);
+  git(["tag", "v26.10.17-4"]);
+  fs.writeFileSync(
+    path.join(fixture, "version.json"),
+    JSON.stringify({ version: "26.10.17-4" }),
+  );
+  git(["add", "version.json"]);
+  git(["commit", "-m", "chore: set an already tagged release version"]);
+  const existingReleaseTag = getReleaseContext(fixture);
+  assert.equal(existingReleaseTag.displayVersion, "26.10.17-4");
+  assert.equal(existingReleaseTag.releaseTag, "v26.10.17-4");
+  assert.equal(
+    existingReleaseTag.shouldTag,
+    false,
+    "deployment must not try to recreate a release tag that already exists",
+  );
 } finally {
   fs.rmSync(fixture, { recursive: true, force: true });
 }

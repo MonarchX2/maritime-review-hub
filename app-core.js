@@ -5990,6 +5990,8 @@
   let resourcePortalRequestGeneration = 0;
   let resourcePortalPreviewGeneration = 0;
   let reviewerPdfDownloadStatusTimer = 0;
+  let reviewerPdfRenderCheckTimer = 0;
+  let reviewerPdfRenderCheckCleanup = null;
   let resourcePortalItemCount = 0;
   let resourcePortalStatusMessage = "";
   let resourcePortalPreviewObjectUrl = "";
@@ -11367,32 +11369,30 @@
     resourcePortalPreviewUrlOpened = false;
   }
 
-  function openMobileReviewerPdfBlobViewer(
-    activePdf,
+  function openBlobResourceViewer(
     title,
-    preview,
-    frame,
-    status,
+    {
+      downloadFileName,
+      preview,
+      frame,
+      status,
+      returnLabel = "Return to Website",
+      mobileOnly = false,
+    } = {},
   ) {
     if (
-      typeof globalScope.matchMedia !== "function" ||
-      !globalScope.matchMedia("(max-width: 640px), (pointer: coarse)").matches
+      mobileOnly &&
+      (typeof globalScope.matchMedia !== "function" ||
+        !globalScope.matchMedia("(max-width: 640px), (pointer: coarse)").matches)
     )
       return false;
-    if (
-      !activePdf ||
-      !reviewerSessionId ||
-      activePdf.sessionId !== reviewerSessionId ||
-      !resourcePortalPreviewObjectUrl ||
-      !preview ||
-      !frame
-    )
-      return false;
+    if (!resourcePortalPreviewObjectUrl || !preview || !frame) return false;
 
-    const pdfUrl = escapeHTML(resourcePortalPreviewObjectUrl);
+    const blobUrl = escapeHTML(resourcePortalPreviewObjectUrl);
     const returnUrl = escapeHTML(globalScope.location.href);
     const safeTitle = escapeHTML(title || "PDF Preview");
-    const downloadName = escapeHTML(activePdf.downloadFileName);
+    const downloadName = escapeHTML(downloadFileName || "download");
+    const safeReturnLabel = escapeHTML(returnLabel);
     const viewerHtml = `<!doctype html>
 <html lang="en">
   <head>
@@ -11451,15 +11451,25 @@
   <body>
     <header>
       <h1>${safeTitle}</h1>
-      <nav aria-label="PDF actions">
-        <a href="${returnUrl}" target="_top">Return to Website</a>
-        <a href="${pdfUrl}" download="${downloadName}">Download</a>
-        <a href="${pdfUrl}" target="_blank" rel="noopener noreferrer">Open PDF</a>
+      <nav aria-label="File actions">
+        <a id="return-to-site" href="${returnUrl}" target="_top">${safeReturnLabel}</a>
+        <a href="${blobUrl}" download="${downloadName}">Download</a>
+        <a href="${blobUrl}" target="_blank" rel="noopener noreferrer">Open File</a>
       </nav>
     </header>
-    <iframe title="${safeTitle}" src="${pdfUrl}"></iframe>
+    <iframe title="${safeTitle}" src="${blobUrl}"></iframe>
+    <script>
+      document.getElementById("return-to-site").addEventListener("click", (event) => {
+        if (window.parent === window) return;
+        event.preventDefault();
+        window.parent.postMessage(
+          { type: "MRH_RESOURCE_PREVIEW_RETURN" },
+          location.origin,
+        );
+      });
+    </script>
   </body>
-</html>`;
+  </html>`;
     const viewerUrl = URL.createObjectURL(
       new Blob([viewerHtml], { type: "text/html;charset=utf-8" }),
     );
@@ -11482,6 +11492,28 @@
       throw error;
     }
     return true;
+  }
+
+  function openMobileReviewerPdfBlobViewer(
+    activePdf,
+    title,
+    preview,
+    frame,
+    status,
+  ) {
+    if (
+      !activePdf ||
+      !reviewerSessionId ||
+      activePdf.sessionId !== reviewerSessionId
+    )
+      return false;
+    return openBlobResourceViewer(title, {
+      downloadFileName: activePdf.downloadFileName,
+      preview,
+      frame,
+      status,
+      mobileOnly: true,
+    });
   }
 
   function getReviewerPdfCourseHeading(course) {
@@ -11634,6 +11666,45 @@
     return true;
   }
 
+  function watchReviewerPdfPreviewRender(frame, status, activePdf, generation) {
+    if (!frame || !status || !activePdf) return false;
+    reviewerPdfRenderCheckCleanup?.();
+    let completed = false;
+    const clearRenderCheck = () => {
+      frame.removeEventListener("load", onLoad);
+      frame.removeEventListener("error", onError);
+      if (reviewerPdfRenderCheckTimer) {
+        globalScope.clearTimeout(reviewerPdfRenderCheckTimer);
+        reviewerPdfRenderCheckTimer = 0;
+      }
+      if (reviewerPdfRenderCheckCleanup === clearRenderCheck)
+        reviewerPdfRenderCheckCleanup = null;
+    };
+    reviewerPdfRenderCheckCleanup = clearRenderCheck;
+    const onLoad = () => {
+      completed = true;
+      clearRenderCheck();
+      if (generation !== resourcePortalPreviewGeneration) return;
+      status.replaceChildren();
+      status.hidden = true;
+    };
+    const onError = () => {
+      completed = true;
+      clearRenderCheck();
+      if (generation !== resourcePortalPreviewGeneration) return;
+      renderReviewerPdfDownloadFallback(status, activePdf);
+    };
+    frame.addEventListener("load", onLoad, { once: true });
+    frame.addEventListener("error", onError, { once: true });
+    reviewerPdfRenderCheckTimer = globalScope.setTimeout(() => {
+      reviewerPdfRenderCheckTimer = 0;
+      if (completed || generation !== resourcePortalPreviewGeneration) return;
+      clearRenderCheck();
+      renderReviewerPdfDownloadFallback(status, activePdf);
+    }, 8000);
+    return true;
+  }
+
   function downloadReviewerPdf(event) {
     const activePdf = resourcePortalReviewerPdf;
     const status = document.getElementById("resource-portal-preview-status");
@@ -11685,14 +11756,14 @@
       status.textContent = "Download Started";
       status.hidden = false;
       const previewGeneration = resourcePortalPreviewGeneration;
-      reviewerPdfDownloadStatusTimer = globalScope.setTimeout(() => {
-        reviewerPdfDownloadStatusTimer = 0;
-        if (
-          previewGeneration === resourcePortalPreviewGeneration &&
-          status.textContent.trim() === "Download Started"
-        )
-          renderReviewerPdfDownloadFallback(status, activePdf);
+      const statusTimer = globalScope.setTimeout(() => {
+        if (reviewerPdfDownloadStatusTimer === statusTimer)
+          reviewerPdfDownloadStatusTimer = 0;
+        if (previewGeneration !== resourcePortalPreviewGeneration) return;
+        if (status.textContent.trim() === "Download Started")
+          status.hidden = true;
       }, 3000);
+      reviewerPdfDownloadStatusTimer = statusTimer;
     }
     return true;
   }
@@ -12057,6 +12128,7 @@
     );
     if (!preview || !title || !frame) return false;
     preview.classList.remove("is-blob-viewer");
+    reviewerPdfRenderCheckCleanup?.();
     reviewerPdfWorkerCancel?.();
     const closeButton = document.getElementById(
       "resource-portal-preview-close",
@@ -12082,6 +12154,27 @@
         closeResourcePreview();
       });
       closeButton.dataset.initialized = "true";
+    }
+    if (!preview.dataset.blobViewerReturnListener) {
+      globalScope.addEventListener("message", (event) => {
+        if (
+          event.origin !== globalScope.location.origin ||
+          event.source !== frame.contentWindow ||
+          event.data?.type !== "MRH_RESOURCE_PREVIEW_RETURN"
+        )
+          return;
+        if (
+          resourceDashboardActiveTab === "MODULES" &&
+          resourceDashboardFolderReturn &&
+          backButton &&
+          !backButton.hidden
+        ) {
+          backButton.click();
+          return;
+        }
+        closeResourcePreview();
+      });
+      preview.dataset.blobViewerReturnListener = "true";
     }
     if (downloadButton && !downloadButton.dataset.initialized) {
       downloadButton.addEventListener("click", downloadReviewerPdf);
@@ -12123,7 +12216,11 @@
           downloadButton.removeAttribute("download");
         }
         backButton.hidden = true;
-        preview.classList.remove("is-reviewer-pdf", "is-module-preview");
+        preview.classList.remove(
+          "is-blob-viewer",
+          "is-reviewer-pdf",
+          "is-module-preview",
+        );
         panel.hidden = false;
         if (status) {
           status.classList.remove("is-loading");
@@ -12408,13 +12505,16 @@
         responseMimeType === "text/plain" ||
         responseMimeType === "application/json" ||
         /^image\/(?:avif|gif|jpeg|png|webp)$/.test(responseMimeType);
+      const isModulesSection =
+        resourceDashboardActiveTab === "MODULES" && !reviewer;
+      const isNativeMediaType = /^(?:audio|video)\//.test(responseMimeType);
       const previewMimeType =
         responseMimeType === "application/json"
           ? "text/plain"
-          : isSafeInlineType
+          : isSafeInlineType || (isModulesSection && isNativeMediaType)
             ? responseMimeType
             : "application/octet-stream";
-      if (!isSafeInlineType) {
+      if (!isSafeInlineType && !isModulesSection) {
         if (status) {
           status.textContent =
             "Online preview is not available for this file type.";
@@ -12453,6 +12553,29 @@
           )
         )
           return true;
+      } else {
+        const isModulesFile = isModulesSection;
+        const isSyllabusPdf =
+          resourceDashboardActiveTab === "SYLLABUS" &&
+          responseMimeType === "application/pdf" &&
+          !reviewer;
+        if (isModulesFile || isSyllabusPdf) {
+          const returnLabel = isModulesFile
+            ? dashboardFolderFile
+              ? "Back to Folder"
+              : "Back to Modules"
+            : "Return to Website";
+          if (
+            openBlobResourceViewer(previewTitle, {
+              downloadFileName: String(response.name || fileName || "resource"),
+              preview,
+              frame,
+              status,
+              returnLabel,
+            })
+          )
+            return true;
+        }
       }
       frame.hidden = false;
       await new Promise((resolve) => {
@@ -12461,14 +12584,23 @@
         else globalScope.setTimeout(resolve, 0);
       });
       if (previewGeneration !== resourcePortalPreviewGeneration) return false;
+      if (reviewer && status) {
+        status.classList.remove("is-loading");
+        status.replaceChildren();
+        status.hidden = true;
+        watchReviewerPdfPreviewRender(
+          frame,
+          status,
+          resourcePortalReviewerPdf,
+          previewGeneration,
+        );
+      }
       frame.src = reviewer
         ? `${resourcePortalPreviewObjectUrl}#toolbar=0&navpanes=0&scrollbar=0`
         : resourcePortalPreviewObjectUrl;
       if (status) {
         status.classList.remove("is-loading");
-        if (reviewer)
-          renderReviewerPdfDownloadFallback(status, resourcePortalReviewerPdf);
-        else {
+        if (!reviewer) {
           status.textContent = "";
           status.hidden = true;
         }
@@ -12564,6 +12696,7 @@
   }
 
   function closeResourcePreview() {
+    reviewerPdfRenderCheckCleanup?.();
     reviewerPdfWorkerCancel?.();
     resourcePortalPreviewGeneration += 1;
     resourceDashboardFolderGeneration += 1;

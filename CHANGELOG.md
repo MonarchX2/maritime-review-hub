@@ -1,5 +1,15 @@
 # Changelog
 
+## 26.10.17-4 - 2026-10-17
+
+### Improved
+
+- Open Modules files and Syllabus PDFs in a native Blob viewer with return,
+  download, and open actions; preserve native browser playback for audio and
+  video files.
+- Show the Reviewer PDF download fallback only after a preview error or a
+  missing viewer-load signal.
+
 ## 26.10.17-3 - 2026-10-17
 
 ### Improved

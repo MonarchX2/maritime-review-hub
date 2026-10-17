@@ -1024,18 +1024,40 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function renderReviewerPdfDownloadFallback\([\s\S]*?If the preview doesn't load[\s\S]*?download the PDF/,
-  "the preview should offer a direct PDF download if embedded rendering fails without exposing processing details",
+  /function watchReviewerPdfPreviewRender\([\s\S]*?frame\.addEventListener\("load", onLoad/,
+  "the PDF download fallback should appear only after a render error or missing viewer-load event",
+);
+assert.match(appCore, /frame\.addEventListener\("error", onError/);
+assert.match(appCore, /}, 8000\);/);
+assert.match(
+  appCore,
+  /const previewGeneration = resourcePortalPreviewGeneration;[\s\S]*?const statusTimer = globalScope\.setTimeout\(\(\) => \{[\s\S]*?reviewerPdfDownloadStatusTimer === statusTimer[\s\S]*?previewGeneration !== resourcePortalPreviewGeneration/,
+  "an older download-status timeout must not affect a newer preview or download",
 );
 assert.match(
   appCore,
-  /function openMobileReviewerPdfBlobViewer\([\s\S]*?matchMedia\("\(max-width: 640px\), \(pointer: coarse\)"\)\.matches[\s\S]*?activePdf\.sessionId !== reviewerSessionId[\s\S]*?Return to Website[\s\S]*?Download[\s\S]*?Open PDF[\s\S]*?<iframe title="\$\{safeTitle\}" src="\$\{pdfUrl\}"><\/iframe>[\s\S]*?preview\.classList\.add\("is-blob-viewer"\)[\s\S]*?frame\.src = viewerUrl/,
-  "mobile Reviewer PDFs should show a full-screen Blob viewer in the same tab with return, download, and native-open actions",
+  /function openBlobResourceViewer\([\s\S]*?Return to Website[\s\S]*?Download[\s\S]*?Open File[\s\S]*?<iframe title="\$\{safeTitle\}" src="\$\{blobUrl\}"><\/iframe>[\s\S]*?MRH_RESOURCE_PREVIEW_RETURN[\s\S]*?preview\.classList\.add\("is-blob-viewer"\)[\s\S]*?frame\.src = viewerUrl/,
+  "the native Blob viewer should include its own return, download, and open actions",
 );
 assert.match(
   appCore,
-  /openMobileReviewerPdfBlobViewer\(\s*resourcePortalReviewerPdf,\s*previewTitle,\s*preview,\s*frame,\s*status,\s*\)\s*\)\s*return true/,
-  "the standalone viewer should open automatically after the prepared PDF is validated on mobile",
+  /function openMobileReviewerPdfBlobViewer\([\s\S]*?activePdf\.sessionId !== reviewerSessionId[\s\S]*?mobileOnly:\s*true/,
+  "Reviewer PDFs should use the Blob viewer on mobile only after validating the active reviewer session",
+);
+assert.match(
+  appCore,
+  /const isModulesSection =\s*resourceDashboardActiveTab === "MODULES" && !reviewer;[\s\S]*?const isModulesFile = isModulesSection;[\s\S]*?const isSyllabusPdf =\s*resourceDashboardActiveTab === "SYLLABUS" &&\s*responseMimeType === "application\/pdf"[\s\S]*?openBlobResourceViewer\(previewTitle/,
+  "all Modules files and Syllabus PDFs should use the native Blob viewer",
+);
+assert.match(
+  appCore,
+  /const isNativeMediaType = .+\.test\(responseMimeType\);[\s\S]*?responseMimeType === "application\/json"\s*\?\s*"text\/plain"[\s\S]*?:\s*isSafeInlineType \|\| \(isModulesSection && isNativeMediaType\)\s*\?\s*responseMimeType\s*:\s*"application\/octet-stream"/,
+  "Modules audio and video should use native browser playback while other unsupported types remain non-executable downloads",
+);
+assert.match(
+  appCore,
+  /event\.source !== frame\.contentWindow[\s\S]*?event\.data\?\.type !== "MRH_RESOURCE_PREVIEW_RETURN"[\s\S]*?backButton\.click\(\)/,
+  "the Blob viewer return action should only be accepted from the active preview frame and restore its folder listing",
 );
 assert.match(
   appCore,
@@ -1083,6 +1105,58 @@ assert.equal(openedPreviewUrl.timers.length, 1);
 assert.equal(openedPreviewUrl.timers[0].delay, 5 * 60 * 1000);
 openedPreviewUrl.timers[0].callback();
 assert.deepEqual(openedPreviewUrl.revoked, ["blob:preview"]);
+function createPdfRenderWatcher() {
+  const listeners = new Map();
+  const timers = [];
+  const fallbacks = [];
+  const frame = {
+    addEventListener(name, callback) {
+      listeners.set(name, callback);
+    },
+    removeEventListener(name) {
+      listeners.delete(name);
+    },
+    emit(name) {
+      listeners.get(name)?.();
+    },
+  };
+  const status = {
+    hidden: false,
+    replaceChildren() {},
+  };
+  const watch = new Function(
+    "globalScope",
+    "resourcePortalPreviewGeneration",
+    "reviewerPdfRenderCheckTimer",
+    "reviewerPdfRenderCheckCleanup",
+    "renderReviewerPdfDownloadFallback",
+    `${extractAppFunction("watchReviewerPdfPreviewRender")}; return watchReviewerPdfPreviewRender;`,
+  )(
+    {
+      setTimeout(callback, delay) {
+        timers.push({ callback, delay });
+        return timers.length;
+      },
+      clearTimeout() {},
+    },
+    7,
+    0,
+    null,
+    () => fallbacks.push("shown"),
+  );
+  watch(frame, status, { downloadFileName: "file.pdf" }, 7);
+  return { frame, timers, fallbacks };
+}
+const successfulPdfRender = createPdfRenderWatcher();
+assert.equal(successfulPdfRender.timers[0].delay, 8000);
+successfulPdfRender.frame.emit("load");
+assert.deepEqual(successfulPdfRender.fallbacks, []);
+const failedPdfRender = createPdfRenderWatcher();
+failedPdfRender.frame.emit("error");
+assert.deepEqual(failedPdfRender.fallbacks, ["shown"]);
+const missingPdfRender = createPdfRenderWatcher();
+missingPdfRender.timers[0].callback();
+assert.deepEqual(missingPdfRender.fallbacks, ["shown"]);
 class TestBlob {
   constructor(parts, options) {
     this.content = parts.join("");
@@ -1112,7 +1186,7 @@ const blobViewer = new Function(
   "resourcePortalPreviewObjectUrl",
   "resourcePortalPreviewUrlOpened",
   "resourcePortalPreviewBlobViewerUrl",
-  `${extractAppFunction("openMobileReviewerPdfBlobViewer")}; return openMobileReviewerPdfBlobViewer;`,
+  `${extractAppFunction("openBlobResourceViewer")}; ${extractAppFunction("openMobileReviewerPdfBlobViewer")}; return openMobileReviewerPdfBlobViewer;`,
 )(
   escapeTestHtml,
   {
@@ -1184,6 +1258,10 @@ assert.match(
 assert.match(
   blobViewerState.created[0].content,
   /<a href="blob:prepared-pdf" download="course\.pdf">Download<\/a>/,
+);
+assert.match(
+  blobViewerState.created[0].content,
+  /<a id="return-to-site" href="https:\/\/example\.test\/mrh\/\?return=&lt;safe&amp;x=&quot;y&quot;" target="_top">Return to Website<\/a>/,
 );
 assert.match(
   blobViewerState.created[0].content,

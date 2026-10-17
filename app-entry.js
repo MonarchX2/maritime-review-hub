@@ -1,8 +1,8 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-26.10.17-3-20261017";
-  const APP_DISPLAY_VERSION = "26.10.17-3";
+  const APP_VERSION = "mrh-26.10.17-4-20261017";
+  const APP_DISPLAY_VERSION = "26.10.17-4";
   const UPDATE_QUERY_PARAMETER = "__mrh_update";
   const FACEBOOK_CLICK_ID_PARAMETER = "fbclid";
   const LEGACY_PAGES_BASE_PATH = "/maritime-review-hub/";
