@@ -648,18 +648,18 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function renderReviewerPdfWatermark\(fullName, email\)[\s\S]*?line\.textContent = text;[\s\S]*?watermark\.hidden = false;/,
-  "online PDF preview should show one centered two-line identity watermark",
+  /function renderReviewerPdfWatermark\(fullName, email\)[\s\S]*?String\(email \|\| ""\)\.trim\(\)[\s\S]*?Array\.from\(\{ length: 20 \}[\s\S]*?line\.textContent = text;[\s\S]*?watermark\.hidden = false;/,
+  "online PDF preview should repeat the original-case two-line identity watermark 20 times",
 );
 assert.match(
   resourceStyles,
-  /\.resource-portal-preview-watermark\s*\{[^}]*place-items:\s*center/,
-  "the online PDF identity watermark should stay centered over the document",
+  /\.resource-portal-preview-watermark\s*\{[^}]*grid-template:\s*repeat\(10,\s*1fr\)\s*\/\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+  "the online PDF watermark should use an even, centered two-column by ten-row layout",
 );
 assert.match(
   resourceStyles,
-  /\.resource-portal-preview-watermark span\s*\{[^}]*font-size:\s*clamp\(0\.875rem,\s*1\.3vw,\s*1\.15rem\)/,
-  "the online PDF watermark should be larger and readable",
+  /\.resource-portal-preview-watermark span\s*\{[^}]*font-size:\s*clamp\(0\.5rem,\s*0\.9vw,\s*0\.8rem\)[^}]*text-align:\s*center;[^}]*text-transform:\s*none;/,
+  "the repeated preview watermark should fit each column and preserve email letter case",
 );
 assert.match(
   resourceStyles,
@@ -668,13 +668,28 @@ assert.match(
 );
 assert.match(
   fs.readFileSync("backend/ReviewerPdf.gs", "utf8"),
-  /opacity:\s*0\.18/,
-  "generated PDF watermarks should use the reduced 18 percent opacity",
+  /email = reviewerPdfSafeText_\(identity && identity\.email, 254\);[\s\S]*?\[0\.25, 0\.75\]\.forEach[\s\S]*?\[0\.08, 0\.173, 0\.267, 0\.36, 0\.453, 0\.547, 0\.64, 0\.733, 0\.827, 0\.92\]\.forEach[\s\S]*?opacity:\s*0\.18/,
+  "generated PDFs should preserve email case and apply 20 watermarks in two columns",
 );
 assert.match(
   resourceStyles,
-  /\.resource-portal-preview\.is-expanded\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*1rem;[\s\S]*?\.resource-portal-preview\.is-expanded \.resource-portal-preview-frame\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*width:\s*100%;[^}]*height:\s*100%/,
-  "expanded PDF preview should fill the viewport with an absolutely sized frame",
+  /\.resource-portal-preview\.is-expanded\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0;[^}]*height:\s*100vh;[^}]*height:\s*100dvh/,
+  "expanded PDF preview should fill the dynamic viewport",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-preview\.is-expanded \.resource-portal-preview-viewer\s*\{[^}]*grid-row:\s*3;/,
+  "expanded PDF preview should reserve the third grid row for the viewer even when its status message is hidden",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-preview\.is-expanded \.resource-portal-preview-frame\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*width:\s*100%;[^}]*height:\s*100%/,
+  "the expanded PDF frame should fill the visible viewer area",
+);
+assert.match(
+  appCore,
+  /preview\.hidden = false;\s*toggleResourceViewer\(\)[\s\S]*?frame\.hidden = false;[\s\S]*?frame\.src = resourcePortalPreviewObjectUrl;/,
+  "the online preview should open expanded and assign the PDF source after the viewer becomes visible",
 );
 assert.match(
   appCore,
@@ -688,8 +703,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /frame\.hidden = false;\s*frame\.src =\s*previewMimeType/,
-  "the PDF frame should be visible before its source is assigned",
+  /frame\.hidden = false;[\s\S]*?requestAnimationFrame\(resolve\)[\s\S]*?frame\.src = resourcePortalPreviewObjectUrl/,
+  "the PDF frame should be visible and laid out before assigning the mobile-compatible blob URL",
 );
 assert.match(
   resourceStyles,
@@ -2006,8 +2021,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-table th\s*\{[^}]*font-size:\s*var\(--resource-dashboard-font-small\)/,
-  "dashboard column headings should use the shared small-text dashboard font",
+  /\.resource-dashboard-table th\s*\{[^}]*font-size:\s*1rem;[\s\S]*?padding-block:\s*0\.875rem;/,
+  "table headings in every dashboard section should use larger text and fill their cell space",
 );
 assert.match(
   appCore,

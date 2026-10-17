@@ -1802,7 +1802,7 @@ button:active:not(:disabled) {
   z-index: 1;
   inset: 0;
   display: grid;
-  place-items: center;
+  grid-template: repeat(10, 1fr) / repeat(2, minmax(0, 1fr));
   overflow: hidden;
   pointer-events: none;
   user-select: none;
@@ -1811,13 +1811,14 @@ button:active:not(:disabled) {
 .resource-portal-preview-watermark span {
   display: grid;
   place-items: center;
-  width: min(90%, 36rem);
+  min-width: 0;
+  padding: 0.15rem;
   color: rgb(51 65 85 / 18%);
-  font-size: clamp(0.875rem, 1.3vw, 1.15rem);
+  font-size: clamp(0.5rem, 0.9vw, 0.8rem);
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1.15;
   text-align: center;
-  text-transform: uppercase;
+  text-transform: none;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   transform: rotate(-28deg);
@@ -2729,13 +2730,15 @@ button:active:not(:disabled) {
 .resource-portal-preview.is-expanded {
   position: fixed;
   z-index: 1000;
-  inset: 1rem;
+  inset: 0;
   box-sizing: border-box;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
   margin: 0;
   border-color: #cbd5e1;
-  border-radius: 0.75rem;
+  border-radius: 0;
   background: #fff;
   box-shadow: 0 24px 80px rgb(15 23 42 / 0.38);
 }
@@ -2749,6 +2752,7 @@ button:active:not(:disabled) {
 }
 
 .resource-portal-preview.is-expanded .resource-portal-preview-viewer {
+  grid-row: 3;
   position: relative;
   width: 100%;
   height: auto;
@@ -2992,10 +2996,11 @@ button:active:not(:disabled) {
   text-align: center;
   color: #475569;
   background: #f8fafc;
-  font-size: var(--resource-dashboard-font-small);
+  font-size: 1rem;
   font-weight: 700;
   text-transform: uppercase;
   white-space: nowrap;
+  padding-block: 0.875rem;
 }
 
 .resource-dashboard-table td {
@@ -3613,8 +3618,8 @@ button:active:not(:disabled) {
   }
 
   .resource-portal-preview.is-expanded {
-    inset: 0.35rem;
-    border-radius: 0.55rem;
+    inset: 0;
+    border-radius: 0;
   }
 
   .resource-portal-preview.is-expanded .resource-portal-preview-frame {

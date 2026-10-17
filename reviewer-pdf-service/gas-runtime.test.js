@@ -88,7 +88,7 @@ test("the bundled library runs without Node or browser-only globals", async () =
     Array.from(original, (byte) => (byte > 127 ? byte - 256 : byte)),
     {
       fullName: "Test Reviewer | Dept",
-      email: "test.reviewer@example.com",
+      email: "Test.Reviewer@Example.com",
     },
   );
 
@@ -100,7 +100,7 @@ test("the bundled library runs without Node or browser-only globals", async () =
     result.bytes,
     {
       fullName: expectedWatermarkName,
-      email: "test.reviewer@example.com",
+      email: "Test.Reviewer@Example.com",
     },
   );
   assert.deepEqual(
@@ -125,10 +125,10 @@ test("the bundled library runs without Node or browser-only globals", async () =
     runtime,
   );
   delete runtime.__reviewerPdfBytes;
-  assert.equal(firstPageText.split(expectedWatermarkName).length - 1, 10);
+  assert.equal(firstPageText.split(expectedWatermarkName).length - 1, 20);
   assert.equal(
-    firstPageText.split("test.reviewer@example.com").length - 1,
-    10,
+    firstPageText.split("Test.Reviewer@Example.com").length - 1,
+    20,
   );
   assert.doesNotMatch(firstPageText, /AUTHORIZED USER:|Student Portal|\|/);
   assert.equal(

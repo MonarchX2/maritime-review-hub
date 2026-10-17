@@ -311,97 +311,26 @@ async function main() {
     },
     waitUntil() {},
   });
-  const offlinePage = await emptyCacheOfflineResponse;
+  const offlineFallbackResponse = await emptyCacheOfflineResponse;
   assert.equal(
-    offlinePage.status,
-    503,
-    "the offline retry page should be returned when the app shell is unavailable",
+    offlineFallbackResponse.status,
+    302,
+    "an unavailable app shell on an alternate origin should redirect to the canonical site",
   );
-  const offlinePageHtml = await offlinePage.text();
-  assert.match(
-    offlinePageHtml,
-    /const appUrl = "https:\/\/monarchx2\.github\.io\/mrh\/";/,
-    "offline recovery must use the canonical GitHub Pages URL",
-  );
-  const retryScript = offlinePageHtml.match(
-    /<script>([\s\S]*?)<\/script>/,
-  )?.[1];
-  assert.ok(retryScript, "the offline retry page should have an active script");
-  assert.match(
-    retryScript,
-    /addEventListener\("click", retryApp\)[\s\S]*?addEventListener\("online", retryApp\)/,
-    "the Retry button and restored connection must navigate to the canonical app URL",
-  );
-  assert.match(
-    retryScript,
-    /performance\.getEntriesByType\("navigation"\)\[0\]\?\.type === "reload"[\s\S]*?retryApp\(\)/,
-    "refreshing the offline page while online must retry the canonical app URL",
+  assert.equal(
+    offlineFallbackResponse.headers.get("location"),
+    "https://monarchx2.github.io/mrh/",
+    "the app-shell fallback should redirect directly to the canonical website",
   );
   assert.doesNotMatch(
-    retryScript,
-    /location\.reload\(\)/,
-    "offline recovery must not reload a stale or nested URL",
+    workerSource,
+    /You're offline|offline copy isn't available|retry-button/,
+    "the worker must not display a custom offline screen when automatic redirection is the recovery path",
   );
-  const retryHandlers = new Map();
-  let retryDestination = "";
-  const offlineElements = {
-    "connection-status": { textContent: "" },
-    "retry-button": {
-      addEventListener(name, handler) {
-        retryHandlers.set(`button:${name}`, handler);
-      },
-    },
-  };
-  const offlinePageContext = {
-    document: {
-      getElementById(id) {
-        return offlineElements[id];
-      },
-    },
-    location: {
-      replace(url) {
-        retryDestination = url;
-      },
-    },
-    navigator: { onLine: false },
-    performance: { getEntriesByType: () => [{ type: "navigate" }] },
-    window: {
-      addEventListener(name, handler) {
-        retryHandlers.set(`window:${name}`, handler);
-      },
-    },
-  };
-  vm.runInNewContext(retryScript, offlinePageContext);
-  retryHandlers.get("button:click")();
-  assert.equal(
-    retryDestination,
-    "https://monarchx2.github.io/mrh/",
-    "Try again must redirect to the canonical website",
-  );
-  retryDestination = "";
-  retryHandlers.get("window:online")();
-  assert.equal(
-    retryDestination,
-    "https://monarchx2.github.io/mrh/",
-    "restoring connectivity must redirect to the canonical website",
-  );
-
-  let refreshDestination = "";
-  const refreshPageContext = {
-    ...offlinePageContext,
-    location: {
-      replace(url) {
-        refreshDestination = url;
-      },
-    },
-    navigator: { onLine: true },
-    performance: { getEntriesByType: () => [{ type: "reload" }] },
-  };
-  vm.runInNewContext(retryScript, refreshPageContext);
-  assert.equal(
-    refreshDestination,
-    "https://monarchx2.github.io/mrh/",
-    "refreshing the offline page while online must retry the canonical website",
+  assert.match(
+    workerSource,
+    /isCanonicalAppRequest\s*\?\s*Response\.error\(\)\s*:\s*Response\.redirect\(CANONICAL_APP_URL,\s*302\)/,
+    "the canonical offline route should fail as a browser network error rather than redirecting in a loop",
   );
 
   const staticRequest = new Request(

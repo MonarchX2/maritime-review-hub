@@ -1567,7 +1567,7 @@ function verifyReviewerIdentityToken_(idToken, expectedClientId) {
       )
         return {
           valid: true,
-          email: String(cachedClaims.email).toLowerCase(),
+          email: String(cachedClaims.email),
           picture: getVerifiedGooglePicture_(cachedClaims.picture),
           suggestedFirstName: cleanText(cachedClaims.suggestedFirstName, 100),
           suggestedLastName: cleanText(cachedClaims.suggestedLastName, 100),
@@ -1648,8 +1648,7 @@ function verifyReviewerIdentityToken_(idToken, expectedClientId) {
   var issuer = String(claims.iss || "");
   var expiresAt = Number(claims.exp);
   var email = String(claims.email || "")
-    .trim()
-    .toLowerCase();
+    .trim();
   var picture = getVerifiedGooglePicture_(claims.picture);
   if (
     String(claims.aud || "") !== expectedClientId ||
@@ -1867,7 +1866,7 @@ function verifyReviewerSession_(sessionId) {
   }
   return {
     valid: true,
-    email: String(session.email).toLowerCase(),
+    email: String(session.email),
     picture: getVerifiedGooglePicture_(session.picture),
     suggestedFirstName: cleanText(session.suggestedFirstName, 100),
     suggestedLastName: cleanText(session.suggestedLastName, 100),

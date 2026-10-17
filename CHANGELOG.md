@@ -1,5 +1,17 @@
 # Changelog
 
+## 26.10.29 - 2026-10-17
+
+### Fixed
+
+- Replace the custom offline screen with a direct redirect to the canonical
+  website.
+- Open resource previews fullscreen by default and keep the PDF viewer in its
+  reserved layout row, including when the loading message is hidden.
+- Use a two-column, 20-stamp watermark in previews and generated PDFs, preserving
+  the verified email's original letter case.
+- Enlarge table headings throughout the Student Portal.
+
 ## 26.10.28 - 2026-10-17
 
 ### Fixed

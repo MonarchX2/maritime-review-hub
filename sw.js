@@ -3,6 +3,7 @@ importScripts("./debug-utils.js");
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
 const APP_VERSION = "mrh-26.10.28-a8359061edd5";
+const CANONICAL_APP_URL = "https://monarchx2.github.io/mrh/";
 
 function getRuntimeCacheVersion() {
   return APP_VERSION;
@@ -545,78 +546,15 @@ async function networkFirstNavigation(event) {
       });
     }
 
-    return new Response(
-      `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#111217">
-    <title>Offline - Maritime Review Hub</title>
-    <style>
-      body {
-        box-sizing: border-box;
-        display: grid;
-        min-height: 100vh;
-        margin: 0;
-        padding: 24px;
-        place-items: center;
-        background: #f8fafc;
-        color: #111827;
-        font: 16px/1.5 system-ui, sans-serif;
-      }
-      main { max-width: 440px; }
-      h1 { margin: 0 0 12px; font-size: 1.75rem; }
-      p { margin: 0 0 16px; }
-      button {
-        border: 0;
-        border-radius: 8px;
-        padding: 12px 18px;
-        background: #1d4ed8;
-        color: white;
-        font: inherit;
-        font-weight: 600;
-        cursor: pointer;
-      }
-      button:focus-visible { outline: 3px solid #93c5fd; outline-offset: 3px; }
-    </style>
-  </head>
-  <body>
-    <main>
-      <h1>You're offline</h1>
-      <p>The app's offline copy isn't available. Clearing app data removes saved app files, so connect to the internet to load the app again.</p>
-      <p id="connection-status" role="status" aria-live="polite"></p>
-      <button id="retry-button" type="button">Try again</button>
-    </main>
-    <script>
-      const appUrl = "https://monarchx2.github.io/mrh/";
-      const status = document.getElementById("connection-status");
-      const retryApp = () => location.replace(appUrl);
-      status.textContent = navigator.onLine
-        ? "The connection may be temporarily unavailable. Try loading again."
-        : "Waiting for an internet connection...";
-      document
-        .getElementById("retry-button")
-        .addEventListener("click", retryApp);
-      window.addEventListener("online", retryApp);
-      if (
-        navigator.onLine &&
-        performance.getEntriesByType("navigation")[0]?.type === "reload"
-      ) {
-        retryApp();
-      }
-    </script>
-  </body>
-</html>`,
-      {
-        status: 503,
-        statusText: "Service Unavailable",
-        headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "no-store",
-        },
-      },
-    );
+    const requestUrl = new URL(event.request.url);
+    const canonicalUrl = new URL(CANONICAL_APP_URL);
+    const isCanonicalAppRequest =
+      requestUrl.origin === canonicalUrl.origin &&
+      (requestUrl.pathname === canonicalUrl.pathname.replace(/\/$/, "") ||
+        requestUrl.pathname.startsWith(canonicalUrl.pathname));
+    return isCanonicalAppRequest
+      ? Response.error()
+      : Response.redirect(CANONICAL_APP_URL, 302);
   }
 }
 

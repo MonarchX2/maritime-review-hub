@@ -234,13 +234,13 @@ assert.match(
 );
 assert.match(
   pdfHelper,
-  /\[0\.25, 0\.75\]\.forEach\(function \(columnFraction\)[\s\S]*?\[0\.12, 0\.31, 0\.5, 0\.69, 0\.88\]\.forEach\(function \(rowFraction\)[\s\S]*?opacity: 0\.18/,
-  "downloaded PDFs should carry ten compact, reduced-opacity two-line identity watermarks per page",
+  /\[0\.25, 0\.75\]\.forEach\(function \(columnFraction\)[\s\S]*?\[0\.08, 0\.173, 0\.267, 0\.36, 0\.453, 0\.547, 0\.64, 0\.733, 0\.827, 0\.92\]\.forEach\(function \(rowFraction\)[\s\S]*?opacity: 0\.18/,
+  "downloaded PDFs should carry twenty compact, reduced-opacity two-line identity watermarks per page",
 );
 assert.match(
   pdfHelper,
-  /fullNameCount < 10[\s\S]*?emailCount < 10/,
-  "downloaded PDF watermark verification should require all ten stamps on each page",
+  /fullNameCount < 20[\s\S]*?emailCount < 20/,
+  "downloaded PDF watermark verification should require all twenty stamps on each page",
 );
 assert.doesNotMatch(
   pdfHelper,

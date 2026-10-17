@@ -68,8 +68,9 @@ replaces the stale trigger instead of leaving the job pending indefinitely.
 
 Each physical page watermark contains only the verified account's full name
 and email on two separate lines, repeated in a compact two-column by
-five-row pattern. Every stamp is checked after saving. A derivative is not
-reused across separate download jobs. The authoritative index is cached only
+ten-row pattern. The verified email's capitalization is preserved. Every
+stamp is checked after saving. A derivative is not reused across separate
+download jobs. The authoritative index is cached only
 by its Drive file ID and last-modified timestamp, and checked again for each
 protected request.
 Run `setupReviewerPdfDelivery()` once from the Apps Script editor as the

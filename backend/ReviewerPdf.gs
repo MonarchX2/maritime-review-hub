@@ -10,7 +10,7 @@ var setTimeout =
       };
 
 function reviewerPdfWatermarkIdentity_(account, verifiedEmail) {
-  var email = String(verifiedEmail || "").trim().toLowerCase();
+  var email = String(verifiedEmail || "").trim();
   var fullName = [
     account && account.firstName,
     account && account.middleInitial,
@@ -65,7 +65,7 @@ async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
   )
     throw reviewerPdfError_("The source is not a supported PDF.", "INVALID_PDF");
 
-  var email = reviewerPdfSafeText_(identity && identity.email, 254).toLowerCase();
+  var email = reviewerPdfSafeText_(identity && identity.email, 254);
   var fullName = reviewerPdfSafeText_(identity && identity.fullName, 160)
     .replace(/\|/g, " ")
     .replace(/\s+/g, " ")
@@ -123,7 +123,7 @@ async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
       if (blockHeight > size.height * 0.25)
         throw reviewerPdfError_("Account details do not fit the watermark area.", "WATERMARK_TEXT_TOO_LONG");
       [0.25, 0.75].forEach(function (columnFraction) {
-        [0.12, 0.31, 0.5, 0.69, 0.88].forEach(function (rowFraction) {
+        [0.08, 0.173, 0.267, 0.36, 0.453, 0.547, 0.64, 0.733, 0.827, 0.92].forEach(function (rowFraction) {
           lines.forEach(function (line, index) {
             var measuredWidth = textWidth(line, fontSize);
             var lineOffset = ((lines.length - 1) / 2 - index) * fontSize * 1.25;
@@ -185,7 +185,7 @@ function reviewerPdfStreamText_(pdf, streamReference) {
 
 async function verifyReviewerPdfWatermarks_(bytes, identity) {
   var fullName = reviewerPdfSafeText_(identity && identity.fullName, 160);
-  var email = reviewerPdfSafeText_(identity && identity.email, 254).toLowerCase();
+  var email = reviewerPdfSafeText_(identity && identity.email, 254);
   if (!fullName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     throw reviewerPdfError_("Verified account details are required.", "BAD_REQUEST");
   var pdf = await PDFLib.PDFDocument.load(
@@ -206,8 +206,8 @@ async function verifyReviewerPdfWatermarks_(bytes, identity) {
       emailCount += streamText.split(email).length - 1;
     });
     if (
-      fullNameCount < 10 ||
-      emailCount < 10
+      fullNameCount < 20 ||
+      emailCount < 20
     )
       throw reviewerPdfError_("A page is missing the verified identity watermark.", "WATERMARK_VERIFICATION_FAILED");
     pagesWithWatermarks += 1;

@@ -10197,7 +10197,7 @@
       .replace(/[\u0000-\u001f\u007f]/g, " ")
       .replace(/\s+/g, " ")
       .trim();
-    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const normalizedEmail = String(email || "").trim();
     if (
       !watermark ||
       !normalizedName ||
@@ -10207,7 +10207,13 @@
     const text = `${normalizedName}\n${normalizedEmail}`;
     const line = document.createElement("span");
     line.textContent = text;
-    watermark.replaceChildren(line);
+    watermark.replaceChildren(
+      ...Array.from({ length: 20 }, () => {
+        const line = document.createElement("span");
+        line.textContent = text;
+        return line;
+      }),
+    );
     watermark.hidden = false;
   }
 
@@ -10525,7 +10531,7 @@
     }
     frame.title = `Preview of ${previewTitle}`;
     preview.hidden = false;
-    preview.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    toggleResourceViewer();
 
     if (status) {
       const loadingIcon = document.createElement("i");
@@ -10645,10 +10651,13 @@
         watermark.hidden = true;
       }
       frame.hidden = false;
-      frame.src =
-        previewMimeType === "application/pdf"
-          ? `${resourcePortalPreviewObjectUrl}#toolbar=0&navpanes=0&scrollbar=0`
-          : resourcePortalPreviewObjectUrl;
+      await new Promise((resolve) => {
+        if (typeof globalScope.requestAnimationFrame === "function")
+          globalScope.requestAnimationFrame(resolve);
+        else globalScope.setTimeout(resolve, 0);
+      });
+      if (previewGeneration !== resourcePortalPreviewGeneration) return false;
+      frame.src = resourcePortalPreviewObjectUrl;
       if (status) {
         status.textContent = "";
         status.hidden = true;

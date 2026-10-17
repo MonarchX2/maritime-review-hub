@@ -776,7 +776,7 @@ assert.deepEqual(
   "failed account migration preflight must not partially rewrite access logs",
 );
 
-tokenClaims = validClaims();
+tokenClaims = validClaims("Reviewer@Example.com");
 const signInLogCountBefore = appendedRows["SIGN-IN"].length;
 const approved = post(
   authRequest("verify_reviewer_access", "approved-token", eventId("1")),
@@ -794,7 +794,7 @@ assert.deepEqual(
   {
     status: "success",
     accountStatus: "TRUE",
-    email: "reviewer@example.com",
+    email: "Reviewer@Example.com",
     firstName: "Rita",
     middleInitial: "A.",
     lastName: "Reviewer",
@@ -840,8 +840,8 @@ assert.equal(
     type: "get_reviewer_account_status",
     sessionId: approved.sessionId,
   }).email,
-  "reviewer@example.com",
-  "account status polling should validate an application session",
+  "Reviewer@Example.com",
+  "account status polling should preserve the verified email's original case",
 );
 assert.equal(appendedRows["SIGN-IN"][signInLogCountBefore][6], "SIGN_IN:TRUE");
 assert.equal(
@@ -1305,7 +1305,7 @@ assert.deepEqual(
 
 tokenClaims = validClaims();
 const existingReviewerRow = accountRows.findIndex(
-  (row) => row[0] === "reviewer@example.com",
+  (row) => String(row[0]).toLowerCase() === "reviewer@example.com",
 );
 clearTestCache();
 const unchangedApprovedProfile = post({
@@ -1546,7 +1546,9 @@ const shiftedAccountEdit = post({
 assert.equal(shiftedAccountEdit.accountStatus, "FALSE");
 assert.deepEqual(
   Array.from(
-    accountRows.find((row) => row[0] === "reviewer@example.com").slice(0, 5),
+    accountRows
+      .find((row) => String(row[0]).toLowerCase() === "reviewer@example.com")
+      .slice(0, 5),
   ),
   ["reviewer@example.com", "Reviewer", "Correct", "C.", "FALSE"],
   "profile edits must use a fresh account row after sheet rows move",
@@ -1635,7 +1637,7 @@ assert.equal(
 );
 
 const liveAccount = accountRows.find(
-  (row) => row[0] === "reviewer@example.com",
+  (row) => String(row[0]).toLowerCase() === "reviewer@example.com",
 );
 tokenClaims = validClaims("reviewer@example.com");
 liveAccount[4] = "FALSE";
