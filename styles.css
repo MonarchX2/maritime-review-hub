@@ -2699,6 +2699,21 @@ button:active:not(:disabled) {
   white-space: normal;
 }
 
+.resource-reviewer-enrollment .resource-reviewer-input-clear {
+  align-self: auto;
+  max-width: none;
+  padding: 0;
+  color: #64748b;
+  background: transparent;
+  font: inherit;
+}
+
+.resource-reviewer-enrollment .resource-reviewer-input-clear:hover,
+.resource-reviewer-enrollment .resource-reviewer-input-clear:focus-visible {
+  color: #1e3a8a;
+  background: transparent;
+}
+
 .resource-reviewer-form-actions {
   display: flex;
   flex-wrap: wrap;

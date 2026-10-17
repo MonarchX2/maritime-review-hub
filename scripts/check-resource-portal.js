@@ -321,6 +321,11 @@ assert.ok(
   "name-input clear buttons should be visible before typing",
 );
 assert.match(
+  resourceStyles,
+  /\.resource-reviewer-enrollment \.resource-reviewer-input-clear\s*\{[^}]*padding:\s*0;[^}]*color:\s*#64748b;[^}]*background:\s*transparent;/,
+  "the inline clear controls should override the enrollment button styling and remain transparent",
+);
+assert.match(
   appCore,
   /function capitalizeReviewerName\(value\) \{\s*return String\(value \|\| ""\)\.toLocaleUpperCase\(\);[\s\S]*?function normalizeReviewerNameInput\(input\)[\s\S]*?capitalizeReviewerName\(input\.value\)/,
   "first and last names should become fully uppercase as the user types",
