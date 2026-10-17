@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.17-12 - 2026-10-17
+
+### Improved
+
+- Update the portal notice to say file updates may take up to a minute.
+
 ## 26.10.17-11 - 2026-10-17
 
 ### Improved

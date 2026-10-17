@@ -543,7 +543,7 @@ assert.match(
 );
 assert.match(
   index,
-  /resource-dashboard-table-scroll[\s\S]*?class="resource-dashboard-update-note">\s*File updates may take up to 5 minutes\.\s*<\/p>/,
+  /resource-dashboard-table-scroll[\s\S]*?class="resource-dashboard-update-note">\s*File updates may take up to a minute\.\s*<\/p>/,
   "the dashboard should show a concise note about file update delays",
 );
 assert.match(
