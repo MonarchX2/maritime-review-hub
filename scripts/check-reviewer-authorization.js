@@ -860,6 +860,76 @@ assert.equal(
   "TRUE",
   "Reviewer PDF authorization must read the exact Active value from ACCOUNTS",
 );
+const completeReviewerProfile = {
+  lastName: accountRows[1][1],
+  firstName: accountRows[1][2],
+  middleInitial: accountRows[1][3],
+  rawAccountStatus: accountRows[1][4],
+};
+accountRows[1][4] = "TRUE";
+for (const [profileField, fieldName] of [
+  [1, "last name"],
+  [2, "first name"],
+  [3, "middle initial"],
+]) {
+  const populatedValue = accountRows[1][profileField];
+  accountRows[1][profileField] = "";
+  clearTestCache();
+  const incompleteProfileStatus = post({
+    type: "get_reviewer_account_status",
+    sessionId: approved.sessionId,
+  });
+  assert.deepEqual(
+    [incompleteProfileStatus.accountStatus, incompleteProfileStatus.active],
+    ["NOT_FOUND", false],
+    `an approved account with an empty ${fieldName} must be reported as unverified`,
+  );
+  accountRows[1][profileField] = populatedValue;
+}
+accountRows[1][1] = "";
+accountRows[1][2] = "";
+accountRows[1][3] = "";
+clearTestCache();
+assert.equal(
+  JSON.parse(
+    context
+      .authorizeReviewerRequest_({ sessionId: approved.sessionId })
+      .error.getContent(),
+  ).code,
+  "ACCOUNT_PENDING",
+  "an incomplete profile must not receive Reviewer access even when its Active cell is TRUE",
+);
+assert.equal(
+  JSON.parse(
+    context
+      .authorizeReviewerPdfRequest_({ sessionId: approved.sessionId })
+      .error.getContent(),
+  ).code,
+  "ACCOUNT_PENDING",
+  "fresh protected-PDF authorization must reject incomplete profiles even when their Active cell is TRUE",
+);
+const completedIncompleteProfile = post({
+  type: "request_reviewer_enrollment",
+  sessionId: approved.sessionId,
+  eventId: eventId("d"),
+  lastName: completeReviewerProfile.lastName,
+  firstName: completeReviewerProfile.firstName,
+  middleInitial: completeReviewerProfile.middleInitial,
+});
+assert.deepEqual(
+  [
+    completedIncompleteProfile.status,
+    completedIncompleteProfile.accountStatus,
+    completedIncompleteProfile.active,
+  ],
+  ["success", "FALSE", false],
+  "submitting the missing profile fields should complete verification but still require administrator approval",
+);
+accountRows[1][1] = completeReviewerProfile.lastName;
+accountRows[1][2] = completeReviewerProfile.firstName;
+accountRows[1][3] = completeReviewerProfile.middleInitial;
+accountRows[1][4] = completeReviewerProfile.rawAccountStatus;
+clearTestCache();
 const originalApprovedStatus = accountRows[1][4];
 accountRows[1][4] = "YES";
 assert.equal(

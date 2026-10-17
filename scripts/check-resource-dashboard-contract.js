@@ -53,7 +53,7 @@ assert.doesNotMatch(
 );
 assert.match(
   appCore,
-  /function applyReviewerAccountStatus\(\s*response,\s*sessionId,\s*preserveProfileEditor = false,\s*\)[\s\S]*?accountStatus === "TRUE"[\s\S]*?reviewerSessionId = sessionId[\s\S]*?accountStatus === "NOT_FOUND"\s*\? !reviewerVerificationFormOpen\s*:\s*accountStatus !== "DENIED"/,
+  /function applyReviewerAccountStatus\(\s*response,\s*sessionId,\s*preserveProfileEditor = false,\s*\)[\s\S]*?accountStatus === "TRUE"[\s\S]*?reviewerSessionId = sessionId[\s\S]*?form\.hidden = !\(\s*accountStatus === "NOT_FOUND" \|\| accountStatus === "DENIED"\s*\)[\s\S]*?accountStatus === "NOT_FOUND"\s*\? "Verify"/,
   "only TRUE accounts should receive reviewer access, while denied and new users can submit profile details through Profile",
 );
 assert.match(
@@ -1078,25 +1078,20 @@ assert.match(
   /function openReviewerProfileEditor\(\)[\s\S]*?function closeReviewerProfileEditor\(\)[\s\S]*?dataset\.savedValue[\s\S]*?response\.profileUpdated/,
   "users should be able to edit and cancel profile-name changes",
 );
-assert.match(
-  indexHtml,
-  /id="resource-reviewer-verify-account"[\s\S]*?onclick="startReviewerVerification\(\)"[\s\S]*?Verify account[\s\S]*?id="resource-reviewer-enrollment-form"/,
-  "unverified accounts should have a Verify account action in Profile settings before the enrollment form",
+assert.equal(
+  indexHtml.includes('id="resource-reviewer-verify-account"'),
+  false,
+  "Profile settings should not show a separate Verify account button",
 );
 assert.match(
   appCore,
-  /function startReviewerVerification\(\)[\s\S]*?reviewerAccountStatus !== "NOT_FOUND"[\s\S]*?form\.hidden = false[\s\S]*?resource-reviewer-last-name[\s\S]*?focus\(\)/,
-  "the verification action should open and focus the profile form only for an unverified account",
+  /form\.hidden = !\(\s*accountStatus === "NOT_FOUND" \|\| accountStatus === "DENIED"\s*\)/,
+  "unverified profiles should see the enrollment form",
 );
 assert.match(
   appCore,
-  /const compatibilityExports = \{[\s\S]*?startReviewerVerification,[\s\S]*?\};[\s\S]*?Object\.assign\(globalScope, compatibilityExports\)/,
-  "the Profile verification action should be available to its button handler",
-);
-assert.match(
-  appCore,
-  /if \(verifyAccountButton\)\s*verifyAccountButton\.hidden = accountStatus !== "NOT_FOUND"[\s\S]*?accountStatus === "NOT_FOUND"\s*\? !reviewerVerificationFormOpen/,
-  "Profile should show the verification action for unverified accounts and reveal the form only after it is activated",
+  /formButton\.textContent =[\s\S]*?accountStatus === "NOT_FOUND"\s*\? "Verify"/,
+  "unverified accounts should see the enrollment form with Verify as its submit action",
 );
 assert.match(
   appCore,

@@ -1704,7 +1704,10 @@ function getVerifiedGooglePicture_(value) {
 
 function getReviewerAccountStatusResponse_(identity) {
   var account = findMRHAccount_(identity.email, false);
-  var accountStatus = account ? account.accountStatus : "NOT_FOUND";
+  var accountStatus =
+    account && hasCompleteReviewerProfile_(account)
+      ? account.accountStatus
+      : "NOT_FOUND";
   return {
     status: "success",
     email: identity.email,
@@ -1717,6 +1720,15 @@ function getReviewerAccountStatusResponse_(identity) {
     firstName: account ? account.firstName : "",
     middleInitial: account ? account.middleInitial : "",
   };
+}
+
+function hasCompleteReviewerProfile_(account) {
+  return Boolean(
+    account &&
+      String(account.lastName || "").trim() &&
+      String(account.firstName || "").trim() &&
+      /^[A-Za-z]\.$/.test(String(account.middleInitial || "").trim()),
+  );
 }
 
 function verifyReviewerRequestIdentity_(data) {
@@ -1941,7 +1953,7 @@ function authorizeReviewerRequest_(data, bypassAccountCache) {
     verified.identity.email,
     bypassAccountCache === true,
   );
-  if (!account)
+  if (!account || !hasCompleteReviewerProfile_(account))
     return {
       error: errorResponse(
         "Submit your profile details for administrator review before accessing these materials.",
@@ -4223,6 +4235,11 @@ function compareSubjectHierarchy(left, right) {
 function invalidateMetadataCache() {
   deckMetadataCache = null;
   deckMetadataCacheTime = 0;
+  try {
+    CacheService.getScriptCache().remove("mrh_deck_metadata_v1");
+  } catch (cacheError) {
+    Logger.log("[invalidateMetadataCache] Persistent metadata cache invalidation failed.");
+  }
 }
 
 function getScriptProps() {
@@ -4589,6 +4606,7 @@ function writeUUIDRecords(records) {
   sheet.getRange("A:A").setNumberFormat("@");
   sheet.getRange("C:C").setNumberFormat("@");
   sheet.getRange("F:G").setNumberFormat("@");
+  invalidateMetadataCache();
   return clean;
 }
 
@@ -4634,11 +4652,58 @@ function loadDeckMetadataMap(forceRefresh) {
   )
     return deckMetadataCache;
 
+  var metadataCacheKey = "mrh_deck_metadata_v1";
+  if (!forceRefresh) {
+    try {
+      var cachedRecords = CacheService.getScriptCache().get(metadataCacheKey);
+      if (cachedRecords) {
+        var parsedRecords = JSON.parse(cachedRecords);
+        if (
+          Array.isArray(parsedRecords) &&
+          parsedRecords.every(function (record) {
+            return (
+              record &&
+              typeof record.subject === "string" &&
+              record.subject.length > 0 &&
+              typeof record.uuid === "string"
+            );
+          })
+        ) {
+          var cachedMap = Object.create(null);
+          for (
+            var cachedIndex = 0;
+            cachedIndex < parsedRecords.length;
+            cachedIndex++
+          )
+            cachedMap[parsedRecords[cachedIndex].subject] =
+              parsedRecords[cachedIndex];
+          deckMetadataCache = cachedMap;
+          deckMetadataCacheTime = now;
+          return deckMetadataCache;
+        }
+        CacheService.getScriptCache().remove(metadataCacheKey);
+      }
+    } catch (cacheError) {
+      Logger.log("[loadDeckMetadataMap] Persistent metadata cache read failed.");
+    }
+  }
+
   var records = readUUIDRecords();
   var map = Object.create(null);
   for (var i = 0; i < records.length; i++) map[records[i].subject] = records[i];
   deckMetadataCache = map;
   deckMetadataCacheTime = now;
+  try {
+    var serializedRecords = JSON.stringify(records);
+    if (serializedRecords.length <= 30000)
+      CacheService.getScriptCache().put(
+        metadataCacheKey,
+        serializedRecords,
+        Math.max(1, Math.floor(METADATA_CACHE_TTL_MS / 1000)),
+      );
+  } catch (cacheError) {
+    Logger.log("[loadDeckMetadataMap] Persistent metadata cache write failed.");
+  }
   return map;
 }
 
@@ -4698,7 +4763,6 @@ function ensureDeckUUID(subject, sourceType, sourceId) {
           existingRecords[i].sourceType = sourceType;
           existingRecords[i].sourceId = sourceId;
           writeUUIDRecords(existingRecords);
-          invalidateMetadataCache();
           break;
         }
       }
@@ -4715,7 +4779,6 @@ function ensureDeckUUID(subject, sourceType, sourceId) {
       ) {
         recordsBySource[s].subject = normalized;
         writeUUIDRecords(recordsBySource);
-        invalidateMetadataCache();
         return recordsBySource[s].uuid;
       }
     }
@@ -4902,7 +4965,7 @@ function reconcileMetadataToLiveSources(liveSources) {
     .join("\u001e");
 
   if (before !== after) writeUUIDRecords(result);
-  invalidateMetadataCache();
+  else invalidateMetadataCache();
   return loadDeckMetadataMap(true);
 }
 
@@ -5953,6 +6016,7 @@ function onEdit(e) {
 function uuidSheetEdited(e) {
   if (!e || !e.source || String(e.source.getId()) !== String(UUID_SHEET_ID))
     return;
+  invalidateMetadataCache();
   var props = getScriptProps();
 
   var lock = LockService.getScriptLock();

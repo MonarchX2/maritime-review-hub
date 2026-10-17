@@ -22,7 +22,9 @@ Missing or invalid configuration fails closed.
 The profile form requires last name, first name, and a middle initial formatted
 as any single letter followed by a period; for example, `A.`, `M.`, or `Z.`.
 The browser validates this format before sending the request, and the backend
-validates it again.
+validates it again. An account with a missing last name, first name, or valid
+middle initial is treated as unverified regardless of its `Active` cell value;
+Reviewer and protected PDF authorization both reject incomplete profiles.
 The browser may warn when the submitted name does not appear to match the
 verified Google email, but this warning does not block submission. All
 submissions start at `Active=FALSE`; an administrator decides whether to grant

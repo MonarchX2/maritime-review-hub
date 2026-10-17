@@ -461,8 +461,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /accountStatus === "NOT_FOUND"\s*\? !reviewerVerificationFormOpen\s*:\s*accountStatus !== "DENIED"[\s\S]*?accountStatus === "DENIED"\s*\?\s*"Submit"/,
-  "unverified accounts should start with the verification form closed, while denied accounts can resubmit without an Edit button",
+  /form\.hidden = !\(\s*accountStatus === "NOT_FOUND" \|\| accountStatus === "DENIED"\s*\)[\s\S]*?accountStatus === "NOT_FOUND"\s*\? "Verify"[\s\S]*?accountStatus === "DENIED"\s*\?\s*"Submit"/,
+  "unverified accounts should see a Verify submit action and denied accounts can resubmit without an Edit button",
 );
 assert.doesNotMatch(
   index + appCore,

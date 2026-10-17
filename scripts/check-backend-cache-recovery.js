@@ -541,6 +541,88 @@ assert.equal(
   "format",
   "UUID password cells must be text-formatted before password values are written",
 );
+let uuidSheetReads = 0;
+let uuidMetadataRecords = [
+  {
+    uuid: "deck-1",
+    subject: "TEST",
+    hidden: false,
+    password: "",
+    sourceType: "deck",
+    sourceId: "file-1",
+  },
+];
+context.readUUIDRecords = () => {
+  uuidSheetReads += 1;
+  return uuidMetadataRecords;
+};
+context.deckMetadataCache = null;
+context.deckMetadataCacheTime = 0;
+assert.equal(
+  context.loadDeckMetadataMap().TEST.uuid,
+  "deck-1",
+  "metadata cache misses must load records from the UUID sheet",
+);
+context.deckMetadataCache = null;
+context.deckMetadataCacheTime = 0;
+assert.equal(
+  context.loadDeckMetadataMap().TEST.uuid,
+  "deck-1",
+  "separate requests must reuse cached UUID metadata",
+);
+assert.equal(
+  uuidSheetReads,
+  1,
+  "a Script Cache hit must avoid rereading the UUID spreadsheet",
+);
+uuidMetadataRecords = [
+  {
+    uuid: "deck-2",
+    subject: "UPDATED",
+    hidden: false,
+    password: "",
+    sourceType: "deck",
+    sourceId: "file-2",
+  },
+];
+context.invalidateMetadataCache();
+assert.equal(
+  context.loadDeckMetadataMap().UPDATED.uuid,
+  "deck-2",
+  "metadata invalidation must refresh the persistent cache from the sheet",
+);
+assert.equal(
+  uuidSheetReads,
+  2,
+  "invalidated metadata must trigger exactly one fresh sheet read",
+);
+uuidMetadataRecords = [
+  {
+    uuid: "deck-3",
+    subject: "FORCED",
+    hidden: false,
+    password: "",
+    sourceType: "deck",
+    sourceId: "file-3",
+  },
+];
+assert.equal(
+  context.loadDeckMetadataMap(true).FORCED.uuid,
+  "deck-3",
+  "forced metadata refreshes must bypass the persistent cache",
+);
+context.deckMetadataCache = null;
+context.deckMetadataCacheTime = 0;
+assert.equal(
+  context.loadDeckMetadataMap().FORCED.uuid,
+  "deck-3",
+  "a forced refresh must replace the persistent cache",
+);
+assert.equal(
+  uuidSheetReads,
+  3,
+  "a forced refresh must perform one sheet read and repopulate the cache",
+);
 context.loadDeckMetadataMap = () => Object.create(null);
 
 assert.equal(

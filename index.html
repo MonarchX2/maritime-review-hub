@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src blob: https://accounts.google.com; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com; img-src 'self' https: data: blob:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://cdn.jsdelivr.net https://accounts.google.com; worker-src 'self'"
     />
-    <link rel="manifest" href="manifest.json?v=mrh-26.10.17-8-6945002d229e" />
+    <link rel="manifest" href="manifest.json?v=mrh-26.10.17-9-729afe34c09a" />
     <meta http-equiv="x-dns-prefetch-control" content="on" />
     <title>Maritime Review Hub</title>
 
@@ -253,28 +253,28 @@
 
     <link
       rel="icon"
-      href="icon.svg?v=mrh-26.10.17-8-6945002d229e"
+      href="icon.svg?v=mrh-26.10.17-9-729afe34c09a"
       type="image/svg+xml"
     />
     <link
       rel="apple-touch-icon"
-      href="icon.svg?v=mrh-26.10.17-8-6945002d229e"
+      href="icon.svg?v=mrh-26.10.17-9-729afe34c09a"
     />
     <link
       rel="preload"
-      href="tailwind.generated.css?v=mrh-26.10.17-8-6945002d229e"
+      href="tailwind.generated.css?v=mrh-26.10.17-9-729afe34c09a"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="preload"
-      href="styles.css?v=mrh-26.10.17-8-6945002d229e"
+      href="styles.css?v=mrh-26.10.17-9-729afe34c09a"
       as="style"
       fetchpriority="high"
     />
     <link
       rel="stylesheet"
-      href="tailwind.generated.css?v=mrh-26.10.17-8-6945002d229e"
+      href="tailwind.generated.css?v=mrh-26.10.17-9-729afe34c09a"
       media="print"
       onload="
         this.media = 'all';
@@ -283,7 +283,7 @@
     />
     <link
       rel="stylesheet"
-      href="styles.css?v=mrh-26.10.17-8-6945002d229e"
+      href="styles.css?v=mrh-26.10.17-9-729afe34c09a"
       media="print"
       onload="
         this.media = 'all';
@@ -406,24 +406,24 @@
                     hidden
                   ></i
                 ></span>
-                <span class="student-portal-welcome-verification-actions">
-                  <button
-                    type="button"
-                    id="student-portal-welcome-view-profile"
-                    class="student-portal-welcome-view-profile"
-                    onclick="navigate('resources').then((navigated) => { if (navigated) openResourceDashboardTab('PROFILE'); })"
-                    hidden
-                  >
-                    View Profile
-                  </button>
-                  <span
-                    id="student-portal-welcome-verification"
-                    class="student-portal-welcome-verification"
-                    hidden
-                    >Unverified</span
-                  >
-                </span>
               </p>
+              <div class="student-portal-welcome-verification-actions">
+                <span
+                  id="student-portal-welcome-verification"
+                  class="student-portal-welcome-verification"
+                  hidden
+                  >Unverified</span
+                >
+                <button
+                  type="button"
+                  id="student-portal-welcome-view-profile"
+                  class="student-portal-welcome-view-profile"
+                  onclick="navigate('resources').then((navigated) => { if (navigated) openResourceDashboardTab('PROFILE'); })"
+                  hidden
+                >
+                  View Profile
+                </button>
+              </div>
             </div>
           </div>
           <button
@@ -974,15 +974,6 @@
                     Use Google to sign in and request access.
                   </p>
                   <div id="resource-reviewer-signin-button"></div>
-                  <button
-                    type="button"
-                    id="resource-reviewer-verify-account"
-                    class="resource-reviewer-verify-account"
-                    onclick="startReviewerVerification()"
-                    hidden
-                  >
-                    Verify account
-                  </button>
                   <button
                     type="button"
                     id="resource-reviewer-retry-verification"
@@ -2350,6 +2341,16 @@
             <div id="about-changelog-entries" class="mt-3">
               <!-- ABOUT CHANGELOG START -->
                 <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Version 26.10.17-9
+                </h5>
+                <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+                  Fixed
+                </h6>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Treat incomplete Reviewer profiles as unverified for account status and protected-resource authorization, and present profile completion as Verify while keeping administrator approval required.</li>
+                  <li>Persist deck metadata cache entries across Apps Script requests and invalidate them after UUID-sheet edits and backend metadata mutations.</li>
+                </ul>
+                <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 26.10.17-8
                 </h5>
                 <h6 class="mt-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
@@ -2371,6 +2372,7 @@
                   <li>Center the Transfer Progress heading and description when its settings action wraps on small screens.</li>
                   <li>Keep Google sign-in layout within its button and allow verified accounts to submit profile details even when names do not match their email; approval remains an administrator decision.</li>
                 </ul>
+                <div id="about-changelog-older" class="hidden">
                 <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 26.10.17-6
                 </h5>
@@ -2385,7 +2387,6 @@
                   <li>Show unverified signed-in users as Welcome, Guest, and display Reviewer approval status beside their email in the dashboard welcome banner.</li>
                   <li>Tighten spacing between the greeting and email in the stacked small-screen welcome banner.</li>
                 </ul>
-                <div id="about-changelog-older" class="hidden">
                 <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Version 26.10.17-5
                 </h5>
@@ -3890,7 +3891,7 @@
       <!-- ============================================================ -->
     </main>
 
-    <p id="site-version" class="site-version">Version 26.10.17-8</p>
+    <p id="site-version" class="site-version">Version 26.10.17-9</p>
 
     <div
       id="qr-transfer-modal"

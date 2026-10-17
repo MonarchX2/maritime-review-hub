@@ -364,12 +364,12 @@ assert.match(
 assert.match(
   indexSource,
   /id="student-portal-welcome-access-icon"[\s\S]*?id="student-portal-welcome-verification"[\s\S]*?>\s*Unverified<\/span\s*>/,
-  "the welcome banner should provide an email-adjacent access icon and an Unverified label",
+  "the welcome banner should provide an email-adjacent access icon and an Unverified label below the email",
 );
 assert.match(
   indexSource,
-  /id="student-portal-welcome-view-profile"[\s\S]*?View Profile[\s\S]*?id="student-portal-welcome-verification"/,
-  "the unverified welcome banner should place a View Profile button before its label",
+  /<\/p>\s*<div class="student-portal-welcome-verification-actions">[\s\S]*?id="student-portal-welcome-verification"[\s\S]*?id="student-portal-welcome-view-profile"[\s\S]*?View Profile/,
+  "the Unverified label and View Profile button should both appear below the email line",
 );
 assert.match(
   indexSource,
@@ -378,8 +378,13 @@ assert.match(
 );
 assert.match(
   appCoreSource,
-  /function renderStudentPortalWelcome\([\s\S]*?accountStatus = ""[\s\S]*?TRUE:\s*\["fa-check", "is-granted", "Access granted"\][\s\S]*?FALSE:\s*\["fa-triangle-exclamation", "is-pending", "Access pending"\][\s\S]*?DENIED:\s*\["fa-xmark", "is-denied", "Access denied"\][\s\S]*?const isUnverified = isSignedIn && accountStatus === "NOT_FOUND"[\s\S]*?welcomeVerification\.hidden = !isUnverified[\s\S]*?welcomeViewProfile\.hidden = !isUnverified/,
-  "the welcome banner should show approved, pending, denied, and unverified account states, with profile navigation only for unverified accounts",
+  /function renderStudentPortalWelcome\([\s\S]*?accountStatus = ""[\s\S]*?TRUE:\s*\["fa-check", "is-granted", "Access granted"\][\s\S]*?FALSE:\s*\["fa-triangle-exclamation", "is-pending", "Access pending"\][\s\S]*?DENIED:\s*\["fa-xmark", "is-denied", "Access denied"\][\s\S]*?const isUnverified = isSignedIn && accountStatus === "NOT_FOUND"[\s\S]*?welcomeVerification\.hidden = !isUnverified[\s\S]*?welcomeViewProfile\.hidden = !isSignedIn/,
+  "the welcome banner should show approval states, mark unverified accounts, and always provide Profile navigation when signed in",
+);
+assert.match(
+  stylesSource,
+  /\.student-portal-welcome-verification-actions\s*\{[^}]*display:\s*flex;[^}]*margin-top:\s*0\.25rem;/,
+  "welcome verification status and profile navigation should occupy a separate line under the email",
 );
 assert.match(
   appCoreSource,

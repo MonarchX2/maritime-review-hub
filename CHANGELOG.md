@@ -1,5 +1,15 @@
 # Changelog
 
+## 26.10.17-9 - 2026-10-17
+
+### Fixed
+
+- Treat incomplete Reviewer profiles as unverified for account status and
+  protected-resource authorization, and present profile completion as Verify
+  while keeping administrator approval required.
+- Persist deck metadata cache entries across Apps Script requests and
+  invalidate them after UUID-sheet edits and backend metadata mutations.
+
 ## 26.10.17-8 - 2026-10-17
 
 ### Fixed

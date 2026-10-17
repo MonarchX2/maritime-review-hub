@@ -6043,7 +6043,6 @@
   let reviewerAuthGeneration = 0;
   let reviewerProfilePictureUrl = "";
   let reviewerProfileEditing = false;
-  let reviewerVerificationFormOpen = false;
   let reviewerDashboardRequestGeneration = 0;
   let reviewerDashboardRequestPromise = null;
   let reviewerStatusPollTimer = null;
@@ -7953,15 +7952,6 @@
     document.getElementById("resource-reviewer-first-name")?.focus();
   }
 
-  function startReviewerVerification() {
-    if (reviewerAccountStatus !== "NOT_FOUND") return;
-    const form = document.getElementById("resource-reviewer-enrollment-form");
-    if (!form) return;
-    reviewerVerificationFormOpen = true;
-    form.hidden = false;
-    document.getElementById("resource-reviewer-last-name")?.focus();
-  }
-
   function closeReviewerProfileEditor() {
     const form = document.getElementById("resource-reviewer-enrollment-form");
     const cancelButton = document.getElementById(
@@ -8601,7 +8591,7 @@
     }
     const isUnverified = isSignedIn && accountStatus === "NOT_FOUND";
     if (welcomeVerification) welcomeVerification.hidden = !isUnverified;
-    if (welcomeViewProfile) welcomeViewProfile.hidden = !isUnverified;
+    if (welcomeViewProfile) welcomeViewProfile.hidden = !isSignedIn;
     if (welcomeSignIn) welcomeSignIn.hidden = isSignedIn;
     if (welcomeSignInHint) welcomeSignInHint.hidden = isSignedIn;
     if (welcomePicture) {
@@ -8771,9 +8761,6 @@
     const signInButton = document.getElementById(
       "resource-reviewer-signin-button",
     );
-    const verifyAccountButton = document.getElementById(
-      "resource-reviewer-verify-account",
-    );
     const retryButton = document.getElementById(
       "resource-reviewer-retry-verification",
     );
@@ -8798,7 +8785,6 @@
             input.value !== input.dataset.savedValue,
         ));
     reviewerAuthorizedEmail = response.email;
-    if (accountStatus !== "NOT_FOUND") reviewerVerificationFormOpen = false;
     if (!reviewerVerificationRetryToken)
       reviewerVerificationRetryAvailable = false;
     reviewerReauthenticationPromptAttempted = false;
@@ -8816,8 +8802,6 @@
     populateReviewerProfile(response);
     setReviewerAccessEnabled(accountStatus === "TRUE");
     if (signInButton) signInButton.hidden = true;
-    if (verifyAccountButton)
-      verifyAccountButton.hidden = accountStatus !== "NOT_FOUND";
     if (signoutButton) signoutButton.hidden = false;
     if (keepProfileEditorOpen) {
       if (form) form.hidden = false;
@@ -8828,18 +8812,19 @@
       reviewerProfileEditing = false;
       if (profileDetails) profileDetails.hidden = accountStatus === "NOT_FOUND";
       if (form)
-        form.hidden =
-          accountStatus === "NOT_FOUND"
-            ? !reviewerVerificationFormOpen
-            : accountStatus !== "DENIED";
+        form.hidden = !(
+          accountStatus === "NOT_FOUND" || accountStatus === "DENIED"
+        );
       if (cancelEditButton) cancelEditButton.hidden = true;
       if (formButton)
         formButton.textContent =
-          accountStatus === "DENIED"
-            ? "Submit"
-            : response.profileUpdated
-              ? "Save changes for approval"
-              : "Submit";
+          accountStatus === "NOT_FOUND"
+            ? "Verify"
+            : accountStatus === "DENIED"
+              ? "Submit"
+              : response.profileUpdated
+                ? "Save changes for approval"
+                : "Submit";
       if (!preserveEnrollmentDraft) {
         if (accountStatus === "NOT_FOUND") {
           Object.values(inputs).forEach((input) => {
@@ -10880,7 +10865,6 @@
     scheduleStartupSync,
     scheduleSyncPoll,
     scheduleSyncRetry,
-    startReviewerVerification,
     setDeckNavigationOverride,
     setDeckSortDirection,
     setFolderUnlocked,
