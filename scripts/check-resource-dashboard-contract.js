@@ -834,9 +834,9 @@ assert.match(
   "fresh dashboard data should refresh the current-tab cache",
 );
 assert.match(
-  fs.readFileSync("backend/ReviewerPdf.gs", "utf8"),
-  /email = reviewerPdfSafeText_\(identity && identity\.email, 254\);[\s\S]*?Math\.max\(40, size\.width \* 0\.46\)[\s\S]*?Math\.min\(8,[\s\S]*?\[0\.035, 0\.035, "left", "bottom"\][\s\S]*?\[0\.965, 0\.035, "right", "bottom"\][\s\S]*?\[0\.5, 0\.035, "center", "bottom"\][\s\S]*?\[0\.035, 0\.965, "left", "top"\][\s\S]*?\[0\.965, 0\.965, "right", "top"\][\s\S]*?\[0\.5, 0\.965, "center", "top"\][\s\S]*?opacity:\s*0\.18[\s\S]*?rotate: PDFLib\.degrees\(0\)/,
-  "generated PDFs should use six small horizontal watermarks at all corners and top/bottom center, preserving email case",
+  fs.readFileSync("reviewer-pdf-worker.js", "utf8"),
+  /const WATERMARK_PLACEMENTS = \[[\s\S]*?\[0\.035, 0\.035, "left", "bottom"\][\s\S]*?\[0\.965, 0\.035, "right", "bottom"\][\s\S]*?\[0\.5, 0\.035, "center", "bottom"\][\s\S]*?\[0\.035, 0\.965, "left", "top"\][\s\S]*?\[0\.965, 0\.965, "right", "top"\][\s\S]*?\[0\.5, 0\.965, "center", "top"\][\s\S]*?\];[\s\S]*?const email = sanitizeWatermarkText\(identity\?\.email, 254\);[\s\S]*?Math\.max\(40, size\.width \* 0\.46\)[\s\S]*?opacity:\s*0\.18[\s\S]*?rotate:\s*PDFLib\.degrees\(0\)/,
+  "browser-generated PDFs should use six small horizontal watermarks at all corners and top/bottom center, preserving email case",
 );
 assert.match(
   resourceStyles,

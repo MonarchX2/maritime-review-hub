@@ -96,13 +96,21 @@ try {
     false,
     "the backend PDF processing package must not be shipped to the website",
   );
-  assert.equal(
-    fs.readdirSync(outputDir).some((name) =>
-      /^(?:reviewer-pdf-worker|pdf-lib-1\.17\.1\.min)\./.test(name),
-    ),
-    false,
-    "the website must not publish client-side PDF watermarking assets",
-  );
+  for (const asset of [
+    "reviewer-pdf-worker.js",
+    "pdf-lib-1.17.1.min.js",
+  ]) {
+    const extension = path.extname(asset);
+    const basename = path.basename(asset, extension);
+    const published = fs
+      .readdirSync(outputDir)
+      .filter((name) => name.startsWith(`${basename}.`) && name.endsWith(extension));
+    assert.equal(
+      published.length,
+      1,
+      `the website must publish one hashed client PDF asset: ${asset}`,
+    );
+  }
   assert.match(
     fs.readFileSync(path.join(outputDir, "404.html"), "utf8"),
     /baseLengths\.push\(1\)[\s\S]*?for \([\s\S]*?baseLengths\.includes\(baseLength\)/,
@@ -160,8 +168,13 @@ try {
   assert.ok(deployedAppCore, "the deployment must include the hashed app core");
   assert.doesNotMatch(
     fs.readFileSync(path.join(outputDir, deployedAppCore), "utf8"),
-    /PDFDocument\.load|new globalScope\.Worker/,
-    "the deployed app core must not load client-side PDF processing",
+    /PDFDocument\.load/,
+    "PDF parsing must remain isolated to the dedicated browser worker",
+  );
+  assert.match(
+    fs.readFileSync(path.join(outputDir, deployedAppCore), "utf8"),
+    /new globalScope\.Worker/,
+    "the deployed app core must offload PDF watermarking to a browser worker",
   );
   const worker = fs.readFileSync(path.join(outputDir, "sw.js"), "utf8");
   for (const match of worker.matchAll(/["']\.\/([^"']+)["']/g)) {

@@ -1,5 +1,19 @@
 # Changelog
 
+## 26.10.34 - 2026-10-17
+
+### Improved
+
+- Move Reviewer PDF watermarking back to a browser Web Worker for both online
+  preview and downloads; reuse the prepared watermarked bytes for repeat
+  downloads.
+- Remove Apps Script PDF parsing, queue polling, generated Drive derivatives,
+  and the `PDFs` output-folder requirement. Keep a one-time helper to retire
+  legacy queue triggers and Script Properties.
+- Deliver source PDFs only through the authenticated, HTTPS-protected
+  Reviewer endpoint. Document the browser-source visibility trade-off and
+  restore content-hashed worker and `pdf-lib` assets.
+
 ## 26.10.33 - 2026-10-17
 
 ### Improved

@@ -559,16 +559,6 @@
       required: ["eventId"],
       allowed: ["type", "idToken", "sessionId", "eventId", "appVersion"],
     },
-    get_reviewer_pdf: {
-      required: ["sessionId", "eventId", "fileId"],
-      allowed: [
-        "type",
-        "sessionId",
-        "eventId",
-        "fileId",
-        "appVersion",
-      ],
-    },
     get_reviewer_pdf_preview: {
       required: ["sessionId", "eventId", "fileId"],
       allowed: [
@@ -579,14 +569,6 @@
         "cachedSourceVersion",
         "appVersion",
       ],
-    },
-    get_reviewer_pdf_job: {
-      required: ["sessionId", "eventId", "jobId"],
-      allowed: ["type", "sessionId", "eventId", "jobId", "appVersion"],
-    },
-    cleanup_reviewer_pdf_jobs: {
-      required: ["sessionId", "eventId"],
-      allowed: ["type", "sessionId", "eventId", "appVersion"],
     },
     log_module_access: {
       required: ["eventId"],
@@ -753,7 +735,7 @@
         "get_reviewer_account_status",
         "request_reviewer_enrollment",
         "get_reviewer_dashboard",
-        "get_reviewer_pdf",
+        "get_reviewer_pdf_preview",
         "log_module_access",
       ].includes(type) &&
       !String(payload.idToken || "").trim() &&

@@ -1,30 +1,36 @@
-# Apps Script Reviewer PDF delivery
+# Browser-side Reviewer PDF processing
 
-Reviewer PDF previews and downloads use the private Apps Script processor.
-The browser requests a job, polls for completion, then receives only the
-verified, watermarked derivative over HTTPS. The clean source PDF is read and
-processed by Apps Script and is never returned to the browser.
+Reviewer PDFs are authorized by Apps Script and watermarked in the website's
+browser worker. The backend does not parse, watermark, queue, save, or archive
+PDF derivatives. No `PDFs` Drive folder is required.
 
-Generated watermarked PDFs are saved in the private Drive folder configured by
-`REVIEWER_PDF_OUTPUT_FOLDER_ID` in `backend/main.js`. Outputs remain in that
-folder. A completed job for the same signed-in session, source file, and
-source version is reused for ten minutes, avoiding repeated watermarking on
-preview/download retries. The browser also keeps the prepared output in
-current-tab memory for quick preview and repeat downloads.
+The backend validates the active reviewer session, approval status, indexed
+file ID, PDF type, and protected Drive ancestry, then returns the clean source
+PDF and verified account name/email over HTTPS. The browser worker adds six
+small horizontal watermarks to each page: one at each corner and one at the
+top and bottom center. The watermarked bytes are used for both online preview
+and repeat downloads.
+
+HTTPS protects source bytes in transit. Because the browser must receive and
+process those bytes, an authorized user who controls their browser can inspect
+or save the clean source. Encrypting data for the same browser cannot prevent
+that. Watermarks and text-selection restrictions are deterrents, not hard
+copy-protection.
 
 ## Dependency and license
 
 - `pdf-lib` **1.17.1**, pinned exactly.
-- MIT License; the full notice is in `vendor/pdf-lib-1.17.1-LICENSE.md`.
-- Runtime bundle: `backend/PDFLib.js`, synchronized from
-  `vendor/pdf-lib-1.17.1.min.js`.
-- The library is used only by Apps Script and local tests; it is not included
-  in the website deployment.
+- MIT License; the full notice is in
+  `vendor/pdf-lib-1.17.1-LICENSE.md`.
+- The website worker loads `pdf-lib-1.17.1.min.js` from the same-origin,
+  content-hashed static deployment.
+- The Apps Script backend does not bundle or load `pdf-lib`.
 
-The package in this directory is a local build/test dependency. The runtime
-uses the checked-in bundle, not npm or a remote URL.
+The package in this directory is a local build/test dependency. The website
+uses the checked-in bundle; it does not load code from npm or a remote URL at
+runtime.
 
-## Build and local compatibility tests
+## Build and local tests
 
 From the repository root:
 
@@ -34,69 +40,30 @@ npm run vendor:reviewer-pdf-lib
 npm test --prefix reviewer-pdf-service
 ```
 
-The test harness exercises the Apps Script PDF helper with the pinned
-`pdf-lib` bundle in an isolated JavaScript context. It covers portrait and
-landscape pages, invalid/oversized inputs, and per-page watermark verification.
+The tests execute the browser worker in an isolated JavaScript context with
+the pinned library. They cover portrait and landscape pages, six watermark
+placements, invalid identity and input, page limits, source immutability, and
+a synthetic 20-page PDF. `npm run check:deployment-assets` verifies that the
+worker and library are content-hashed and deployable.
 
-## Request and security flow
+## Request and processing flow
 
-`get_reviewer_pdf_preview` checks the current application session and account
-approval, authoritative index membership, source version, and protected Drive
-ancestry. It returns a cache hit only after fresh authorization and source
-validation. Otherwise, it enqueues a background job. The worker revalidates
-authorization and the unchanged source, adds the verified account name and
-email to every page, verifies that the watermarks are present, and saves the
-derivative in the configured private output folder. Job polling rechecks the
-session, source version, output location, and output privacy before returning
-the derivative.
+1. The browser sends `get_reviewer_pdf_preview` with its opaque reviewer
+   session, event ID, and indexed file ID.
+2. Apps Script revalidates the account, checks the protected index and Drive
+   ancestry, and returns either a source-version cache validation or source
+   bytes plus the verified watermark identity.
+3. A dedicated Web Worker validates and watermarks the PDF off the UI thread.
+4. The website displays the prepared PDF in its in-site preview and reuses
+   those same bytes for each download.
 
-The original PDF does not leave Drive for the browser. TLS protects the
-watermarked response in transit. Client-side encryption would not improve
-security because a browser that can decrypt a PDF can expose its bytes.
-Watermarks and disabled page-level selection deter casual copying but cannot
-prevent screenshots, screen recording, or all behavior of native PDF viewers.
+The source limit is 8 MiB, output limit 12 MiB, and page limit 80. Worker
+startup and document complexity affect local processing time; the 20-page
+synthetic test is a regression check, not a guarantee for all devices or PDFs.
+Apps Script still performs authorization and source delivery, but no longer
+waits for PDF parsing, watermarking, job polling, or derivative storage.
 
-The output folder must be private to the Apps Script execution owner.
-`auditReviewerPdfOutputFolderPrivacy()` returns the output folder and each
-ancestor's effective Drive permissions, identifying the folder and any
-unexpected user, domain, or public access. Run it as the script owner when
-setup reports a privacy failure, remove unwanted sharing in Drive, then rerun
-the audit. The helper is read-only; it does not change permissions.
-`setupReviewerPdfDelivery()` independently verifies that condition and enables
-the background worker; run it as the script owner after the audit passes. If
-the folder is not private, setup fails and PDF delivery remains disabled. Generated
-derivatives are intentionally persistent to preserve the requested Drive
-archive; job metadata expires after ten minutes but does not delete the saved
-PDF.
-
-## Processing limits and performance
-
-- Original PDF: at most 8 MiB.
-- Watermarked output: at most 12 MiB.
-- Pages: at most 80.
-- The public Modules/Syllabus in-site preview transport limit is 32 MiB.
-- PDF must be readable and unencrypted.
-- Text must fit the built-in Helvetica Bold font.
-- The worker handles a bounded queue and reuses completed derivatives for
-  matching session/file/source-version requests.
-- The worker passes the processed byte array directly to Drive storage instead
-  of base64-encoding and decoding it through an intermediate JSON response.
-
-These are implementation guards, not validated service limits. Apps Script
-worker startup, queue load, file complexity, and Drive/Google quotas affect
-actual time. A server-side job adds processing time compared with exposing a
-clean source for browser-side watermarking; that trade-off is intentional to
-avoid delivering unwatermarked source bytes. Local tests do not establish
-maximum-size or real-device processing times.
-
-## Updating the local bundle
-
-The Apps Script project sources are selectively tracked in `backend/`. Run
-`npm run vendor:reviewer-pdf-lib` to update the Apps Script bundle and local
-compatibility-test bundle. Deploy the updated backend, then run
-`setupReviewerPdfDelivery()` as the script owner to verify the private folder
-and enable the worker. The website deployment does not include the PDF
-library or a browser PDF worker.
-
-No paid-service dependency is used by this runtime path. Google Drive,
-Apps Script, or account quotas may still apply.
+`setupReviewerPdfDelivery()` is an optional one-time Apps Script cleanup for
+deployments that previously enabled the backend queue. It removes old worker
+triggers and queue properties without accessing or changing Drive folders or
+files. It is not required for regular PDF viewing.

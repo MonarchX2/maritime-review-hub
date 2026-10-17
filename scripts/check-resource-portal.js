@@ -1363,40 +1363,35 @@ assert.match(
       rawAccountStatus: "TRUE",
     },
   });
-  let previewQueueCalls = 0;
-  context.enqueueReviewerPdfRequest_ = (request, previewContext) => {
-    previewQueueCalls += 1;
-    assert.equal(request.fileId, "reviewerPdf_123456");
-    assert.equal(previewContext.source.sourceVersion, "a".repeat(64));
-    assert.equal(previewContext.watermarkIdentity.fullName, "Rita A. Reviewer");
-    return context.jsonResponse({
-      status: "pending",
-      jobId: "b".repeat(96),
-      watermarked: true,
-    });
-  };
+  context.appendMRHAccessLog_ = () => true;
   context.getReviewerPdfSource_ = (fileId) => ({
     entry: { fileId, title: "Reviewer.pdf" },
     driveFile: { id: fileId, name: "Reviewer.pdf" },
     sourceVersion: "a".repeat(64),
   });
+  const sourceBytes = [37, 80, 68, 70, 45, 49, 46, 55];
+  context.DriveApp.getFileById = (fileId) => {
+    assert.equal(fileId, "reviewerPdf_123456");
+    sourceDriveReads += 1;
+    return { getBlob: () => ({ getBytes: () => sourceBytes }) };
+  };
   context.Utilities.base64Encode = (bytes) =>
     Buffer.from(bytes.map((byte) => byte & 255)).toString("base64");
-  const queuedPreviewResponse = JSON.parse(
+  const sourceResponse = JSON.parse(
     context.handleGetReviewerPdfPreviewRequest_({
       eventId: "52345678-1234-4123-8123-123456789abc",
       fileId: "reviewerPdf_123456",
       sessionId: "a".repeat(96),
     }).text,
   );
-  assert.equal(
-    queuedPreviewResponse.status,
-    "pending",
-    JSON.stringify(queuedPreviewResponse),
-  );
-  assert.equal(queuedPreviewResponse.watermarked, true);
-  assert.equal(queuedPreviewResponse.data, undefined);
-  assert.equal(previewQueueCalls, 1);
+  assert.equal(sourceResponse.status, "success");
+  assert.equal(sourceResponse.clientProcessing, true);
+  assert.equal(sourceResponse.mimeType, "application/pdf");
+  assert.equal(sourceResponse.fullName, "Rita A. Reviewer");
+  assert.equal(sourceResponse.email, "reviewer@example.com");
+  assert.deepEqual([...Buffer.from(sourceResponse.data, "base64")], sourceBytes);
+  assert.equal(sourceResponse.watermarked, undefined);
+  assert.equal(sourceDriveReads, 1);
 
   const cachedSourceResponse = JSON.parse(
     context.handleGetReviewerPdfPreviewRequest_({
@@ -1407,38 +1402,23 @@ assert.match(
     }).text,
   );
   assert.equal(cachedSourceResponse.cacheHit, true);
+  assert.equal(cachedSourceResponse.clientProcessing, true);
   assert.equal(cachedSourceResponse.data, undefined);
-  assert.equal(previewQueueCalls, 1, "a validated cache hit does not requeue a PDF");
+  assert.equal(sourceDriveReads, 1, "validated browser cache avoids another source download");
 
-  const scriptProperties = new Map();
-  context.getScriptProps = () => ({
-    getProperty: (key) => scriptProperties.get(key) || null,
-    setProperty(key, value) { scriptProperties.set(key, value); },
-    deleteProperty(key) { scriptProperties.delete(key); },
-  });
+  const scriptProperties = new Map([
+    ["MRH_REVIEWER_PDF_QUEUE_v1", "[]"],
+    ["MRH_REVIEWER_PDF_WORKER_READY_v1", "true"],
+    ["MRH_REVIEWER_PDF_WORKER_SCHEDULED_AT", "123"],
+    ["MRH_REVIEWER_PDF_JOB_v1_old", "{}"],
+  ]);
+  const propertyStore = {
+    getProperties: () => Object.fromEntries(scriptProperties),
+    deleteProperty: (key) => scriptProperties.delete(key),
+  };
+  context.getScriptProps = () => propertyStore;
   context.LockService = {
     getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }),
-  };
-  context.Session = {
-    getEffectiveUser: () => ({ getEmail: () => "owner@example.com" }),
-  };
-  context.Drive = {
-    Permissions: {
-      list: () => ({
-        permissions: [{
-          type: "user",
-          emailAddress: "owner@example.com",
-          role: "owner",
-        }],
-      }),
-    },
-    Files: {
-      get: (fileId) => ({
-        id: fileId,
-        mimeType: "application/vnd.google-apps.folder",
-        parents: [],
-      }),
-    },
   };
   const scheduledPdfWorkerTriggers = [
     { getHandlerFunction: () => "processReviewerPdfQueue", getUniqueId: () => "old-trigger" },
@@ -1452,48 +1432,13 @@ assert.match(
       if (index >= 0) scheduledPdfWorkerTriggers.splice(index, 1);
     },
   };
-  const enabledSetup = context.setupReviewerPdfDelivery();
-  assert.equal(enabledSetup.status, "success");
-  assert.match(enabledSetup.message, /processing is enabled/);
-  const privateFolderAudit = context.auditReviewerPdfOutputFolderPrivacy();
-  assert.equal(privateFolderAudit.private, true);
-  assert.equal(privateFolderAudit.folders.length, 1);
-  assert.ok(
-    [...scriptProperties.keys()].some((key) => /WORKER_READY/.test(key)),
-    "setup must enable the worker only after the private output folder check",
-  );
-  assert.equal(scheduledPdfWorkerTriggers.length, 0);
+  const retiredSetup = context.setupReviewerPdfDelivery();
+  assert.equal(retiredSetup.status, "success");
+  assert.match(retiredSetup.message, /watermarking and Drive output storage are disabled/);
   assert.deepEqual(deletedPdfWorkerTriggers, ["old-trigger"]);
-  context.Drive.Permissions.list = () => ({
-    permissions: [
-      {
-        type: "user",
-        emailAddress: "owner@example.com",
-        role: "owner",
-      },
-      {
-        type: "anyone",
-        role: "reader",
-      },
-    ],
-  });
-  const sharedFolderAudit = context.auditReviewerPdfOutputFolderPrivacy();
-  assert.equal(sharedFolderAudit.private, false);
-  assert.match(
-    sharedFolderAudit.problems.join(" "),
-    /\(10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl\): Unexpected reader access for anyone/i,
-    "the audit should identify the folder ID and broad permission type",
-  );
-  assert.throws(
-    () => context.setupReviewerPdfDelivery(),
-    /Run auditReviewerPdfOutputFolderPrivacy\(\)/,
-    "setup should direct the owner to the permission diagnostic",
-  );
-  assert.equal(
-    [...scriptProperties.keys()].some((key) => /WORKER_READY/.test(key)),
-    false,
-    "a failing privacy check must leave PDF delivery disabled",
-  );
+  assert.equal(scheduledPdfWorkerTriggers.length, 0);
+  assert.equal(scriptProperties.size, 0, "legacy queue state must be cleared without Drive access");
+  assert.equal(context.processReviewerPdfQueue().status, "disabled");
 
   let aclDeleteCount = 0;
   const aclReport = {
@@ -1801,86 +1746,7 @@ assert.match(
     "the in-site preview must reject files outside the public resource root",
   );
 
-  const cleanupProperties = new Map();
-  const cleanupPropertyStore = {
-    getProperty: (key) => cleanupProperties.get(key) || null,
-    setProperty: (key, value) => cleanupProperties.set(key, String(value)),
-    deleteProperty: (key) => cleanupProperties.delete(key),
-    getProperties: () => Object.fromEntries(cleanupProperties),
-  };
-  const persistentJobId = "b".repeat(96);
-  const temporaryJobId = "c".repeat(96);
-  const unrelatedJobId = "d".repeat(96);
-  const cleanupSessionId = "e".repeat(96);
-  cleanupProperties.set("MRH_REVIEWER_PDF_QUEUE_v1", JSON.stringify([
-    persistentJobId,
-    temporaryJobId,
-    unrelatedJobId,
-  ]));
-  cleanupProperties.set(
-    `MRH_REVIEWER_PDF_JOB_v1_${persistentJobId}`,
-    JSON.stringify({
-      jobId: persistentJobId,
-      sessionId: cleanupSessionId,
-      status: "complete",
-      outputFileId: "persistentPdf_123456",
-      persistentOutput: true,
-    }),
-  );
-  cleanupProperties.set(
-    `MRH_REVIEWER_PDF_JOB_v1_${temporaryJobId}`,
-    JSON.stringify({
-      jobId: temporaryJobId,
-      sessionId: cleanupSessionId,
-      status: "complete",
-      outputFileId: "temporaryPdf_123456",
-    }),
-  );
-  cleanupProperties.set(
-    `MRH_REVIEWER_PDF_JOB_v1_${unrelatedJobId}`,
-    JSON.stringify({
-      jobId: unrelatedJobId,
-      sessionId: "f".repeat(96),
-      status: "complete",
-      outputFileId: "otherPdf_123456",
-    }),
-  );
-  context.PropertiesService.getScriptProperties = () => cleanupPropertyStore;
-  context.getScriptProps = () => cleanupPropertyStore;
-  context.LockService = {
-    getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }),
-  };
-  const cleanupDriveDeletes = [];
-  context.Drive.Files.delete = (fileId) => cleanupDriveDeletes.push(fileId);
-  const cleanupResponse = JSON.parse(
-    context.cleanupReviewerPdfJobsRequest_({
-      sessionId: cleanupSessionId,
-      eventId: "72345678-1234-4123-8123-123456789abc",
-    }).text,
-  );
-  assert.equal(cleanupResponse.status, "success");
-  assert.deepEqual(cleanupDriveDeletes, ["temporaryPdf_123456"]);
-  assert.equal(
-    cleanupProperties.has(`MRH_REVIEWER_PDF_JOB_v1_${persistentJobId}`),
-    false,
-    "session cleanup may remove expired job metadata for retained PDFs",
-  );
-  assert.equal(
-    cleanupProperties.has(`MRH_REVIEWER_PDF_JOB_v1_${temporaryJobId}`),
-    false,
-    "session cleanup should delete temporary derivatives",
-  );
-  assert.equal(
-    cleanupProperties.has(`MRH_REVIEWER_PDF_JOB_v1_${unrelatedJobId}`),
-    true,
-    "session cleanup must not remove another reviewer's job",
-  );
-  assert.deepEqual(
-    JSON.parse(cleanupProperties.get("MRH_REVIEWER_PDF_QUEUE_v1")),
-    [unrelatedJobId],
-  );
-
-  console.log("Resource dashboard, in-site folder, cleanup, and server-side PDF checks passed.");
+  console.log("Resource dashboard, in-site folder, and browser-watermarked PDF checks passed.");
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

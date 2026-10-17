@@ -1,5 +1,5 @@
 {
-  "name": "mrh-reviewer-pdf-gas-compatibility",
+  "name": "mrh-reviewer-pdf-browser-worker",
   "version": "1.0.0",
   "private": true,
   "type": "commonjs",
