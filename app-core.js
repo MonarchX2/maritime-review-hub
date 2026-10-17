@@ -8165,12 +8165,12 @@
       if (enabled) reviewersNav.removeAttribute("aria-disabled");
       else reviewersNav.setAttribute("aria-disabled", "true");
       reviewersNav.title = enabled
-        ? "Open review materials"
+        ? "Open Reviewers"
         : reviewerAccountStatus === "DENIED"
-          ? "Review materials access denied"
+          ? "Reviewer access denied"
           : reviewerAccountStatus === "FALSE"
-            ? "Review materials access pending"
-            : "Review materials access not granted";
+            ? "Reviewer access pending"
+            : "Reviewer access not granted";
     }
   }
 
@@ -8996,7 +8996,7 @@
     if (reviewersNav) {
       reviewersNav.disabled = false;
       reviewersNav.removeAttribute("aria-disabled");
-      reviewersNav.title = "Review materials";
+      reviewersNav.title = "Reviewers";
     }
     const signInButton = document.getElementById(
       "resource-reviewer-signin-button",

@@ -49,13 +49,13 @@ assert.match(
 
 assert.match(
   index,
-  /id="resource-dashboard-syllabus-nav"[\s\S]*?Syllabus[\s\S]*?id="resource-dashboard-modules-nav"[\s\S]*?Modules[\s\S]*?id="resource-dashboard-reviewers-nav"[\s\S]*?Review Materials/,
-  "the dashboard should show Syllabus before Modules and Review Materials",
+  /id="resource-dashboard-syllabus-nav"[\s\S]*?Syllabus[\s\S]*?id="resource-dashboard-modules-nav"[\s\S]*?Modules[\s\S]*?id="resource-dashboard-reviewers-nav"[\s\S]*?Reviewers/,
+  "the dashboard should show Syllabus before Modules and Reviewers",
 );
 assert.match(
   index,
-  /id="resource-dashboard-reviewers-nav"[^>]*onclick="openResourceDashboardTab\('REVIEWERS'\)"[^>]*aria-label="Review Materials"[\s\S]*?Review Materials\s*<\/button>[\s\S]*?id="resource-reviewers-locked-panel"[\s\S]*?fa-lock resource-reviewers-locked-icon[\s\S]*?Locked[\s\S]*?Use Google to sign in and request access/,
-  "the locked review-materials panel should show a red lock, concise label, and Google sign-in prompt",
+  /id="resource-dashboard-reviewers-nav"[^>]*onclick="openResourceDashboardTab\('REVIEWERS'\)"[^>]*aria-label="Reviewers"[\s\S]*?Reviewers\s*<\/button>[\s\S]*?id="resource-reviewers-locked-panel"[\s\S]*?fa-lock resource-reviewers-locked-icon[\s\S]*?Locked[\s\S]*?Use Google to sign in and request access/,
+  "the locked Reviewers panel should show a red lock, concise label, and Google sign-in prompt",
 );
 const lockedReviewerPanel =
   index.match(

@@ -380,12 +380,12 @@ assert.match(
 );
 assert.match(
   indexHtml,
-  /student-portal-deck-description[\s\S]*?Syllabus, Modules, and Review Materials/,
-  "the Student Portal entry should use the requested non-Reviewer label",
+  /student-portal-deck-description[\s\S]*?Syllabus, Modules, and Reviewers/,
+  "the Student Portal entry should name the Reviewers section",
 );
 assert.match(
   indexHtml,
-  /id="resource-dashboard-reviewers-nav"[\s\S]*?aria-label="Review Materials"[\s\S]*?title="Review materials"[\s\S]*?disabled[\s\S]*?aria-disabled="true"[\s\S]*?Review Materials/,
+  /id="resource-dashboard-reviewers-nav"[\s\S]*?aria-label="Reviewers"[\s\S]*?title="Reviewers"[\s\S]*?disabled[\s\S]*?aria-disabled="true"[\s\S]*?Reviewers/,
   "the portal navigation label should be dimmed and disabled until approval",
 );
 assert.match(
@@ -898,7 +898,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function setReviewerAccessEnabled\(enabled\)[\s\S]*?reviewersNav\.disabled = !enabled[\s\S]*?reviewersNav\.title = enabled[\s\S]*?setReviewerAccessEnabled\(accountStatus === "TRUE"\)[\s\S]*?function signOutReviewer[\s\S]*?reviewersNav\.disabled = false[\s\S]*?reviewersNav\.title = "Review materials"/,
+  /function setReviewerAccessEnabled\(enabled\)[\s\S]*?reviewersNav\.disabled = !enabled[\s\S]*?reviewersNav\.title = enabled[\s\S]*?setReviewerAccessEnabled\(accountStatus === "TRUE"\)[\s\S]*?function signOutReviewer[\s\S]*?reviewersNav\.disabled = false[\s\S]*?reviewersNav\.title = "Reviewers"/,
   "approved status should unlock Reviewer navigation and sign-out should restore the signed-out navigation state",
 );
 assert.match(
