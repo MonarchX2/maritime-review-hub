@@ -129,7 +129,6 @@ const appendedRows = {
   REVIEWERS: [],
   "SIGN-IN": [],
 };
-const sentReviewerEmails = [];
 
 function createSheet(rows) {
   return {
@@ -247,12 +246,6 @@ const context = {
   Logger: {
     log(message) {
       backendLogs.push(String(message));
-    },
-  },
-  MailApp: {
-    getRemainingDailyQuota: () => 100,
-    sendEmail(message) {
-      sentReviewerEmails.push(message);
     },
   },
   PropertiesService: {
@@ -432,25 +425,15 @@ const context = {
   },
 };
 vm.createContext(context);
-vm.runInContext(fs.readFileSync("backend/main.js", "utf8"), context, {
+const backendSource = fs.readFileSync("backend/main.js", "utf8");
+assert.doesNotMatch(
+  backendSource,
+  /\bMailApp\b|function processReviewerStatusNotifications|function updateReviewerStatusNotification_/,
+  "the backend must not implement or invoke reviewer access-status email",
+);
+vm.runInContext(backendSource, context, {
   filename: "backend/main.js",
 });
-const notificationPropertyKey =
-  context.getReviewerStatusNotificationPropertyKey_("reviewer@example.com");
-properties.set(notificationPropertyKey, "TRUE");
-const lockCountBeforeUnchangedStatus =
-  scriptLockAcquisitionCount;
-context.updateReviewerStatusNotification_("reviewer@example.com", "TRUE");
-assert.equal(
-  scriptLockAcquisitionCount,
-  lockCountBeforeUnchangedStatus,
-  "unchanged reviewer account status checks should not contend on the global script lock",
-);
-assert.equal(
-  context.authorizeMRHReviewerStatusEmails(),
-  100,
-  "the owner should be able to authorize the send-mail permission explicitly",
-);
 const resourceRootId = context.RESOURCE_PORTAL_ROOT_FOLDER_ID;
 driveFiles.set("valid-reviewer-pdf", {
   id: "valid-reviewer-pdf",
@@ -536,11 +519,12 @@ assert.equal(
 const appsScriptManifest = JSON.parse(
   fs.readFileSync("backend/appsscript.json", "utf8"),
 );
-assert.ok(
+assert.equal(
   appsScriptManifest.oauthScopes.includes(
     "https://www.googleapis.com/auth/script.send_mail",
   ),
-  "reviewer status notification email requires the explicit Apps Script mail scope",
+  false,
+  "reviewer access-status email must not request the Apps Script mail scope",
 );
 const validClaims = (email) => ({
   aud: clientId,
@@ -594,8 +578,23 @@ assert.equal(
   "fetching sign-in configuration should not open the account spreadsheet",
 );
 const installedEditTriggers = [];
+const deletedTriggers = [];
+const legacyNotificationTrigger = {
+  handler: "processReviewerStatusNotifications",
+  getHandlerFunction() {
+    return this.handler;
+  },
+};
+properties.set("MRH_REVIEWER_STATUS_NOTIFICATION_v1_legacy", "TRUE");
+properties.set(
+  "MRH_REVIEWER_STATUS_NOTIFICATION_PENDING_v1_legacy",
+  "stale",
+);
 context.ScriptApp = {
-  getProjectTriggers: () => [],
+  getProjectTriggers: () => [legacyNotificationTrigger],
+  deleteTrigger(trigger) {
+    deletedTriggers.push(trigger);
+  },
   newTrigger(handler) {
     const trigger = { handler, spreadsheetId: "", schedule: "" };
     return {
@@ -623,6 +622,18 @@ context.ScriptApp = {
   },
 };
 assert.equal(context.setupTriggers().status, "success");
+assert.deepEqual(
+  deletedTriggers,
+  [legacyNotificationTrigger],
+  "trigger setup should remove the obsolete status-email worker",
+);
+assert.equal(
+  Array.from(properties.keys()).some((key) =>
+    key.startsWith("MRH_REVIEWER_STATUS_NOTIFICATION_"),
+  ),
+  false,
+  "trigger setup should delete queued and remembered status-email data",
+);
 assert.ok(
   installedEditTriggers.some(
     (trigger) =>
@@ -640,54 +651,13 @@ assert.ok(
   ),
   "account cache trigger setup should preserve the five-minute deck safety sync",
 );
-assert.ok(
+assert.equal(
   installedEditTriggers.some(
-    (trigger) =>
-      trigger.handler === "processReviewerStatusNotifications" &&
-      trigger.intervalMinutes === 1,
+    (trigger) => trigger.handler === "processReviewerStatusNotifications",
   ),
-  "reviewer status emails should use an independent one-minute background worker",
+  false,
+  "trigger setup must not install access-status email workers",
 );
-const notificationRetryEmail = "notification-retry@example.com";
-const notificationRetryStateKey =
-  context.getReviewerStatusNotificationPropertyKey_(notificationRetryEmail);
-const notificationRetryPendingKey =
-  context.getReviewerStatusNotificationPendingKey_(notificationRetryEmail);
-properties.set(notificationRetryStateKey, "TRUE");
-context.updateReviewerStatusNotification_(notificationRetryEmail, "DENIED");
-const sendNotification = context.MailApp.sendEmail;
-let failNotificationOnce = true;
-context.MailApp.sendEmail = (message) => {
-  if (failNotificationOnce) {
-    failNotificationOnce = false;
-    throw new Error("simulated mail outage");
-  }
-  sentReviewerEmails.push(message);
-};
-const failedNotificationAttempt =
-  context.processReviewerStatusNotifications();
-assert.equal(failedNotificationAttempt.status, "success");
-assert.equal(
-  failedNotificationAttempt.processed,
-  0,
-  "failed notification delivery should remain queued for automatic retry",
-);
-assert.equal(properties.has(notificationRetryPendingKey), true);
-const recoveredNotificationAttempt =
-  context.processReviewerStatusNotifications();
-assert.equal(recoveredNotificationAttempt.status, "success");
-assert.equal(
-  recoveredNotificationAttempt.processed,
-  1,
-  "the notification worker should recover on its next attempt",
-);
-assert.equal(properties.has(notificationRetryPendingKey), false);
-assert.equal(
-  sentReviewerEmails.at(-1)?.subject,
-  "Maritime Review Hub resource access denied",
-);
-context.MailApp.sendEmail = sendNotification;
-sentReviewerEmails.length = 0;
 context.initializeMRHAccountsSpreadsheet();
 assert.deepEqual(
   Array.from(accountRows[0]),
@@ -771,13 +741,12 @@ assert.equal(
   true,
   "setup should create the OAuth scope-monitoring worksheet",
 );
-assert.ok(
-  sheets.SCOPES.getRange(2, 1, 7, 1)
+assert.equal(
+  sheets.SCOPES.getRange(2, 1, 6, 1)
     .getDisplayValues()
-    .some(
-      (row) => row[0] === "https://www.googleapis.com/auth/script.send_mail",
-    ),
-  "the OAuth scope worksheet should document reviewer notification email",
+    .some((row) => row[0] === "https://www.googleapis.com/auth/script.send_mail"),
+  false,
+  "the OAuth scope worksheet must not request reviewer status email permission",
 );
 const accountRowsBeforeConflict = accountRows.map((row) => Array.from(row));
 const reviewerLogsBeforeConflict = reviewerLogs.map((row) => Array.from(row));
@@ -849,11 +818,6 @@ assert.equal(
   }).email,
   "reviewer@example.com",
   "account status polling should validate an application session",
-);
-assert.equal(
-  sentReviewerEmails.length,
-  0,
-  "the first observed status should establish a baseline without sending email",
 );
 assert.equal(appendedRows["SIGN-IN"][1][6], "SIGN_IN:TRUE");
 assert.equal(appendedRows["SIGN-IN"][1].length, currentLogHeaders.length);
@@ -1075,34 +1039,6 @@ assert.equal(
   "FALSE",
   "pending status should be visible to polling",
 );
-assert.equal(
-  sentReviewerEmails.length,
-  0,
-  "account status responses must not wait for email delivery",
-);
-context.processReviewerStatusNotifications();
-assert.equal(
-  sentReviewerEmails.length,
-  1,
-  "a new enrollment should email the verified address that access is pending",
-);
-assert.deepEqual(
-  [
-    sentReviewerEmails[0]?.to,
-    sentReviewerEmails[0]?.subject,
-    sentReviewerEmails[0]?.name,
-  ],
-  [
-    "new-reviewer@example.com",
-    "Maritime Review Hub resource access pending",
-    "Maritime Review Hub",
-  ],
-);
-assert.match(
-  sentReviewerEmails[0]?.body || "",
-  /^Dear Maritime Review Hub user,[\s\S]*pending administrator review[\s\S]*Sincerely,\nMaritime Review Hub$/,
-  "pending notifications should use a formal message and the Maritime Review Hub sender name",
-);
 const duplicatePending = post({
   type: "request_reviewer_enrollment",
   idToken: "new-user-token",
@@ -1158,32 +1094,6 @@ assert.equal(
   "DENIED",
   "polling should observe administrator denial without stale account caching",
 );
-assert.equal(
-  sentReviewerEmails.length,
-  1,
-  "DENIED status propagation must return before mail delivery",
-);
-context.processReviewerStatusNotifications();
-assert.deepEqual(
-  [
-    sentReviewerEmails.length,
-    sentReviewerEmails[1]?.to,
-    sentReviewerEmails[1]?.subject,
-    sentReviewerEmails[1]?.name,
-  ],
-  [
-    2,
-    "new-reviewer@example.com",
-    "Maritime Review Hub resource access denied",
-    "Maritime Review Hub",
-  ],
-  "an administrator denial should email the verified account once",
-);
-assert.match(
-  sentReviewerEmails[1]?.body || "",
-  /^Dear Maritime Review Hub user,[\s\S]*unable to approve[\s\S]*Sincerely,\nMaritime Review Hub$/,
-  "denial notifications should use formal language and a branded sender name",
-);
 clearTestCache();
 assert.equal(
   post({
@@ -1191,11 +1101,6 @@ assert.equal(
     idToken: "new-user-token",
   }).accountStatus,
   "DENIED",
-);
-assert.equal(
-  sentReviewerEmails.length,
-  2,
-  "repeated status polling must not resend a denial email",
 );
 assert.equal(
   post({
@@ -1231,20 +1136,6 @@ assert.equal(
   }).accountStatus,
   "FALSE",
   "a corrected denied profile must return to pending review",
-);
-context.processReviewerStatusNotifications();
-assert.deepEqual(
-  [
-    sentReviewerEmails.length,
-    sentReviewerEmails[2]?.to,
-    sentReviewerEmails[2]?.subject,
-  ],
-  [
-    3,
-    "new-reviewer@example.com",
-    "Maritime Review Hub resource access pending",
-  ],
-  "a corrected denied profile should email that access is pending again",
 );
 
 tokenClaims = validClaims("admin-added@example.com");
@@ -1343,27 +1234,6 @@ assert.equal(
   }).accountStatus,
   "TRUE",
   "administrator approval should restore access after an edited profile is confirmed",
-);
-context.processReviewerStatusNotifications();
-assert.deepEqual(
-  [
-    sentReviewerEmails.length,
-    sentReviewerEmails.at(-1)?.to,
-    sentReviewerEmails.at(-1)?.subject,
-    sentReviewerEmails.at(-1)?.name,
-  ],
-  [
-    5,
-    "reviewer@example.com",
-    "Maritime Review Hub resource access granted",
-    "Maritime Review Hub",
-  ],
-  "an administrator grant should email the verified account",
-);
-assert.match(
-  sentReviewerEmails.at(-1)?.body || "",
-  /^Dear Maritime Review Hub user,[\s\S]*access request has been approved[\s\S]*Sincerely,\nMaritime Review Hub$/,
-  "approval notifications should use formal language and a branded sender name",
 );
 const reviewerDashboardRequest = () =>
   post({

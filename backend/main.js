@@ -208,11 +208,6 @@ var MRH_REQUIRED_OAUTH_SCOPES = [
     "Use Apps Script CacheService for temporary cached data.",
     "Apps Script manifest",
   ],
-  [
-    "https://www.googleapis.com/auth/script.send_mail",
-    "Email verified reviewers when their access is granted or denied.",
-    "Apps Script manifest",
-  ],
 ];
 var MRH_LOG_HEADER_CACHE_TTL_SECONDS = 60;
 var MRH_TOKEN_CACHE_MAX_TTL_SECONDS = 300;
@@ -221,9 +216,6 @@ var MRH_RESOURCE_DASHBOARD_VERSION_CACHE_TTL_SECONDS = CACHE_TTL_SECONDS;
 var MRH_REVIEWER_DASHBOARD_VERSION_CACHE_TTL_SECONDS = CACHE_TTL_SECONDS;
 var MRH_ACCOUNT_CACHE_TTL_SECONDS = 5;
 var MRH_ACCOUNT_CACHE_GENERATION_PROPERTY = "MRH_ACCOUNT_CACHE_GENERATION";
-var MRH_REVIEWER_STATUS_NOTIFICATION_PENDING_PREFIX =
-  "MRH_REVIEWER_STATUS_NOTIFICATION_PENDING_v1_";
-var MRH_REVIEWER_STATUS_NOTIFICATION_BATCH_SIZE = 20;
 var MRH_SPREADSHEET_TIME_ZONE = "Asia/Manila";
 var MRH_LOG_DEDUPE_TTL_SECONDS = 21600;
 
@@ -635,10 +627,6 @@ function handleGetReviewerAuthorizationConfigRequest() {
     enabled: config.enabled,
     clientId: config.clientId,
   });
-}
-
-function authorizeMRHReviewerStatusEmails() {
-  return MailApp.getRemainingDailyQuota();
 }
 
 function initializeMRHAccountsSpreadsheet() {
@@ -1707,7 +1695,6 @@ function getVerifiedGooglePicture_(value) {
 function getReviewerAccountStatusResponse_(identity) {
   var account = findMRHAccount_(identity.email, false);
   var accountStatus = account ? account.accountStatus : "NOT_FOUND";
-  updateReviewerStatusNotification_(identity.email, accountStatus);
   return {
     status: "success",
     email: identity.email,
@@ -1718,127 +1705,6 @@ function getReviewerAccountStatusResponse_(identity) {
     firstName: account ? account.firstName : "",
     middleInitial: account ? account.middleInitial : "",
   };
-}
-
-function getReviewerStatusNotificationPropertyKey_(email) {
-  return (
-    "MRH_REVIEWER_STATUS_NOTIFICATION_v1_" +
-    sha256Hex(String(email || "").trim().toLowerCase())
-  );
-}
-
-function getReviewerStatusNotificationPendingKey_(email) {
-  return (
-    MRH_REVIEWER_STATUS_NOTIFICATION_PENDING_PREFIX +
-    sha256Hex(String(email || "").trim().toLowerCase())
-  );
-}
-
-function updateReviewerStatusNotification_(
-  email,
-  accountStatus,
-  lockAlreadyHeld,
-) {
-  var normalizedEmail = String(email || "").trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) return;
-  var propertyKey = getReviewerStatusNotificationPropertyKey_(email);
-  var properties = getScriptProps();
-  if (properties.getProperty(propertyKey) === accountStatus) return;
-  var lock = lockAlreadyHeld ? null : LockService.getScriptLock();
-  if (lock && !lock.tryLock(500)) {
-    Logger.log(JSON.stringify({
-      event: "reviewer_status_notification_deferred",
-      reasonCode: "STATUS_NOTIFICATION_LOCK_BUSY",
-    }));
-    return;
-  }
-  try {
-    var previousStatus = properties.getProperty(propertyKey);
-    if (!previousStatus) {
-      properties.setProperty(propertyKey, accountStatus);
-      return;
-    }
-    if (previousStatus === accountStatus) return;
-
-    if (
-      accountStatus === "TRUE" ||
-      accountStatus === "FALSE" ||
-      accountStatus === "DENIED"
-    ) {
-      properties.setProperty(propertyKey, accountStatus);
-      properties.setProperty(
-        getReviewerStatusNotificationPendingKey_(normalizedEmail),
-        JSON.stringify({ email: normalizedEmail, status: accountStatus }),
-      );
-    }
-  } finally {
-    if (lock) lock.releaseLock();
-  }
-}
-
-function processReviewerStatusNotifications() {
-  var workerLock = LockService.getUserLock();
-  if (!workerLock.tryLock(1000))
-    return { status: "busy", processed: 0 };
-  try {
-    var properties = getScriptProps();
-    var pending = properties.getProperties();
-    var keys = Object.keys(pending).filter(function (key) {
-      return key.indexOf(MRH_REVIEWER_STATUS_NOTIFICATION_PENDING_PREFIX) === 0;
-    }).slice(0, MRH_REVIEWER_STATUS_NOTIFICATION_BATCH_SIZE);
-    var subjectByStatus = {
-      TRUE: "Maritime Review Hub resource access granted",
-      FALSE: "Maritime Review Hub resource access pending",
-      DENIED: "Maritime Review Hub resource access denied",
-    };
-    var bodyByStatus = {
-      TRUE:
-        "Dear Maritime Review Hub user,\n\nYour resource access request has been approved. The requested materials are now available. Please sign in to your profile to continue.\n\nSincerely,\nMaritime Review Hub",
-      FALSE:
-        "Dear Maritime Review Hub user,\n\nThis message confirms that your resource access request has been received and is pending administrator review. We will notify you by email when a decision has been made.\n\nSincerely,\nMaritime Review Hub",
-      DENIED:
-        "Dear Maritime Review Hub user,\n\nAfter review, we are unable to approve your resource access request at this time. If you believe your submitted name details need correction, please sign in to your profile, update them, and resubmit your request for review.\n\nSincerely,\nMaritime Review Hub",
-    };
-    var sent = 0;
-    keys.forEach(function (key) {
-      var notification;
-      try {
-        notification = JSON.parse(pending[key]);
-        if (
-          !notification ||
-          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(notification.email || "")) ||
-          !subjectByStatus[notification.status]
-        )
-          throw new Error("Invalid reviewer status notification.");
-        MailApp.sendEmail({
-          to: notification.email,
-          subject: subjectByStatus[notification.status],
-          body: bodyByStatus[notification.status],
-          name: "Maritime Review Hub",
-        });
-      } catch (error) {
-        Logger.log(JSON.stringify({
-          event: "reviewer_status_notification_failed",
-          reasonCode: "MAIL_DELIVERY_FAILED",
-          errorName: String(error && error.name || "Error"),
-        }));
-        return;
-      }
-      var lock = LockService.getScriptLock();
-      if (!lock.tryLock(10000)) return;
-      try {
-        if (properties.getProperty(key) === pending[key]) {
-          properties.deleteProperty(key);
-          sent += 1;
-        }
-      } finally {
-        lock.releaseLock();
-      }
-    });
-    return { status: "success", processed: sent };
-  } finally {
-    workerLock.releaseLock();
-  }
 }
 
 function verifyReviewerRequestIdentity_(data) {
@@ -2176,11 +2042,6 @@ function handleReviewerEnrollmentRequest(data) {
         matchingAccount.time,
       ]]);
       invalidateMRHAccountCache_(config.spreadsheetId, verified.identity.email);
-      updateReviewerStatusNotification_(
-        verified.identity.email,
-        "FALSE",
-        true,
-      );
       appendMRHAccessLog_(
         "REVIEWERS",
         {
@@ -2247,7 +2108,6 @@ function handleReviewerEnrollmentRequest(data) {
       }
     }
     invalidateMRHAccountCache_(config.spreadsheetId, verified.identity.email);
-    updateReviewerStatusNotification_(verified.identity.email, "FALSE", true);
     var account = {
       email: verified.identity.email,
       lastName: lastName,
@@ -6153,6 +6013,16 @@ function setupTriggers() {
       }
     }
 
+    var properties = getScriptProps();
+    var storedProperties = properties.getProperties();
+    Object.keys(storedProperties).forEach(function (key) {
+      if (
+        key.indexOf("MRH_REVIEWER_STATUS_NOTIFICATION_v1_") === 0 ||
+        key.indexOf("MRH_REVIEWER_STATUS_NOTIFICATION_PENDING_v1_") === 0
+      )
+        properties.deleteProperty(key);
+    });
+
     ScriptApp.newTrigger("uuidSheetEdited")
       .forSpreadsheet(UUID_SHEET_ID)
       .onEdit()
@@ -6161,10 +6031,6 @@ function setupTriggers() {
       ScriptApp.newTrigger("mrhAccountsEdited")
         .forSpreadsheet(reviewerConfig.spreadsheetId)
         .onEdit()
-        .create();
-      ScriptApp.newTrigger("processReviewerStatusNotifications")
-        .timeBased()
-        .everyMinutes(1)
         .create();
     }
     ScriptApp.newTrigger("scheduledDatabaseSync")
@@ -6175,7 +6041,7 @@ function setupTriggers() {
     return {
       status: "success",
       message:
-        "Database triggers installed: UUID and account edit triggers, reviewer status notifications, and 5-minute safety sync.",
+        "Database triggers installed: UUID and account edit triggers, and 5-minute safety sync.",
     };
   } finally {
     lock.releaseLock();

@@ -1,5 +1,16 @@
 # Changelog
 
+## 26.10.17-5 - 2026-10-17
+
+### Fixed
+
+- Remove reviewer access-status email delivery, its background worker, queued
+  notification state, and the Apps Script mail permission.
+- Keep the cached Reviewer table visible during session restoration, then fetch
+  an authorized fresh snapshot in the background without showing Loading.
+- Retain the original Reviewer resource-link colors and show separate green
+  NEW or orange UPDATED badges after a resource changes.
+
 ## 26.10.17-1 - 2026-10-17
 
 ### Fixed

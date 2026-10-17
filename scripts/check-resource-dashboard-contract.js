@@ -113,14 +113,15 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(recentlyUpdated\) \{[\s\S]*?link\.classList\.add\("is-recently-updated"\)[\s\S]*?resource-dashboard-updated-badge/,
-  "changed resource cells should display an accessible Updated chip",
+  /if \(recentlyUpdated && !isReviewerResource\) \{[\s\S]*?link\.classList\.add\("is-recently-updated"\)[\s\S]*?if \(recentlyUpdated && isReviewerResource\)[\s\S]*?resource-dashboard-change-badge/,
+  "Reviewer resources should retain their original link style and show a separate change badge",
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-link-button\.is-recently-updated\s*\{[^}]*background:\s*#fef3c7/ &&
-    /\.resource-dashboard-updated-badge\s*\{/,
-  "recently changed resource chips should have a distinct background and badge",
+  /\.resource-dashboard-link-button\s*\{[^}]*background:\s*#eff6ff/ &&
+    /\.resource-dashboard-change-badge\.is-new\s*\{[^}]*background:\s*#16a34a/ &&
+    /\.resource-dashboard-change-badge\.is-updated\s*\{[^}]*background:\s*#f97316/,
+  "Reviewer NEW and UPDATED badges should be green and orange without recoloring the resource link",
 );
 const rowKeyFunction = appCore.match(
   /function getResourceDashboardRowKeys\(tab, tabName\) \{([\s\S]*?)\n  \}/,
@@ -172,9 +173,14 @@ const changedCellKey = JSON.stringify([
   "prelims",
 ]);
 assert.equal(
-  renamedModulesTab.recentlyUpdatedCells[changedCellKey],
+  renamedModulesTab.recentlyUpdatedCells[changedCellKey].updatedAt,
   updateClock,
   "renaming a resource should mark only that table cell as recently updated",
+);
+assert.equal(
+  renamedModulesTab.recentlyUpdatedCells[changedCellKey].type,
+  "UPDATED",
+  "changing an existing resource should receive an UPDATED badge",
 );
 updateClock += 1000;
 const unchangedModulesTab = mergeResourceDashboardUpdates(
@@ -183,9 +189,39 @@ const unchangedModulesTab = mergeResourceDashboardUpdates(
   dashboardTab("02 Safety (Prelims).pdf"),
 );
 assert.equal(
-  unchangedModulesTab.recentlyUpdatedCells[changedCellKey],
-  renamedModulesTab.recentlyUpdatedCells[changedCellKey],
+  unchangedModulesTab.recentlyUpdatedCells[changedCellKey].updatedAt,
+  renamedModulesTab.recentlyUpdatedCells[changedCellKey].updatedAt,
   "an unchanged cell should preserve its update indicator timestamp",
+);
+assert.equal(
+  unchangedModulesTab.recentlyUpdatedCells[changedCellKey].type,
+  "UPDATED",
+  "an unchanged cell should preserve its change label",
+);
+const emptyResourceTab = dashboardTab("", "");
+const addedResourceTab = mergeResourceDashboardUpdates(
+  "REVIEWERS",
+  emptyResourceTab,
+  dashboardTab("01 Newly Added.pdf"),
+);
+const newResourceKey = JSON.stringify([
+  JSON.stringify(["REVIEWERS", ["3.1", "NAV6"], 0]),
+  "prelims",
+]);
+assert.equal(
+  addedResourceTab.recentlyUpdatedCells[newResourceKey].type,
+  "NEW",
+  "a resource added to a previously empty cell should receive a NEW badge",
+);
+const updatedResourceTab = mergeResourceDashboardUpdates(
+  "REVIEWERS",
+  addedResourceTab,
+  dashboardTab("02 Revised.pdf"),
+);
+assert.equal(
+  updatedResourceTab.recentlyUpdatedCells[newResourceKey].type,
+  "UPDATED",
+  "replacing an existing resource should receive an UPDATED badge",
 );
 updateClock += 8 * 24 * 60 * 60 * 1000;
 assert.deepEqual(
@@ -247,6 +283,11 @@ assert.match(
   appCore,
   /hasAuthorizedSessionCache[\s\S]*?reviewerSessionRestorePending && !hasAuthorizedSessionCache[\s\S]*?if \(!hasAuthorizedSessionCache\)/,
   "the approved account's cached table should remain visible while its session is refreshed",
+);
+assert.match(
+  appCore,
+  /response\.accountStatus === "TRUE"[\s\S]*?resourceDashboardActiveTab === "REVIEWERS"[\s\S]*?loadReviewerDashboard\(\{ refresh: true \}\)/,
+  "restoring a cached Reviewer table should fetch a fresh authorized snapshot without replacing the cached view with Loading",
 );
 assert.match(
   appCore,

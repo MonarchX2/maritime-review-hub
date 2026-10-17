@@ -218,13 +218,11 @@ To initialize sign-in and access logging:
    The `SCOPES` tab lists required Apps Script OAuth scopes and their purposes;
    it is refreshed when the initializer runs. Keep the spreadsheet
    private to administrators.
-5. Run `authorizeMRHReviewerStatusEmails()` from the Apps Script editor once
-   and approve the send-mail permission. This authorization step is required
-   before the web app can send reviewer decision emails. Run `setupTriggers()`
-   once to install the account-sheet cache invalidation trigger and the
-   one-minute status-notification worker. Account-status responses no longer
-   wait for email delivery; the worker processes up to 20 queued messages per
-   invocation and retries transient mail failures on its next run.
+5. Run `setupTriggers()` once to install the account-sheet cache invalidation
+   trigger and the five-minute database safety sync. Setup also removes any
+   obsolete reviewer status-email trigger and queued notification properties.
+   Reviewer access changes are reflected through the website's account-status
+   checks; the backend does not send access-status emails.
 6. On first sign-in, a user submits `Last Name`, `First Name`, and
    `Middle Initial`. The backend verifies the Google identity and saves one
    account row per verified email with `Active=FALSE`. Reviewer resources stay
@@ -233,7 +231,7 @@ To initialize sign-in and access logging:
    correct their name, and resubmit it for review, which returns the account
    to `FALSE`. The exact account columns are `Email`, `Last Name`,
    `First Name`, `Middle Initial`, and `Active`.
-6. Enable the Apps Script Advanced Google service **Google Sheets API v4**
+7. Enable the Apps Script Advanced Google service **Google Sheets API v4**
    (the project manifest declares this service; enable the Google Sheets API
    in the linked Cloud project if prompted), and deploy a new web-app version.
    The repository selectively tracks the Apps Script runtime files under
@@ -242,8 +240,11 @@ To initialize sign-in and access logging:
    `backend/main.js` to the Apps Script project separately before deploying
    the frontend. Existing users will need to complete Google sign-in once to
    exchange their transient Google credential for a persistent application
-   session.
-   If scopes are added or consent is revoked later, run
+   session. Because this release removes the mail scope, run
+   `initializeMRHAccountsSpreadsheet()` once to refresh the `SCOPES` worksheet
+   and `setupTriggers()` once to remove any previously installed notification
+   worker and queued status messages.
+   If scopes are changed or consent is revoked later, run
    `initializeMRHAccountsSpreadsheet()` again from the Apps Script editor and
    approve the requested permissions as the deployment owner.
 7. Test sign-in with a Google account. A new account can use Reviewers only

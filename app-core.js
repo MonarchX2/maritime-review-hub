@@ -7295,9 +7295,17 @@
             row.dataset.dashboardRowKey,
             columnName,
           ]);
-          const updatedAt = Number(
-            tab.recentlyUpdatedCells?.[dashboardUpdateKey] || 0,
-          );
+          const updateMarker =
+            tab.recentlyUpdatedCells?.[dashboardUpdateKey];
+          const updatedAt =
+            typeof updateMarker === "object" && updateMarker !== null
+              ? Number(updateMarker.updatedAt)
+              : Number(updateMarker || 0);
+          const changeType =
+            typeof updateMarker === "object" &&
+            ["NEW", "UPDATED"].includes(updateMarker.type)
+              ? updateMarker.type
+              : "UPDATED";
           const recentlyUpdated =
             Number.isFinite(updatedAt) &&
             updatedAt > 0 &&
@@ -7337,6 +7345,8 @@
             "a",
             "resource-dashboard-link-button",
           );
+          const isReviewerResource =
+            resourceDashboardActiveTab === "REVIEWERS";
           link.href = reviewerPdfMatch ? "#resource-portal-preview" : linkUrl;
           link.draggable = false;
           ["copy", "contextmenu", "dragstart"].forEach((eventName) => {
@@ -7352,7 +7362,7 @@
               linkLabel,
             ),
           );
-          if (recentlyUpdated) {
+          if (recentlyUpdated && !isReviewerResource) {
             link.classList.add("is-recently-updated");
             link.setAttribute(
               "aria-label",
@@ -7366,12 +7376,22 @@
               ),
             );
           }
-          if (resourceTitle)
+          if (recentlyUpdated && isReviewerResource) {
+            const changeLabel = changeType === "NEW" ? "New" : "Updated";
+            link.setAttribute(
+              "aria-label",
+              `${changeLabel} resource: ${linkLabel}`,
+            );
+          }
+          if (resourceTitle && isReviewerResource) {
+            link.title = resourceTitle;
+          } else if (resourceTitle) {
             link.title = recentlyUpdated
               ? `Recently updated: ${resourceTitle}`
               : isSyllabus
                 ? "PDF"
                 : resourceTitle;
+          }
           const resourceArea =
             resourceDashboardActiveTab === "MODULES"
               ? "MODULES"
@@ -7434,7 +7454,22 @@
               );
             });
           }
-          cell.appendChild(link);
+          if (recentlyUpdated && isReviewerResource) {
+            const badge = createResourceDashboardElement(
+              "span",
+              `resource-dashboard-change-badge is-${changeType.toLowerCase()}`,
+              changeType,
+            );
+            badge.setAttribute("aria-hidden", "true");
+            const linkWrap = createResourceDashboardElement(
+              "span",
+              "resource-dashboard-reviewer-link-wrap",
+            );
+            linkWrap.append(badge, link);
+            cell.appendChild(linkWrap);
+          } else {
+            cell.appendChild(link);
+          }
         } else {
           cell.textContent = value;
           if (
@@ -8101,7 +8136,7 @@
           response.accountStatus === "TRUE" &&
           resourceDashboardActiveTab === "REVIEWERS"
         )
-          void loadReviewerDashboard();
+          void loadReviewerDashboard({ refresh: true });
         return true;
       } catch (error) {
         if (authGeneration !== reviewerAuthGeneration) return false;
@@ -9314,10 +9349,30 @@
         if (!value && !link && !title) return;
 
         const markerKey = JSON.stringify([rowKey, columnKey]);
-        let updatedAt = Number(
-          previousTab?.recentlyUpdatedCells?.[markerKey] || 0,
-        );
+        const previousMarker =
+          previousTab?.recentlyUpdatedCells?.[markerKey];
+        let updatedAt =
+          typeof previousMarker === "object" && previousMarker !== null
+            ? Number(previousMarker.updatedAt)
+            : Number(previousMarker || 0);
+        let changeType =
+          typeof previousMarker === "object" &&
+          ["NEW", "UPDATED"].includes(previousMarker.type)
+            ? previousMarker.type
+            : updatedAt
+              ? "UPDATED"
+              : "";
         const previousColumnIndex = previousColumnIndices.get(columnKey);
+        const previousResourceExists =
+          previousRowIndex !== undefined &&
+          previousColumnIndex !== undefined &&
+          Boolean(
+            String(
+              previousTab.rows[previousRowIndex]?.[previousColumnIndex] ?? "",
+            ).trim() ||
+              previousTab.links?.[previousRowIndex]?.[previousColumnIndex] ||
+              previousTab.linkTitles?.[previousRowIndex]?.[previousColumnIndex],
+          );
         const changed =
           previousTabIsValid &&
           (previousRowIndex === undefined ||
@@ -9334,14 +9389,21 @@
                 previousColumnIndex
               ] || "",
             ) !== title);
-        if (changed) updatedAt = now;
+        if (changed) {
+          updatedAt = now;
+          changeType = previousResourceExists ? "UPDATED" : "NEW";
+        }
         if (
           Number.isFinite(updatedAt) &&
           updatedAt > 0 &&
           updatedAt <= now &&
           now - updatedAt <= RESOURCE_DASHBOARD_UPDATED_TTL_MS
-        )
-          recentlyUpdatedCells[markerKey] = updatedAt;
+        ) {
+          recentlyUpdatedCells[markerKey] = {
+            updatedAt,
+            type: changeType || "UPDATED",
+          };
+        }
       });
     });
     return { ...nextTab, recentlyUpdatedCells };

@@ -2916,6 +2916,36 @@ button:active:not(:disabled) {
   text-transform: uppercase;
 }
 
+.resource-dashboard-reviewer-link-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.resource-dashboard-change-badge {
+  position: absolute;
+  z-index: 1;
+  top: -0.45rem;
+  left: -0.35rem;
+  border-radius: 0.15rem;
+  padding: 0.16rem 0.4rem;
+  color: #fff;
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 1.1;
+  pointer-events: none;
+  text-transform: uppercase;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.resource-dashboard-change-badge.is-new {
+  background: #16a34a;
+}
+
+.resource-dashboard-change-badge.is-updated {
+  background: #f97316;
+}
+
 .resource-dashboard-link-icon {
   flex: 0 0 auto;
   font-size: 0.8rem;
