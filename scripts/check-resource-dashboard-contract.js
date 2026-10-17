@@ -381,8 +381,23 @@ assert.match(
 );
 assert.match(
   appCore,
-  /document\.visibilityState === "visible"[\s\S]*?scheduleReviewerStatusPolling\(reviewerSessionId, 0\)[\s\S]*?globalScope\.addEventListener\("focus"[\s\S]*?scheduleReviewerStatusPolling\(reviewerSessionId, 0\)/,
-  "returning to an active tab should immediately recheck account approval",
+  /function refreshReviewerStatusOnReturn\(\)[\s\S]*?document\.visibilityState === "hidden"[\s\S]*?scheduleReviewerStatusPolling\(reviewerSessionId, 0\)[\s\S]*?restoreReviewerSession\(storedSessionId\)/,
+  "returning to an active tab should immediately poll approval or retry restoring the saved session",
+);
+assert.match(
+  appCore,
+  /document\.addEventListener\(\s*"visibilitychange",\s*refreshReviewerStatusOnReturn,/,
+  "tab visibility events should invoke immediate Reviewer status recovery",
+);
+assert.match(
+  appCore,
+  /globalScope\.addEventListener\("focus",\s*\(\) => \{[\s\S]*?refreshReviewerStatusOnReturn\(\)/,
+  "window focus should invoke immediate Reviewer status recovery",
+);
+assert.match(
+  appCore,
+  /function scheduleReviewerSessionRestoreRetry\(sessionId\)[\s\S]*?REVIEWER_SESSION_RESTORE_RETRY_BASE_MS[\s\S]*?2 \*\* reviewerSessionRestoreRetryAttempt[\s\S]*?REVIEWER_SESSION_RESTORE_RETRY_MAX_MS[\s\S]*?sessionId !== getStoredReviewerSessionId\(\)[\s\S]*?restoreReviewerSession\(sessionId\)[\s\S]*?scheduleReviewerSessionRestoreRetry\(sessionId\)/,
+  "temporary session-restore failures should recover automatically using capped backoff without overriding sign-out or a newer session",
 );
 assert.match(
   appCore,

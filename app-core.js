@@ -6048,6 +6048,8 @@
   let reviewerDashboardRequestPromise = null;
   let reviewerStatusPollTimer = null;
   let reviewerStatusPollInFlight = false;
+  let reviewerSessionRestoreRetryTimer = null;
+  let reviewerSessionRestoreRetryAttempt = 0;
   let reviewerVerificationInFlightToken = "";
   let reviewerVerificationRetryToken = "";
   let reviewerVerificationRetryAvailable = false;
@@ -6057,6 +6059,8 @@
   let reviewerSignOutStorageListenerInstalled = false;
   const REVIEWER_STATUS_POLL_INTERVAL_MS = 1000;
   const REVIEWER_STATUS_BACKGROUND_POLL_INTERVAL_MS = 30000;
+  const REVIEWER_SESSION_RESTORE_RETRY_BASE_MS = 1000;
+  const REVIEWER_SESSION_RESTORE_RETRY_MAX_MS = 30000;
   const REVIEWER_EXPLICIT_SIGNOUT_KEY = "mrh_reviewer_explicit_signout_v1";
   const REVIEWER_EXPLICIT_SIGNOUT_COOKIE = "mrh_reviewer_explicit_signout_v1";
   const REVIEWER_SESSION_STORAGE_KEY = "mrh_reviewer_session_v1";
@@ -7726,18 +7730,17 @@
       "visibilitychange",
       refreshResourceDashboardIfNeeded,
     );
-    document.addEventListener("visibilitychange", () => {
-      if (
-        document.visibilityState === "visible" &&
-        reviewerSessionId
-      )
-        scheduleReviewerStatusPolling(reviewerSessionId, 0);
+    document.addEventListener(
+      "visibilitychange",
+      refreshReviewerStatusOnReturn,
+    );
+    globalScope.addEventListener("pageshow", () => {
+      refreshResourceDashboardIfNeeded();
+      refreshReviewerStatusOnReturn();
     });
-    globalScope.addEventListener("pageshow", refreshResourceDashboardIfNeeded);
     globalScope.addEventListener("focus", () => {
       refreshResourceDashboardIfNeeded();
-      if (reviewerSessionId)
-        scheduleReviewerStatusPolling(reviewerSessionId, 0);
+      refreshReviewerStatusOnReturn();
     });
     resourceDashboardAutoRefreshEventsInstalled = true;
   }
@@ -8185,6 +8188,50 @@
     }
   }
 
+  function stopReviewerSessionRestoreRetry() {
+    if (reviewerSessionRestoreRetryTimer !== null) {
+      globalScope.clearTimeout(reviewerSessionRestoreRetryTimer);
+      reviewerSessionRestoreRetryTimer = null;
+    }
+  }
+
+  function scheduleReviewerSessionRestoreRetry(sessionId) {
+    stopReviewerSessionRestoreRetry();
+    if (!sessionId || hasExplicitReviewerSignOut()) return;
+    const retryDelay = Math.min(
+      REVIEWER_SESSION_RESTORE_RETRY_BASE_MS *
+        2 ** reviewerSessionRestoreRetryAttempt,
+      REVIEWER_SESSION_RESTORE_RETRY_MAX_MS,
+    );
+    reviewerSessionRestoreRetryAttempt = Math.min(
+      reviewerSessionRestoreRetryAttempt + 1,
+      5,
+    );
+    reviewerSessionRestoreRetryTimer = globalScope.setTimeout(() => {
+      reviewerSessionRestoreRetryTimer = null;
+      if (
+        hasExplicitReviewerSignOut() ||
+        reviewerSessionId ||
+        sessionId !== getStoredReviewerSessionId()
+      )
+        return;
+      void restoreReviewerSession(sessionId);
+    }, retryDelay);
+  }
+
+  function refreshReviewerStatusOnReturn() {
+    if (document.visibilityState === "hidden") return;
+    if (reviewerSessionId) {
+      scheduleReviewerStatusPolling(reviewerSessionId, 0);
+      return;
+    }
+    const storedSessionId = getStoredReviewerSessionId();
+    if (!storedSessionId || hasExplicitReviewerSignOut()) return;
+    stopReviewerSessionRestoreRetry();
+    reviewerSessionRestoreRetryAttempt = 0;
+    void restoreReviewerSession(storedSessionId);
+  }
+
   async function restoreReviewerSession(requestedSessionId = "") {
     if (reviewerSessionRestorePromise) return reviewerSessionRestorePromise;
     if (hasExplicitReviewerSignOut()) return false;
@@ -8230,6 +8277,8 @@
           { timeoutMs: 15000, maxRetries: 0 },
         );
         if (authGeneration !== reviewerAuthGeneration) return false;
+        stopReviewerSessionRestoreRetry();
+        reviewerSessionRestoreRetryAttempt = 0;
         applyReviewerAccountStatus(response, sessionId);
         scheduleReviewerStatusPolling(sessionId);
         if (
@@ -8265,6 +8314,7 @@
             "Unable to restore the saved access session.",
             error,
           );
+          scheduleReviewerSessionRestoreRetry(sessionId);
         }
         return false;
       } finally {
@@ -9161,6 +9211,8 @@
       });
     }
     reviewerAuthGeneration += 1;
+    stopReviewerSessionRestoreRetry();
+    reviewerSessionRestoreRetryAttempt = 0;
     reviewerAuthCheckPending = false;
     reviewerSessionRestorePending = false;
     reviewerSessionRestorePromise = null;

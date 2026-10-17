@@ -1,5 +1,13 @@
 # Changelog
 
+## 26.10.17-8 - 2026-10-17
+
+### Fixed
+
+- Automatically retry temporary saved Reviewer-session restoration failures
+  with capped backoff, and immediately recheck Reviewer status when the tab
+  becomes visible or focused.
+
 ## 26.10.17-7 - 2026-10-17
 
 ### Fixed
