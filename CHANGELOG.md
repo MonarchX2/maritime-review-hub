@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.10.17-16 - 2026-10-17
+
+### Fixed
+
+- Make the offline Retry button, restored-connection handler, and browser
+  refresh navigate to the canonical website URL.
+
 ## 26.10.17-15 - 2026-10-17
 
 ### Fixed and improved

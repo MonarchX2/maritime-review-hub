@@ -291,7 +291,30 @@ async function main() {
   });
   const fallback = await offlineResponse;
   assert.equal(fallback.status, 200, "offline navigation must use the cached shell");
-  assert.match(await fallback.text(), /<base href="\/app\/">/);
+  const offlineHtml = await fallback.text();
+  assert.match(offlineHtml, /<base href="\/app\/">/);
+  assert.match(
+    offlineHtml,
+    /const appUrl = "https:\/\/monarchx2\.github\.io\/mrh\/";/,
+    "offline recovery must use the canonical GitHub Pages URL",
+  );
+  const offlineScript = offlineHtml.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(offlineScript, "offline recovery must include its retry behavior");
+  assert.match(
+    offlineScript,
+    /addEventListener\("click", retryApp\)[\s\S]*?addEventListener\("online", retryApp\)/,
+    "the Retry button and restored connection must navigate to the canonical app URL",
+  );
+  assert.match(
+    offlineScript,
+    /performance\.getEntriesByType\("navigation"\)\[0\]\?\.type === "reload"[\s\S]*?retryApp\(\)/,
+    "refreshing the offline page while online must retry the canonical app URL",
+  );
+  assert.doesNotMatch(
+    offlineScript,
+    /location\.reload\(\)/,
+    "offline recovery must not reload a stale or nested URL",
+  );
 
   const staticRequest = new Request(
     `${appOrigin}${appBasePath}styles.css`,

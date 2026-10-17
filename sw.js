@@ -589,14 +589,22 @@ async function networkFirstNavigation(event) {
       <button id="retry-button" type="button">Try again</button>
     </main>
     <script>
+      const appUrl = "https://monarchx2.github.io/mrh/";
       const status = document.getElementById("connection-status");
+      const retryApp = () => location.replace(appUrl);
       status.textContent = navigator.onLine
         ? "The connection may be temporarily unavailable. Try loading again."
         : "Waiting for an internet connection...";
       document
         .getElementById("retry-button")
-        .addEventListener("click", () => location.reload());
-      window.addEventListener("online", () => location.reload());
+        .addEventListener("click", retryApp);
+      window.addEventListener("online", retryApp);
+      if (
+        navigator.onLine &&
+        performance.getEntriesByType("navigation")[0]?.type === "reload"
+      ) {
+        retryApp();
+      }
     </script>
   </body>
 </html>`,
