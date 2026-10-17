@@ -1,8 +1,8 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-26.10.17-4-20261017";
-  const APP_DISPLAY_VERSION = "26.10.17-4";
+  const APP_VERSION = "mrh-26.11.1-20261017";
+  const APP_DISPLAY_VERSION = "26.11.1";
   const UPDATE_QUERY_PARAMETER = "__mrh_update";
   const FACEBOOK_CLICK_ID_PARAMETER = "fbclid";
   const LEGACY_PAGES_BASE_PATH = "/maritime-review-hub/";
@@ -336,12 +336,14 @@
       "qr-transfer-core.js",
       "reviewer-pdf-worker.js",
       "pdf-lib-1.17.1.min.js",
+      "pdfjs-5.4.394.min.mjs",
+      "pdfjs-5.4.394.worker.min.mjs",
       "qr-vendor/qrcode-generator.js",
       "qr-vendor/jsQR.js",
     ];
     const checks = assetNames.map(async (name) => {
       const assetUrl = new URL(name, baseUrl);
-      if (!/\.[0-9a-f]{16}\.(?:js|css|svg)$/.test(assetUrl.pathname)) {
+      if (!/\.[0-9a-f]{16}\.(?:js|mjs|css|svg)$/.test(assetUrl.pathname)) {
         assetUrl.searchParams.set("v", version);
       }
       const response = await rootScope.fetch(assetUrl.href, {

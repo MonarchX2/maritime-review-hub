@@ -79,9 +79,9 @@ worker and library are content-hashed and deployable.
    those same bytes for each download through a native download link. The
    fallback download prompt appears only if the PDF frame errors or fails to
    signal that it loaded within eight seconds. On mobile and touch devices,
-   the site opens a standalone Blob-based viewer in the same tab with Return
-   to Website, Download, and Open File actions in its header. The viewer
-   embeds the prepared PDF and offers a direct native-viewer link.
+   the site opens a same-tab Blob-based viewer with Return to Website and
+   Download actions. It renders the prepared PDF with the bundled PDF.js
+   renderer rather than an embedded browser PDF plug-in.
 
 The source limit is 8 MiB, output limit 12 MiB, and page limit 80. Worker
 startup and document complexity affect local processing time; the 20-page

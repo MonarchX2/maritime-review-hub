@@ -5996,6 +5996,8 @@
   let resourcePortalStatusMessage = "";
   let resourcePortalPreviewObjectUrl = "";
   let resourcePortalPreviewBlobViewerUrl = "";
+  let resourcePortalPreviewPdfBytes = null;
+  let resourcePortalPreviewRequest = null;
   let resourcePortalPreviewUrlOpened = false;
   let resourcePortalPreviewIsReviewer = false;
   let resourcePortalPreviewCourse = "";
@@ -7997,6 +7999,7 @@
                     resourceDashboardActiveTab === "MODULES"
                       ? courseName
                       : "",
+                  mimeType,
                 });
             });
           }
@@ -11285,7 +11288,9 @@
         previewButton.appendChild(document.createTextNode(displayName));
         previewButton.type = "button";
         previewButton.addEventListener("click", () => {
-          void previewResourceFile(item.id, item.name);
+          void previewResourceFile(item.id, item.name, {
+            mimeType: item.mimeType,
+          });
         });
 
         nameCell.appendChild(previewButton);
@@ -11378,6 +11383,7 @@
       status,
       returnLabel = "Return to Website",
       mobileOnly = false,
+      pdfBytes = null,
     } = {},
   ) {
     if (
@@ -11389,10 +11395,161 @@
     if (!resourcePortalPreviewObjectUrl || !preview || !frame) return false;
 
     const blobUrl = escapeHTML(resourcePortalPreviewObjectUrl);
+    const baseUrl = new URL(
+      globalScope.__MRH_APP_BASE_PATH || "./",
+      globalScope.location.origin,
+    );
     const returnUrl = escapeHTML(globalScope.location.href);
+    const pdfModuleUrl = escapeHTML(
+      new URL("pdfjs-5.4.394.min.mjs", baseUrl).href,
+    );
+    const pdfWorkerUrl = escapeHTML(
+      new URL("pdfjs-5.4.394.worker.min.mjs", baseUrl).href,
+    );
     const safeTitle = escapeHTML(title || "PDF Preview");
     const downloadName = escapeHTML(downloadFileName || "download");
     const safeReturnLabel = escapeHTML(returnLabel);
+    const usePdfJs =
+      pdfBytes instanceof Uint8Array &&
+      typeof globalScope.matchMedia === "function" &&
+      globalScope.matchMedia("(max-width: 640px), (pointer: coarse)").matches;
+    const fileContent = usePdfJs
+      ? `<main id="pdf-pages" aria-label="PDF pages"></main>
+    <p id="pdf-status" role="status" aria-live="polite">Loading PDF Preview</p>`
+      : `<iframe title="${safeTitle}" src="${blobUrl}"></iframe>`;
+    const pdfRendererScript = usePdfJs
+      ? `<script type="module">
+      const pdfRenderer = import("${pdfModuleUrl}").then((pdfjs) => {
+        pdfjs.GlobalWorkerOptions.workerSrc = "${pdfWorkerUrl}";
+        return pdfjs;
+      });
+      const pages = document.getElementById("pdf-pages");
+      const status = document.getElementById("pdf-status");
+      window.addEventListener("message", async (event) => {
+        if (
+          event.source !== window.parent ||
+          event.origin !== location.origin ||
+          event.data?.type !== "MRH_PDF_VIEWER_DATA" ||
+          !(event.data.bytes instanceof ArrayBuffer)
+        )
+          return;
+        try {
+          const pdfjs = await pdfRenderer;
+          const pdf = await pdfjs.getDocument({
+            data: new Uint8Array(event.data.bytes),
+          }).promise;
+          const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+          const visiblePages = new WeakMap();
+          const renderPage = async (section) => {
+            if (
+              section.dataset.rendering === "true" ||
+              section.querySelector("canvas")
+            )
+              return;
+            section.dataset.rendering = "true";
+            try {
+              const pageNumber = Number(section.dataset.pageNumber);
+              const page = await pdf.getPage(pageNumber);
+              const unitViewport = page.getViewport({ scale: 1 });
+              const scale = Math.min(
+                1.5,
+                Math.max(0.1, (pages.clientWidth - 24) / unitViewport.width),
+              );
+              const viewport = page.getViewport({ scale });
+              section.style.width = Math.ceil(viewport.width) + "px";
+              const canvas = document.createElement("canvas");
+              canvas.width = Math.ceil(viewport.width * outputScale);
+              canvas.height = Math.ceil(viewport.height * outputScale);
+              canvas.style.width = viewport.width + "px";
+              canvas.style.height = viewport.height + "px";
+              section.appendChild(canvas);
+              await page.render({
+                canvasContext: canvas.getContext("2d"),
+                viewport,
+                transform: outputScale === 1
+                  ? null
+                  : [outputScale, 0, 0, outputScale, 0, 0],
+              }).promise;
+              page.cleanup();
+              status.hidden = true;
+              if (!visiblePages.get(section)) {
+                canvas.width = 0;
+                canvas.height = 0;
+                canvas.remove();
+              }
+            } finally {
+              section.dataset.rendering = "false";
+            }
+          };
+          const renderError = (error) => {
+            status.textContent =
+              "Unable to render this PDF here. Use Download to open it in a PDF app.";
+            status.hidden = false;
+            console.error("Unable to render PDF preview.", error);
+          };
+          const observer =
+            typeof IntersectionObserver === "function"
+              ? new IntersectionObserver(
+                  (entries) => {
+                    entries.forEach((entry) => {
+                      visiblePages.set(entry.target, entry.isIntersecting);
+                      const canvas = entry.target.querySelector("canvas");
+                      if (entry.isIntersecting) {
+                        void renderPage(entry.target).catch(renderError);
+                      } else if (
+                        canvas &&
+                        entry.target.dataset.rendering !== "true"
+                      ) {
+                        canvas.width = 0;
+                        canvas.height = 0;
+                        canvas.remove();
+                      }
+                    });
+                  },
+                  { root: pages, rootMargin: "100% 0px" },
+                )
+              : null;
+          const fallbackPages = [];
+          for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+            const page = await pdf.getPage(pageNumber);
+            const unitViewport = page.getViewport({ scale: 1 });
+            const section = document.createElement("section");
+            section.className = "pdf-page";
+            section.setAttribute("aria-label", "Page " + pageNumber);
+            section.dataset.pageNumber = String(pageNumber);
+            section.style.aspectRatio =
+              unitViewport.width + " / " + unitViewport.height;
+            section.style.width =
+              "min(100%, " + Math.max(1, pages.clientWidth - 24) + "px)";
+            pages.appendChild(section);
+            page.cleanup();
+            if (observer) observer.observe(section);
+            else {
+              visiblePages.set(section, true);
+              fallbackPages.push(section);
+            }
+          }
+          if (!observer)
+            for (const section of fallbackPages) await renderPage(section);
+        } catch (error) {
+          status.textContent =
+            "Unable to render this PDF here. Use Download to open it in a PDF app.";
+          status.hidden = false;
+          console.error("Unable to render PDF preview.", error);
+        }
+      });
+      pdfRenderer.catch((error) => {
+        status.textContent =
+          "PDF Preview is unavailable. Use Download to open the file.";
+        status.hidden = false;
+        console.error("Unable to load the PDF renderer.", error);
+      });
+      window.parent.postMessage(
+        { type: "MRH_PDF_VIEWER_READY" },
+        location.origin,
+      );
+    </script>`
+      : "";
     const viewerHtml = `<!doctype html>
 <html lang="en">
   <head>
@@ -11440,7 +11597,12 @@
         white-space: nowrap;
       }
       a:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
-      iframe { display: block; width: 100%; height: 100%; border: 0; background: #64748b; }
+      iframe, #pdf-pages { display: block; width: 100%; height: 100%; border: 0; background: #64748b; }
+      #pdf-pages { overflow: auto; padding: 12px; background: #475569; }
+      .pdf-page { max-width: 100%; margin: 0 auto 12px; background: #fff; box-shadow: 0 2px 12px #0f172a66; }
+      .pdf-page canvas { display: block; max-width: 100%; }
+      #pdf-status { position: absolute; z-index: 2; inset: 50% auto auto 50%; max-width: calc(100% - 32px); margin: 0; padding: 12px 16px; border-radius: 8px; background: #fff; color: #0f172a; text-align: center; transform: translate(-50%, -50%); }
+      #pdf-status[hidden] { display: none; }
       @media (max-width: 520px) {
         header { align-items: flex-start; flex-direction: column; gap: 6px; }
         nav { width: 100%; }
@@ -11454,10 +11616,10 @@
       <nav aria-label="File actions">
         <a id="return-to-site" href="${returnUrl}" target="_top">${safeReturnLabel}</a>
         <a href="${blobUrl}" download="${downloadName}">Download</a>
-        <a href="${blobUrl}" target="_blank" rel="noopener noreferrer">Open File</a>
       </nav>
     </header>
-    <iframe title="${safeTitle}" src="${blobUrl}"></iframe>
+    ${fileContent}
+    ${pdfRendererScript}
     <script>
       document.getElementById("return-to-site").addEventListener("click", (event) => {
         if (window.parent === window) return;
@@ -11476,6 +11638,7 @@
     resourcePortalPreviewBlobViewerUrl = viewerUrl;
     try {
       resourcePortalPreviewUrlOpened = true;
+      resourcePortalPreviewPdfBytes = usePdfJs ? pdfBytes : null;
       preview.classList.add("is-blob-viewer");
       frame.title = title || "PDF Preview";
       frame.hidden = false;
@@ -11487,7 +11650,111 @@
     } catch (error) {
       preview.classList.remove("is-blob-viewer");
       resourcePortalPreviewBlobViewerUrl = "";
+      resourcePortalPreviewPdfBytes = null;
       resourcePortalPreviewUrlOpened = false;
+      URL.revokeObjectURL(viewerUrl);
+      throw error;
+    }
+    return true;
+  }
+
+  function getDrivePreviewUrl(fileId, mimeType) {
+    if (!/^[A-Za-z0-9_-]{10,200}$/.test(String(fileId || ""))) return "";
+    const routes = {
+      "application/vnd.google-apps.document": "https://docs.google.com/document/d/",
+      "application/vnd.google-apps.spreadsheet": "https://docs.google.com/spreadsheets/d/",
+      "application/vnd.google-apps.presentation": "https://docs.google.com/presentation/d/",
+    };
+    const baseUrl =
+      routes[String(mimeType || "").toLowerCase()] ||
+      "https://drive.google.com/file/d/";
+    return `${baseUrl}${encodeURIComponent(fileId)}/preview`;
+  }
+
+  function openDriveResourceViewer(
+    title,
+    fileId,
+    mimeType,
+    {
+      preview,
+      frame,
+      status,
+      returnLabel = "Return to Website",
+      allowWebsiteFallback = true,
+    } = {},
+  ) {
+    const driveUrl = getDrivePreviewUrl(fileId, mimeType);
+    if (!driveUrl || !preview || !frame) return false;
+
+    const safeTitle = escapeHTML(title || "File Preview");
+    const returnUrl = escapeHTML(globalScope.location.href);
+    const safeReturnLabel = escapeHTML(returnLabel);
+    const websitePreviewAction = allowWebsiteFallback
+      ? `<a id="website-preview" href="${returnUrl}" target="_top">Use website preview</a>`
+      : "";
+    const viewerHtml = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="referrer" content="no-referrer">
+    <title>${safeTitle} - Maritime Review Hub</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; margin: 0; }
+      body { display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; background: #f1f5f9; color: #0f172a; font: 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      header { position: relative; z-index: 1; display: flex; min-height: 56px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); border-bottom: 1px solid #cbd5e1; background: #fff; }
+      h1 { min-width: 0; margin: 0; overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+      nav { display: flex; flex: 0 0 auto; gap: 8px; }
+      a { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; border: 1px solid #cbd5e1; border-radius: 7px; padding: 0 12px; background: #fff; color: #1d4ed8; font-weight: 600; text-decoration: none; white-space: nowrap; }
+      a:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+      iframe { display: block; width: 100%; height: 100%; border: 0; background: #64748b; }
+      @media (max-width: 520px) { header { align-items: flex-start; flex-direction: column; gap: 6px; } nav { width: 100%; } nav a { flex: 1 1 0; padding-inline: 8px; font-size: 12px; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>${safeTitle}</h1>
+      <nav aria-label="File actions">
+        <a id="return-to-site" href="${returnUrl}" target="_top">${safeReturnLabel}</a>
+        ${websitePreviewAction}
+      </nav>
+    </header>
+    <iframe title="${safeTitle}" src="${escapeHTML(driveUrl)}" referrerpolicy="no-referrer" allow="autoplay"></iframe>
+    <script>
+      const notifyParent = (type) => {
+        if (window.parent === window) return false;
+        window.parent.postMessage({ type }, location.origin);
+        return true;
+      };
+      document.getElementById("return-to-site").addEventListener("click", (event) => {
+        if (notifyParent("MRH_RESOURCE_PREVIEW_RETURN")) event.preventDefault();
+      });
+      const websitePreview = document.getElementById("website-preview");
+      websitePreview?.addEventListener("click", (event) => {
+        if (notifyParent("MRH_RESOURCE_PREVIEW_WEBSITE_FALLBACK")) event.preventDefault();
+      });
+    </script>
+  </body>
+</html>`;
+    const viewerUrl = URL.createObjectURL(
+      new Blob([viewerHtml], { type: "text/html;charset=utf-8" }),
+    );
+    resourcePortalPreviewBlobViewerUrl = viewerUrl;
+    try {
+      resourcePortalPreviewUrlOpened = false;
+      resourcePortalPreviewPdfBytes = null;
+      preview.classList.add("is-blob-viewer");
+      frame.title = title || "File Preview";
+      frame.hidden = false;
+      frame.src = viewerUrl;
+      if (status) {
+        status.classList.remove("is-loading");
+        status.hidden = true;
+      }
+    } catch (error) {
+      preview.classList.remove("is-blob-viewer");
+      resourcePortalPreviewBlobViewerUrl = "";
       URL.revokeObjectURL(viewerUrl);
       throw error;
     }
@@ -11513,6 +11780,7 @@
       frame,
       status,
       mobileOnly: true,
+      pdfBytes: activePdf.bytes,
     });
   }
 
@@ -11923,6 +12191,7 @@
         resourceDashboardFolderReturn = resourceDashboardFolderListing;
         void previewResourceFile(item.id, item.name, {
           dashboardFolderFile: true,
+          mimeType: item.mimeType,
           course: getCourseCodeFromBreadcrumbs(
             listing.breadcrumbs,
             String(listing.folder?.name || ""),
@@ -12111,6 +12380,8 @@
       course = "",
       folderId = "",
       dashboardFolderFile = false,
+      mimeType = "",
+      forceInSite = false,
     } = {},
   ) {
     const preview = document.getElementById("resource-portal-preview");
@@ -12127,6 +12398,19 @@
       "resource-portal-preview-back",
     );
     if (!preview || !title || !frame) return false;
+    const requestOptions = {
+      reviewer,
+      course,
+      folderId,
+      dashboardFolderFile,
+      mimeType,
+      forceInSite,
+    };
+    resourcePortalPreviewRequest = {
+      fileId,
+      fileName,
+      options: requestOptions,
+    };
     preview.classList.remove("is-blob-viewer");
     reviewerPdfRenderCheckCleanup?.();
     reviewerPdfWorkerCancel?.();
@@ -12159,10 +12443,31 @@
       globalScope.addEventListener("message", (event) => {
         if (
           event.origin !== globalScope.location.origin ||
-          event.source !== frame.contentWindow ||
-          event.data?.type !== "MRH_RESOURCE_PREVIEW_RETURN"
+          event.source !== frame.contentWindow
         )
           return;
+        if (event.data?.type === "MRH_PDF_VIEWER_READY") {
+          if (!(resourcePortalPreviewPdfBytes instanceof Uint8Array)) return;
+          const bytes = resourcePortalPreviewPdfBytes.slice();
+          frame.contentWindow.postMessage(
+            { type: "MRH_PDF_VIEWER_DATA", bytes: bytes.buffer },
+            event.origin,
+            [bytes.buffer],
+          );
+          return;
+        }
+        if (
+          event.data?.type === "MRH_RESOURCE_PREVIEW_WEBSITE_FALLBACK"
+        ) {
+          const request = resourcePortalPreviewRequest;
+          if (!request || request.options.forceInSite) return;
+          void previewResourceFile(request.fileId, request.fileName, {
+            ...request.options,
+            forceInSite: true,
+          });
+          return;
+        }
+        if (event.data?.type !== "MRH_RESOURCE_PREVIEW_RETURN") return;
         if (
           resourceDashboardActiveTab === "MODULES" &&
           resourceDashboardFolderReturn &&
@@ -12200,6 +12505,8 @@
         resourcePortalPreviewIsReviewer = false;
         resourcePortalPreviewCourse = "";
         resourcePortalReviewerPdf = null;
+        resourcePortalPreviewPdfBytes = null;
+        resourcePortalPreviewRequest = null;
         releaseResourcePortalPreviewObjectUrl();
         frame.removeAttribute("src");
         frame.hidden = true;
@@ -12269,6 +12576,7 @@
     resourcePortalPreviewIsReviewer = reviewer;
     resourcePortalPreviewCourse = String(course || "").trim();
     resourcePortalReviewerPdf = null;
+    resourcePortalPreviewPdfBytes = null;
     if (downloadButton) {
       downloadButton.hidden = true;
       downloadButton.removeAttribute("href");
@@ -12336,7 +12644,10 @@
       loadingIcon.className = "fa-solid fa-spinner fa-spin";
       loadingIcon.setAttribute("aria-hidden", "true");
       const loadingMessage = document.createElement("span");
-      loadingMessage.textContent = "Loading PDF Preview...";
+      loadingMessage.textContent =
+        mimeType === "application/pdf" || /\.pdf$/i.test(fileName)
+          ? "Loading PDF Preview..."
+          : "Loading File Preview...";
       status.replaceChildren(loadingIcon, loadingMessage);
       status.hidden = false;
     }
@@ -12349,6 +12660,33 @@
         );
       if (reviewer && !reviewerSessionId)
         throw new Error("Sign in with an approved account to view this PDF.");
+      const requestedMimeType = String(mimeType || "").toLowerCase();
+      const isPdfResource =
+        requestedMimeType === "application/pdf" || /\.pdf$/i.test(fileName);
+      const isInlineResourceType =
+        requestedMimeType === "application/pdf" ||
+        requestedMimeType === "text/plain" ||
+        requestedMimeType === "application/json" ||
+        /^image\/(?:avif|gif|jpeg|png|webp)$/.test(requestedMimeType) ||
+        /^(?:audio|video)\//.test(requestedMimeType);
+      const isDrivePreviewOnly =
+        resourceDashboardActiveTab === "MODULES" &&
+        !isInlineResourceType &&
+        !isPdfResource;
+      const useDrivePreview =
+        !reviewer &&
+        !forceInSite &&
+        (isPdfResource ||
+          (resourceDashboardActiveTab === "MODULES" &&
+            !isInlineResourceType));
+      if (forceInSite && isDrivePreviewOnly) {
+        if (status) {
+          status.textContent =
+            "This file type must be previewed in Google Drive.";
+          status.hidden = false;
+        }
+        return false;
+      }
       let response = await globalScope.AppNetwork.callBackend(
         reviewer
           ? {
@@ -12360,7 +12698,11 @@
                 ? { cachedSourceVersion: cachedReviewerPdf.sourceVersion }
                 : {}),
             }
-          : { type: "get_resource_preview", fileId },
+          : {
+              type: "get_resource_preview",
+              fileId,
+              ...(useDrivePreview ? { previewMode: "drive" } : {}),
+            },
         { timeoutMs: 90000, maxRetries: 0 },
       );
       if (
@@ -12388,6 +12730,34 @@
       if (previewGeneration !== resourcePortalPreviewGeneration) return false;
       const previewFolderPanel = getResourceDashboardFolderPanel(frame);
       if (previewFolderPanel) previewFolderPanel.hidden = true;
+      if (useDrivePreview) {
+        if (
+          response?.status !== "success" ||
+          response.deliveryMode !== "drive" ||
+          typeof response.name !== "string" ||
+          typeof response.mimeType !== "string"
+        )
+          throw new Error(
+            response?.message ||
+              "The external file preview could not be prepared.",
+          );
+        const returnLabel = dashboardFolderFile
+          ? "Back to Folder"
+          : resourceDashboardActiveTab === "MODULES"
+            ? "Back to Modules"
+            : "Return to Website";
+        if (
+          !openDriveResourceViewer(previewTitle, fileId, response.mimeType, {
+            preview,
+            frame,
+            status,
+            returnLabel,
+            allowWebsiteFallback: !isDrivePreviewOnly,
+          })
+        )
+          throw new Error("The external file preview URL is invalid.");
+        return true;
+      }
       const isReviewerCacheHit = reviewer && response?.cacheHit === true;
       if (
         response?.status !== "success" ||
@@ -12572,6 +12942,8 @@
               frame,
               status,
               returnLabel,
+              pdfBytes:
+                responseMimeType === "application/pdf" ? bytes : null,
             })
           )
             return true;
@@ -12722,6 +13094,8 @@
     }
     resourceDashboardFolderListing = null;
     resourceDashboardFolderReturn = null;
+    resourcePortalPreviewPdfBytes = null;
+    resourcePortalPreviewRequest = null;
     if (backButton) backButton.hidden = true;
     releaseResourcePortalPreviewObjectUrl();
     resourcePortalPreviewIsReviewer = false;

@@ -1,23 +1,26 @@
 # Resources access and viewing
 
-Modules and Syllabus chips open files and folders in the Student Portal. Folder
-contents, nested folders, and child files are listed inside the portal; the UI
-does not navigate to Drive pages. Modules files and Syllabus PDFs are handed
-to the browser's native Blob viewer inside a dedicated viewer shell with
-return, download, and open actions. Modules audio and video preserve their
-browser-recognized media types; other unsupported Modules files are not
-interpreted as active content. Other Syllabus file types continue using the
-supported in-site preview. Folder listing and file preview requests are
+Modules and Syllabus chips open files and folders from the Student Portal.
+Folder contents, nested folders, and child files are listed inside the portal.
+PDFs and unsupported Modules file types use Google Drive's native streamed
+preview inside a viewer shell with return navigation; PDFs retain an explicit
+in-site fallback, using PDF.js on mobile. This avoids loading an entire PDF
+through the Apps Script base64 response before rendering. Unsupported Modules
+files are never treated as active website content or automatically downloaded
+by the portal. Modules audio and video preserve their browser-recognized media
+types, and other supported previews remain in-site. Folder listing and file
+preview requests are
 restricted to descendants of the public resource root, exclude protected
 Reviewer folders, and paginate large folders. Drive shortcuts are resolved
 only when their targets remain inside the same public resource tree; shortcuts
 to protected or out-of-tree targets are excluded. Nested folder previews hide
 the full breadcrumb path, offer one-level-up navigation and list/grid views,
 and use file-type icons instead of requesting external thumbnail URLs. Files
-larger than the 32 MiB preview transport limit remain listed but cannot be
-previewed. Reviewer dashboard rows are returned only after server-side
-account authorization. A folder name classifies resources; it does not
-authorize anyone to access them.
+larger than the 32 MiB in-site fallback transport limit remain listed; direct
+Drive previews do not need to transfer the entire file through that limit.
+Reviewer dashboard rows are returned only after server-side account
+authorization. A folder name classifies resources; it does not authorize
+anyone to access them.
 
 Reviewer access uses Google sign-in from the Resource Dashboard's Profile
 section; the site does not create a separate password. The Profile section

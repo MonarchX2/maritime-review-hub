@@ -1,5 +1,5 @@
 {
-  "version": "26.10.17-4",
+  "version": "26.11.1",
   "scripts": {
     "sync:version": "node scripts/sync-package-version.js",
     "sync:about-changelog": "node scripts/sync-about-changelog.js",
@@ -25,6 +25,7 @@
     "check:state-save": "node scripts/check-state-save-race.js",
     "check:qr-transfer": "node scripts/check-qr-transfer.js",
     "vendor:qr": "node scripts/vendor-qr-libraries.js",
+    "vendor:pdfjs": "node scripts/vendor-pdfjs.js",
     "check:deck-clear": "node scripts/check-deck-clear-race.js",
     "check:sync-timestamp": "node scripts/check-sync-timestamp-recovery.js",
     "check:sync-cache-version": "node scripts/check-sync-cache-version.js",
@@ -40,6 +41,7 @@
   "devDependencies": {
     "@types/google-apps-script": "^2.0.12",
     "jsqr": "^1.4.0",
+    "pdfjs-dist": "5.4.394",
     "qrcode-generator": "^1.4.4"
   }
 }

@@ -1786,6 +1786,20 @@ assert.match(
     Buffer.from(previewBytes).toString("ascii"),
     "the in-site preview should receive the bytes of files beneath the public root",
   );
+  const drivePreview = JSON.parse(
+    context.handleGetResourcePreviewRequest({
+      fileId: "publicFile_123456",
+      previewMode: "drive",
+    }).text,
+  );
+  assert.equal(drivePreview.status, "success");
+  assert.equal(drivePreview.deliveryMode, "drive");
+  assert.equal(drivePreview.mimeType, "application/pdf");
+  assert.equal(
+    Object.hasOwn(drivePreview, "data"),
+    false,
+    "the native Drive preview path should not download PDF bytes through Apps Script",
+  );
   const googleDocPreview = JSON.parse(
     context.handleGetResourcePreviewRequest({ fileId: "googleDoc_123456" }).text,
   );
@@ -1801,6 +1815,16 @@ assert.match(
     ).code,
     "FORBIDDEN",
     "the in-site preview must reject files outside the public resource root",
+  );
+  assert.equal(
+    JSON.parse(
+      context.handleGetResourcePreviewRequest({
+        fileId: "outsideFile_123456",
+        previewMode: "drive",
+      }).text,
+    ).code,
+    "FORBIDDEN",
+    "the native Drive preview must retain the public resource root authorization check",
   );
 
   console.log("Resource dashboard, in-site folder, and browser-watermarked PDF checks passed.");

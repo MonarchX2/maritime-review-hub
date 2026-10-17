@@ -23,7 +23,7 @@ function listHashableAssets(directory, relativeDirectory = "") {
     if (!entry.isFile()) continue;
     const extension = path.extname(entry.name).toLowerCase();
     if (
-      (extension === ".js" &&
+      ((extension === ".js" || extension === ".mjs") &&
         (relativeDirectory !== "" || entry.name !== "sw.js")) ||
       (relativeDirectory === "" &&
         (extension === ".css" || extension === ".svg"))
@@ -76,7 +76,7 @@ try {
       candidates[0].endsWith(`.${digest}${extension}`),
       `asset filename hash must match final bytes: ${hashedPath}`,
     );
-    if (extension === ".js") {
+    if (extension === ".js" || extension === ".mjs") {
       execFileSync(
         process.execPath,
         ["--check", path.join(outputDir, hashedPath)],
@@ -99,6 +99,8 @@ try {
   for (const asset of [
     "reviewer-pdf-worker.js",
     "pdf-lib-1.17.1.min.js",
+    "pdfjs-5.4.394.min.mjs",
+    "pdfjs-5.4.394.worker.min.mjs",
   ]) {
     const extension = path.extname(asset);
     const basename = path.basename(asset, extension);
@@ -120,10 +122,10 @@ try {
     const reference = match[1].split(/[?#]/, 1)[0];
     if (!reference || /^(?:[a-z]+:|\/\/|#)/i.test(reference)) continue;
     assertFileExists(reference);
-    if (/\.(?:js|css|svg)$/.test(reference)) {
+    if (/\.(?:js|css|svg|mjs)$/.test(reference)) {
       assert.match(
         reference,
-        /\.[0-9a-f]{16}\.(?:js|css|svg)$/,
+        /\.[0-9a-f]{16}\.(?:js|css|svg|mjs)$/,
         `local runtime assets must use content-hashed filenames: ${reference}`,
       );
       assert.ok(
@@ -166,16 +168,38 @@ try {
     .readdirSync(outputDir)
     .find((name) => /^app-core\.[0-9a-f]{16}\.js$/.test(name));
   assert.ok(deployedAppCore, "the deployment must include the hashed app core");
+  const deployedAppCoreSource = fs.readFileSync(
+    path.join(outputDir, deployedAppCore),
+    "utf8",
+  );
   assert.doesNotMatch(
-    fs.readFileSync(path.join(outputDir, deployedAppCore), "utf8"),
+    deployedAppCoreSource,
     /PDFDocument\.load/,
     "PDF parsing must remain isolated to the dedicated browser worker",
   );
   assert.match(
-    fs.readFileSync(path.join(outputDir, deployedAppCore), "utf8"),
+    deployedAppCoreSource,
     /new globalScope\.Worker/,
     "the deployed app core must offload PDF watermarking to a browser worker",
   );
+  for (const asset of [
+    "pdfjs-5.4.394.min.mjs",
+    "pdfjs-5.4.394.worker.min.mjs",
+  ]) {
+    const basename = path.basename(asset, ".mjs");
+    const hashedAsset = fs
+      .readdirSync(outputDir)
+      .find((name) => new RegExp(`^${basename}\\.[0-9a-f]{16}\\.mjs$`).test(name));
+    assert.ok(hashedAsset, `the deployment must hash ${asset}`);
+    assert.ok(
+      deployedAppCoreSource.includes(hashedAsset),
+      `the deployed app core must reference the hashed PDF.js asset ${hashedAsset}`,
+    );
+    assert.ok(
+      !deployedAppCoreSource.includes(asset),
+      `the deployed app core must not retain the unhashed PDF.js path ${asset}`,
+    );
+  }
   const worker = fs.readFileSync(path.join(outputDir, "sw.js"), "utf8");
   for (const match of worker.matchAll(/["']\.\/([^"']+)["']/g)) {
     assertFileExists(match[1].split(/[?#]/, 1)[0]);
@@ -187,8 +211,8 @@ try {
   for (const match of shellAssets.matchAll(/"\.\/([^"]+)"/g)) {
     const reference = match[1].split(/[?#]/, 1)[0];
     assertFileExists(reference);
-    if (/\.(?:js|css|svg)$/.test(reference)) {
-      assert.match(reference, /\.[0-9a-f]{16}\.(?:js|css|svg)$/);
+    if (/\.(?:js|css|svg|mjs)$/.test(reference)) {
+      assert.match(reference, /\.[0-9a-f]{16}\.(?:js|css|svg|mjs)$/);
     }
   }
   assert.match(deployedEntry, /\.[0-9a-f]{16}\.js$/);

@@ -572,6 +572,24 @@ async function checkBackendErrorHandling() {
     },
     "private-resource preview requests should include only the file ID and app version",
   );
+  await network.callBackend(
+    {
+      type: "get_resource_preview",
+      fileId: "private-file-id",
+      previewMode: "drive",
+    },
+    { maxRetries: 0 },
+  );
+  assert.deepEqual(
+    getPostBodyWithoutRequestId(),
+    {
+      type: "get_resource_preview",
+      fileId: "private-file-id",
+      previewMode: "drive",
+      appVersion: networkContext.__MRH_APP__.version,
+    },
+    "native Drive preview requests should pass request validation without sending file bytes",
+  );
 
   const reviewerEventId = "12345678-1234-4123-8123-123456789abc";
   await network.callBackend(

@@ -3187,6 +3187,9 @@ function handleGetResourcePreviewRequest(data) {
   var fileId = cleanText(data.fileId, 200);
   if (!/^[A-Za-z0-9_-]{10,200}$/.test(fileId))
     return errorResponse("Invalid file ID.", "BAD_REQUEST");
+  var previewMode = String(data.previewMode || "");
+  if (previewMode && previewMode !== "drive")
+    return errorResponse("Invalid preview mode.", "BAD_REQUEST");
 
   var file;
   try {
@@ -3198,6 +3201,14 @@ function handleGetResourcePreviewRequest(data) {
     return errorResponse("This file is not available.", "FORBIDDEN");
 
   var mimeType = file.getMimeType();
+  if (previewMode === "drive")
+    return jsonResponse({
+      status: "success",
+      deliveryMode: "drive",
+      name: file.getName(),
+      mimeType: mimeType,
+    });
+
   var blob;
   var isGoogleWorkspaceFile =
     [

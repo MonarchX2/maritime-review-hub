@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-26.10.17-4-20261017";
+const APP_VERSION = "mrh-26.11.1-20261017";
 const CANONICAL_APP_URL = "https://monarchx2.github.io/mrh/";
 
 function getRuntimeCacheVersion() {
@@ -21,14 +21,14 @@ const APP_BASE_PATH = APP_BASE_URL.pathname || "/";
 
 function resolveAppUrl(pathname) {
   const url = new URL(pathname, APP_BASE_URL);
-  if (!/\.[0-9a-f]{16}\.(?:js|css|svg)$/.test(url.pathname)) {
+  if (!/\.[0-9a-f]{16}\.(?:js|css|svg|mjs)$/.test(url.pathname)) {
     url.searchParams.set("v", CACHE_VERSION);
   }
   return url.toString();
 }
 
 function getAssetFetchCacheMode(url) {
-  return /\.[0-9a-f]{16}\.(?:js|css|svg)$/.test(new URL(url).pathname)
+  return /\.[0-9a-f]{16}\.(?:js|css|svg|mjs)$/.test(new URL(url).pathname)
     ? "force-cache"
     : "no-cache";
 }
@@ -82,6 +82,8 @@ const APP_SHELL = [
   "./dashboard-core.js",
   "./app-core-state.js",
   "./app-core-network.js",
+  "./pdfjs-5.4.394.min.mjs",
+  "./pdfjs-5.4.394.worker.min.mjs",
   "./sync-core.js",
   "./session-core.js",
   "./analytics-core.js",

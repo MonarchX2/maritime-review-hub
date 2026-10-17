@@ -23,6 +23,7 @@ const textExtensions = new Set([
   ".js",
   ".json",
   ".md",
+  ".mjs",
   ".txt",
   ".webmanifest",
   ".xml",
@@ -68,6 +69,8 @@ function getHashedAssets(directory, relativeDirectory = "") {
       relativeDirectory === ""
     ) {
       assets.push(relativePath);
+    } else if (extension === ".mjs" && relativeDirectory === "") {
+      assets.push(relativePath);
     } else if (
       extension === ".svg" &&
       relativeDirectory === ""
@@ -102,6 +105,8 @@ const runtimeTextFiles = [
   "sw.js",
   "qr-transfer-core.js",
   "reviewer-pdf-worker.js",
+  "pdfjs-5.4.394.min.mjs",
+  "pdfjs-5.4.394.worker.min.mjs",
   "styles.css",
   "tailwind.generated.css",
   "qr-vendor/qrcode-generator.js",
@@ -149,15 +154,16 @@ const assets = getHashedAssets(outputDir).sort((left, right) => {
   const rank = (name) =>
     name.startsWith("qr-vendor/")
       ? 0
-      : name === "pdf-lib-1.17.1.min.js"
+      : name === "pdf-lib-1.17.1.min.js" ||
+        name.startsWith("pdfjs-")
         ? 1
         : name === "reviewer-pdf-worker.js"
-          ? 2
-      : name === "qr-transfer-core.js"
         ? 2
-        : name === "app-entry.js"
-          ? 4
-          : 3;
+        : name === "qr-transfer-core.js"
+          ? 2
+          : name === "app-entry.js"
+            ? 4
+            : 3;
   return rank(left) - rank(right) || left.localeCompare(right);
 });
 const names = new Set();

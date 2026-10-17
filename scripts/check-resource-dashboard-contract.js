@@ -969,8 +969,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /status\.classList\.add\("is-loading"\);[\s\S]*?const loadingIcon = document\.createElement\("i"\);[\s\S]*?loadingIcon\.className = "fa-solid fa-spinner fa-spin";[\s\S]*?loadingMessage\.textContent = "Loading PDF Preview\.\.\."/,
-  "the online preview should show a centered spinner and exact loading label",
+  /status\.classList\.add\("is-loading"\);[\s\S]*?const loadingIcon = document\.createElement\("i"\);[\s\S]*?loadingIcon\.className = "fa-solid fa-spinner fa-spin";[\s\S]*?loadingMessage\.textContent =[\s\S]*?Loading PDF Preview\.\.\.[\s\S]*?Loading File Preview\.\.\./,
+  "the online preview should show a centered spinner with a file-appropriate loading label",
 );
 assert.doesNotMatch(
   appCore,
@@ -1036,8 +1036,41 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function openBlobResourceViewer\([\s\S]*?Return to Website[\s\S]*?Download[\s\S]*?Open File[\s\S]*?<iframe title="\$\{safeTitle\}" src="\$\{blobUrl\}"><\/iframe>[\s\S]*?MRH_RESOURCE_PREVIEW_RETURN[\s\S]*?preview\.classList\.add\("is-blob-viewer"\)[\s\S]*?frame\.src = viewerUrl/,
-  "the native Blob viewer should include its own return, download, and open actions",
+  /function openBlobResourceViewer\([\s\S]*?Return to Website[\s\S]*?<a href="\$\{blobUrl\}" download="\$\{downloadName\}">Download<\/a>[\s\S]*?preview\.classList\.add\("is-blob-viewer"\)[\s\S]*?frame\.src = viewerUrl/,
+  "the Blob viewer should use local PDF.js for mobile PDFs and retain return and download actions",
+);
+assert.match(appCore, /new URL\("pdfjs-5\.4\.394\.min\.mjs", baseUrl\)/);
+assert.match(appCore, /new URL\("pdfjs-5\.4\.394\.worker\.min\.mjs", baseUrl\)/);
+assert.match(appCore, /pdfjs\.getDocument[\s\S]*?MRH_PDF_VIEWER_READY/);
+assert.match(
+  appCore,
+  /function getDrivePreviewUrl\([\s\S]*?https:\/\/drive\.google\.com\/file\/d\/[\s\S]*?function openDriveResourceViewer/,
+  "public PDFs and unsupported Modules files should route to the native Drive preview",
+);
+assert.match(
+  appCore,
+  /previewMode:\s*"drive"[\s\S]*?response\.deliveryMode !== "drive"/,
+  "native Drive previews should be authorized by the backend",
+);
+assert.match(
+  appCore,
+  /MRH_RESOURCE_PREVIEW_WEBSITE_FALLBACK[\s\S]*?forceInSite:\s*true/,
+  "PDF previews should retain an explicit in-site fallback when Drive access is unavailable",
+);
+assert.match(
+  appCore,
+  /allowWebsiteFallback = true[\s\S]*?websitePreviewAction[\s\S]*?allowWebsiteFallback: !isDrivePreviewOnly/,
+  "unsupported Modules files should open externally without an in-site fallback that can trigger a download",
+);
+assert.match(
+  appCore,
+  /const fileContent = usePdfJs[\s\S]*?<iframe title="\$\{safeTitle\}" src="\$\{blobUrl\}"><\/iframe>/,
+  "non-mobile resource previews should retain the existing native Blob iframe",
+);
+assert.doesNotMatch(
+  appCore,
+  /Open File|Open PDF/,
+  "Blob viewers must not show a redundant open-file action",
 );
 assert.match(
   appCore,
@@ -1056,8 +1089,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /event\.source !== frame\.contentWindow[\s\S]*?event\.data\?\.type !== "MRH_RESOURCE_PREVIEW_RETURN"[\s\S]*?backButton\.click\(\)/,
-  "the Blob viewer return action should only be accepted from the active preview frame and restore its folder listing",
+  /event\.source !== frame\.contentWindow[\s\S]*?event\.data\?\.type === "MRH_PDF_VIEWER_READY"[\s\S]*?MRH_PDF_VIEWER_DATA[\s\S]*?event\.data\?\.type !== "MRH_RESOURCE_PREVIEW_RETURN"[\s\S]*?backButton\.click\(\)/,
+  "PDF bytes and return actions should only be handled from the active preview frame",
 );
 assert.match(
   appCore,
@@ -1177,6 +1210,16 @@ const blobViewerState = {
   revoked: [],
   blobViewerClassAdded: false,
 };
+class TestURL extends URL {
+  static createObjectURL(blob) {
+    blobViewerState.created.push(blob);
+    return "blob:viewer";
+  }
+
+  static revokeObjectURL(url) {
+    blobViewerState.revoked.push(url);
+  }
+}
 const blobViewer = new Function(
   "escapeHTML",
   "URL",
@@ -1186,29 +1229,27 @@ const blobViewer = new Function(
   "resourcePortalPreviewObjectUrl",
   "resourcePortalPreviewUrlOpened",
   "resourcePortalPreviewBlobViewerUrl",
+  "resourcePortalPreviewPdfBytes",
   `${extractAppFunction("openBlobResourceViewer")}; ${extractAppFunction("openMobileReviewerPdfBlobViewer")}; return openMobileReviewerPdfBlobViewer;`,
 )(
   escapeTestHtml,
-  {
-    createObjectURL(blob) {
-      blobViewerState.created.push(blob);
-      return "blob:viewer";
-    },
-    revokeObjectURL(url) {
-      blobViewerState.revoked.push(url);
-    },
-  },
+  TestURL,
   TestBlob,
   {
     matchMedia: (query) => ({
       matches: query === "(max-width: 640px), (pointer: coarse)",
     }),
-    location: { href: 'https://example.test/mrh/?return=<safe&x="y"' },
+    location: {
+      href: 'https://example.test/mrh/?return=<safe&x="y"',
+      origin: "https://example.test",
+    },
+    __MRH_APP_BASE_PATH: "/mrh/",
   },
   "active-session",
   "blob:prepared-pdf",
   false,
   "",
+  null,
 );
 const blobViewerPreview = {
   classList: {
@@ -1230,6 +1271,7 @@ assert.equal(
     {
       sessionId: "active-session",
       downloadFileName: "course.pdf",
+      bytes: new Uint8Array([37, 80, 68, 70]),
     },
     "NAV6 - <Unsafe> Course",
     blobViewerPreview,
@@ -1265,7 +1307,16 @@ assert.match(
 );
 assert.match(
   blobViewerState.created[0].content,
+  /<main id="pdf-pages" aria-label="PDF pages"><\/main>[\s\S]*?pdfjs\.getDocument/,
+);
+assert.doesNotMatch(
+  blobViewerState.created[0].content,
   /<iframe title="NAV6 - &lt;Unsafe&gt; Course" src="blob:prepared-pdf"><\/iframe>/,
+  "mobile PDFs should use PDF.js rather than an embedded native PDF viewer",
+);
+assert.doesNotMatch(
+  blobViewerState.created[0].content,
+  /Open File|Open PDF/,
 );
 assert.match(
   appCore,
@@ -2749,6 +2800,21 @@ assert.match(
   resourceStyles,
   /\.resource-dashboard-table \.resource-dashboard-link-cell\s*\{[^}]*text-align:\s*center;/,
   "dashboard resource buttons should be center-aligned",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-link-button\s*\{[^}]*position:\s*relative;[^}]*justify-content:\s*flex-start;[\s\S]*?\.resource-dashboard-link-icon\s*\{[^}]*position:\s*absolute;[^}]*left:\s*var\(--resource-dashboard-space-wide\);[\s\S]*?\.resource-dashboard-link-label\s*\{[^}]*text-align:\s*center;/,
+  "dashboard chip icons should stay left while label text remains centered",
+);
+assert.match(
+  resourceStyles,
+  /@media \(max-width:\s*520px\)\s*\{\s*\.resource-dashboard-filters\s*\{\s*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/,
+  "Year and Semester filters should stay on one row on small screens when space allows",
+);
+assert.match(
+  resourceStyles,
+  /@media \(max-width:\s*359px\)\s*\{\s*\.resource-dashboard-filters\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\);/,
+  "Year and Semester filters should stack only on exceptionally narrow screens",
 );
 assert.doesNotMatch(
   resourceStyles,

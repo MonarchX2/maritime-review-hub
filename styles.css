@@ -3483,10 +3483,12 @@ button:active:not(:disabled) {
 }
 
 .resource-dashboard-link-button {
+  position: relative;
   display: inline-flex;
   width: 100%;
   height: 2.75rem;
   max-width: 24rem;
+  justify-content: flex-start;
   gap: var(--resource-dashboard-space);
   min-height: 2rem;
   user-select: none;
@@ -3502,6 +3504,7 @@ button:active:not(:disabled) {
   font-weight: 600;
   line-height: 1.2;
   text-decoration: none;
+  text-align: center;
   text-overflow: ellipsis;
 }
 
@@ -3542,8 +3545,12 @@ button:active:not(:disabled) {
 }
 
 .resource-dashboard-link-icon {
+  position: absolute;
+  top: 50%;
+  left: var(--resource-dashboard-space-wide);
   flex: 0 0 auto;
   font-size: 0.8rem;
+  transform: translateY(-50%);
 }
 
 .resource-portal-preview-file-icon {
@@ -3561,8 +3568,11 @@ button:active:not(:disabled) {
 .resource-dashboard-link-label {
   display: block;
   min-width: 0;
+  width: 100%;
+  padding-inline: 1.1rem;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-align: center;
   white-space: normal;
 }
 
@@ -4117,7 +4127,7 @@ button:active:not(:disabled) {
 
 @media (max-width: 520px) {
   .resource-dashboard-filters {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .resource-dashboard-title {
@@ -4151,6 +4161,12 @@ button:active:not(:disabled) {
   .resource-portal-table-head span:last-child,
   .resource-portal-item-modified {
     display: none;
+  }
+}
+
+@media (max-width: 359px) {
+  .resource-dashboard-filters {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

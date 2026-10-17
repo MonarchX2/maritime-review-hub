@@ -629,7 +629,7 @@
     },
     get_resource_preview: {
       required: ["fileId"],
-      allowed: ["type", "fileId", "appVersion"],
+      allowed: ["type", "fileId", "previewMode", "appVersion"],
     },
     get_resource_dashboard: {
       required: ["eventId"],

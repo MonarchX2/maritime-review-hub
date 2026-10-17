@@ -1,12 +1,13 @@
 # Changelog
 
-## 26.10.17-4 - 2026-10-17
+## 26.11.1 - 2026-10-17
 
 ### Improved
 
-- Open Modules files and Syllabus PDFs in a native Blob viewer with return,
-  download, and open actions; preserve native browser playback for audio and
-  video files.
+- Stream Student Portal PDFs and unsupported Modules files through Drive's
+  native preview, with return navigation and an in-site PDF fallback.
+- Keep Reviewer PDF previews responsive on mobile with the bundled PDF.js
+  viewer and preserve native browser playback for audio and video files.
 - Show the Reviewer PDF download fallback only after a preview error or a
   missing viewer-load signal.
 
