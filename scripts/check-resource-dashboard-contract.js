@@ -123,25 +123,25 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(recentlyUpdated && !isReviewerResource\) \{[\s\S]*?link\.classList\.add\("is-recently-updated"\)[\s\S]*?if \(showReviewerChangeBadge && isReviewerResource\)[\s\S]*?resource-dashboard-change-badge/,
-  "Reviewer resources should retain their original link style and show a separate change badge",
+  /const showResourceChangeBadge =\s*recentlyUpdated &&\s*!hasSeenResourceChangeBadge\([\s\S]*?if \(showResourceChangeBadge\) \{[\s\S]*?resource-dashboard-change-badge/,
+  "MODULES, SYLLABUS, and REVIEWERS resources should show a separate change badge once per session",
 );
 assert.match(
   appCore,
-  /function hasSeenReviewerChangeBadge\(updateKey, updatedAt, changeType\)[\s\S]*?sessionStorage\.getItem\([\s\S]*?activeEntries\.some\([\s\S]*?sessionStorage\.setItem\(/,
-  "Reviewer badge visibility should be remembered once per active browser session",
+  /function hasSeenResourceChangeBadge\(updateKey, updatedAt, changeType\)[\s\S]*?sessionStorage\.getItem\([\s\S]*?activeEntries\.some\([\s\S]*?sessionStorage\.setItem\(/,
+  "resource badge visibility should be remembered once per active browser session",
 );
 assert.match(
   appCore,
-  /const REVIEWER_CHANGE_BADGES_SEEN_KEY =\s*"mrh_reviewer_change_badges_seen_v1"/,
-  "Reviewer badge session tracking should use a dedicated session-storage key",
+  /const RESOURCE_CHANGE_BADGES_SEEN_KEY =\s*"mrh_reviewer_change_badges_seen_v1"/,
+  "resource badge session tracking should preserve its existing session-storage key",
 );
 assert.match(
   resourceStyles,
   /\.resource-dashboard-link-button\s*\{[^}]*background:\s*#eff6ff/ &&
     /\.resource-dashboard-change-badge\.is-new\s*\{[^}]*background:\s*#16a34a/ &&
     /\.resource-dashboard-change-badge\.is-updated\s*\{[^}]*background:\s*#f97316/,
-  "Reviewer NEW and UPDATED badges should be green and orange without recoloring the resource link",
+  "NEW and UPDATED badges should be green and orange without recoloring resource links",
 );
 const rowKeyFunction = appCore.match(
   /function getResourceDashboardRowKeys\(tab, tabName\) \{([\s\S]*?)\n  \}/,
@@ -149,12 +149,12 @@ const rowKeyFunction = appCore.match(
 const mergeUpdatesFunction = appCore.match(
   /function mergeResourceDashboardUpdates\(tabName, previousTab, nextTab\) \{([\s\S]*?)\n  \}/,
 );
-const reviewerBadgeSeenFunction = appCore.match(
-  /function hasSeenReviewerChangeBadge\(updateKey, updatedAt, changeType\) \{([\s\S]*?)\n  \}/,
+const resourceBadgeSeenFunction = appCore.match(
+  /function hasSeenResourceChangeBadge\(updateKey, updatedAt, changeType\) \{([\s\S]*?)\n  \}/,
 );
 assert.ok(rowKeyFunction, "resource dashboard row keys should be testable");
 assert.ok(mergeUpdatesFunction, "resource dashboard update comparison should be testable");
-assert.ok(reviewerBadgeSeenFunction, "Reviewer badge session tracking should be testable");
+assert.ok(resourceBadgeSeenFunction, "resource badge session tracking should be testable");
 let updateClock = 100000000;
 const getResourceDashboardRowKeys = new Function(
   `return function getResourceDashboardRowKeys(tab, tabName) {${rowKeyFunction[1]}\n}`,
@@ -223,6 +223,20 @@ assert.equal(
   "an unchanged cell should preserve its change label",
 );
 const emptyResourceTab = dashboardTab("", "");
+const addedModuleTab = mergeResourceDashboardUpdates(
+  "MODULES",
+  emptyResourceTab,
+  dashboardTab("01 Newly Added.pdf"),
+);
+const newModuleKey = JSON.stringify([
+  JSON.stringify(["MODULES", ["3.1", "NAV6"], 0]),
+  "prelims",
+]);
+assert.equal(
+  addedModuleTab.recentlyUpdatedCells[newModuleKey].type,
+  "NEW",
+  "a resource added to an empty Modules cell should receive a NEW badge",
+);
 const addedResourceTab = mergeResourceDashboardUpdates(
   "REVIEWERS",
   emptyResourceTab,
@@ -246,6 +260,51 @@ assert.equal(
   updatedResourceTab.recentlyUpdatedCells[newResourceKey].type,
   "UPDATED",
   "replacing an existing resource should receive an UPDATED badge",
+);
+const initialSyllabusTab = {
+  columns: ["Year", "Course", "COURSE SYLLABUS"],
+  rows: [["3.1", "NAV6", "Syllabus.pdf"]],
+  links: [["", "", "old-syllabus-id"]],
+  linkTitles: [["", "", "Syllabus.pdf"]],
+};
+const firstSyllabusSnapshot = mergeResourceDashboardUpdates(
+  "SYLLABUS",
+  initialSyllabusTab,
+  initialSyllabusTab,
+);
+const syllabusNewSnapshot = mergeResourceDashboardUpdates(
+  "SYLLABUS",
+  {
+    ...firstSyllabusSnapshot,
+    rows: [["3.1", "NAV6", ""]],
+    links: [["", "", ""]],
+    linkTitles: [["", "", ""]],
+  },
+  initialSyllabusTab,
+);
+const syllabusChangeKey = JSON.stringify([
+  JSON.stringify(["SYLLABUS", ["3.1", "NAV6"], 0]),
+  "course syllabus",
+]);
+assert.equal(
+  syllabusNewSnapshot.recentlyUpdatedCells[syllabusChangeKey].type,
+  "NEW",
+  "a new Syllabus resource should receive a NEW badge",
+);
+const syllabusUpdatedSnapshot = mergeResourceDashboardUpdates(
+  "SYLLABUS",
+  syllabusNewSnapshot,
+  {
+    ...initialSyllabusTab,
+    rows: [["3.1", "NAV6", "Revised syllabus.pdf"]],
+    links: [["", "", "revised-syllabus-id"]],
+    linkTitles: [["", "", "Revised syllabus.pdf"]],
+  },
+);
+assert.equal(
+  syllabusUpdatedSnapshot.recentlyUpdatedCells[syllabusChangeKey].type,
+  "UPDATED",
+  "a changed Syllabus resource should receive an UPDATED badge",
 );
 const sameNameDifferentLink = mergeResourceDashboardUpdates(
   "REVIEWERS",
@@ -289,13 +348,13 @@ const reviewerBadgeStorage = {
     reviewerBadgeSessionStorage.set(key, value);
   },
 };
-const hasSeenReviewerChangeBadge = new Function(
+const hasSeenResourceChangeBadge = new Function(
   "reviewerAuthorizedEmail",
   "globalScope",
   "RESOURCE_DASHBOARD_UPDATED_TTL_MS",
-  "REVIEWER_CHANGE_BADGES_SEEN_KEY",
+  "RESOURCE_CHANGE_BADGES_SEEN_KEY",
   "Date",
-  `return function hasSeenReviewerChangeBadge(updateKey, updatedAt, changeType) {${reviewerBadgeSeenFunction[1]}\n}`,
+  `return function hasSeenResourceChangeBadge(updateKey, updatedAt, changeType) {${resourceBadgeSeenFunction[1]}\n}`,
 )(
   "reviewer@example.com",
   { sessionStorage: reviewerBadgeStorage, DebugUtils: { warn() {} } },
@@ -304,28 +363,32 @@ const hasSeenReviewerChangeBadge = new Function(
   { now: () => updateClock },
 );
 assert.equal(
-  hasSeenReviewerChangeBadge(newResourceKey, updateClock, "NEW"),
+  hasSeenResourceChangeBadge(newResourceKey, updateClock, "NEW"),
   false,
   "a new badge should be allowed on its first render in a session",
 );
 assert.equal(
-  hasSeenReviewerChangeBadge(newResourceKey, updateClock, "NEW"),
+  hasSeenResourceChangeBadge(newResourceKey, updateClock, "NEW"),
   true,
   "the same badge should be suppressed on later renders in that session",
 );
 assert.equal(
-  hasSeenReviewerChangeBadge(newResourceKey, updateClock + 1, "NEW"),
+  hasSeenResourceChangeBadge(
+    JSON.stringify([newResourceKey, "MODULES"]),
+    updateClock + 1,
+    "NEW",
+  ),
   false,
   "a distinct resource-change marker should show once in the same session",
 );
 const freshReviewerBadgeSessionStorage = new Map();
-const hasSeenReviewerChangeBadgeInFreshSession = new Function(
+const hasSeenResourceChangeBadgeInFreshSession = new Function(
   "reviewerAuthorizedEmail",
   "globalScope",
   "RESOURCE_DASHBOARD_UPDATED_TTL_MS",
-  "REVIEWER_CHANGE_BADGES_SEEN_KEY",
+  "RESOURCE_CHANGE_BADGES_SEEN_KEY",
   "Date",
-  `return function hasSeenReviewerChangeBadge(updateKey, updatedAt, changeType) {${reviewerBadgeSeenFunction[1]}\n}`,
+  `return function hasSeenResourceChangeBadge(updateKey, updatedAt, changeType) {${resourceBadgeSeenFunction[1]}\n}`,
 )(
   "reviewer@example.com",
   {
@@ -344,7 +407,11 @@ const hasSeenReviewerChangeBadgeInFreshSession = new Function(
   { now: () => updateClock },
 );
 assert.equal(
-  hasSeenReviewerChangeBadgeInFreshSession(newResourceKey, updateClock, "NEW"),
+  hasSeenResourceChangeBadgeInFreshSession(
+    newResourceKey,
+    updateClock,
+    "NEW",
+  ),
   false,
   "a new browser session should be able to show the badge once again",
 );
@@ -954,6 +1021,16 @@ assert.match(
   resourceStyles,
   /@media \(max-width: 520px\)[\s\S]*?\.resource-dashboard-title > span\s*\{\s*display:\s*inline;/,
   "narrow layouts should retain the Student Portal title instead of replacing it with the home icon",
+);
+assert.match(
+  resourceStyles,
+  /@media \(max-width: 520px\)[\s\S]*?\.resource-dashboard-title\s*\{\s*gap:\s*0\.5rem;\s*\}/,
+  "the Student Portal home icon should have extra separation from the title on small screens",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-title > i\s*\{\s*display:\s*inline-block;/,
+  "the Student Portal home icon should remain visible on large screens too",
 );
 assert.match(
   appCore,

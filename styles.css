@@ -1357,6 +1357,10 @@ body.title-mode-clip {
   line-height: 1.1;
 }
 
+.student-portal-welcome-container.is-stacked .student-portal-welcome-view-profile {
+  margin-block: 0.25rem;
+}
+
 .student-portal-welcome-container.is-stacked .student-portal-welcome-toggle {
   display: inline-flex;
   justify-self: center;
@@ -1857,7 +1861,7 @@ button:active:not(:disabled) {
 }
 
 .resource-dashboard-title > i {
-  display: none;
+  display: inline-block;
 }
 
 .resource-portal-nav-item {
@@ -3000,26 +3004,7 @@ button:active:not(:disabled) {
   text-overflow: ellipsis;
 }
 
-.resource-dashboard-link-button.is-recently-updated {
-  border-color: #fbbf24;
-  color: #854d0e;
-  background: #fef3c7;
-  box-shadow: inset 0 0 0 1px rgb(251 191 36 / 18%);
-}
-
-.resource-dashboard-updated-badge {
-  flex: 0 0 auto;
-  border-radius: 9999px;
-  padding: 0.12rem 0.35rem;
-  color: #78350f;
-  background: #fcd34d;
-  font-size: 0.58rem;
-  font-weight: 700;
-  line-height: 1.1;
-  text-transform: uppercase;
-}
-
-.resource-dashboard-reviewer-link-wrap {
+.resource-dashboard-change-link-wrap {
   position: relative;
   display: inline-flex;
 }
@@ -3080,18 +3065,6 @@ button:active:not(:disabled) {
   border-color: #1e40af;
   color: #bfdbfe;
   background: #172554;
-}
-
-.dark .resource-dashboard-link-button.is-recently-updated {
-  border-color: #a16207;
-  color: #fde68a;
-  background: #422006;
-  box-shadow: inset 0 0 0 1px rgb(250 204 21 / 20%);
-}
-
-.dark .resource-dashboard-updated-badge {
-  color: #422006;
-  background: #facc15;
 }
 
 .dark .resource-dashboard-link-button:hover,
@@ -3572,8 +3545,8 @@ button:active:not(:disabled) {
 }
 
 @media (max-width: 520px) {
-  .resource-dashboard-title > i {
-    display: inline-block;
+  .resource-dashboard-title {
+    gap: 0.5rem;
   }
 
   .resource-dashboard-title > span {

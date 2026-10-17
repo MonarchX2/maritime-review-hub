@@ -1,5 +1,16 @@
 # Changelog
 
+## 26.10.17-10 - 2026-10-17
+
+### Fixed
+
+- Show NEW and UPDATED badges for changed resources in MODULES and SYLLABUS,
+  using the same separate badge styling and once-per-session visibility as
+  REVIEWERS.
+- Add small-screen spacing around View Profile in the stacked Student Portal
+  welcome banner, space the Student Portal home icon from its title, and place
+  Unverified to the right of the button.
+
 ## 26.10.17-9 - 2026-10-17
 
 ### Fixed

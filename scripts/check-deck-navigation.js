@@ -368,8 +368,8 @@ assert.match(
 );
 assert.match(
   indexSource,
-  /<\/p>\s*<div class="student-portal-welcome-verification-actions">[\s\S]*?id="student-portal-welcome-verification"[\s\S]*?id="student-portal-welcome-view-profile"[\s\S]*?View Profile/,
-  "the Unverified label and View Profile button should both appear below the email line",
+  /<\/p>\s*<div class="student-portal-welcome-verification-actions">[\s\S]*?id="student-portal-welcome-view-profile"[\s\S]*?View Profile[\s\S]*?id="student-portal-welcome-verification"[\s\S]*?>\s*Unverified/,
+  "the View Profile button and Unverified label should appear in that order below the email line",
 );
 assert.match(
   indexSource,
@@ -430,6 +430,11 @@ assert.match(
   stylesSource,
   /\.student-portal-welcome-container\.is-stacked \.student-portal-welcome\s*\{[^}]*flex-direction:\s*column;[^}]*gap:\s*0\.5rem;[^}]*padding-bottom:\s*0;[^}]*text-align:\s*center;[\s\S]*?\.student-portal-welcome-container\.is-stacked \.student-portal-welcome-avatar\s*\{[^}]*width:\s*7rem;[^}]*height:\s*7rem;/,
   "a stacked welcome profile should be centered with reduced spacing before its visibility control",
+);
+assert.match(
+  stylesSource,
+  /\.student-portal-welcome-container\.is-stacked \.student-portal-welcome-view-profile\s*\{[^}]*margin-block:\s*0\.25rem;/,
+  "the stacked small-screen View Profile button should have breathing room above and below",
 );
 assert.match(
   stylesSource,

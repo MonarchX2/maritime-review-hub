@@ -6071,7 +6071,7 @@
   const REVIEWER_DASHBOARD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
   const RESOURCE_DASHBOARD_UPDATED_TTL_MS = 48 * 60 * 60 * 1000;
   const REVIEWER_DASHBOARD_CACHE_MAX_CHARS = 1000000;
-  const REVIEWER_CHANGE_BADGES_SEEN_KEY =
+  const RESOURCE_CHANGE_BADGES_SEEN_KEY =
     "mrh_reviewer_change_badges_seen_v1";
   const REVIEWER_PDF_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
   const REVIEWER_PDF_MAX_SOURCE_BYTES = 2 * 1024 * 1024;
@@ -6309,7 +6309,7 @@
     }
   }
 
-  function hasSeenReviewerChangeBadge(updateKey, updatedAt, changeType) {
+  function hasSeenResourceChangeBadge(updateKey, updatedAt, changeType) {
     const now = Date.now();
     const marker = JSON.stringify([
       reviewerAuthorizedEmail.toLowerCase(),
@@ -6319,7 +6319,7 @@
     ]);
     try {
       const stored = JSON.parse(
-        globalScope.sessionStorage.getItem(REVIEWER_CHANGE_BADGES_SEEN_KEY) ||
+        globalScope.sessionStorage.getItem(RESOURCE_CHANGE_BADGES_SEEN_KEY) ||
           "[]",
       );
       const activeEntries = Array.isArray(stored)
@@ -6338,13 +6338,13 @@
       );
       if (!alreadySeen) activeEntries.push({ marker, seenAt: now });
       globalScope.sessionStorage.setItem(
-        REVIEWER_CHANGE_BADGES_SEEN_KEY,
+        RESOURCE_CHANGE_BADGES_SEEN_KEY,
         JSON.stringify(activeEntries),
       );
       return alreadySeen;
     } catch (error) {
       (globalScope.DebugUtils || console).warn(
-        "Unable to track Reviewer change badges for this session.",
+        "Unable to track resource change badges for this session.",
         error,
       );
       return false;
@@ -7377,10 +7377,9 @@
             updatedAt > 0 &&
             updatedAt <= Date.now() &&
             Date.now() - updatedAt <= RESOURCE_DASHBOARD_UPDATED_TTL_MS;
-          const showReviewerChangeBadge =
+          const showResourceChangeBadge =
             recentlyUpdated &&
-            resourceDashboardActiveTab === "REVIEWERS" &&
-            !hasSeenReviewerChangeBadge(
+            !hasSeenResourceChangeBadge(
               dashboardUpdateKey,
               updatedAt,
               changeType,
@@ -7436,21 +7435,7 @@
               linkLabel,
             ),
           );
-          if (recentlyUpdated && !isReviewerResource) {
-            link.classList.add("is-recently-updated");
-            link.setAttribute(
-              "aria-label",
-              `${linkLabel}, recently updated`,
-            );
-            link.appendChild(
-              createResourceDashboardElement(
-                "span",
-                "resource-dashboard-updated-badge",
-                "Updated",
-              ),
-            );
-          }
-          if (showReviewerChangeBadge && isReviewerResource) {
+          if (showResourceChangeBadge) {
             const changeLabel = changeType === "NEW" ? "New" : "Updated";
             link.setAttribute(
               "aria-label",
@@ -7461,7 +7446,7 @@
             link.title = resourceTitle;
           } else if (resourceTitle) {
             link.title = recentlyUpdated
-              ? `Recently updated: ${resourceTitle}`
+              ? `${changeType === "NEW" ? "New" : "Recently updated"}: ${resourceTitle}`
               : isSyllabus
                 ? "PDF"
                 : resourceTitle;
@@ -7528,7 +7513,7 @@
               );
             });
           }
-          if (showReviewerChangeBadge && isReviewerResource) {
+          if (showResourceChangeBadge) {
             const badge = createResourceDashboardElement(
               "span",
               `resource-dashboard-change-badge is-${changeType.toLowerCase()}`,
@@ -7537,7 +7522,7 @@
             badge.setAttribute("aria-hidden", "true");
             const linkWrap = createResourceDashboardElement(
               "span",
-              "resource-dashboard-reviewer-link-wrap",
+              "resource-dashboard-change-link-wrap",
             );
             linkWrap.append(badge, link);
             cell.appendChild(linkWrap);
