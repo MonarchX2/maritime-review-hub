@@ -3,13 +3,20 @@ const fs = require("node:fs");
 
 const backend = fs.readFileSync("backend/main.js", "utf8");
 const frontend = fs.readFileSync("app-core.js", "utf8");
+const browserPdfWorker = fs.readFileSync("reviewer-pdf-worker.js", "utf8");
 const network = fs.readFileSync("app-core-network.js", "utf8");
+const appConfig = fs.readFileSync("app-config.js", "utf8");
 const manifest = JSON.parse(
   fs.readFileSync("backend/appsscript.json", "utf8"),
 );
 const pdfHelper = fs.readFileSync("backend/ReviewerPdf.gs", "utf8");
 const bundledPdfLibrary = fs.readFileSync(
   "reviewer-pdf-service/vendor/pdf-lib-1.17.1.min.js",
+);
+const websitePdfLibrary = fs.readFileSync("pdf-lib-1.17.1.min.js");
+const websitePdfLicense = fs.readFileSync(
+  "pdf-lib-1.17.1-LICENSE.md",
+  "utf8",
 );
 const appsScriptPdfLibrary = fs.readFileSync("backend/PDFLib.js");
 const setupGuide = fs.readFileSync(
@@ -60,31 +67,31 @@ assert.match(
 );
 assert.match(
   backend,
-  /function handleGetReviewerPdfRequest\(data, expectedSourceVersion\)[\s\S]*?await verifyReviewerPdfWatermarks_\([\s\S]*?mimeType: "application\/pdf"[\s\S]*?sourceVersion: source\.sourceVersion[\s\S]*?data: Utilities\.base64Encode\(outputBytes\)/,
-  "only a derivative verified page-by-page may be returned",
+  /async function handleGetReviewerPdfRequest\(data, expectedSourceVersion\) \{\s*return errorResponse\([\s\S]*?PDF_BACKEND_PROCESSING_DISABLED/,
+  "the legacy backend PDF-processing route must be disabled",
 );
 const protectedPdfHandler = backend.match(
-  /async function handleGetReviewerPdfRequest\(data, expectedSourceVersion\) \{[\s\S]*?\n\}/,
+  /async function handleGetReviewerPdfRequest\(data, expectedSourceVersion\) \{[\s\S]*?\/\*/,
 )?.[0] || "";
-assert.doesNotMatch(
+assert.match(
   protectedPdfHandler,
-  /data:\s*sourceBytes|base64Encode\(\s*sourceBytes\s*\)/,
-  "the protected route must never serialize source PDF bytes",
+  /return errorResponse\([\s\S]*?PDF_BACKEND_PROCESSING_DISABLED/,
+  "the legacy route must stop before any server-side PDF processing",
 );
 assert.match(
   backend,
   /if \(requestType === "get_reviewer_pdf_preview"\)\s*return handleGetReviewerPdfPreviewRequest_\(data\)[\s\S]*?if \(requestType === "get_reviewer_pdf"\)\s*return enqueueReviewerPdfRequest_\(data\)/,
-  "preview must be a lightweight protected route while explicit downloads enqueue PDF processing",
+  "the active preview uses its protected source route; the legacy processing route is disabled",
 );
 assert.match(
   protectedPreviewHandler,
-  /authorizeReviewerPdfRequest_\(data\)[\s\S]*?getReviewerPdfSource_\(fileId\)[\s\S]*?cacheHit: true[\s\S]*?watermarked: true[\s\S]*?return enqueueReviewerPdfRequest_\(data,\s*\{/,
-  "online preview must authorize, validate source version, and enqueue server-side watermarking",
+  /authorizeReviewerPdfRequest_\(data\)[\s\S]*?getReviewerPdfSource_\(fileId\)[\s\S]*?cacheHit: true[\s\S]*?DriveApp\.getFileById\(fileId\)\.getBlob\(\)\.getBytes\(\)[\s\S]*?clientProcessing: true[\s\S]*?Utilities\.base64Encode\(sourceBytes\)/,
+  "online preview must authorize the source and return bytes for browser-side watermarking",
 );
 assert.match(
   protectedPreviewHandler,
-  /getReviewerPdfSource_\(fileId\)[\s\S]*?return enqueueReviewerPdfRequest_\(data,\s*\{/,
-  "preview should validate source ancestry once before enqueueing a source-version-bound job",
+  /getReviewerPdfSource_\(fileId\)[\s\S]*?source\.sourceVersion/,
+  "preview must validate current source ancestry and version before returning source bytes",
 );
 assert.match(
   backend,
@@ -93,83 +100,49 @@ assert.match(
 );
 assert.doesNotMatch(
   protectedPreviewHandler,
-  /data:\s*sourceBytes|base64Encode\(\s*sourceBytes\s*\)|watermarkReviewerPdfBytes_|DriveApp\.createFile|appendMRHAccessLog_/,
-  "the synchronous preview route must neither expose source bytes nor block on PDF processing or duplicate logging",
+  /enqueueReviewerPdfRequest_|watermarkReviewerPdfBytes_|verifyReviewerPdfWatermarks_|DriveApp\.createFile/,
+  "the interactive preview route must not enqueue jobs, parse PDFs, verify stamps, or write Drive derivatives",
 );
 assert.match(
   backend,
-  /function setupReviewerPdfDelivery\(\)[\s\S]*?REVIEWER_PDF_WORKER_READY_PROPERTY[\s\S]*?scheduleReviewerPdfWorkerLocked_\(\s*1000\s*\)[\s\S]*?function enqueueReviewerPdfRequest_\([\s\S]*?authorizeReviewerPdfRequest_\(data\)/,
-  "PDF jobs must run through an on-demand trigger after explicit setup and fresh authorization",
+  /function setupReviewerPdfDelivery\(\)[\s\S]*?deleteTrigger\(trigger\)[\s\S]*?deleteProperty\(REVIEWER_PDF_WORKER_READY_PROPERTY\)[\s\S]*?Backend PDF watermark processing is disabled/,
+  "legacy PDF setup must remove old worker triggers and leave processing disabled",
 );
 assert.match(
   backend,
-  /function enqueueReviewerPdfRequest_\(data(?:,\s*previewContext)?\)[\s\S]*?var authorization = previewContext[\s\S]*?authorizeReviewerPdfRequest_\(data\)[\s\S]*?if \(authorization\.error\)[\s\S]*?if \(!reviewerPdfQueueConfigured_\(\)\)/,
-  "every PDF enqueue must authorize the reviewer before disclosing processor configuration",
+  /async function processReviewerPdfQueue\(event\) \{[\s\S]*?return;\s*\/\*/,
+  "an already scheduled legacy trigger must exit without processing a PDF",
 );
 assert.match(
   backend,
-  /function scheduleReviewerPdfWorkerLocked_\([\s\S]*?\.after\(delay\)\s*\.create\(\)/,
-  "the worker must use bounded, on-demand triggers instead of polling continuously",
+  /async function processReviewerPdfQueue\(event\) \{\s*ScriptApp\.getProjectTriggers\(\)[\s\S]*?deleteTrigger\(trigger\)[\s\S]*?return;\s*\/\*/,
+  "legacy worker triggers must remove themselves and stop before PDF processing",
 );
 assert.match(
   backend,
-  /function scheduleReviewerPdfWorkerLocked_\(delayMs\)[\s\S]*?Math\.max\(1000, Number\(delayMs\) \|\| 1000\)/,
-  "new PDF jobs should request the earliest supported worker trigger",
+  /function enqueueReviewerPdfRequest_\(data, previewContext\) \{\s*return errorResponse\([\s\S]*?PDF_BACKEND_PROCESSING_DISABLED/,
+  "no web API route may enqueue backend watermarking",
 );
 assert.match(
   backend,
-  /function getReviewerPdfJobStatus_\([\s\S]*?if \(job\.status === "queued" \|\| job\.status === "processing"\)[\s\S]*?return jsonResponse\(\{ status: "pending", jobId: jobId \}\)[\s\S]*?var currentSource = getReviewerPdfSource_\(job\.fileId\)/,
-  "pending polls must not repeatedly traverse the protected PDF source hierarchy",
+  /function getReviewerPdfJobStatus_\(data\) \{\s*return errorResponse\([\s\S]*?PDF_BACKEND_PROCESSING_DISABLED/,
+  "legacy job polling must not deliver or process server-watermarked PDFs",
 );
 assert.match(
   backend,
-  /Number\(job\.processingAt \|\| 0\) < (?:now|Date\.now\(\)) - 6\.5 \* 60 \* 1000/,
-  "legacy background jobs must be recoverable after a stale processing claim",
+  /async function runReviewerPdfWatermarkProofOfConcept\(\) \{\s*throw new Error\("Backend PDF watermark processing has been disabled\."\)/,
+  "the manual backend watermark proof must also be disabled",
 );
-assert.match(
-  backend,
-  /const REVIEWER_PDF_JOB_TTL_MS = 10 \* 60 \* 1000/,
-  "the browser deadline must remain below the server-side PDF job expiry",
-);
-assert.match(
-  backend,
-  /async function processReviewerPdfQueue\(\w+\)[\s\S]*?await handleGetReviewerPdfRequest\([\s\S]*?reviewerPdfOutputIsPrivate_\([\s\S]*?PDF_OUTPUT_NOT_PRIVATE/,
-  "the background worker must await watermarking and reject non-private derivatives",
-);
-assert.match(
-  backend,
-  /function getReviewerPdfJobStatus_\([\s\S]*?authorizeReviewerPdfRequest_\(data\)[\s\S]*?job\.sessionId !== String\(data\.sessionId[\s\S]*?getReviewerPdfSource_\(job\.fileId\)[\s\S]*?currentSource\.sourceVersion !== job\.sourceVersion[\s\S]*?Utilities\.base64Encode\(outputBytes\)/,
-  "download polling must reauthorize and revalidate the index, source version, and session before returning the derivative",
-);
-assert.match(
-  backend,
-  /const REVIEWER_PDF_OUTPUT_FOLDER_ID = "10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl"[\s\S]*?DriveApp\.getFolderById\(REVIEWER_PDF_OUTPUT_FOLDER_ID\)\.createFile/,
-  "generated watermarked PDFs must be saved in the configured Drive folder",
-);
-assert.match(
-  backend,
-  /function getReviewerPdfJobStatus_\([\s\S]*?Drive\.Files\.get\(job\.outputFileId[\s\S]*?REVIEWER_PDF_OUTPUT_FOLDER_ID[\s\S]*?DriveApp\.getFileById\(job\.outputFileId\)[\s\S]*?Utilities\.base64Encode\(outputBytes\)/,
-  "delivery must read the saved PDF from the configured Drive folder",
-);
+const executableBackend = backend.replace(/\/\*[\s\S]*?\*\//g, "");
 assert.doesNotMatch(
-  backend.match(/function getReviewerPdfJobStatus_\([\s\S]*?\n\}/)?.[0] || "",
-  /permanentlyDeleteReviewerPdfOutput_/,
-  "successful delivery must retain the generated PDF in the output folder",
+  executableBackend,
+  /\b(?:watermarkReviewerPdfBytes_|verifyReviewerPdfWatermarks_)\s*\(/,
+  "no executable Apps Script code may call the backend watermark processor",
 );
 assert.match(
-  backend,
-  /if \(job\.outputFileId && job\.persistentOutput !== true\)[\s\S]*?permanentlyDeleteReviewerPdfOutput_/,
-  "only temporary or legacy outputs may be deleted during session cleanup",
-);
-assert.match(
-  backend,
-  /function permanentlyDeleteReviewerPdfOutput_\([\s\S]*?Drive\.Files\.delete\(normalizedId, \{ supportsAllDrives: true \}\)/,
-  "temporary PDF outputs must be permanently deleted rather than merely trashed",
-);
-assert.match(
-  backend,
-  /function cleanupReviewerPdfJobsForSession_\([\s\S]*?job\.sessionId !== normalizedSessionId[\s\S]*?permanentlyDeleteReviewerPdfOutput_\(job\.outputFileId\)/,
-  "session cleanup must only delete generated PDFs belonging to that session",
+  appConfig,
+  /databaseUrl:\s*"https:\/\/script\.google\.com\//,
+  "PDF source delivery must use HTTPS transport encryption",
 );
 assert.match(
   backend,
@@ -213,8 +186,8 @@ assert.doesNotMatch(
 );
 assert.match(
   pdfHelper,
-  /async function watermarkReviewerPdfBytes_\([\s\S]*?PDFLib\.PDFDocument\.load[\s\S]*?page\.drawText[\s\S]*?await pdf\.save/,
-  "watermarking must run in Apps Script using its locally loaded PDF library",
+  /var angle = columnFraction === 0\.5 \? 0 : \(28 \* Math\.PI\) \/ 180[\s\S]*?rotate: PDFLib\.degrees\(columnFraction === 0\.5 \? 0 : -28\)/,
+  "the retained legacy helper must keep middle-column marks horizontal",
 );
 assert.match(
   pdfHelper,
@@ -224,7 +197,7 @@ assert.match(
 assert.match(
   pdfHelper,
   /Math\.min\(size\.width, size\.height\) \* 0\.4[\s\S]*?Math\.min\(24,[\s\S]*?\[0\.25, 0\.15\][\s\S]*?\[0\.75, 0\.15\][\s\S]*?\[0\.5, 0\.325\][\s\S]*?\[0\.25, 0\.5\][\s\S]*?\[0\.75, 0\.5\][\s\S]*?\[0\.5, 0\.675\][\s\S]*?\[0\.25, 0\.85\][\s\S]*?\[0\.75, 0\.85\][\s\S]*?opacity: 0\.18/,
-  "downloaded PDFs should alternate paired side stamps with centered middle stamps",
+  "the retained legacy placement helper should keep paired and centered watermark rows",
 );
 assert.match(
   pdfHelper,
@@ -235,11 +208,6 @@ assert.doesNotMatch(
   pdfHelper,
   /AUTHORIZED USER:|Student Portal|var watermark = .*\\\|/,
   "the watermark should not add a label, separator, or portal name",
-);
-assert.match(
-  backend,
-  /async function runReviewerPdfWatermarkProofOfConcept\(\)[\s\S]*?Session\.getEffectiveUser\(\)\.getEmail\(\)[\s\S]*?DriveApp\.createFile[\s\S]*?sourceFile\.setTrashed\(true\)/,
-  "the in-project proof must use a verified script identity and clean up its private test source",
 );
 assert.match(
   backend,
@@ -288,8 +256,8 @@ assert.match(
 );
 assert.match(
   reviewerPreview,
-  /type: "get_reviewer_pdf_preview"[\s\S]*?sessionId: reviewerSessionId[\s\S]*?fileId[\s\S]*?waitForReviewerPdfPreview\(/,
-  "online preview must fetch only the server-watermarked PDF job output",
+  /type: "get_reviewer_pdf_preview"[\s\S]*?sessionId: reviewerSessionId[\s\S]*?fileId[\s\S]*?watermarkReviewerPdfInWorker\(/,
+  "online preview must fetch the authorized source and watermark it in a browser worker",
 );
 assert.doesNotMatch(
   reviewerPreview,
@@ -298,8 +266,8 @@ assert.doesNotMatch(
 );
 assert.match(
   reviewerPreview,
-  /responseMimeType !== "application\/pdf"[\s\S]*?response\.watermarked !== true[\s\S]*?REVIEWER_PDF_MAX_OUTPUT_BASE64_LENGTH/,
-  "preview responses must be explicitly watermarked and stay within the derivative limit",
+  /responseMimeType !== "application\/pdf"[\s\S]*?response\.clientProcessing !== true[\s\S]*?REVIEWER_PDF_MAX_SOURCE_BASE64_LENGTH/,
+  "preview responses must be authorized for browser processing and stay within the source limit",
 );
 assert.match(
   reviewerPreview,
@@ -309,12 +277,17 @@ assert.match(
 assert.match(
   reviewerPreview,
   /bytes\.byteLength > REVIEWER_PDF_MAX_OUTPUT_BYTES[\s\S]*?bytes\[0\] !== 0x25[\s\S]*?bytes\[4\] !== 0x2d/,
-  "preview derivative bytes must be bounded and start with a PDF signature",
+  "browser watermarked output must be bounded and start with a PDF signature",
 );
 assert.doesNotMatch(
   frontend,
-  /watermarkReviewerPreviewPdfBytes|loadReviewerPdfLibrary|PDFDocument\.load/,
-  "the browser must never receive or watermark the original PDF",
+  /PDFDocument\.load/,
+  "PDF parsing should stay in the dedicated worker, not block the UI thread",
+);
+assert.match(
+  browserPdfWorker,
+  /importScripts\("\.\/pdf-lib-1\.17\.1\.min\.js"\)[\s\S]*?PDFDocument\.load[\s\S]*?WATERMARK_PLACEMENTS[\s\S]*?await pdf\.save/,
+  "the dedicated browser worker must load the pinned PDF library and watermark every page",
 );
 assert.match(
   reviewerPreview,
@@ -323,13 +296,13 @@ assert.match(
 );
 assert.match(
   frontend,
-  /async function waitForReviewerPdfPreview\([\s\S]*?type: "get_reviewer_pdf_job"[\s\S]*?response\?\.status === "success"[\s\S]*?response\?\.status !== "pending"/,
-  "preview must poll the protected server-side watermark job until it succeeds or reports a failure",
+  /function watermarkReviewerPdfInWorker\([\s\S]*?new globalScope\.Worker\(workerUrl\)[\s\S]*?worker\.postMessage\([\s\S]*?\[sourceBuffer\]/,
+  "client-side PDF parsing must use a transferable buffer and keep the UI responsive in a worker",
 );
 assert.match(
   reviewerDownload,
   /const bytes = activePdf\.bytes[\s\S]*?link\.click\(\)[\s\S]*?Download Started/,
-  "download should start immediately from the already prepared server-watermarked bytes",
+  "download should start immediately from the browser-watermarked preview bytes",
 );
 assert.match(
   reviewerDownload,
@@ -418,13 +391,8 @@ assert.match(
 );
 assert.match(
   setupGuide,
-  /runReviewerPdfWatermarkProofOfConcept[\s\S]*?7,461 ms/,
-  "the setup guide must report the measured Apps Script proof",
-);
-assert.match(
-  setupGuide,
-  /10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl[\s\S]*?one second[\s\S]*?setupReviewerPdfDelivery/,
-  "the setup guide must document output storage, faster trigger requests, and setup",
+  /Backend PDF watermark processing is disabled|browser Web Worker/i,
+  "the setup guide must describe the browser-only interactive processing path",
 );
 assert.equal(
   servicePackage.devDependencies?.["pdf-lib"],
@@ -436,6 +404,12 @@ assert.deepEqual(
   bundledPdfLibrary,
   "the Apps Script runtime bundle must match the pinned local vendor file",
 );
+assert.deepEqual(
+  websitePdfLibrary,
+  bundledPdfLibrary,
+  "the lazy website worker bundle must match the pinned local vendor file",
+);
+assert.match(websitePdfLicense, /MIT License/);
 assert.equal(
   Object.prototype.hasOwnProperty.call(servicePackage, "dependencies"),
   false,
@@ -454,6 +428,16 @@ const backendWatermarkPlacements =
 assert.match(
   backendWatermarkPlacements,
   /\[\s*0\.25,\s*0\.15\s*\][\s\S]*?\[\s*0\.75,\s*0\.15\s*\][\s\S]*?\[\s*0\.5,\s*0\.325\s*\][\s\S]*?\[\s*0\.25,\s*0\.5\s*\][\s\S]*?\[\s*0\.75,\s*0\.5\s*\][\s\S]*?\[\s*0\.5,\s*0\.675\s*\][\s\S]*?\[\s*0\.25,\s*0\.85\s*\][\s\S]*?\[\s*0\.75,\s*0\.85\s*\]/,
-  "server-generated PDFs should alternate paired side rows with horizontally centered middle stamps",
+  "legacy placement data should retain alternating paired and centered rows",
+);
+assert.match(
+  pdfHelper,
+  /var angle = columnFraction === 0\.5 \? 0 : \(28 \* Math\.PI\) \/ 180/,
+  "legacy middle-column marks must be explicitly horizontal",
+);
+assert.match(
+  browserPdfWorker,
+  /const angle =\s*columnFraction === 0\.5 \? 0 : \(28 \* Math\.PI\) \/ 180[\s\S]*?rotate: PDFLib\.degrees\(columnFraction === 0\.5 \? 0 : -28\)/,
+  "the browser middle-column marks must be explicitly horizontal",
 );
 console.log("Reviewer PDF security contract checks passed.");

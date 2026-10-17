@@ -11,9 +11,9 @@ that baseline, the latest release tag, and Conventional Commit messages to
 determine the displayed version. `scripts/stamp-release-version.js` then
 records the resolved version and a unique `buildVersion` in the deployment
 copy of `version.json`, and generates the build identifier in the app entry
-point, service worker, manifest icon URL, and HTML asset URLs. These are
-generated deployment outputs, not independent version settings. Do not
-hand-edit them to change the app version.
+point, service worker, manifest icon URL, and HTML asset URLs. Keep these
+checked-in markers synchronized with the latest released version; the
+deployment workflow replaces them with the identifier for each new build.
 
 `backend/main.js`'s `MINIMUM_SUPPORTED_CLIENT_VERSION` is an independent
 compatibility floor, not the application release version. It deliberately

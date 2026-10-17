@@ -5,6 +5,7 @@ const vm = require("node:vm");
 
 const appCore = fs.readFileSync("app-core.js", "utf8");
 const backend = fs.readFileSync("backend/main.js", "utf8");
+const reviewerPdf = fs.readFileSync("backend/ReviewerPdf.gs", "utf8");
 const deckNavigation = fs.readFileSync("deck-nav-core.js", "utf8");
 const index = fs.readFileSync("index.html", "utf8");
 const releaseMetadata = JSON.parse(fs.readFileSync("version.json", "utf8"));
@@ -694,8 +695,8 @@ assert.doesNotMatch(
 );
 assert.match(
   appCore,
-  /link\.href = reviewerPdfMatch \? "[^"]+" : linkUrl/,
-  "spreadsheet resource values should render as working links",
+  /link\.href =\s*reviewerPdfMatch \|\| isInSiteDashboardResource\s*\?\s*"#resource-portal-preview"\s*:\s*linkUrl/,
+  "spreadsheet resource values should use in-site preview anchors rather than external Drive URLs",
 );
 assert.match(
   appCore,
@@ -1102,6 +1103,7 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(backend, context, { filename: "backend/main.js" });
+vm.runInContext(reviewerPdf, context, { filename: "backend/ReviewerPdf.gs" });
 const readReviewerPdfIndexEntries = context.getReviewerPdfIndexEntries_;
 
 const dashboard = JSON.parse(context.handleGetResourceDashboardRequest().text);
@@ -1280,31 +1282,30 @@ assert.match(
   /^https:\/\/drive\.google\.com/,
   "sanitizing the response must not mutate the original index object",
 );
-context.authorizeReviewerRequest_ = (_data, bypassAccountCache) => {
-  assert.equal(
-    bypassAccountCache,
-    true,
-    "protected PDF requests must bypass the account-status cache",
-  );
-  return {
-    error: context.errorResponse("Account is pending.", "ACCOUNT_PENDING"),
-  };
-};
 (async function runAsyncReviewerChecks() {
-  const pendingReviewerPdf = JSON.parse(
-    (
-    await context.handleGetReviewerPdfRequest({
-    eventId: "42345678-1234-4123-8123-123456789abc",
-    fileId: "reviewerPdf_123456",
-    sessionId: "a".repeat(96),
-    })
-    ).text,
+  let sourceDriveReads = 0;
+  context.authorizeReviewerRequest_ = (_data, bypassAccountCache) => {
+    assert.equal(bypassAccountCache, true);
+    return {
+      error: context.errorResponse("Account is pending.", "ACCOUNT_PENDING"),
+    };
+  };
+  const pendingPreview = JSON.parse(
+    context.handleGetReviewerPdfPreviewRequest_({
+      eventId: "42345678-1234-4123-8123-123456789abc",
+      fileId: "reviewerPdf_123456",
+      sessionId: "a".repeat(96),
+    }).text,
   );
-  assert.equal(
-    pendingReviewerPdf.code,
-    "ACCOUNT_PENDING",
-    "a pending account must be denied before Drive content is read",
-  );
+  assert.equal(pendingPreview.code, "ACCOUNT_PENDING");
+  assert.equal(sourceDriveReads, 0, "pending reviewers must be denied before source read");
+
+  const sourcePdfBytes = Array.from(Buffer.from("%PDF-1.4\nAuthorized source", "ascii"));
+  let backendWatermarkCalls = 0;
+  context.watermarkReviewerPdfBytes_ = () => {
+    backendWatermarkCalls += 1;
+    throw new Error("Backend PDF watermarking must not run.");
+  };
   context.authorizeReviewerRequest_ = () => ({
     email: "reviewer@example.com",
     account: {
@@ -1314,795 +1315,470 @@ context.authorizeReviewerRequest_ = (_data, bypassAccountCache) => {
       rawAccountStatus: "TRUE",
     },
   });
-  context.getReviewerPdfIndexEntries_ = () => [
-    { fileId: "reviewerPdf_123456", title: "Reviewer.pdf" },
-  ];
-  const alteredReviewerPdf = JSON.parse(
-    (
-    await context.handleGetReviewerPdfRequest({
+  context.getReviewerPdfSource_ = (fileId) => ({
+    entry: { fileId, title: "Reviewer.pdf" },
+    driveFile: { id: fileId, name: "Reviewer.pdf" },
+    sourceVersion: "a".repeat(64),
+  });
+  context.DriveApp.getFileById = (fileId) => {
+    assert.equal(fileId, "reviewerPdf_123456");
+    sourceDriveReads += 1;
+    return { getBlob: () => ({ getBytes: () => sourcePdfBytes }) };
+  };
+  context.Utilities.base64Encode = (bytes) =>
+    Buffer.from(bytes.map((byte) => byte & 255)).toString("base64");
+  const browserProcessingResponse = JSON.parse(
+    context.handleGetReviewerPdfPreviewRequest_({
       eventId: "52345678-1234-4123-8123-123456789abc",
-      fileId: "alteredFile_123456",
+      fileId: "reviewerPdf_123456",
       sessionId: "a".repeat(96),
-    })
-    ).text,
+    }).text,
   );
   assert.equal(
-    alteredReviewerPdf.code,
-    "RESOURCE_NOT_AUTHORIZED",
-    "altered IDs not present in the Reviewer index must be denied",
+    browserProcessingResponse.status,
+    "success",
+    JSON.stringify(browserProcessingResponse),
   );
+  assert.equal(browserProcessingResponse.clientProcessing, true);
+  assert.equal(browserProcessingResponse.mimeType, "application/pdf");
+  assert.equal(browserProcessingResponse.watermarked, undefined);
+  assert.equal(browserProcessingResponse.fullName, "Rita A. Reviewer");
+  assert.equal(browserProcessingResponse.email, "reviewer@example.com");
+  assert.equal(
+    Buffer.from(browserProcessingResponse.data, "base64").toString("ascii"),
+    Buffer.from(sourcePdfBytes).toString("ascii"),
+    "the backend must return authorized source bytes without watermark processing",
+  );
+  assert.equal(sourceDriveReads, 1);
 
-const unchangedDashboard = JSON.parse(
-  context.doPost({
-    postData: {
-      contents: JSON.stringify({
-        type: "get_resource_dashboard",
-        eventId: "22345678-1234-4123-8123-123456789abc",
-        version: routedDashboard.version,
-        appVersion,
-      }),
-    },
-  }).text,
-);
-assert.equal(unchangedDashboard.notModified, true);
-assert.equal(
-  indexReadCount,
-  2,
-  "unchanged dashboard indexes should not be parsed or returned again",
-);
-assert.equal(
-  dashboardDriveLookupCount,
-  1,
-  "unchanged dashboard versions should be served without a Drive lookup",
-);
-
-dashboardCacheClock += 61000;
-const cachedAfterLatestExpiry = JSON.parse(
-  context.handleGetResourceDashboardRequest().text,
-);
-assert.equal(cachedAfterLatestExpiry.version, routedDashboard.version);
-assert.equal(
-  indexReadCount,
-  2,
-  "an expired latest pointer should reuse the still-valid versioned payload without rereading Drive indexes",
-);
-assert.equal(
-  dashboardDriveLookupCount,
-  2,
-  "an expired latest pointer should only require checking Drive metadata for changes",
-);
-
-dashboardIndexModifiedTimes["reviewers_combined.json"] += 1;
-dashboardCacheClock += 61000;
-const updatedDashboard = JSON.parse(
-  context.doPost({
-    postData: {
-      contents: JSON.stringify({
-        type: "get_resource_dashboard",
-        eventId: "32345678-1234-4123-8123-123456789abc",
-        version: routedDashboard.version,
-        appVersion,
-      }),
-    },
-  }).text,
-);
-assert.equal(updatedDashboard.status, "success");
-assert.ok(updatedDashboard.version !== routedDashboard.version);
-assert.equal(
-  indexReadCount,
-  4,
-  "updated dashboard indexes should cause the complete dashboard to refresh",
-);
-assert.equal(
-  dashboardDriveLookupCount,
-  3,
-  "expired snapshots should recheck Drive metadata for updates",
-);
-
-const disabledListing = JSON.parse(
-  context.doPost({
-    postData: {
-      contents: JSON.stringify({
-        type: "list_public_resources",
-        appVersion,
-      }),
-    },
-  }).text,
-);
-assert.equal(
-  disabledListing.code,
-  "FEATURE_DISABLED",
-  "the former Drive listing API should be explicitly disabled",
-);
-const disabledPreview = JSON.parse(
-  context.doPost({
-    postData: {
-      contents: JSON.stringify({
-        type: "get_resource_preview",
-        appVersion,
-      }),
-    },
-  }).text,
-);
-assert.equal(
-  disabledPreview.code,
-  "FEATURE_DISABLED",
-  "the former Drive preview API should be explicitly disabled",
-);
-assert.equal(
-  indexReadCount,
-  4,
-  "disabled Drive requests should not read dashboard index files",
-);
-
-const snapshotProperties = {
-  MRH_SUBJECT_SCHEMA_VERSION: "10",
-  LAST_CACHE_BUILD_SUCCESS: "2026-10-15T00:00:00.000Z",
-  BUILD_STATUS: "IDLE",
-  MRH_CACHE_VERSION_TIMESTAMP: "2026-10-15T00:00:00.000Z",
-};
-context.getScriptProps = () => ({
-  getProperty: (key) => snapshotProperties[key] || null,
-  setProperty(key, value) {
-    snapshotProperties[key] = value;
-  },
-});
-context.getCacheInvalidationVersion = () => "cache-v1";
-context.generateCacheKey = (key) => key;
-context.cacheGetChunked = () => JSON.stringify([{ Subject: "COLREGS" }]);
-context.filterSummaryDataByAccess = (summary) => summary;
-const unchangedSync = JSON.parse(
-  context.handleDeckSyncSnapshot_(
-    "2026-10-15T00:00:00.000Z",
-    "cache-v1",
-  ).text,
-);
-assert.equal(unchangedSync.notModified, true);
-
-const changedSync = JSON.parse(context.handleDeckSyncSnapshot_("").text);
-assert.deepEqual(JSON.parse(JSON.stringify(changedSync.summary)), [
-  { Subject: "COLREGS" },
-]);
-assert.equal(changedSync.payloadSchemaVersion, 2);
-
-let cacheVersionReads = 0;
-context.getCacheInvalidationVersion = () =>
-  cacheVersionReads++ === 0 ? "cache-v1" : "cache-v2";
-const racedSync = JSON.parse(context.handleDeckSyncSnapshot_("").text);
-assert.equal(racedSync.code, "SYNC_RACE");
-
-snapshotProperties.LAST_CACHE_BUILD_SUCCESS = "";
-let rebuildTriggerCount = 0;
-context.ensureResumeBuildTrigger = () => {
-  rebuildTriggerCount += 1;
-};
-const coldStartSync = JSON.parse(
-  context.handleDeckSyncSnapshot_("2026-10-15T00:00:00.000Z").text,
-);
-assert.equal(coldStartSync.isColdStart, true);
-assert.equal(rebuildTriggerCount, 1);
-
-const pdfJobNow = 1000000;
-const pdfJobProperties = new Map();
-const pdfJobPropertyStore = {
-  getProperties: () => Object.fromEntries(pdfJobProperties),
-  getProperty: (key) => pdfJobProperties.get(key) || null,
-  setProperty: (key, value) => pdfJobProperties.set(key, String(value)),
-  deleteProperty: (key) => pdfJobProperties.delete(key),
-};
-const pdfJobPrefix = "MRH_REVIEWER_PDF_JOB_v1_";
-const pdfJobRecord = (jobId, status, options = {}) =>
-  JSON.stringify({
-    jobId,
-    status,
-    expiresAt: options.expiresAt || pdfJobNow + 600000,
-    processingAt: options.processingAt,
-    outputFileId: options.outputFileId,
-    persistentOutput: options.persistentOutput,
-  });
-pdfJobProperties.set(
-  "MRH_REVIEWER_PDF_QUEUE_v1",
-  JSON.stringify(["queued-b", "queued-a"]),
-);
-pdfJobProperties.set(pdfJobPrefix + "queued-a", pdfJobRecord("queued-a", "queued"));
-pdfJobProperties.set(pdfJobPrefix + "queued-b", pdfJobRecord("queued-b", "queued"));
-pdfJobProperties.set(
-  pdfJobPrefix + "stale",
-  pdfJobRecord("stale", "processing", {
-    processingAt: pdfJobNow - 7 * 60 * 1000,
-  }),
-);
-pdfJobProperties.set(
-  pdfJobPrefix + "active",
-  pdfJobRecord("active", "processing", {
-    processingAt: pdfJobNow - 2 * 60 * 1000,
-  }),
-);
-pdfJobProperties.set(
-  pdfJobPrefix + "expired",
-  pdfJobRecord("expired", "complete", {
-    expiresAt: pdfJobNow - 1,
-    outputFileId: "expired-output",
-  }),
-);
-pdfJobProperties.set(
-  pdfJobPrefix + "persistent-expired",
-  pdfJobRecord("persistent-expired", "complete", {
-    expiresAt: pdfJobNow - 1,
-    outputFileId: "retained-output",
-    persistentOutput: true,
-  }),
-);
-const deletedTemporaryOutputs = [];
-let temporaryOutputDeleteFailures = 0;
-context.getScriptProps = () => pdfJobPropertyStore;
-context.Drive = {
-  Files: {
-    get(fileId) {
-      if (fileId === "private-derivative-id")
-        return {
-          id: fileId,
-          mimeType: "application/pdf",
-          parents: ["10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl"],
-          trashed: false,
-          size: 8,
-        };
-      if (fileId === "10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl")
-        return {
-          id: fileId,
-          mimeType: "application/vnd.google-apps.folder",
-          parents: ["output-parent-id"],
-          trashed: false,
-        };
-      assert.equal(fileId, "output-parent-id");
-      return {
-        id: fileId,
-        mimeType: "application/vnd.google-apps.folder",
-        parents: [],
-        trashed: false,
-      };
-    },
-    delete(fileId, options) {
-      deletedTemporaryOutputs.push([fileId, options]);
-      if (temporaryOutputDeleteFailures > 0) {
-        temporaryOutputDeleteFailures -= 1;
-        throw new Error("transient Drive delete failure");
-      }
-    },
-  },
-};
-assert.deepEqual(
-  JSON.parse(
-    JSON.stringify(
-      context.cleanReviewerPdfJobs_(pdfJobPropertyStore, pdfJobNow),
-    ),
-  ),
-  ["queued-b", "queued-a", "stale"],
-  "job cleanup preserves FIFO order and recovers only stale worker claims",
-);
-assert.equal(
-  JSON.parse(pdfJobProperties.get(pdfJobPrefix + "stale")).status,
-  "queued",
-);
-assert.equal(
-  JSON.parse(pdfJobProperties.get(pdfJobPrefix + "active")).status,
-  "processing",
-  "a live worker claim must not be requeued",
-);
-assert.equal(pdfJobProperties.has(pdfJobPrefix + "expired"), false);
-assert.deepEqual(
-  JSON.parse(JSON.stringify(deletedTemporaryOutputs)),
-  [["expired-output", { supportsAllDrives: true }]],
-);
-assert.equal(
-  deletedTemporaryOutputs.some(([fileId]) => fileId === "retained-output"),
-  false,
-  "expired job state must not delete a generated PDF retained in the output folder",
-);
-
-context.reviewerPdfQueueConfigured_ = () => true;
-context.reviewerPdfQueueConfigured_ = () => false;
-const originalAuthorizeReviewerPdfRequest =
-  context.authorizeReviewerPdfRequest_;
-context.authorizeReviewerPdfRequest_ = () => ({
-  error: context.errorResponse("Account is pending.", "ACCOUNT_PENDING"),
-});
-assert.equal(
-  JSON.parse(
-    context.enqueueReviewerPdfRequest_({
+  const cachedSourceResponse = JSON.parse(
+    context.handleGetReviewerPdfPreviewRequest_({
+      eventId: "62345678-1234-4123-8123-123456789abc",
       fileId: "reviewerPdf_123456",
       sessionId: "a".repeat(96),
+      cachedSourceVersion: "a".repeat(64),
     }).text,
-  ).code,
-  "ACCOUNT_PENDING",
-  "an unconfigured worker must not bypass fresh account authorization",
-);
-context.authorizeReviewerPdfRequest_ = originalAuthorizeReviewerPdfRequest;
-context.reviewerPdfQueueConfigured_ = () => true;
-assert.equal(
-  JSON.parse(
-    context.enqueueReviewerPdfRequest_({ fileId: "reviewerPdf_123456" }).text,
-  ).code,
-  "SESSION_INVALID",
-  "PDF jobs cannot be enqueued without a session that can own and poll the job",
-);
-assert.equal(
-  JSON.parse(context.getReviewerPdfJobStatus_({ jobId: "a".repeat(96) }).text)
-    .code,
-  "SESSION_INVALID",
-  "job polling cannot bypass reviewer session authentication",
-);
+  );
+  assert.equal(cachedSourceResponse.cacheHit, true);
+  assert.equal(sourceDriveReads, 1, "a validated tab cache hit avoids Drive byte reads");
 
-pdfJobProperties.clear();
-const workerJobId = "b".repeat(96);
-const workerSessionId = "c".repeat(96);
-const workerPdfBytes = [37, 80, 68, 70, 45, 49, 46, 55];
-pdfJobProperties.set(
-  pdfJobPrefix + workerJobId,
-  JSON.stringify({
-    jobId: workerJobId,
-    sessionId: workerSessionId,
-    eventId: "62345678-1234-4123-8123-123456789abc",
-    fileId: "reviewerPdf_123456",
-    sourceVersion: "test-source-version",
-    fullName: "Rita A. Reviewer",
-    email: "reviewer@example.com",
-    status: "queued",
-    createdAt: Date.now(),
-    expiresAt: Date.now() + 10 * 60 * 1000,
-  }),
-);
-pdfJobProperties.set(
-  "MRH_REVIEWER_PDF_QUEUE_v1",
-  JSON.stringify([workerJobId]),
-);
-context.MRH_REVIEWER_PDF_MAX_OUTPUT_BYTES = 12 * 1024 * 1024;
-let derivativeFile = null;
-context.LockService = {
-  getScriptLock: () => ({
-    tryLock: () => true,
-    releaseLock() {},
-  }),
-};
-context.Utilities.base64Decode = (encoded) =>
-  Array.from(Buffer.from(encoded, "base64"));
-context.Utilities.base64Encode = (bytes) =>
-  Buffer.from(bytes.map((byte) => byte & 255)).toString("base64");
-context.Utilities.newBlob = (bytes, mimeType, name) => ({
-  bytes,
-  mimeType,
-  name,
-});
-context.ContentService.createTextOutput = (text) => ({
-  text,
-  getContent: () => text,
-  setMimeType() {
-    return this;
-  },
-});
-context.handleGetReviewerPdfRequest = async () =>
-  context.ContentService.createTextOutput(
-    JSON.stringify({
-      status: "success",
+  context.getScriptProps = () => ({ deleteProperty() {} });
+  context.LockService = {
+    getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }),
+  };
+  const scheduledPdfWorkerTriggers = [
+    { getHandlerFunction: () => "processReviewerPdfQueue", getUniqueId: () => "old-trigger" },
+  ];
+  const deletedPdfWorkerTriggers = [];
+  context.ScriptApp = {
+    getProjectTriggers: () => scheduledPdfWorkerTriggers.slice(),
+    deleteTrigger(trigger) {
+      deletedPdfWorkerTriggers.push(trigger.getUniqueId());
+      const index = scheduledPdfWorkerTriggers.indexOf(trigger);
+      if (index >= 0) scheduledPdfWorkerTriggers.splice(index, 1);
+    },
+  };
+  const disabledSetup = context.setupReviewerPdfDelivery();
+  assert.equal(disabledSetup.status, "success");
+  assert.equal(scheduledPdfWorkerTriggers.length, 0);
+  assert.deepEqual(deletedPdfWorkerTriggers, ["old-trigger"]);
+  for (const legacyResponse of [
+    context.enqueueReviewerPdfRequest_({}, {}),
+    context.getReviewerPdfJobStatus_({}),
+    await context.handleGetReviewerPdfRequest({}),
+  ]) {
+    assert.equal(JSON.parse(legacyResponse.text).code, "PDF_BACKEND_PROCESSING_DISABLED");
+  }
+  await context.processReviewerPdfQueue();
+  assert.equal(scheduledPdfWorkerTriggers.length, 0);
+  assert.equal(backendWatermarkCalls, 0);
+
+  let aclDeleteCount = 0;
+  const aclReport = {
+    files: [{
+      id: "reviewerPdf_123456",
+      name: "Reviewer.pdf",
       mimeType: "application/pdf",
-      sourceVersion: "test-source-version",
-      data: context.Utilities.base64Encode(workerPdfBytes),
-    }),
-  );
-context.getReviewerPdfSource_ = () => ({
-  entry: { fileId: "reviewerPdf_123456", title: "Reviewer.pdf" },
-  driveFile: { id: "reviewerPdf_123456" },
-  sourceVersion: "test-source-version",
-});
-context.reviewerPdfError_ = (message, code) =>
-  Object.assign(new Error(message), { code, reviewerPdfSafe: true });
-context.DriveApp.createFile = (blob) => {
-  derivativeFile = {
-    id: "private-derivative-id",
-    blob,
-    trashed: false,
-    getId() {
-      return this.id;
-    },
-    setTrashed(value) {
-      this.trashed = value;
-    },
-  };
-  return derivativeFile;
-};
-context.listReviewerPdfPermissions_ = () => [
-  { type: "user", emailAddress: "owner@example.com", role: "owner" },
-];
-context.Session = {
-  getEffectiveUser: () => ({ getEmail: () => "owner@example.com" }),
-};
-const scheduledPdfWorkerDelays = [];
-const scheduledPdfWorkerTriggers = [
-  {
-    getHandlerFunction: () => "processReviewerPdfQueue",
-    getUniqueId: () => "stale-trigger",
-  },
-];
-const deletedPdfWorkerTriggers = [];
-context.ScriptApp = {
-  getProjectTriggers: () => scheduledPdfWorkerTriggers.slice(),
-  deleteTrigger(trigger) {
-    deletedPdfWorkerTriggers.push(trigger.getUniqueId());
-    const index = scheduledPdfWorkerTriggers.indexOf(trigger);
-    if (index >= 0) scheduledPdfWorkerTriggers.splice(index, 1);
-  },
-  newTrigger(handler) {
-    return {
-      handler,
-      timeBased() {
-        return this;
-      },
-      after(delayMs) {
-        scheduledPdfWorkerDelays.push(delayMs);
-        return this;
-      },
-      create() {
-        const trigger = {
-          getHandlerFunction: () => this.handler,
-          getUniqueId: () => `scheduled-${scheduledPdfWorkerTriggers.length}`,
-        };
-        scheduledPdfWorkerTriggers.push(trigger);
-        return trigger;
-      },
-    };
-  },
-};
-pdfJobPropertyStore.setProperty(
-  "MRH_REVIEWER_PDF_WORKER_SCHEDULED_AT",
-  String(Date.now() - 2 * 60 * 1000),
-);
-context.scheduleReviewerPdfWorkerLocked_();
-assert.deepEqual(deletedPdfWorkerTriggers, ["stale-trigger"]);
-assert.equal(scheduledPdfWorkerDelays.length, 1);
-assert.ok(
-  Number(pdfJobPropertyStore.getProperty(
-    "MRH_REVIEWER_PDF_WORKER_SCHEDULED_AT",
-  )) > Date.now(),
-  "an overdue trigger must be replaced rather than left pending indefinitely",
-);
-const replacementTriggerCount = scheduledPdfWorkerTriggers.length;
-context.scheduleReviewerPdfWorkerLocked_();
-assert.equal(
-  scheduledPdfWorkerTriggers.length,
-  replacementTriggerCount,
-  "a recently scheduled worker must not be duplicated by subsequent polls",
-);
-scheduledPdfWorkerTriggers.splice(0, scheduledPdfWorkerTriggers.length);
-pdfJobPropertyStore.deleteProperty(
-  "MRH_REVIEWER_PDF_WORKER_SCHEDULED_AT",
-);
-scheduledPdfWorkerDelays.length = 0;
-await context.processReviewerPdfQueue();
-const completedPdfJob = JSON.parse(
-  pdfJobProperties.get(pdfJobPrefix + workerJobId),
-);
-assert.equal(completedPdfJob.status, "complete", JSON.stringify(completedPdfJob));
-assert.equal(completedPdfJob.outputFileId, "private-derivative-id");
-assert.equal(derivativeFile.blob.mimeType, "application/pdf");
-assert.equal(
-  derivativeFile.blob.name,
-  `Reviewer PDF - ${workerJobId.slice(0, 12)}.pdf`,
-);
-assert.equal(
-  scheduledPdfWorkerDelays.length,
-  1,
-  "completed output jobs must schedule metadata expiry without deleting the PDF",
-);
-
-const cleanupRetryJobId = "e".repeat(96);
-const cleanupRetryFileId = "retry-output-id";
-const cleanupRetrySessionId = "d".repeat(96);
-pdfJobProperties.set(
-  "MRH_REVIEWER_PDF_QUEUE_v1",
-  JSON.stringify([cleanupRetryJobId]),
-);
-pdfJobProperties.set(
-  pdfJobPrefix + cleanupRetryJobId,
-  JSON.stringify({
-    jobId: cleanupRetryJobId,
-    sessionId: cleanupRetrySessionId,
-    status: "complete",
-    outputFileId: cleanupRetryFileId,
-    expiresAt: Date.now() + 10 * 60 * 1000,
-  }),
-);
-scheduledPdfWorkerTriggers.splice(0, scheduledPdfWorkerTriggers.length);
-pdfJobPropertyStore.deleteProperty("MRH_REVIEWER_PDF_WORKER_SCHEDULED_AT");
-scheduledPdfWorkerDelays.length = 0;
-temporaryOutputDeleteFailures = 1;
-const partialSessionCleanup =
-  context.cleanupReviewerPdfJobsForSession_(cleanupRetrySessionId);
-assert.equal(partialSessionCleanup.status, "partial");
-const cleanupRetryJob = JSON.parse(
-  pdfJobProperties.get(pdfJobPrefix + cleanupRetryJobId),
-);
-assert.equal(cleanupRetryJob.status, "cancelled");
-assert.ok(
-  cleanupRetryJob.expiresAt <= Date.now() + 60 * 1000,
-  "failed session cleanup must expire the derivative promptly for retry",
-);
-assert.deepEqual(
-  JSON.parse(pdfJobProperties.get("MRH_REVIEWER_PDF_QUEUE_v1")),
-  [],
-  "a cancelled job with a failed derivative deletion must leave the worker queue",
-);
-assert.ok(
-  scheduledPdfWorkerDelays[0] <= 60 * 1000 &&
-    scheduledPdfWorkerDelays[0] >= 10 * 1000,
-  "failed session cleanup must schedule a bounded automatic retry",
-);
-
-temporaryOutputDeleteFailures = 0;
-pdfJobProperties.set(
-  pdfJobPrefix + cleanupRetryJobId,
-  JSON.stringify({
-    ...cleanupRetryJob,
-    expiresAt: Date.now() - 1,
-  }),
-);
-const cleanupRetryTrigger = scheduledPdfWorkerTriggers[0];
-await context.processReviewerPdfQueue({
-  triggerUid: cleanupRetryTrigger.getUniqueId(),
-});
-assert.equal(
-  pdfJobProperties.has(pdfJobPrefix + cleanupRetryJobId),
-  false,
-  "the cleanup worker must remove the temporary derivative and job after recovery",
-);
-assert.equal(
-  deletedTemporaryOutputs.filter(([fileId]) => fileId === cleanupRetryFileId)
-    .length,
-  2,
-  "a failed deletion must be retried once the cleanup worker runs",
-);
-
-context.authorizeReviewerRequest_ = () => ({
-  email: "reviewer@example.com",
-  account: {
-    firstName: "Rita",
-    middleInitial: "A.",
-    lastName: "Reviewer",
-    rawAccountStatus: "TRUE",
-  },
-});
-context.DriveApp.getFileById = (fileId) => {
-  assert.equal(fileId, "private-derivative-id");
-  return {
-    isTrashed: () => false,
-    getMimeType: () => "application/pdf",
-    getSize: () => workerPdfBytes.length,
-    getBlob: () => ({ getBytes: () => workerPdfBytes }),
-  };
-};
-function addCompletedPdfJob(jobId) {
-  pdfJobProperties.set(
-    pdfJobPrefix + jobId,
-    JSON.stringify({
-      jobId,
-      sessionId: workerSessionId,
-      fileId: "reviewerPdf_123456",
-      sourceVersion: "test-source-version",
-      status: "complete",
-      outputFileId: "private-derivative-id",
-      expiresAt: Date.now() + 10 * 60 * 1000,
-    }),
-  );
-}
-assert.equal(
-  JSON.parse(
-    context.getReviewerPdfJobStatus_({
-      jobId: workerJobId,
-      sessionId: "d".repeat(96),
-    }).text,
-  ).code,
-  "PDF_JOB_NOT_FOUND",
-  "a different authenticated reviewer cannot read another session's job",
-);
-const staleSourceJobId = "f".repeat(96);
-addCompletedPdfJob(staleSourceJobId);
-context.getReviewerPdfSource_ = () => ({
-  error: { code: "RESOURCE_NOT_AUTHORIZED", message: "Stale index." },
-});
-assert.equal(
-  JSON.parse(
-    context.getReviewerPdfJobStatus_({
-      jobId: staleSourceJobId,
-      sessionId: workerSessionId,
-    }).text,
-  ).code,
-  "PDF_SOURCE_CHANGED",
-  "polling must deny a completed derivative after its source leaves the authoritative index",
-);
-const changedSourceJobId = "a".repeat(96);
-addCompletedPdfJob(changedSourceJobId);
-context.getReviewerPdfSource_ = () => ({
-  entry: { fileId: "reviewerPdf_123456", title: "Reviewer.pdf" },
-  driveFile: { id: "reviewerPdf_123456" },
-  sourceVersion: "different-source-version",
-});
-assert.equal(
-  JSON.parse(
-    context.getReviewerPdfJobStatus_({
-      jobId: changedSourceJobId,
-      sessionId: workerSessionId,
-    }).text,
-  ).code,
-  "PDF_SOURCE_CHANGED",
-  "polling must not deliver a derivative for a changed source version",
-);
-context.getReviewerPdfSource_ = () => ({
-  entry: { fileId: "reviewerPdf_123456", title: "Reviewer.pdf" },
-  driveFile: { id: "reviewerPdf_123456" },
-  sourceVersion: "test-source-version",
-});
-const deliveredPdfJob = JSON.parse(
-  context.getReviewerPdfJobStatus_({
-    jobId: workerJobId,
-    sessionId: workerSessionId,
-  }).text,
-);
-assert.equal(deliveredPdfJob.status, "success", JSON.stringify(deliveredPdfJob));
-assert.equal(deliveredPdfJob.mimeType, "application/pdf");
-assert.equal(deliveredPdfJob.watermarked, true);
-assert.equal(deliveredPdfJob.fullName, "Rita A. Reviewer");
-assert.equal(deliveredPdfJob.email, "reviewer@example.com");
-assert.equal(
-  Buffer.from(deliveredPdfJob.data, "base64").toString("hex"),
-  Buffer.from(workerPdfBytes).toString("hex"),
-  "job polling must return the stored derivative bytes",
-);
-assert.equal(
-  deletedTemporaryOutputs.some(([fileId]) => fileId === "private-derivative-id"),
-  false,
-  "delivery must retain the generated PDF in the configured output folder",
-);
-context.listReviewerPdfPermissions_ = (fileId) => [
-  {
-    type: "user",
-    emailAddress: fileId === "output-parent-id"
-      ? "other@example.com"
-      : "owner@example.com",
-    role: fileId === "output-parent-id" ? "writer" : "owner",
-  },
-];
-assert.equal(
-  JSON.parse(
-    context.getReviewerPdfJobStatus_({
-      jobId: workerJobId,
-      sessionId: workerSessionId,
-    }).text,
-  ).code,
-  "PDF_DELIVERY_FAILED",
-  "delivery must reject a generated PDF whose parent folder became shared",
-);
-context.listReviewerPdfPermissions_ = () => [
-  { type: "user", emailAddress: "owner@example.com", role: "owner" },
-];
-assert.equal(
-  JSON.parse(pdfJobProperties.get(pdfJobPrefix + workerJobId)).persistentOutput,
-  true,
-  "completed job state must identify PDFs that must survive expiry and session cleanup",
-);
-for (const key of pdfJobProperties.keys()) {
-  if (
-    key.startsWith(pdfJobPrefix) &&
-    key !== pdfJobPrefix + workerJobId
-  )
-    pdfJobProperties.delete(key);
-}
-pdfJobProperties.set("MRH_REVIEWER_PDF_QUEUE_v1", "[]");
-context.cleanupReviewerPdfJobsForSession_(workerSessionId);
-assert.equal(
-  deletedTemporaryOutputs.some(([fileId]) => fileId === "private-derivative-id"),
-  false,
-  "session cleanup must preserve completed PDFs in the output folder",
-);
-
-const nonPrivateJobId = "e".repeat(96);
-pdfJobProperties.set(
-  pdfJobPrefix + nonPrivateJobId,
-  JSON.stringify({
-    jobId: nonPrivateJobId,
-    sessionId: workerSessionId,
-    eventId: "72345678-1234-4123-8123-123456789abc",
-    fileId: "reviewerPdf_123456",
-    sourceVersion: "test-source-version",
-    status: "queued",
-    createdAt: Date.now(),
-    expiresAt: Date.now() + 10 * 60 * 1000,
-  }),
-);
-pdfJobProperties.set(
-  "MRH_REVIEWER_PDF_QUEUE_v1",
-  JSON.stringify([nonPrivateJobId]),
-);
-context.listReviewerPdfPermissions_ = () => [
-  { type: "user", emailAddress: "other@example.com", role: "writer" },
-];
-const derivativeBeforeSharedFolderJob = derivativeFile;
-await context.processReviewerPdfQueue();
-const rejectedPdfJob = JSON.parse(
-  pdfJobProperties.get(pdfJobPrefix + nonPrivateJobId),
-);
-assert.equal(rejectedPdfJob.status, "failed");
-assert.equal(rejectedPdfJob.code, "PDF_OUTPUT_NOT_PRIVATE");
-assert.equal(
-  derivativeFile,
-  derivativeBeforeSharedFolderJob,
-  "a shared output folder must be rejected before creating a PDF there",
-);
-
-let aclDeleteCount = 0;
-const aclReport = {
-  files: [{
-    id: "reviewerPdf_123456",
-    name: "Reviewer.pdf",
-    mimeType: "application/pdf",
-    insideRoot: true,
-    reviewerTitles: ["Reviewer.pdf"],
-    permissions: [{
-      id: "direct-share",
-      type: "user",
-      role: "writer",
-      emailAddress: "former@example.com",
-      deleted: false,
-      inherited: false,
-      inheritedFrom: [],
+      insideRoot: true,
+      reviewerTitles: ["Reviewer.pdf"],
+      permissions: [{
+        id: "direct-share",
+        type: "user",
+        role: "writer",
+        emailAddress: "former@example.com",
+        deleted: false,
+        inherited: false,
+        inheritedFrom: [],
+      }],
     }],
-  }],
-};
-context.PropertiesService.getScriptProperties = () => ({
-  getProperty: () => "owner@example.com",
-});
-context.auditReviewerPdfDrivePermissions = () => aclReport;
-context.Drive = {
-  Permissions: {
-    delete() {
-      aclDeleteCount += 1;
+  };
+  context.Session = {
+    getEffectiveUser: () => ({ getEmail: () => "owner@example.com" }),
+  };
+  context.PropertiesService.getScriptProperties = () => ({
+    getProperty: () => "owner@example.com",
+  });
+  context.auditReviewerPdfDrivePermissions = () => aclReport;
+  context.Drive = {
+    Permissions: {
+      delete() {
+        aclDeleteCount += 1;
+      },
     },
-  },
-};
-const aclDryRun = context.applyReviewedReviewerPdfPermissionRevocations(
-  [{ fileId: "reviewerPdf_123456", permissionId: "direct-share" }],
-  "",
-);
-assert.equal(aclDryRun.dryRun, true);
-assert.deepEqual(
-  JSON.parse(JSON.stringify(aclDryRun.planned)),
-  [{ fileId: "reviewerPdf_123456", permissionId: "direct-share" }],
-);
-assert.equal(aclDeleteCount, 0, "ACL dry-run must not change Drive permissions");
-aclReport.files[0].permissions[0].inherited = true;
-assert.throws(
-  () =>
-    context.applyReviewedReviewerPdfPermissionRevocations(
-      [{ fileId: "reviewerPdf_123456", permissionId: "direct-share" }],
-      "",
-    ),
-  /Inherited access must be reviewed/,
-  "the permission helper must never delete inherited folder access",
-);
-assert.equal(aclDeleteCount, 0);
+  };
+  const aclDryRun = context.applyReviewedReviewerPdfPermissionRevocations(
+    [{ fileId: "reviewerPdf_123456", permissionId: "direct-share" }],
+    "",
+  );
+  assert.equal(aclDryRun.dryRun, true);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(aclDryRun.planned)),
+    [{ fileId: "reviewerPdf_123456", permissionId: "direct-share" }],
+  );
+  assert.equal(aclDeleteCount, 0, "ACL dry-run must not change Drive permissions");
+  aclReport.files[0].permissions[0].inherited = true;
+  assert.throws(
+    () =>
+      context.applyReviewedReviewerPdfPermissionRevocations(
+        [{ fileId: "reviewerPdf_123456", permissionId: "direct-share" }],
+        "",
+      ),
+    /Inherited access must be reviewed/,
+    "the permission helper must never delete inherited folder access",
+  );
+  assert.equal(aclDeleteCount, 0);
 
-const indexReadsBeforeCacheTest = indexReadCount;
-context.getReviewerPdfIndexEntries_ = readReviewerPdfIndexEntries;
-const cachedPdfIndex = context.getReviewerPdfIndexEntries_();
-const indexReadsAfterFirstPdfIndex = indexReadCount;
-assert.ok(cachedPdfIndex.some((entry) => entry.fileId === "reviewerPdf_123456"));
-assert.equal(indexReadsAfterFirstPdfIndex, indexReadsBeforeCacheTest + 1);
-context.getReviewerPdfIndexEntries_();
-assert.equal(
-  indexReadCount,
-  indexReadsAfterFirstPdfIndex,
-  "a stable authoritative Reviewer index version should be read once from Drive",
-);
+  const indexReadsBeforeCacheTest = indexReadCount;
+  context.getReviewerPdfIndexEntries_ = readReviewerPdfIndexEntries;
+  const cachedPdfIndex = context.getReviewerPdfIndexEntries_();
+  const indexReadsAfterFirstPdfIndex = indexReadCount;
+  assert.ok(cachedPdfIndex.some((entry) => entry.fileId === "reviewerPdf_123456"));
+  assert.equal(indexReadsAfterFirstPdfIndex, indexReadsBeforeCacheTest + 1);
+  context.getReviewerPdfIndexEntries_();
+  assert.equal(
+    indexReadCount,
+    indexReadsAfterFirstPdfIndex,
+    "a stable authoritative Reviewer index version should be read once from Drive",
+  );
 
-  console.log("Resource dashboard and protected PDF queue checks passed.");
+  const resourceRootId = "19LoMUsogxTHB5xrI1Gd08NASQv2Zqi6E";
+  function makeIterator(values) {
+    let index = 0;
+    return {
+      hasNext: () => index < values.length,
+      next: () => values[index++],
+    };
+  }
+  const resourceRootFolder = {
+    getId: () => resourceRootId,
+    getName: () => "Shared Resources",
+    getParents: () => makeIterator([]),
+  };
+  const publicSubfolder = {
+    getId: () => "publicSubFolder_123456",
+    getName: () => "Course Materials",
+    getParents: () => makeIterator([resourceRootFolder]),
+  };
+  const privateSubfolder = {
+    getId: () => "privateSubFolder_123456",
+    getName: () => "REVIEWERS v26.10.31",
+    getParents: () => makeIterator([resourceRootFolder]),
+  };
+  const publicShortcutFile = {
+    getParents: () => makeIterator([resourceRootFolder]),
+  };
+  const outsideShortcutFile = {
+    getParents: () => makeIterator([{
+      getId: () => "outsideShortcutFolder_123456",
+      getName: () => "Outside",
+      getParents: () => makeIterator([]),
+    }]),
+  };
+  context.DriveApp.getFolderById = (folderId) => {
+    if (folderId === resourceRootId) return resourceRootFolder;
+    if (folderId === publicSubfolder.getId()) return publicSubfolder;
+    if (folderId === privateSubfolder.getId()) return privateSubfolder;
+    throw new Error("Folder not found.");
+  };
+  context.DriveApp.getFileById = (fileId) => {
+    if (fileId === "publicFile_123456") return publicShortcutFile;
+    if (fileId === "outsideFile_123456") return outsideShortcutFile;
+    throw new Error("File not found.");
+  };
+  const resourcePages = {
+    first: {
+      files: [
+        {
+          id: publicSubfolder.getId(),
+          name: publicSubfolder.getName(),
+          mimeType: "application/vnd.google-apps.folder",
+        },
+        {
+          id: "publicFile_123456",
+          name: "Lesson.pdf",
+          mimeType: "application/pdf",
+          modifiedTime: "2026-10-17T06:00:00.000Z",
+        },
+        {
+          id: privateSubfolder.getId(),
+          name: privateSubfolder.getName(),
+          mimeType: "application/vnd.google-apps.folder",
+        },
+        {
+          id: "folderShortcut_123456",
+          name: "Course Materials shortcut",
+          mimeType: "application/vnd.google-apps.shortcut",
+          shortcutDetails: {
+            targetId: publicSubfolder.getId(),
+            targetMimeType: "application/vnd.google-apps.folder",
+          },
+        },
+        {
+          id: "fileShortcut_123456",
+          name: "Lesson shortcut.pdf",
+          mimeType: "application/vnd.google-apps.shortcut",
+          shortcutDetails: {
+            targetId: "publicFile_123456",
+            targetMimeType: "application/pdf",
+          },
+        },
+        {
+          id: "outsideShortcut_123456",
+          name: "Outside lesson.pdf",
+          mimeType: "application/vnd.google-apps.shortcut",
+          shortcutDetails: {
+            targetId: "outsideFile_123456",
+            targetMimeType: "application/pdf",
+          },
+        },
+      ],
+      nextPageToken: "resource_page_2",
+    },
+    resource_page_2: {
+      files: [{
+        id: "secondPageFile_123456",
+        name: "More content.pdf",
+        mimeType: "application/pdf",
+      }],
+    },
+  };
+  let resourceListDriveCalls = 0;
+  context.Drive = {
+    Files: {
+      list(options) {
+        resourceListDriveCalls += 1;
+        assert.match(options.q, new RegExp(`'${resourceRootId}' in parents`));
+        assert.match(options.fields, /shortcutDetails\(targetId,targetMimeType\)/);
+        return resourcePages[options.pageToken || "first"];
+      },
+    },
+  };
+  const firstResourcePage = JSON.parse(
+    context.handleListPublicResourcesRequest({ folderId: resourceRootId }).text,
+  );
+  assert.equal(firstResourcePage.status, "success");
+  assert.equal(firstResourcePage.items.length, 4);
+  assert.equal(firstResourcePage.items[0].type, "folder");
+  assert.equal(firstResourcePage.nextPageToken, "resource_page_2");
+  assert.equal(
+    firstResourcePage.items.some((item) => item.id === privateSubfolder.getId()),
+    false,
+    "private Reviewer folders must never be listed as public descendants",
+  );
+  assert.ok(firstResourcePage.items.some((item) => item.id === publicSubfolder.getId()));
+  assert.ok(firstResourcePage.items.some((item) => item.id === "publicFile_123456"));
+  assert.equal(
+    firstResourcePage.items.some((item) => item.name === "Outside lesson.pdf"),
+    false,
+    "shortcuts must not expose targets outside the public resource root",
+  );
+  const secondResourcePage = JSON.parse(
+    context.handleListPublicResourcesRequest({
+      folderId: resourceRootId,
+      pageToken: firstResourcePage.nextPageToken,
+    }).text,
+  );
+  assert.equal(secondResourcePage.items[0].id, "secondPageFile_123456");
+  assert.equal(secondResourcePage.truncated, false);
+  context.handleListPublicResourcesRequest({
+    folderId: resourceRootId,
+    pageToken: firstResourcePage.nextPageToken,
+  });
+  assert.equal(resourceListDriveCalls, 2, "each cached page should avoid a duplicate Drive query");
+  assert.equal(
+    JSON.parse(
+      context.handleListPublicResourcesRequest({
+        folderId: privateSubfolder.getId(),
+      }).text,
+    ).code,
+    "FORBIDDEN",
+  );
+  assert.equal(
+    JSON.parse(
+      context.handleListPublicResourcesRequest({
+        folderId: resourceRootId,
+        pageToken: "invalid\npage",
+      }).text,
+    ).code,
+    "BAD_REQUEST",
+  );
+  const routedFolderPage = JSON.parse(
+    context.doPost({
+      postData: {
+        contents: JSON.stringify({
+          type: "list_public_resources",
+          folderId: resourceRootId,
+          appVersion,
+        }),
+      },
+    }).text,
+  );
+  assert.equal(
+    routedFolderPage.status,
+    "success",
+    "the public resource API should expose the ancestry-checked folder listing",
+  );
+
+  const previewBytes = Array.from(Buffer.from("%PDF-1.4\nIn-site preview", "ascii"));
+  const googleDocBytes = Array.from(Buffer.from("%PDF-1.4\nExported Google Doc", "ascii"));
+  context.DriveApp.getFileById = (fileId) => {
+    if (fileId === "outsideFile_123456") {
+      return {
+        getParents: () => makeIterator([{
+          getId: () => "outsideFolder_123456",
+          getName: () => "Outside",
+          getParents: () => makeIterator([]),
+        }]),
+      };
+    }
+    if (fileId === "googleDoc_123456") {
+      return {
+        getName: () => "Course Notes",
+        getMimeType: () => "application/vnd.google-apps.document",
+        getSize: () => 1024,
+        getParents: () => makeIterator([resourceRootFolder]),
+        getAs(mimeType) {
+          assert.equal(mimeType, "application/pdf");
+          return { getBytes: () => googleDocBytes };
+        },
+      };
+    }
+    assert.equal(fileId, "publicFile_123456");
+    return {
+      getName: () => "Lesson.pdf",
+      getMimeType: () => "application/pdf",
+      getSize: () => previewBytes.length,
+      getParents: () => makeIterator([resourceRootFolder]),
+      getBlob: () => ({ getBytes: () => previewBytes }),
+    };
+  };
+  const resourcePreview = JSON.parse(
+    context.handleGetResourcePreviewRequest({ fileId: "publicFile_123456" }).text,
+  );
+  assert.equal(resourcePreview.status, "success");
+  assert.equal(resourcePreview.mimeType, "application/pdf");
+  assert.equal(
+    Buffer.from(resourcePreview.data, "base64").toString("ascii"),
+    Buffer.from(previewBytes).toString("ascii"),
+    "the in-site preview should receive the bytes of files beneath the public root",
+  );
+  const googleDocPreview = JSON.parse(
+    context.handleGetResourcePreviewRequest({ fileId: "googleDoc_123456" }).text,
+  );
+  assert.equal(googleDocPreview.mimeType, "application/pdf");
+  assert.equal(
+    Buffer.from(googleDocPreview.data, "base64").toString("ascii"),
+    Buffer.from(googleDocBytes).toString("ascii"),
+    "Google Workspace documents should be exported for in-site PDF preview",
+  );
+  assert.equal(
+    JSON.parse(
+      context.handleGetResourcePreviewRequest({ fileId: "outsideFile_123456" }).text,
+    ).code,
+    "FORBIDDEN",
+    "the in-site preview must reject files outside the public resource root",
+  );
+
+  const cleanupProperties = new Map();
+  const cleanupPropertyStore = {
+    getProperty: (key) => cleanupProperties.get(key) || null,
+    setProperty: (key, value) => cleanupProperties.set(key, String(value)),
+    deleteProperty: (key) => cleanupProperties.delete(key),
+    getProperties: () => Object.fromEntries(cleanupProperties),
+  };
+  const persistentJobId = "b".repeat(96);
+  const temporaryJobId = "c".repeat(96);
+  const unrelatedJobId = "d".repeat(96);
+  const cleanupSessionId = "e".repeat(96);
+  cleanupProperties.set("MRH_REVIEWER_PDF_QUEUE_v1", JSON.stringify([
+    persistentJobId,
+    temporaryJobId,
+    unrelatedJobId,
+  ]));
+  cleanupProperties.set(
+    `MRH_REVIEWER_PDF_JOB_v1_${persistentJobId}`,
+    JSON.stringify({
+      jobId: persistentJobId,
+      sessionId: cleanupSessionId,
+      status: "complete",
+      outputFileId: "persistentPdf_123456",
+      persistentOutput: true,
+    }),
+  );
+  cleanupProperties.set(
+    `MRH_REVIEWER_PDF_JOB_v1_${temporaryJobId}`,
+    JSON.stringify({
+      jobId: temporaryJobId,
+      sessionId: cleanupSessionId,
+      status: "complete",
+      outputFileId: "temporaryPdf_123456",
+    }),
+  );
+  cleanupProperties.set(
+    `MRH_REVIEWER_PDF_JOB_v1_${unrelatedJobId}`,
+    JSON.stringify({
+      jobId: unrelatedJobId,
+      sessionId: "f".repeat(96),
+      status: "complete",
+      outputFileId: "otherPdf_123456",
+    }),
+  );
+  context.PropertiesService.getScriptProperties = () => cleanupPropertyStore;
+  context.getScriptProps = () => cleanupPropertyStore;
+  context.LockService = {
+    getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }),
+  };
+  const cleanupDriveDeletes = [];
+  context.Drive.Files.delete = (fileId) => cleanupDriveDeletes.push(fileId);
+  const cleanupResponse = JSON.parse(
+    context.cleanupReviewerPdfJobsRequest_({
+      sessionId: cleanupSessionId,
+      eventId: "72345678-1234-4123-8123-123456789abc",
+    }).text,
+  );
+  assert.equal(cleanupResponse.status, "success");
+  assert.deepEqual(cleanupDriveDeletes, ["temporaryPdf_123456"]);
+  assert.equal(
+    cleanupProperties.has(`MRH_REVIEWER_PDF_JOB_v1_${persistentJobId}`),
+    false,
+    "session cleanup may remove expired job metadata for retained PDFs",
+  );
+  assert.equal(
+    cleanupProperties.has(`MRH_REVIEWER_PDF_JOB_v1_${temporaryJobId}`),
+    false,
+    "session cleanup should delete temporary derivatives",
+  );
+  assert.equal(
+    cleanupProperties.has(`MRH_REVIEWER_PDF_JOB_v1_${unrelatedJobId}`),
+    true,
+    "session cleanup must not remove another reviewer's job",
+  );
+  assert.deepEqual(
+    JSON.parse(cleanupProperties.get("MRH_REVIEWER_PDF_QUEUE_v1")),
+    [unrelatedJobId],
+  );
+
+  console.log("Resource dashboard, in-site folder, cleanup, and browser-side PDF checks passed.");
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

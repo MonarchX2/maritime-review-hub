@@ -6027,8 +6027,12 @@
   let resourcePortalPreviewObjectUrl = "";
   let resourcePortalPreviewIsReviewer = false;
   let resourcePortalReviewerPdf = null;
+  let resourceDashboardFolderGeneration = 0;
+  let resourceDashboardFolderListing = null;
+  let resourceDashboardFolderReturn = null;
   const reviewerPdfPreviewCache = new Map();
   let reviewerPdfPreviewInFlight = null;
+  let reviewerPdfWorkerCancel = null;
   let reviewerPdfDownloadInFlight = null;
   let resourceDashboardData = null;
   let resourceDashboardActiveTab = "PROFILE";
@@ -6078,6 +6082,9 @@
     "mrh_reviewer_change_badges_seen_v1";
   const RESOURCE_DASHBOARD_FILTERS_KEY =
     "mrh_resource_dashboard_filters_v1";
+  const REVIEWER_PDF_MAX_SOURCE_BYTES = 8 * 1024 * 1024;
+  const REVIEWER_PDF_MAX_SOURCE_BASE64_LENGTH =
+    Math.ceil(REVIEWER_PDF_MAX_SOURCE_BYTES / 3) * 4;
   const REVIEWER_PDF_MAX_OUTPUT_BYTES = 12 * 1024 * 1024;
   const REVIEWER_PDF_MAX_OUTPUT_BASE64_LENGTH =
     Math.ceil(REVIEWER_PDF_MAX_OUTPUT_BYTES / 3) * 4;
@@ -7610,9 +7617,15 @@
           } else {
             label.textContent = linkLabel;
           }
-          link.href = reviewerPdfMatch ? "#resource-portal-preview" : linkUrl;
+          const isInSiteDashboardResource =
+            resourceDashboardActiveTab === "MODULES" ||
+            resourceDashboardActiveTab === "SYLLABUS";
+          link.href =
+            reviewerPdfMatch || isInSiteDashboardResource
+              ? "#resource-portal-preview"
+              : linkUrl;
           link.draggable = false;
-          ["copy", "contextmenu", "dragstart"].forEach((eventName) => {
+          ["auxclick", "copy", "contextmenu", "dragstart"].forEach((eventName) => {
             link.addEventListener(eventName, (event) => {
               event.preventDefault();
             });
@@ -7641,12 +7654,31 @@
           const fileId = reviewerPdfMatch
             ? reviewerPdfMatch[1]
             : getResourceDashboardFileId(linkUrl);
+          const fileName =
+            resourceTitle ||
+            fileTitle ||
+            (isResourceDashboardLink(value) ? "" : value) ||
+            linkLabel;
+          if (isInSiteDashboardResource) {
+            link.addEventListener("click", (event) => {
+              event.preventDefault();
+              if (!fileId) {
+                setResourceDashboardStatus(
+                  "This resource cannot be opened in the Student Portal.",
+                );
+                return;
+              }
+              const mimeType = String(
+                tab.linkTypes?.[rowIndex]?.[index] || "",
+              );
+              if (mimeType === "application/vnd.google-apps.folder")
+                void previewResourceFile(fileId, fileName, {
+                  folderId: fileId,
+                });
+              else void previewResourceFile(fileId, fileName);
+            });
+          }
           if (fileId) {
-            const fileName =
-              resourceTitle ||
-              fileTitle ||
-              (isResourceDashboardLink(value) ? "" : value) ||
-              linkLabel;
             const rowValue = (name) => {
               const columnIndex = tab.columns.findIndex(
                 (candidate) =>
@@ -10409,38 +10441,75 @@
     return bytes;
   }
 
-  async function waitForReviewerPdfPreview(
-    jobId,
-    sessionId,
-    previewGeneration,
-  ) {
-    if (!/^[a-f0-9]{96}$/i.test(String(jobId || "")))
-      throw new Error("The PDF preview job ID is invalid.");
-    const deadline = Date.now() + 210000;
-    while (Date.now() < deadline) {
-      const response = await globalScope.AppNetwork.callBackend(
-        {
-          type: "get_reviewer_pdf_job",
-          sessionId,
-          eventId: createResourceEventId(),
-          jobId,
-        },
-        { timeoutMs: 30000, maxRetries: 0 },
-      );
-      if (previewGeneration !== resourcePortalPreviewGeneration) return null;
-      if (response?.status === "success") return response;
-      if (response?.status !== "pending")
-        throw new Error(
-          response?.message ||
-            "The protected PDF preview could not be prepared.",
-        );
-      await new Promise((resolve) => globalScope.setTimeout(resolve, 1000));
-    }
-    const timeoutError = new Error(
-      "The protected PDF preview took too long. Please request it again.",
+  function watermarkReviewerPdfInWorker(sourceBytes, identity) {
+    const basePath =
+      typeof globalScope.__MRH_APP_BASE_PATH === "string"
+        ? globalScope.__MRH_APP_BASE_PATH
+        : "/";
+    const workerUrl = new URL(
+      "reviewer-pdf-worker.js",
+      new URL(basePath, globalScope.location.origin),
     );
-    timeoutError.code = "PDF_PROCESSING_TIMEOUT";
-    throw timeoutError;
+    const worker = new globalScope.Worker(workerUrl);
+    const sourceBuffer =
+      sourceBytes.byteOffset === 0 &&
+      sourceBytes.byteLength === sourceBytes.buffer.byteLength
+        ? sourceBytes.buffer
+        : sourceBytes.buffer.slice(
+            sourceBytes.byteOffset,
+            sourceBytes.byteOffset + sourceBytes.byteLength,
+          );
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let timeout = 0;
+      const finish = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        globalScope.clearTimeout(timeout);
+        worker.terminate();
+        if (reviewerPdfWorkerCancel === cancel)
+          reviewerPdfWorkerCancel = null;
+        callback(value);
+      };
+      const cancel = () =>
+        finish(reject, new Error("PDF preview processing was cancelled."));
+      reviewerPdfWorkerCancel = cancel;
+      timeout = globalScope.setTimeout(
+        () =>
+          finish(
+            reject,
+            new Error("Watermarking took too long. Please request the PDF again."),
+          ),
+        120000,
+      );
+      worker.onmessage = (event) => {
+        if (event.data?.status === "success" && event.data.resultBuffer) {
+          finish(resolve, new Uint8Array(event.data.resultBuffer));
+          return;
+        }
+        finish(
+          reject,
+          new Error(
+            String(event.data?.message || "The PDF could not be watermarked."),
+          ),
+        );
+      };
+      worker.onerror = (event) => {
+        event.preventDefault();
+        finish(reject, new Error("The PDF watermark worker could not run."));
+      };
+      worker.onmessageerror = () => {
+        finish(reject, new Error("The PDF watermark worker returned invalid data."));
+      };
+      try {
+        worker.postMessage(
+          { sourceBuffer, identity },
+          [sourceBuffer],
+        );
+      } catch (error) {
+        finish(reject, error);
+      }
+    });
   }
 
   async function downloadReviewerPdf() {
@@ -10534,10 +10603,243 @@
     return downloadRequest;
   }
 
+  function getResourceDashboardFolderPanel(frame) {
+    const viewer = frame?.parentElement;
+    if (!viewer) return null;
+    let panel = viewer.querySelector(".resource-dashboard-folder-preview");
+    if (!panel) {
+      panel = document.createElement("div");
+      panel.className = "resource-dashboard-folder-preview";
+      panel.hidden = true;
+      viewer.appendChild(panel);
+    }
+    return panel;
+  }
+
+  function renderResourceDashboardFolderListing(listing, frame, status) {
+    const panel = getResourceDashboardFolderPanel(frame);
+    if (!panel) return false;
+    resourceDashboardFolderListing = listing;
+    panel.replaceChildren();
+
+    const breadcrumbs = document.createElement("nav");
+    breadcrumbs.className = "resource-dashboard-folder-breadcrumbs";
+    breadcrumbs.setAttribute("aria-label", "Folder path");
+    listing.breadcrumbs.forEach((crumb, index) => {
+      if (index) {
+        const separator = document.createElement("span");
+        separator.textContent = "/";
+        separator.setAttribute("aria-hidden", "true");
+        breadcrumbs.appendChild(separator);
+      }
+      if (index === listing.breadcrumbs.length - 1) {
+        const current = document.createElement("span");
+        current.textContent = crumb.name;
+        current.setAttribute("aria-current", "location");
+        breadcrumbs.appendChild(current);
+      } else {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = crumb.name;
+        button.addEventListener("click", () => {
+          void loadResourceDashboardFolderPreview(crumb.id, frame, status);
+        });
+        breadcrumbs.appendChild(button);
+      }
+    });
+    panel.appendChild(breadcrumbs);
+
+    const items = document.createElement("ul");
+    items.className = "resource-dashboard-folder-items";
+    listing.items.forEach((item) => {
+      const row = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.disabled = !/^[A-Za-z0-9_-]{10,200}$/.test(String(item.id || ""));
+      const icon = document.createElement("i");
+      icon.className =
+        item.type === "folder"
+          ? "fa-solid fa-folder"
+          : "fa-solid fa-file-lines";
+      icon.setAttribute("aria-hidden", "true");
+      const name = document.createElement("span");
+      name.textContent = String(item.name || "Unnamed resource");
+      button.append(icon, name);
+      button.addEventListener("click", () => {
+        if (button.disabled) return;
+        if (item.type === "folder") {
+          void loadResourceDashboardFolderPreview(item.id, frame, status);
+          return;
+        }
+        resourceDashboardFolderReturn = resourceDashboardFolderListing;
+        void previewResourceFile(item.id, item.name, {
+          dashboardFolderFile: true,
+        });
+      });
+      row.appendChild(button);
+      const itemType = document.createElement("span");
+      itemType.className = "resource-dashboard-folder-item-type";
+      itemType.textContent =
+        item.type === "folder"
+          ? "Folder"
+          : item.mimeType === "application/pdf"
+            ? "PDF"
+            : item.mimeType === "application/vnd.google-apps.document"
+              ? "Google Doc"
+              : item.mimeType === "application/vnd.google-apps.spreadsheet"
+                ? "Google Sheet"
+                : item.mimeType === "application/vnd.google-apps.presentation"
+                  ? "Google Slides"
+                  : "File";
+      row.appendChild(itemType);
+      items.appendChild(row);
+    });
+    panel.appendChild(items);
+
+    if (!listing.items.length && !listing.nextPageToken) {
+      const empty = document.createElement("p");
+      empty.className = "resource-dashboard-folder-empty";
+      empty.textContent = "This folder is empty.";
+      panel.appendChild(empty);
+    }
+    if (listing.nextPageToken) {
+      const loadMore = document.createElement("button");
+      loadMore.type = "button";
+      loadMore.className = "resource-dashboard-folder-load-more";
+      loadMore.textContent = "Load more";
+      loadMore.addEventListener("click", () => {
+        void loadResourceDashboardFolderPreview(
+          listing.folder.id,
+          frame,
+          status,
+          listing.nextPageToken,
+        );
+      });
+      panel.appendChild(loadMore);
+    }
+    const title = document.getElementById("resource-portal-preview-title");
+    if (title) title.textContent = String(listing.folder?.name || "Folder");
+    return true;
+  }
+
+  async function loadResourceDashboardFolderPreview(
+    folderId,
+    frame,
+    status,
+    pageToken = "",
+  ) {
+    if (!/^[A-Za-z0-9_-]{10,200}$/.test(String(folderId || ""))) {
+      if (status) {
+        status.textContent = "This folder cannot be opened in the Student Portal.";
+        status.hidden = false;
+      }
+      return false;
+    }
+    const generation = ++resourceDashboardFolderGeneration;
+    const previewGeneration = resourcePortalPreviewGeneration;
+    const panel = getResourceDashboardFolderPanel(frame);
+    if (!panel) return false;
+    if (!pageToken) panel.replaceChildren();
+    panel.hidden = false;
+    frame.hidden = true;
+    frame.removeAttribute("src");
+    if (resourcePortalPreviewObjectUrl) {
+      URL.revokeObjectURL(resourcePortalPreviewObjectUrl);
+      resourcePortalPreviewObjectUrl = "";
+    }
+    if (status) {
+      status.classList.add("is-loading");
+      status.textContent = "Loading folder contents…";
+      status.hidden = false;
+    }
+    try {
+      const response = await globalScope.AppNetwork.callBackend(
+        {
+          type: "list_public_resources",
+          folderId,
+          ...(pageToken ? { pageToken } : {}),
+        },
+        { timeoutMs: 45000, maxRetries: 0 },
+      );
+      if (
+        generation !== resourceDashboardFolderGeneration ||
+        previewGeneration !== resourcePortalPreviewGeneration
+      )
+        return false;
+      if (
+        response?.status !== "success" ||
+        response.folder?.id !== folderId ||
+        !Array.isArray(response.items) ||
+        !Array.isArray(response.breadcrumbs) ||
+        typeof response.pageToken !== "string" ||
+        response.pageToken !== pageToken ||
+        typeof response.nextPageToken !== "string" ||
+        response.nextPageToken === pageToken ||
+        !response.breadcrumbs.length ||
+        response.breadcrumbs[response.breadcrumbs.length - 1]?.id !== folderId ||
+        response.breadcrumbs.some(
+          (crumb) =>
+            !/^[A-Za-z0-9_-]{10,200}$/.test(String(crumb?.id || "")) ||
+            typeof crumb?.name !== "string",
+        ) ||
+        response.items.some(
+          (item) =>
+            !item ||
+            !/^[A-Za-z0-9_-]{10,200}$/.test(String(item.id || "")) ||
+            typeof item.name !== "string" ||
+            !["file", "folder"].includes(item.type) ||
+            typeof item.mimeType !== "string",
+        )
+      )
+        throw new Error("The folder service returned an invalid listing.");
+      const previous =
+        pageToken && resourceDashboardFolderListing?.folder?.id === folderId
+          ? resourceDashboardFolderListing
+          : null;
+      const listing = previous
+        ? {
+            ...response,
+            breadcrumbs: previous.breadcrumbs,
+            items: [...previous.items, ...response.items],
+          }
+        : response;
+      renderResourceDashboardFolderListing(listing, frame, status);
+      if (status) {
+        status.classList.remove("is-loading");
+        status.textContent = "";
+        status.hidden = true;
+      }
+      return true;
+    } catch (error) {
+      if (
+        generation !== resourceDashboardFolderGeneration ||
+        previewGeneration !== resourcePortalPreviewGeneration
+      )
+        return false;
+      if (status) {
+        status.classList.remove("is-loading");
+        status.textContent = `Unable to load folder contents: ${String(
+          error?.message || error,
+        )}`;
+        status.hidden = false;
+      }
+      (globalScope.DebugUtils || console).error(
+        "Unable to load Student Portal folder contents.",
+        error,
+      );
+      return false;
+    }
+  }
+
   async function previewResourceFile(
     fileId,
     fileName,
-    { reviewer = false, course = "" } = {},
+    {
+      reviewer = false,
+      course = "",
+      folderId = "",
+      dashboardFolderFile = false,
+    } = {},
   ) {
     const preview = document.getElementById("resource-portal-preview");
     const title = document.getElementById("resource-portal-preview-title");
@@ -10581,6 +10883,36 @@
       });
       downloadButton.dataset.initialized = "true";
     }
+    const backButton = document.getElementById(
+      "resource-portal-preview-back",
+    );
+    if (backButton && !backButton.dataset.initialized) {
+      backButton.addEventListener("click", () => {
+        const listing = resourceDashboardFolderReturn;
+        const panel = getResourceDashboardFolderPanel(frame);
+        if (!listing || !panel) return;
+        resourceDashboardFolderReturn = null;
+        frame.removeAttribute("src");
+        if (resourcePortalPreviewObjectUrl) {
+          URL.revokeObjectURL(resourcePortalPreviewObjectUrl);
+          resourcePortalPreviewObjectUrl = "";
+        }
+        frame.hidden = true;
+        panel.hidden = false;
+        renderResourceDashboardFolderListing(listing, frame, status);
+        if (status) {
+          status.classList.remove("is-loading");
+          status.textContent = "";
+          status.hidden = true;
+        }
+        backButton.hidden = true;
+      });
+      backButton.dataset.initialized = "true";
+    }
+    const folderPanel = getResourceDashboardFolderPanel(frame);
+    if (folderId || !dashboardFolderFile) resourceDashboardFolderReturn = null;
+    if (backButton) backButton.hidden = !dashboardFolderFile;
+    if (folderPanel) folderPanel.hidden = true;
     const reviewerRequestKey = reviewer
       ? `${reviewerSessionId}:${String(fileId || "")}`
       : "";
@@ -10598,7 +10930,9 @@
 
     preview.classList.remove("is-fullscreen");
     preview.classList.toggle("is-reviewer-pdf", reviewer);
+    reviewerPdfWorkerCancel?.();
     const previewGeneration = ++resourcePortalPreviewGeneration;
+    resourceDashboardFolderGeneration += 1;
     resourcePortalPreviewIsReviewer = reviewer;
     resourcePortalReviewerPdf = null;
     if (downloadButton) {
@@ -10652,6 +10986,12 @@
       status.hidden = false;
     }
     try {
+      if (!reviewer && folderId)
+        return await loadResourceDashboardFolderPreview(
+          folderId,
+          frame,
+          status,
+        );
       if (reviewer && !reviewerSessionId)
         throw new Error("Sign in with an approved account to view this PDF.");
       let response = await globalScope.AppNetwork.callBackend(
@@ -10666,7 +11006,7 @@
                 : {}),
             }
           : { type: "get_resource_preview", fileId },
-        { timeoutMs: 60000, maxRetries: 0 },
+        { timeoutMs: 90000, maxRetries: 0 },
       );
       if (
         reviewer &&
@@ -10682,16 +11022,12 @@
             eventId: createResourceEventId(),
             fileId,
           },
-          { timeoutMs: 60000, maxRetries: 0 },
+          { timeoutMs: 90000, maxRetries: 0 },
         );
       }
-      if (reviewer && response?.status === "pending")
-        response = await waitForReviewerPdfPreview(
-          response.jobId,
-          reviewerSessionId,
-          previewGeneration,
-        );
       if (previewGeneration !== resourcePortalPreviewGeneration) return false;
+      const previewFolderPanel = getResourceDashboardFolderPanel(frame);
+      if (previewFolderPanel) previewFolderPanel.hidden = true;
       const isReviewerCacheHit = reviewer && response?.cacheHit === true;
       if (
         response?.status !== "success" ||
@@ -10709,10 +11045,10 @@
       if (
         reviewer &&
         (responseMimeType !== "application/pdf" ||
-          response.watermarked !== true)
+          (!isReviewerCacheHit && response.clientProcessing !== true))
       )
         throw new Error(
-          "The PDF preview service did not confirm backend watermarking. Refresh the page; if this continues, update the Apps Script deployment.",
+          "The PDF preview service did not authorize browser-side watermarking.",
         );
       if (
         reviewer &&
@@ -10721,17 +11057,18 @@
             (!cachedReviewerPdf ||
               cachedReviewerPdf.sourceVersion !== response.sourceVersion)) ||
           (!isReviewerCacheHit &&
-            response.data.length > REVIEWER_PDF_MAX_OUTPUT_BASE64_LENGTH))
+            response.data.length > REVIEWER_PDF_MAX_SOURCE_BASE64_LENGTH))
       )
-        throw new Error("The protected PDF preview is invalid or too large.");
+        throw new Error("The protected source PDF is invalid or too large.");
       let bytes;
       if (isReviewerCacheHit) {
         bytes = cachedReviewerPdf.bytes;
       } else {
         bytes = decodeBase64Bytes(response.data);
+        response.data = "";
         if (
           reviewer &&
-          (bytes.byteLength > REVIEWER_PDF_MAX_OUTPUT_BYTES ||
+          (bytes.byteLength > REVIEWER_PDF_MAX_SOURCE_BYTES ||
             bytes.byteLength < 5 ||
             bytes[0] !== 0x25 ||
             bytes[1] !== 0x50 ||
@@ -10739,7 +11076,22 @@
             bytes[3] !== 0x46 ||
             bytes[4] !== 0x2d)
         )
-          throw new Error("The PDF service returned invalid watermarked content.");
+          throw new Error("The PDF service returned an invalid source PDF.");
+        if (reviewer) {
+          if (status) {
+            status.classList.add("is-loading");
+            const loadingIcon = document.createElement("i");
+            loadingIcon.className = "fa-solid fa-spinner fa-spin";
+            loadingIcon.setAttribute("aria-hidden", "true");
+            const message = document.createElement("span");
+            message.textContent = "Applying personalized watermark…";
+            status.replaceChildren(loadingIcon, message);
+          }
+          bytes = await watermarkReviewerPdfInWorker(bytes, {
+            fullName: String(response.fullName || ""),
+            email: String(response.email || ""),
+          });
+        }
       }
       if (
         reviewer &&
@@ -10910,15 +11262,28 @@
       }
       if (!confirmed) return false;
     }
+    reviewerPdfWorkerCancel?.();
     resourcePortalPreviewGeneration += 1;
+    resourceDashboardFolderGeneration += 1;
     reviewerPdfPreviewInFlight = null;
     const preview = document.getElementById("resource-portal-preview");
     const frame = document.getElementById("resource-portal-preview-frame");
     const status = document.getElementById("resource-portal-preview-status");
+    const backButton = document.getElementById(
+      "resource-portal-preview-back",
+    );
     const downloadButton = document.getElementById(
       "resource-portal-preview-download",
     );
+    const folderPanel = getResourceDashboardFolderPanel(frame);
     if (frame) frame.removeAttribute("src");
+    if (folderPanel) {
+      folderPanel.hidden = true;
+      folderPanel.replaceChildren();
+    }
+    resourceDashboardFolderListing = null;
+    resourceDashboardFolderReturn = null;
+    if (backButton) backButton.hidden = true;
     if (resourcePortalPreviewObjectUrl) {
       URL.revokeObjectURL(resourcePortalPreviewObjectUrl);
       resourcePortalPreviewObjectUrl = "";

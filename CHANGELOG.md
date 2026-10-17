@@ -1,5 +1,18 @@
 # Changelog
 
+## 26.10.32 - 2026-10-17
+
+### Improved
+
+- Move Reviewer PDF watermark generation and verification to a browser Web
+  Worker. The backend now authorizes source-byte delivery without parsing,
+  watermarking, or temporarily storing the generated PDF; the same
+  browser-generated PDF is used for preview and download.
+- Keep Modules and Syllabus folder navigation, nested contents, supported
+  shortcuts, and file previews inside the website. Resolve shortcuts only to
+  targets inside the approved public resource tree, and paginate large folders.
+- Content-hash and cache the PDF worker and vendored PDF library assets.
+
 ## 26.10.31 - 2026-10-17
 
 ### Improved

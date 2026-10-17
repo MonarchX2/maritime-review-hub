@@ -97,9 +97,6 @@ async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
         textWidthCache[key] = font.widthOfTextAtSize(line, fontSize);
       return textWidthCache[key];
     }
-    var angle = (28 * Math.PI) / 180;
-    var cosine = Math.cos(angle);
-    var sine = Math.sin(angle);
     pages.forEach(function (page) {
       var size = page.getSize();
       var maxWidth = Math.max(
@@ -140,6 +137,9 @@ async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
       ].forEach(function (placement) {
         var columnFraction = placement[0];
         var rowFraction = placement[1];
+        var angle = columnFraction === 0.5 ? 0 : (28 * Math.PI) / 180;
+        var cosine = Math.cos(angle);
+        var sine = Math.sin(angle);
         lines.forEach(function (line, index) {
           var measuredWidth = textWidth(line, fontSize);
           var lineOffset = ((lines.length - 1) / 2 - index) * fontSize * 1.25;
@@ -150,7 +150,7 @@ async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
             font: font,
             color: PDFLib.rgb(0.24, 0.24, 0.24),
             opacity: 0.18,
-            rotate: PDFLib.degrees(-28),
+            rotate: PDFLib.degrees(columnFraction === 0.5 ? 0 : -28),
           });
         });
       });

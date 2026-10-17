@@ -2338,6 +2338,8 @@ function getReviewerPdfIndexEntries_() {
 }
 
 async function runReviewerPdfWatermarkProofOfConcept() {
+  throw new Error("Backend PDF watermark processing has been disabled.");
+  /*
   var email = String(
     Session.getEffectiveUser().getEmail() || "",
   ).trim().toLowerCase();
@@ -2449,6 +2451,7 @@ async function runReviewerPdfWatermarkProofOfConcept() {
   } finally {
     sourceFile.setTrashed(true);
   }
+  */
 }
 
 function listReviewerPdfPermissions_(fileId) {
@@ -2674,18 +2677,17 @@ function scheduleReviewerPdfWorkerLocked_(delayMs) {
 function setupReviewerPdfDelivery() {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000))
-    throw new Error("Reviewer PDF delivery setup is busy. Try again.");
+    throw new Error("Reviewer PDF shutdown is busy. Try again.");
   try {
     ScriptApp.getProjectTriggers().forEach(function (trigger) {
       if (trigger.getHandlerFunction() === REVIEWER_PDF_WORKER_HANDLER)
         ScriptApp.deleteTrigger(trigger);
     });
-    getScriptProps().setProperty(REVIEWER_PDF_WORKER_READY_PROPERTY, "true");
+    getScriptProps().deleteProperty(REVIEWER_PDF_WORKER_READY_PROPERTY);
     getScriptProps().deleteProperty(REVIEWER_PDF_WORKER_SCHEDULE_PROPERTY);
-    scheduleReviewerPdfWorkerLocked_(1000);
     return {
       status: "success",
-      message: "Reviewer PDF background processor is initialized.",
+      message: "Backend PDF watermark processing is disabled.",
     };
   } catch (error) {
     getScriptProps().deleteProperty(REVIEWER_PDF_WORKER_READY_PROPERTY);
@@ -2742,17 +2744,61 @@ function handleGetReviewerPdfPreviewRequest_(data) {
     return jsonResponse({
       status: "success",
       cacheHit: true,
-      watermarked: true,
+      clientProcessing: true,
       mimeType: "application/pdf",
       sourceVersion: source.sourceVersion,
       fullName: identity.fullName,
       email: identity.email,
     });
   }
-  return enqueueReviewerPdfRequest_(data, {
-    authorization: authorization,
-    source: source,
-    watermarkIdentity: identity,
+  var sourceBytes;
+  try {
+    sourceBytes = DriveApp.getFileById(fileId).getBlob().getBytes();
+  } catch (error) {
+    Logger.log(JSON.stringify({
+      event: "reviewer_pdf_source_read_failed",
+      correlationId: String(data.eventId || ""),
+      errorName: String(error && error.name || "Error"),
+      durationMs: Date.now() - startedAt,
+    }));
+    return reviewerPdfFailure_(
+      data,
+      startedAt,
+      "PDF_SOURCE_UNAVAILABLE",
+      "The authorized PDF source could not be read. Please try again.",
+    );
+  }
+  if (
+    !sourceBytes.length ||
+    sourceBytes.length > MRH_REVIEWER_PDF_MAX_BYTES ||
+    !sourceBytes.slice(0, 1024).some(function (byte, index, bytes) {
+      return String.fromCharCode(byte) === "%" &&
+        String.fromCharCode(bytes[index + 1] || 0) === "P" &&
+        String.fromCharCode(bytes[index + 2] || 0) === "D" &&
+        String.fromCharCode(bytes[index + 3] || 0) === "F" &&
+        String.fromCharCode(bytes[index + 4] || 0) === "-";
+    })
+  )
+    return reviewerPdfFailure_(
+      data,
+      startedAt,
+      "INVALID_PDF",
+      "The source PDF is invalid or too large.",
+    );
+  Logger.log(JSON.stringify({
+    event: "reviewer_pdf_source_delivered",
+    correlationId: String(data.eventId || ""),
+    durationMs: Date.now() - startedAt,
+    sourceBytes: sourceBytes.length,
+  }));
+  return jsonResponse({
+    status: "success",
+    mimeType: "application/pdf",
+    sourceVersion: source.sourceVersion,
+    fullName: identity.fullName,
+    email: identity.email,
+    clientProcessing: true,
+    data: Utilities.base64Encode(sourceBytes),
   });
 }
 
@@ -2834,6 +2880,11 @@ function permanentlyDeleteReviewerPdfOutput_(fileId) {
 }
 
 function enqueueReviewerPdfRequest_(data, previewContext) {
+  return errorResponse(
+    "PDF watermark processing now runs in the reviewer’s browser. Reload the portal and request the PDF again.",
+    "PDF_BACKEND_PROCESSING_DISABLED",
+  );
+  /*
   if (!/^[a-f0-9]{96}$/i.test(String(data && data.sessionId || "")))
     return errorResponse(
       "A valid access session is required for PDF delivery.",
@@ -2939,9 +2990,15 @@ function enqueueReviewerPdfRequest_(data, previewContext) {
   } finally {
     lock.releaseLock();
   }
+  */
 }
 
 function getReviewerPdfJobStatus_(data) {
+  return errorResponse(
+    "Backend PDF processing is disabled. Request the PDF again from the Reviewer portal.",
+    "PDF_BACKEND_PROCESSING_DISABLED",
+  );
+  /*
   if (!/^[a-f0-9]{96}$/i.test(String(data && data.sessionId || "")))
     return errorResponse(
       "A valid access session is required for PDF delivery.",
@@ -3082,6 +3139,7 @@ function getReviewerPdfJobStatus_(data) {
       "PDF_DELIVERY_FAILED",
     );
   }
+  */
 }
 
 function cleanupReviewerPdfJobsForSession_(sessionId) {
@@ -3192,6 +3250,14 @@ function cleanupReviewerPdfJobsRequest_(data) {
 }
 
 async function processReviewerPdfQueue(event) {
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    if (trigger.getHandlerFunction() === REVIEWER_PDF_WORKER_HANDLER)
+      ScriptApp.deleteTrigger(trigger);
+  });
+  getScriptProps().deleteProperty(REVIEWER_PDF_WORKER_SCHEDULE_PROPERTY);
+  Logger.log("Ignored legacy Reviewer PDF trigger; backend watermarking is disabled.");
+  return;
+  /*
   var workerStartedAt = Date.now();
   var startupLock = LockService.getScriptLock();
   if (!startupLock.tryLock(10000)) return;
@@ -3433,9 +3499,15 @@ async function processReviewerPdfQueue(event) {
   } finally {
     finishLock.releaseLock();
   }
+  */
 }
 
 async function handleGetReviewerPdfRequest(data, expectedSourceVersion) {
+  return errorResponse(
+    "Backend PDF watermarking is disabled. Request the PDF from the Reviewer portal.",
+    "PDF_BACKEND_PROCESSING_DISABLED",
+  );
+  /*
   var startedAt = Date.now();
   var authorization = authorizeReviewerPdfRequest_(data);
   if (authorization.error) {
@@ -3594,6 +3666,7 @@ async function handleGetReviewerPdfRequest(data, expectedSourceVersion) {
     sourceVersion: source.sourceVersion,
     data: Utilities.base64Encode(outputBytes),
   });
+  */
 }
 
 function auditReviewerPdfDrivePermissions() {
@@ -3971,15 +4044,22 @@ function getResourceFolderBreadcrumbs(folder) {
   return null;
 }
 
-function getResourceListingCacheKey(folderId) {
-  return "mrh_resource_listing_v1_" + sha256Hex(String(folderId || ""));
+function getResourceListingCacheKey(folderId, pageToken) {
+  return "mrh_resource_listing_v2_" +
+    sha256Hex(String(folderId || "") + "\n" + String(pageToken || ""));
 }
 
 function handleListPublicResourcesRequest(data) {
   var requestedFolderId = cleanText(data.folderId, 200);
   var folderId = requestedFolderId || RESOURCE_PORTAL_ROOT_FOLDER_ID;
+  var pageToken = String(data.pageToken || "");
   if (!/^[A-Za-z0-9_-]{10,200}$/.test(folderId))
     return errorResponse("Invalid folder ID.", "BAD_REQUEST");
+  if (
+    pageToken.length > 2048 ||
+    /[\u0000-\u001f\u007f]/.test(pageToken)
+  )
+    return errorResponse("Invalid folder page token.", "BAD_REQUEST");
   var folder;
   try {
     folder = DriveApp.getFolderById(folderId);
@@ -3991,7 +4071,7 @@ function handleListPublicResourcesRequest(data) {
   if (!breadcrumbs)
     return errorResponse("This folder is not available.", "FORBIDDEN");
 
-  var cacheKey = getResourceListingCacheKey(folderId);
+  var cacheKey = getResourceListingCacheKey(folderId, pageToken);
   var cache;
   var cachedListing = null;
   try {
@@ -4005,7 +4085,10 @@ function handleListPublicResourcesRequest(data) {
         parsedListing.folder &&
         parsedListing.folder.id === folderId &&
         Array.isArray(parsedListing.items) &&
-        typeof parsedListing.truncated === "boolean"
+        typeof parsedListing.truncated === "boolean" &&
+        String(parsedListing.pageToken || "") === pageToken &&
+        (typeof parsedListing.nextPageToken === "string" ||
+          parsedListing.nextPageToken === null)
       ) {
         cachedListing = parsedListing;
       } else {
@@ -4029,70 +4112,75 @@ function handleListPublicResourcesRequest(data) {
   }
 
   var items = [];
-  var truncated = false;
-  var pageToken = "";
-  var pageCount = 0;
-  do {
-    var driveResponse = Drive.Files.list({
-      q: "'" + folderId + "' in parents and trashed = false",
-      pageSize: RESOURCE_PORTAL_MAX_ITEMS,
-      pageToken: pageToken || undefined,
-      fields: "nextPageToken,files(id,name,mimeType,modifiedTime)",
-      corpora: "user",
-    });
-    if (!driveResponse || !Array.isArray(driveResponse.files))
-      throw new Error("Drive returned an invalid resource listing.");
+  var driveResponse = Drive.Files.list({
+    q: "'" + folderId + "' in parents and trashed = false",
+    pageSize: RESOURCE_PORTAL_MAX_ITEMS,
+    pageToken: pageToken || undefined,
+    fields:
+      "nextPageToken,files(id,name,mimeType,modifiedTime,shortcutDetails(targetId,targetMimeType))",
+    corpora: "user",
+  });
+  if (!driveResponse || !Array.isArray(driveResponse.files))
+    throw new Error("Drive returned an invalid resource listing.");
 
-    for (var i = 0; i < driveResponse.files.length; i++) {
-      var driveItem = driveResponse.files[i];
-      var mimeType = String(driveItem.mimeType || "");
-      if (mimeType === "application/vnd.google-apps.shortcut") continue;
-      var isFolder = mimeType === "application/vnd.google-apps.folder";
-      var itemName = String(driveItem.name || "");
-      if (isFolder && isPrivateResourceFolderName(itemName)) continue;
-      if (items.length >= RESOURCE_PORTAL_MAX_ITEMS) {
-        truncated = true;
-        break;
+  for (var i = 0; i < driveResponse.files.length; i++) {
+    var driveItem = driveResponse.files[i];
+    var mimeType = String(driveItem.mimeType || "");
+    var itemId = String(driveItem.id || "");
+    if (mimeType === "application/vnd.google-apps.shortcut") {
+      var shortcutDetails = driveItem.shortcutDetails || {};
+      itemId = String(shortcutDetails.targetId || "");
+      mimeType = String(shortcutDetails.targetMimeType || "");
+      if (
+        !/^[A-Za-z0-9_-]{10,200}$/.test(itemId) ||
+        !mimeType ||
+        mimeType === "application/vnd.google-apps.shortcut"
+      )
+        throw new Error("Drive returned an invalid resource shortcut.");
+      if (mimeType === "application/vnd.google-apps.folder") {
+        if (!getResourceFolderBreadcrumbs(DriveApp.getFolderById(itemId)))
+          continue;
+      } else if (!getResourceFileBreadcrumbs(DriveApp.getFileById(itemId))) {
+        continue;
       }
+    }
+    var isFolder = mimeType === "application/vnd.google-apps.folder";
+    var itemName = String(driveItem.name || "");
+    if (!/^[A-Za-z0-9_-]{10,200}$/.test(itemId) || !mimeType)
+      throw new Error("Drive returned an invalid resource item.");
+    if (isFolder && isPrivateResourceFolderName(itemName)) continue;
 
-      var item = {
-        id: String(driveItem.id || ""),
-        name: itemName,
-        type: isFolder ? "folder" : "file",
-        mimeType: mimeType,
-      };
-      if (!isFolder && driveItem.modifiedTime)
-        item.modifiedTime = String(driveItem.modifiedTime);
-      items.push(item);
-    }
-
-    pageToken = String(driveResponse.nextPageToken || "");
-    pageCount += 1;
-    if (truncated) break;
-    if (pageToken && items.length >= RESOURCE_PORTAL_MAX_ITEMS) {
-      truncated = true;
-      break;
-    }
-    if (
-      pageToken &&
-      pageCount >= RESOURCE_PORTAL_MAX_LIST_PAGES
-    ) {
-      truncated = true;
-      break;
-    }
-  } while (pageToken);
+    var item = {
+      id: itemId,
+      name: itemName,
+      type: isFolder ? "folder" : "file",
+      mimeType: mimeType,
+    };
+    if (!isFolder && driveItem.modifiedTime)
+      item.modifiedTime = String(driveItem.modifiedTime);
+    items.push(item);
+  }
 
   items.sort(function (left, right) {
     if (left.type !== right.type) return left.type === "folder" ? -1 : 1;
     return TextUtils.naturalSortStrings(left.name, right.name);
   });
 
+  var nextPageToken = String(driveResponse.nextPageToken || "");
+  if (
+    nextPageToken.length > 2048 ||
+    /[\u0000-\u001f\u007f]/.test(nextPageToken) ||
+    (pageToken && pageToken === nextPageToken)
+  )
+    throw new Error("Drive returned an invalid resource page token.");
   var listing = {
     status: "success",
     folder: breadcrumbs[breadcrumbs.length - 1],
     breadcrumbs: breadcrumbs,
     items: items,
-    truncated: truncated,
+    pageToken: pageToken,
+    nextPageToken: nextPageToken,
+    truncated: Boolean(nextPageToken),
   };
   var responseText = JSON.stringify(listing);
   if (responseText.length <= RESOURCE_PORTAL_MAX_CACHED_LISTING_CHARS) {
@@ -6009,15 +6097,9 @@ function doPost(e) {
     if (requestType === "get_resource_dashboard")
       return handleGetResourceDashboardRequest(data.version);
     if (requestType === "list_public_resources")
-      return errorResponse(
-        "Drive resource scanning is disabled.",
-        "FEATURE_DISABLED",
-      );
+      return handleListPublicResourcesRequest(data);
     if (requestType === "get_resource_preview")
-      return errorResponse(
-        "Drive resource previews are disabled.",
-        "FEATURE_DISABLED",
-      );
+      return handleGetResourcePreviewRequest(data);
     if (requestType === "get_deck") return handleGetDeckRequest(data);
     if (
       requestType === "verify_folder_access" ||

@@ -1,9 +1,16 @@
 # Resources access and viewing
 
-The old Drive folder-listing and preview endpoints remain disabled. The
-Resource Dashboard links to Drive resources directly; its Reviewer dashboard
-rows are returned only after server-side account authorization. A folder name
-classifies resources; it does not authorize anyone to access them.
+Modules and Syllabus chips open files and folders in the site's preview
+dialog. Folder contents, nested folders, and child files are listed and opened
+inside the portal; the UI does not navigate to Drive pages or open external
+tabs. Folder listing and file preview requests are restricted to descendants
+of the public resource root, exclude protected Reviewer folders, and paginate
+large folders. Drive shortcuts are resolved only when their targets remain
+inside the same public resource tree; shortcuts to protected or out-of-tree
+targets are excluded. Files larger than the 5 MiB in-site preview limit remain
+listed but cannot be previewed. Reviewer dashboard rows are returned only
+after server-side account authorization. A folder name classifies resources;
+it does not authorize anyone to access them.
 
 Reviewer access uses Google sign-in from the Resource Dashboard's Profile
 section; the site does not create a separate password. The Profile section
@@ -114,53 +121,51 @@ source ancestry before processing.
 
 The original PDF remains in Drive and is read only by the existing Apps
 Script execution identity. Online preview uses the authenticated
-`get_reviewer_pdf_preview` route to queue server-side watermarking. The
-asynchronous worker watermarks and verifies every page, saves the derivative in
-the configured private Drive output folder, and returns only that derivative
-to the browser. A cache hit is allowed only when the server has freshly
-authorized the user and confirmed the source version is unchanged. The client
-polls the session-bound job and checks the response marker, output size, MIME
-type, and PDF signature before displaying it. The same saved derivative is
-downloaded locally; downloading does not enqueue a duplicate archive job.
+`get_reviewer_pdf_preview` route to authorize the user, validate current index
+membership and protected Drive ancestry, and return the source bytes together
+with a verified identity and source version. The browser watermarks the PDF in
+a Web Worker, then uses those same watermarked bytes for preview and download.
+This avoids queue-trigger latency, backend PDF parsing and verification, and
+temporary Drive writes and reads. Repeat previews may reuse short-lived
+watermarked bytes held in the current tab only after the server freshly
+authorizes the user, revalidates the source version, and confirms the identity.
+The browser checks the response size, MIME type, source version, and PDF
+signature before processing. The source response is transported over HTTPS
+between Apps Script and the browser; that TLS encryption protects the network
+connection but does not conceal the PDF from the authorized browser or make
+the browser watermark tamper-proof. Additional client-side encryption with a
+key available to that same browser would not strengthen this boundary.
+
+Because the browser receives the original bytes, a technically capable
+authorized reviewer can save the source or modify/remove the watermark. The
+watermark is therefore attribution and leak deterrence, not an enforcement
+boundary. Backend watermark processing, job enqueue/poll endpoints, and their
+legacy trigger worker are disabled; stale worker triggers self-remove without
+processing. The normal browser-generated PDF is downloaded locally and is not
+archived into the Drive output folder.
 Reviewer preview surfaces request non-selectable content from the browser with
 `user-select: none`. The native PDF renderer is browser-controlled and may not
 honor page styles in every browser; this is a copying deterrent, not a security
 boundary. The frame and object URL are cleared when the preview closes,
 approval is lost, or the session ends.
 
-The `pdf-lib` 1.17.1 (MIT licensed) helper uses two lines (full name and email)
-in the current paired-and-offset watermark pattern on each physical page and
-verifies every stamp after saving. The verified email's capitalization is
-preserved. The job-status endpoint reauthorizes and revalidates the source
-before delivery. Verified derivatives are saved in the configured private
-output folder (`10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl`) and read back from that folder for
-the response; successful output files are retained there. The worker checks
-that each generated file and every folder in its parent chain has only the
-execution owner's permission, so the output folder must not grant inherited or
-direct access to other users or groups.
-Sign-out and a page-exit beacon cancel unfinished jobs and clear session job
-state but do not delete completed PDFs. Delivery rechecks permissions before
-returning bytes. Ten-minute job expiry only expires the job metadata; temporary
-failed/cancelled outputs remain eligible for cleanup.
-The index payload is cached by Drive file ID and last-modified timestamp.
-`setupReviewerPdfDelivery()` must be run by the Apps Script project owner to
-install the worker trigger.
+The `pdf-lib` 1.17.1 (MIT licensed) browser worker uses two lines (full name
+and email) in the paired-and-offset watermark pattern on each page. The
+outer paired marks remain diagonal; the middle-column marks are horizontal.
+The verified email's capitalization is preserved. `setupReviewerPdfDelivery()`
+is retained only as a shutdown helper: when run by the Apps Script owner, it
+removes old PDF worker triggers and clears the legacy worker state.
 
-The code rejects sources over 8 MiB, derivatives over 12 MiB, and files over
-80 pages. These are implementation guards, not validated Apps Script service
-limits. A 12 MiB derivative expands to at most 16,777,216 base64 characters
-(16 MiB) before JSON; maximum-size and actual `ContentService`
-response behavior, time-trigger execution/recovery, and large download
-delivery remain untested against a representative protected file. The
-configured output folder's live ACL has not been validated in Drive; the worker
-checks the output file and every folder in its parent chain and fails closed if
-any has a non-owner permission.
+The browser worker rejects sources over 8 MiB, outputs over 12 MiB, and files
+over 80 pages. These are implementation guards, not validated service limits.
+Maximum-size delivery and processing have not been tested against a
+representative protected file.
 MODULES, SYLLABUS, and non-PDF resource flows remain unchanged.
 Browser POSTs use `cache: "no-store"`; personalized output is not placed in
 shared Apps Script or dashboard caches.
 
-The local bundle, MIT attribution, compatibility tests, Apps Script proof,
-queue setup, and deployment checklist are documented in
+The local bundle, MIT attribution, compatibility tests, browser worker, and
+deployment checklist are documented in
 [the PDF setup and test guide](../reviewer-pdf-service/README.md). The deployed
 production endpoint has not been tested end-to-end with a representative
 protected PDF or an active/revoked user through download and cleanup. The

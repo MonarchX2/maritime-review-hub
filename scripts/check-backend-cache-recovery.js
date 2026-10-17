@@ -303,8 +303,8 @@ assert.equal(
 assert.equal(lastDriveListOptions.pageSize, 1000);
 assert.equal(
   lastDriveListOptions.fields,
-  "nextPageToken,files(id,name,mimeType,modifiedTime)",
-  "Drive listing calls should request only fields rendered in the portal",
+  "nextPageToken,files(id,name,mimeType,modifiedTime,shortcutDetails(targetId,targetMimeType))",
+  "Drive listing calls should request only fields needed to render public resources and resolve shortcuts",
 );
 assert.equal(lastDriveListOptions.corpora, "user");
 assert.equal(
@@ -440,7 +440,7 @@ assert.equal(
 );
 assert.equal(
   Array.from(resourceCache.keys()).some((key) =>
-    key.startsWith("mrh_resource_listing_v1_"),
+    key.startsWith("mrh_resource_listing_v2_"),
   ),
   true,
   "short-lived folder metadata may be cached to speed up repeated browsing",

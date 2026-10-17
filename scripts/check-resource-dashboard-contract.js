@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 
 const appCore = fs.readFileSync("app-core.js", "utf8");
+const backend = fs.readFileSync("backend/main.js", "utf8");
 const appConfig = fs.readFileSync("app-config.js", "utf8");
 const network = fs.readFileSync("app-core-network.js", "utf8");
 const indexHtml = fs.readFileSync("index.html", "utf8");
@@ -1432,7 +1433,7 @@ assert.doesNotMatch(
 );
 assert.match(
   appCore,
-  /link\.draggable = false;[\s\S]*?\["copy", "contextmenu", "dragstart"\][\s\S]*?link\.dataset\.logCourse = rowValue\("course"\);[\s\S]*?link\.dataset\.logCategory = resourceCategory/,
+  /link\.draggable = false;[\s\S]*?\["auxclick", "copy", "contextmenu", "dragstart"\][\s\S]*?link\.dataset\.logCourse = rowValue\("course"\);[\s\S]*?link\.dataset\.logCategory = resourceCategory/,
   "resource clicks should resist casual link copying and log their course/year/semester/category context",
 );
 assert.match(
@@ -2031,6 +2032,61 @@ assert.match(
   appCore,
   /header\.textContent = getResourceDashboardColumnHeading\(column\)[\s\S]*?const isSyllabus = columnName\.includes\("syllabus"\)[\s\S]*?const linkLabel = isSyllabus\s*\?\s*"PDF"/,
   "syllabus links should always show a PDF icon and the PDF label",
+);
+assert.match(
+  appCore,
+  /if \(isInSiteDashboardResource\) \{\s*link\.addEventListener\("click", \(event\) => \{\s*event\.preventDefault\(\);/,
+  "Modules and Syllabus chips should prevent navigation and open local previews",
+);
+assert.match(
+  appCore,
+  /if \(mimeType === "application\/vnd\.google-apps\.folder"\)[\s\S]*?previewResourceFile\(fileId, fileName, \{\s*folderId: fileId,?\s*\}\)/,
+  "folder chips should start the site's recursive folder browser",
+);
+assert.match(
+  appCore,
+  /else void previewResourceFile\(fileId, fileName\)/,
+  "file chips should load content in the website preview instead of a Drive tab",
+);
+assert.match(
+  appCore,
+  /link\.href =\s*reviewerPdfMatch \|\| isInSiteDashboardResource\s*\?\s*"#resource-portal-preview"[\s\S]*?\["auxclick", "copy", "contextmenu", "dragstart"\]/,
+  "dashboard links must not expose Drive URLs through regular or modified clicks",
+);
+assert.match(
+  indexHtml,
+  /frame-src blob: https:\/\/accounts\.google\.com/,
+  "the preview frame policy must not allow Google Drive pages to escape the site",
+);
+assert.match(
+  appCore,
+  /async function loadResourceDashboardFolderPreview\([\s\S]*?type: "list_public_resources"[\s\S]*?pageToken[\s\S]*?nextPageToken[\s\S]*?renderResourceDashboardFolderListing/,
+  "nested folders must be browsable in-site with pagination for every folder item",
+);
+assert.match(
+  appCore,
+  /item\.type === "folder"[\s\S]*?loadResourceDashboardFolderPreview\(item\.id, frame, status\)[\s\S]*?previewResourceFile\(item\.id, item\.name, \{\s*dashboardFolderFile: true/,
+  "folder descendants and their files must remain inside the Student Portal preview",
+);
+assert.match(
+  appCore,
+  /function renderResourceDashboardFolderListing\([\s\S]*?const breadcrumbs = document\.createElement\("nav"\)[\s\S]*?resource-dashboard-folder-load-more/,
+  "the in-site folder viewer must provide breadcrumbs and load-more navigation",
+);
+assert.match(
+  backend,
+  /function handleListPublicResourcesRequest\(data\)[\s\S]*?getResourceFolderBreadcrumbs\(folder\)[\s\S]*?Drive\.Files\.list[\s\S]*?nextPageToken/,
+  "folder listings must validate resource-root ancestry and support pagination",
+);
+assert.match(
+  backend,
+  /function handleGetResourcePreviewRequest\(data\)[\s\S]*?getResourceFileBreadcrumbs\(file\)[\s\S]*?RESOURCE_PORTAL_MAX_PREVIEW_BYTES/,
+  "file previews must enforce resource-root ancestry and size limits",
+);
+assert.match(
+  backend,
+  /if \(requestType === "list_public_resources"\)\s*return handleListPublicResourcesRequest\(data\)[\s\S]*?if \(requestType === "get_resource_preview"\)\s*return handleGetResourcePreviewRequest\(data\)/,
+  "the portal must route folder and file preview requests through the protected backend handlers",
 );
 const headingFunction = appCore.match(
   /function getResourceDashboardColumnHeading\(column\) \{[\s\S]*?\n  \}/,

@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-26.10.28-a8359061edd5";
+const APP_VERSION = "mrh-26.10.31-84829caa75f2";
 const CANONICAL_APP_URL = "https://monarchx2.github.io/mrh/";
 
 function getRuntimeCacheVersion() {

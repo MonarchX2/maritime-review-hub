@@ -642,7 +642,7 @@
     get_sync_status: { required: [], allowed: ["type", "appVersion"] },
     list_public_resources: {
       required: [],
-      allowed: ["type", "folderId", "appVersion"],
+      allowed: ["type", "folderId", "pageToken", "appVersion"],
     },
     get_resource_preview: {
       required: ["fileId"],

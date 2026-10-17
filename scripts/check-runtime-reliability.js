@@ -540,6 +540,24 @@ async function checkBackendErrorHandling() {
     },
     "public-resource listing requests should pass payload validation and include the folder ID",
   );
+  await network.callBackend(
+    {
+      type: "list_public_resources",
+      folderId: "public-root",
+      pageToken: "next_page_token",
+    },
+    { maxRetries: 0 },
+  );
+  assert.deepEqual(
+    getPostBodyWithoutRequestId(),
+    {
+      type: "list_public_resources",
+      folderId: "public-root",
+      pageToken: "next_page_token",
+      appVersion: networkContext.__MRH_APP__.version,
+    },
+    "folder-pagination tokens should pass backend request payload validation",
+  );
   const privatePreviewResponse = await network.callBackend(
     { type: "get_resource_preview", fileId: "private-file-id" },
     { maxRetries: 0 },

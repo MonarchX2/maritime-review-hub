@@ -249,8 +249,8 @@ assert.doesNotMatch(
 );
 assert.match(
   indexSource,
-  /frame-src blob:/,
-  "the app content security policy should permit only in-site preview frames",
+  /frame-src blob: https:\/\/accounts\.google\.com/,
+  "the app content security policy should permit only local previews and Google sign-in frames",
 );
 for (const inputId of ["deck-password-input", "folder-password-input"]) {
   const inputMarkup = indexSource.match(
