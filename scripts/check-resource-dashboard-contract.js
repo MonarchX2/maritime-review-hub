@@ -688,8 +688,13 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-portal-preview\.is-reviewer-pdf\s+\.resource-portal-preview-title\s*\{\s*font-weight:\s*400/,
-  "Reviewer preview titles should use regular weight for both lines",
+  /\.resource-portal-preview-title-details\s*\{\s*display:\s*block;\s*font-weight:\s*400/,
+  "the lesson line in Reviewer preview titles should be regular weight",
+);
+assert.match(
+  appCore,
+  /const courseLine = document\.createElement\("span"\);[\s\S]*?title\.replaceChildren\(courseLine,\s*lessonLine\)/,
+  "Reviewer preview titles should bold only the first, course-name line",
 );
 assert.match(
   appCore,

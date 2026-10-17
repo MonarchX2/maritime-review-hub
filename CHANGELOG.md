@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.10.17-15 - 2026-10-17
+
+### Fixed
+
+- Keep the Reviewer PDF preview course name bold while using regular weight for
+  the lesson details below it.
+
 ## 26.10.17-14 - 2026-10-17
 
 ### Fixed

@@ -10495,12 +10495,23 @@
     const previewLessonTitle = reviewer
       ? getReviewerPdfLessonTitle(fileName, course)
       : null;
-    title.textContent = reviewer
+    const previewTitle = reviewer
       ? `${String(course || "").trim() || "Reviewer"}\n${
           previewLessonTitle?.header || getReviewerPdfDisplayName(fileName)
         }`
       : String(fileName || "File preview");
-    frame.title = `Preview of ${title.textContent}`;
+    if (reviewer) {
+      const courseLine = document.createElement("span");
+      courseLine.textContent = String(course || "").trim() || "Reviewer";
+      const lessonLine = document.createElement("span");
+      lessonLine.className = "resource-portal-preview-title-details";
+      lessonLine.textContent =
+        previewLessonTitle?.header || getReviewerPdfDisplayName(fileName);
+      title.replaceChildren(courseLine, lessonLine);
+    } else {
+      title.textContent = previewTitle;
+    }
+    frame.title = `Preview of ${previewTitle}`;
     preview.hidden = false;
     preview.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
 
