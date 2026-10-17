@@ -1,5 +1,22 @@
 # Changelog
 
+## 26.10.17-7 - 2026-10-17
+
+### Fixed
+
+- Keep the authorized Reviewer table visible while its saved session is
+  revalidated; show NEW only for an empty-to-filled cell and UPDATED only when
+  the displayed resource name changes.
+- Add a View Profile shortcut beside the Unverified label and a Verify account
+  action in Profile settings for Google accounts without a submitted profile.
+- Normalize browser-autofilled middle initials to one uppercase letter and a
+  period before profile submission.
+- Center the Transfer Progress heading and description when its settings action
+  wraps on small screens.
+- Keep Google sign-in layout within its button and allow verified accounts to
+  submit profile details even when names do not match their email; approval
+  remains an administrator decision.
+
 ## 26.10.17-6 - 2026-10-17
 
 ### Fixed

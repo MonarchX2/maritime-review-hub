@@ -1998,18 +1998,6 @@ function handleReviewerEnrollmentRequest(data) {
       "BAD_REQUEST",
     );
   middleInitial = middleInitial.toUpperCase();
-  if (
-    !reviewerEmailMatchesName_(
-      verified.identity.email,
-      firstName,
-      middleInitial,
-      lastName,
-    )
-  )
-    return errorResponse(
-      "The signed-in Google email does not appear to match this name. Use an email containing part of your first or last name, or matching initials.",
-      "EMAIL_NAME_MISMATCH",
-    );
 
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000))
@@ -4150,31 +4138,6 @@ function normalizeReviewerIdentityText_(value) {
     .replace(/\p{M}/gu, "")
     .toLocaleLowerCase()
     .replace(/[^\p{L}\p{N}]/gu, "");
-}
-
-function reviewerEmailMatchesName_(email, firstName, middleInitial, lastName) {
-  var localPart = normalizeReviewerIdentityText_(
-    String(email || "").split("@")[0],
-  );
-  var nameParts = [firstName, middleInitial, lastName]
-    .map(normalizeReviewerIdentityText_)
-    .filter(function (part) {
-      return part.length >= 3;
-    });
-  if (
-    nameParts.some(function (part) {
-      return localPart.indexOf(part) !== -1;
-    })
-  )
-    return true;
-  var initials = [firstName, middleInitial, lastName]
-    .map(normalizeReviewerIdentityText_)
-    .filter(Boolean)
-    .map(function (part) {
-      return part.charAt(0);
-    })
-    .join("");
-  return initials.length >= 2 && localPart.indexOf(initials) !== -1;
 }
 
 function sheetCellText(value) {

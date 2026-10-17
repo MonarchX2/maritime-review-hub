@@ -6043,6 +6043,7 @@
   let reviewerAuthGeneration = 0;
   let reviewerProfilePictureUrl = "";
   let reviewerProfileEditing = false;
+  let reviewerVerificationFormOpen = false;
   let reviewerDashboardRequestGeneration = 0;
   let reviewerDashboardRequestPromise = null;
   let reviewerStatusPollTimer = null;
@@ -7861,12 +7862,16 @@
   }
 
   function normalizeReviewerMiddleInitialInput(input, event) {
-    const normalized = input.value.toLocaleUpperCase().replace(/[^A-Z.]/g, "");
-    const letters = normalized.replace(/\./g, "");
+    const letters = input.value.toLocaleUpperCase().replace(/[^A-Z]/g, "");
+    if (!letters) {
+      input.value = "";
+      return;
+    }
+    const initial = letters[0];
     input.value =
-      letters.length === 1 && !event?.inputType?.startsWith("delete")
-        ? `${letters}.`
-        : normalized;
+      event?.inputType?.startsWith("delete") && letters.length === 1
+        ? initial
+        : `${initial}.`;
   }
 
   function initializeReviewerEnrollmentInputs() {
@@ -7889,8 +7894,14 @@
       middleInitialInput &&
       !middleInitialInput.dataset.middleInitialInitialized
     ) {
-      middleInitialInput.addEventListener("input", (event) =>
-        normalizeReviewerMiddleInitialInput(middleInitialInput, event),
+      const normalizeMiddleInitial = (event) =>
+        normalizeReviewerMiddleInitialInput(middleInitialInput, event);
+      middleInitialInput.addEventListener("input", normalizeMiddleInitial);
+      middleInitialInput.addEventListener("change", () =>
+        normalizeReviewerMiddleInitialInput(middleInitialInput),
+      );
+      middleInitialInput.addEventListener("blur", () =>
+        normalizeReviewerMiddleInitialInput(middleInitialInput),
       );
       middleInitialInput.dataset.middleInitialInitialized = "true";
     }
@@ -7937,6 +7948,15 @@
     if (cancelButton) cancelButton.hidden = false;
     if (submitButton) submitButton.textContent = "Save changes for approval";
     document.getElementById("resource-reviewer-first-name")?.focus();
+  }
+
+  function startReviewerVerification() {
+    if (reviewerAccountStatus !== "NOT_FOUND") return;
+    const form = document.getElementById("resource-reviewer-enrollment-form");
+    if (!form) return;
+    reviewerVerificationFormOpen = true;
+    form.hidden = false;
+    document.getElementById("resource-reviewer-last-name")?.focus();
   }
 
   function closeReviewerProfileEditor() {
@@ -8173,6 +8193,16 @@
     if (reviewerSessionId === sessionId) return true;
 
     installReviewerSignOutStorageListener();
+    const cachedProfile = getStoredReviewerProfile();
+    if (
+      !hasExplicitReviewerSignOut() &&
+      cachedProfile?.accountStatus === "TRUE"
+    ) {
+      reviewerAccountStatus = cachedProfile.accountStatus;
+      reviewerAuthorizedEmail = cachedProfile.email;
+      setReviewerAccessEnabled(true);
+      restoreStoredReviewerDashboard(cachedProfile.email);
+    }
     const authGeneration = reviewerAuthGeneration;
     reviewerSessionRestorePending = true;
     reviewerAuthCheckPending = false;
@@ -8476,6 +8506,9 @@
     const welcomeVerification = document.getElementById(
       "student-portal-welcome-verification",
     );
+    const welcomeViewProfile = document.getElementById(
+      "student-portal-welcome-view-profile",
+    );
     const welcomeSignIn = document.getElementById(
       "student-portal-welcome-signin",
     );
@@ -8516,9 +8549,9 @@
       );
       welcomeAccessIcon.hidden = !isSignedIn || !accessIcon;
     }
-    if (welcomeVerification)
-      welcomeVerification.hidden =
-        !isSignedIn || accountStatus !== "NOT_FOUND";
+    const isUnverified = isSignedIn && accountStatus === "NOT_FOUND";
+    if (welcomeVerification) welcomeVerification.hidden = !isUnverified;
+    if (welcomeViewProfile) welcomeViewProfile.hidden = !isUnverified;
     if (welcomeSignIn) welcomeSignIn.hidden = isSignedIn;
     if (welcomeSignInHint) welcomeSignInHint.hidden = isSignedIn;
     if (welcomePicture) {
@@ -8688,6 +8721,9 @@
     const signInButton = document.getElementById(
       "resource-reviewer-signin-button",
     );
+    const verifyAccountButton = document.getElementById(
+      "resource-reviewer-verify-account",
+    );
     const retryButton = document.getElementById(
       "resource-reviewer-retry-verification",
     );
@@ -8712,6 +8748,7 @@
             input.value !== input.dataset.savedValue,
         ));
     reviewerAuthorizedEmail = response.email;
+    if (accountStatus !== "NOT_FOUND") reviewerVerificationFormOpen = false;
     if (!reviewerVerificationRetryToken)
       reviewerVerificationRetryAvailable = false;
     reviewerReauthenticationPromptAttempted = false;
@@ -8729,6 +8766,8 @@
     populateReviewerProfile(response);
     setReviewerAccessEnabled(accountStatus === "TRUE");
     if (signInButton) signInButton.hidden = true;
+    if (verifyAccountButton)
+      verifyAccountButton.hidden = accountStatus !== "NOT_FOUND";
     if (signoutButton) signoutButton.hidden = false;
     if (keepProfileEditorOpen) {
       if (form) form.hidden = false;
@@ -8739,9 +8778,10 @@
       reviewerProfileEditing = false;
       if (profileDetails) profileDetails.hidden = accountStatus === "NOT_FOUND";
       if (form)
-        form.hidden = !(
-          accountStatus === "NOT_FOUND" || accountStatus === "DENIED"
-        );
+        form.hidden =
+          accountStatus === "NOT_FOUND"
+            ? !reviewerVerificationFormOpen
+            : accountStatus !== "DENIED";
       if (cancelEditButton) cancelEditButton.hidden = true;
       if (formButton)
         formButton.textContent =
@@ -9483,7 +9523,8 @@
         const title = String(
           nextTab.linkTitles?.[rowIndex]?.[columnIndex] || "",
         );
-        if (!value && !link && !title) return;
+        const resourceExists = Boolean(value || link || title);
+        if (!resourceExists) return;
 
         const markerKey = JSON.stringify([rowKey, columnKey]);
         const previousMarker =
@@ -9510,23 +9551,25 @@
               previousTab.links?.[previousRowIndex]?.[previousColumnIndex] ||
               previousTab.linkTitles?.[previousRowIndex]?.[previousColumnIndex],
           );
-        const changed =
+        const previousResourceName =
+          previousRowIndex === undefined || previousColumnIndex === undefined
+            ? ""
+            : String(
+                previousTab.linkTitles?.[previousRowIndex]?.[
+                  previousColumnIndex
+                ] ||
+                  previousTab.rows[previousRowIndex]?.[previousColumnIndex] ||
+                  "",
+              ).trim();
+        const resourceName = title || value;
+        const resourceNameChanged =
           previousTabIsValid &&
-          (previousRowIndex === undefined ||
-            previousColumnIndex === undefined ||
-            String(
-              previousTab.rows[previousRowIndex]?.[previousColumnIndex] ?? "",
-            ).trim() !== value ||
-            String(
-              previousTab.links?.[previousRowIndex]?.[previousColumnIndex] ||
-                "",
-            ) !== link ||
-            String(
-              previousTab.linkTitles?.[previousRowIndex]?.[
-                previousColumnIndex
-              ] || "",
-            ) !== title);
-        if (changed) {
+          previousResourceName !== resourceName;
+        if (
+          previousTabIsValid &&
+          resourceExists &&
+          (!previousResourceExists || resourceNameChanged)
+        ) {
           updatedAt = now;
           changeType = previousResourceExists ? "UPDATED" : "NEW";
         }
@@ -9651,7 +9694,11 @@
       Array.isArray(reviewerTab?.rows) &&
       reviewerTab.rows.every(Array.isArray);
     const isCurrentAuthorizedReviewerTab =
-      reviewerSessionId &&
+      (reviewerSessionId ||
+        (reviewerSessionRestorePending &&
+          !hasExplicitReviewerSignOut() &&
+          Boolean(getStoredReviewerSessionId()) &&
+          reviewerAccountStatus === "TRUE")) &&
       reviewerDashboardLoadedForEmail &&
       reviewerAuthorizedEmail &&
       reviewerDashboardLoadedForEmail.toLowerCase() ===
@@ -10781,6 +10828,7 @@
     scheduleStartupSync,
     scheduleSyncPoll,
     scheduleSyncRetry,
+    startReviewerVerification,
     setDeckNavigationOverride,
     setDeckSortDirection,
     setFolderUnlocked,

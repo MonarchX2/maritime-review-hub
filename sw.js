@@ -2,7 +2,7 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-26.10.17-6";
+const APP_VERSION = "mrh-26.10.17-7-d51cf87f73fb";
 
 function getRuntimeCacheVersion() {
   return APP_VERSION;

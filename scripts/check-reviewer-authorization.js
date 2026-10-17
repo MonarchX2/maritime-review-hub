@@ -1002,24 +1002,6 @@ assert.equal(
   "BAD_REQUEST",
   "the backend must reject a middle initial that is not one letter and a period",
 );
-const mismatchedNameSubmission = post({
-  type: "request_reviewer_enrollment",
-  idToken: "new-user-token",
-  eventId: eventId("4"),
-  lastName: "Dela Cruz",
-  firstName: "Maria",
-  middleInitial: "P.",
-});
-assert.equal(
-  mismatchedNameSubmission.code,
-  "EMAIL_NAME_MISMATCH",
-  "a substantially mismatched name and verified email should be rejected",
-);
-assert.equal(
-  accountRows.some((row) => row[0] === "new-reviewer@example.com"),
-  false,
-  "a mismatched name must not be saved for administrator review",
-);
 const reusableAccountRow = Array(7).fill("");
 accountRows.splice(2, 0, reusableAccountRow);
 const submission = post({
@@ -1049,6 +1031,31 @@ assert.equal(
   "second-reviewer@example.com",
   "a new account should reuse the first blank row instead of appending below existing accounts",
 );
+tokenClaims = validClaims("reviewer.with.unrelated.address@example.com");
+const mismatchedNameSubmission = post({
+  type: "request_reviewer_enrollment",
+  idToken: "mismatched-name-user-token",
+  eventId: eventId("4"),
+  lastName: "Dela Cruz",
+  firstName: "Maria",
+  middleInitial: "P.",
+});
+assert.deepEqual(
+  [
+    mismatchedNameSubmission.status,
+    mismatchedNameSubmission.accountStatus,
+    mismatchedNameSubmission.active,
+  ],
+  ["success", "FALSE", false],
+  "a name/email mismatch should still be submitted for administrator review without granting access",
+);
+const mismatchedAccountIndex = accountRows.findIndex(
+  (row) => row[0] === "reviewer.with.unrelated.address@example.com",
+);
+assert.ok(mismatchedAccountIndex >= 0);
+accountRows.splice(mismatchedAccountIndex, 1);
+clearTestCache();
+tokenClaims = validClaims("new-reviewer@example.com");
 assert.equal(
   post({
     type: "log_module_access",

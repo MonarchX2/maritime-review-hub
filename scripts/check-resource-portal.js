@@ -103,6 +103,11 @@ assert.match(
   "the resource dashboard should include account sign-in and sign-out controls",
 );
 assert.match(
+  resourceStyles,
+  /#resource-reviewer-signin-button\s*\{[^}]*display:\s*flex;[^}]*overflow:\s*hidden;[\s\S]*?#resource-reviewer-signin-button iframe\s*\{[^}]*flex:\s*0 0 auto;[^}]*max-width:\s*100%;/,
+  "the Google sign-in iframe should not flex-shrink and displace its logo background outside the blue button",
+);
+assert.match(
   index,
   /class="resource-dashboard-topbar"[\s\S]*?resource-dashboard-title" aria-label="Student Portal"[\s\S]*?fa-house[\s\S]*?<span>Student Portal<\/span>[\s\S]*?id="resource-dashboard-profile-nav"[^>]*onclick="openResourceDashboardTab\('PROFILE'\)"[^>]*aria-label="Profile"[\s\S]*?<\/button>\s*<\/div>\s*<div class="resource-portal-shell">/,
   "the Profile button should sit to the right of the Student Portal title, outside the resource tabs",
@@ -195,14 +200,37 @@ const middleInitialNormalizer =
   )?.[0] || "";
 assert.ok(
   middleInitialNormalizer.includes(
-    'input.value.toLocaleUpperCase().replace(/[^A-Z.]/g, "")',
+    'input.value.toLocaleUpperCase().replace(/[^A-Z]/g, "")',
   ) &&
     middleInitialNormalizer.includes(
-      'letters.length === 1 && !event?.inputType?.startsWith("delete")',
+      'event?.inputType?.startsWith("delete") && letters.length === 1',
     ) &&
-    middleInitialNormalizer.includes("`${letters}.`") &&
-    middleInitialNormalizer.includes(": normalized"),
-  "middle initials should uppercase and add their period while still allowing deletion",
+    middleInitialNormalizer.includes("`${initial}.`") &&
+    middleInitialNormalizer.includes("? initial"),
+  "middle initials should normalize autofill to one uppercase letter and a period while keeping deletion usable",
+);
+const normalizeMiddleInitial = new Function(
+  `${middleInitialNormalizer}; return normalizeReviewerMiddleInitialInput;`,
+)();
+[
+  ["a", {}, "A."],
+  ["smith", {}, "S."],
+  ["a..", {}, "A."],
+  ["b", { inputType: "deleteContentBackward" }, "B"],
+  ["", { inputType: "deleteContentBackward" }, ""],
+].forEach(([value, event, expected]) => {
+  const input = { value };
+  normalizeMiddleInitial(input, event);
+  assert.equal(
+    input.value,
+    expected,
+    `middle-initial normalization should convert ${JSON.stringify(value)} appropriately`,
+  );
+});
+assert.match(
+  appCore,
+  /middleInitialInput\.addEventListener\("input", normalizeMiddleInitial\)[\s\S]*?middleInitialInput\.addEventListener\("change",[\s\S]*?middleInitialInput\.addEventListener\("blur",/,
+  "autofilled middle initials should be normalized on input, change, blur, and submit",
 );
 assert.match(
   appCore,
@@ -433,8 +461,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /accountStatus === "NOT_FOUND" \|\| accountStatus === "DENIED"[\s\S]*?accountStatus === "DENIED"\s*\?\s*"Submit"/,
-  "first-time and denied accounts should use the enrollment form without an Edit button",
+  /accountStatus === "NOT_FOUND"\s*\? !reviewerVerificationFormOpen\s*:\s*accountStatus !== "DENIED"[\s\S]*?accountStatus === "DENIED"\s*\?\s*"Submit"/,
+  "unverified accounts should start with the verification form closed, while denied accounts can resubmit without an Edit button",
 );
 assert.doesNotMatch(
   index + appCore,

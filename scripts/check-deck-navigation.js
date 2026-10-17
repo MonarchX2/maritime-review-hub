@@ -367,9 +367,19 @@ assert.match(
   "the welcome banner should provide an email-adjacent access icon and an Unverified label",
 );
 assert.match(
+  indexSource,
+  /id="student-portal-welcome-view-profile"[\s\S]*?View Profile[\s\S]*?id="student-portal-welcome-verification"/,
+  "the unverified welcome banner should place a View Profile button before its label",
+);
+assert.match(
+  indexSource,
+  /id="student-portal-welcome-view-profile"[\s\S]*?navigate\('resources'\)\.then\(\(navigated\) => \{ if \(navigated\) openResourceDashboardTab\('PROFILE'\); \}\)/,
+  "View Profile should navigate directly to Profile settings",
+);
+assert.match(
   appCoreSource,
-  /function renderStudentPortalWelcome\([\s\S]*?accountStatus = ""[\s\S]*?TRUE:\s*\["fa-check", "is-granted", "Access granted"\][\s\S]*?FALSE:\s*\["fa-triangle-exclamation", "is-pending", "Access pending"\][\s\S]*?DENIED:\s*\["fa-xmark", "is-denied", "Access denied"\][\s\S]*?accountStatus !== "NOT_FOUND"/,
-  "the welcome banner should show approved, pending, denied, and unverified account states",
+  /function renderStudentPortalWelcome\([\s\S]*?accountStatus = ""[\s\S]*?TRUE:\s*\["fa-check", "is-granted", "Access granted"\][\s\S]*?FALSE:\s*\["fa-triangle-exclamation", "is-pending", "Access pending"\][\s\S]*?DENIED:\s*\["fa-xmark", "is-denied", "Access denied"\][\s\S]*?const isUnverified = isSignedIn && accountStatus === "NOT_FOUND"[\s\S]*?welcomeVerification\.hidden = !isUnverified[\s\S]*?welcomeViewProfile\.hidden = !isUnverified/,
+  "the welcome banner should show approved, pending, denied, and unverified account states, with profile navigation only for unverified accounts",
 );
 assert.match(
   appCoreSource,

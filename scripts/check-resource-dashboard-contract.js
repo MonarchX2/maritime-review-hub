@@ -53,8 +53,8 @@ assert.doesNotMatch(
 );
 assert.match(
   appCore,
-  /function applyReviewerAccountStatus\(\s*response,\s*sessionId,\s*preserveProfileEditor = false,\s*\)[\s\S]*?accountStatus === "TRUE"[\s\S]*?reviewerSessionId = sessionId[\s\S]*?accountStatus === "NOT_FOUND" \|\| accountStatus === "DENIED"/,
-  "only TRUE accounts should receive reviewer access, while denied and new users can submit profile details",
+  /function applyReviewerAccountStatus\(\s*response,\s*sessionId,\s*preserveProfileEditor = false,\s*\)[\s\S]*?accountStatus === "TRUE"[\s\S]*?reviewerSessionId = sessionId[\s\S]*?accountStatus === "NOT_FOUND"\s*\? !reviewerVerificationFormOpen\s*:\s*accountStatus !== "DENIED"/,
+  "only TRUE accounts should receive reviewer access, while denied and new users can submit profile details through Profile",
 );
 assert.match(
   appCore,
@@ -247,6 +247,29 @@ assert.equal(
   "UPDATED",
   "replacing an existing resource should receive an UPDATED badge",
 );
+const sameNameDifferentLink = mergeResourceDashboardUpdates(
+  "REVIEWERS",
+  dashboardTab("Same name.pdf", "old-resource-id"),
+  dashboardTab("Same name.pdf", "new-resource-id"),
+);
+assert.deepEqual(
+  sameNameDifferentLink.recentlyUpdatedCells,
+  {},
+  "changing only a resource link should not show an UPDATED badge when its name is unchanged",
+);
+const renamedResourceTitle = mergeResourceDashboardUpdates(
+  "REVIEWERS",
+  dashboardTab("Same name.pdf"),
+  {
+    ...dashboardTab("Same name.pdf"),
+    linkTitles: [["", "", "Renamed resource.pdf"]],
+  },
+);
+assert.equal(
+  renamedResourceTitle.recentlyUpdatedCells[newResourceKey].type,
+  "UPDATED",
+  "changing the displayed resource name should show UPDATED even if its underlying cell value is unchanged",
+);
 updateClock += 48 * 60 * 60 * 1000 + 1;
 assert.deepEqual(
   mergeResourceDashboardUpdates(
@@ -370,6 +393,11 @@ assert.match(
   appCore,
   /function restoreStoredReviewerDashboard\(email\)[\s\S]*?getStoredReviewerDashboard\(email\)[\s\S]*?reviewerDashboardLoadedForEmail = reviewerAuthorizedEmail/,
   "cached dashboard rows should be hydrated before session restoration completes",
+);
+assert.match(
+  appCore,
+  /async function restoreReviewerSession\([\s\S]*?const cachedProfile = getStoredReviewerProfile\(\);[\s\S]*?cachedProfile\?\.accountStatus === "TRUE"[\s\S]*?restoreStoredReviewerDashboard\(cachedProfile\.email\);[\s\S]*?const hasCachedDashboard/,
+  "session restoration should hydrate approved same-account rows before deciding whether to show Loading",
 );
 const openResourceDashboardTabSource =
   appCore.match(
@@ -1036,6 +1064,26 @@ assert.match(
   "users should be able to edit and cancel profile-name changes",
 );
 assert.match(
+  indexHtml,
+  /id="resource-reviewer-verify-account"[\s\S]*?onclick="startReviewerVerification\(\)"[\s\S]*?Verify account[\s\S]*?id="resource-reviewer-enrollment-form"/,
+  "unverified accounts should have a Verify account action in Profile settings before the enrollment form",
+);
+assert.match(
+  appCore,
+  /function startReviewerVerification\(\)[\s\S]*?reviewerAccountStatus !== "NOT_FOUND"[\s\S]*?form\.hidden = false[\s\S]*?resource-reviewer-last-name[\s\S]*?focus\(\)/,
+  "the verification action should open and focus the profile form only for an unverified account",
+);
+assert.match(
+  appCore,
+  /const compatibilityExports = \{[\s\S]*?startReviewerVerification,[\s\S]*?\};[\s\S]*?Object\.assign\(globalScope, compatibilityExports\)/,
+  "the Profile verification action should be available to its button handler",
+);
+assert.match(
+  appCore,
+  /if \(verifyAccountButton\)\s*verifyAccountButton\.hidden = accountStatus !== "NOT_FOUND"[\s\S]*?accountStatus === "NOT_FOUND"\s*\? !reviewerVerificationFormOpen/,
+  "Profile should show the verification action for unverified accounts and reveal the form only after it is activated",
+);
+assert.match(
   appCore,
   /function renderReviewerProfileAccessStatus\(accountStatus\)[\s\S]*?TRUE:\s*\{\s*label:\s*"ACCESS GRANTED"[\s\S]*?FALSE:\s*\{\s*label:\s*"ACCESS PENDING"[\s\S]*?DENIED:\s*\{\s*label:\s*"ACCESS DENIED"/,
   "the profile should show explicit Granted, Pending, and Denied access states",
@@ -1154,6 +1202,10 @@ assert.ok(
 const createReviewerTabRetention = new Function(
   "resourceDashboardData",
   "reviewerSessionId",
+  "reviewerSessionRestorePending",
+  "reviewerAccountStatus",
+  "getStoredReviewerSessionId",
+  "hasExplicitReviewerSignOut",
   "reviewerDashboardLoadedForEmail",
   "reviewerAuthorizedEmail",
   `${reviewerTabRetentionFunction[0]}; return retainAuthorizedReviewerDashboardTab;`,
@@ -1180,6 +1232,10 @@ const emptyPublicReviewerTab = {
 const retainReviewerRows = createReviewerTabRetention(
   { REVIEWERS: populatedReviewerTab },
   "valid-session",
+  false,
+  "TRUE",
+  () => "",
+  () => false,
   "Reviewer@Example.com",
   "reviewer@example.com",
 );
@@ -1188,9 +1244,43 @@ assert.equal(
   populatedReviewerTab,
   "refreshing public dashboard data should not replace the signed-in user's reviewer rows with the intentionally empty public placeholder",
 );
+const retainReviewerRowsDuringRestore = createReviewerTabRetention(
+  { REVIEWERS: populatedReviewerTab },
+  "",
+  true,
+  "TRUE",
+  () => "saved-session",
+  () => false,
+  "Reviewer@Example.com",
+  "reviewer@example.com",
+);
+assert.equal(
+  retainReviewerRowsDuringRestore(emptyPublicReviewerTab).REVIEWERS,
+  populatedReviewerTab,
+  "same-account authorized rows should survive public dashboard refresh while the saved session is being revalidated",
+);
+const discardReviewerRowsAfterSignout = createReviewerTabRetention(
+  { REVIEWERS: populatedReviewerTab },
+  "",
+  true,
+  "TRUE",
+  () => "saved-session",
+  () => true,
+  "Reviewer@Example.com",
+  "reviewer@example.com",
+);
+assert.equal(
+  discardReviewerRowsAfterSignout(emptyPublicReviewerTab).REVIEWERS.rows.length,
+  0,
+  "explicit sign-out must prevent cached Reviewer rows from being retained during restoration",
+);
 const doNotRetainReviewerRows = createReviewerTabRetention(
   { REVIEWERS: populatedReviewerTab },
   "",
+  false,
+  "TRUE",
+  () => "",
+  () => false,
   "reviewer@example.com",
   "reviewer@example.com",
 );

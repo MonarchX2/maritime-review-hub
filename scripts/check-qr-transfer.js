@@ -20,6 +20,7 @@ const qrContext = {
 };
 const qrSource = fs.readFileSync("qr-transfer-core.js", "utf8");
 const html = fs.readFileSync("index.html", "utf8");
+const styles = fs.readFileSync("styles.css", "utf8");
 const transferHome = html.match(
   /id="qr-transfer-home"[\s\S]*?(?=<div id="qr-transfer-direct")/,
 )?.[0];
@@ -30,6 +31,16 @@ assert.match(
   html,
   /aria-labelledby="settings-progress-transfer-title"[\s\S]*?onclick="openQrTransfer\(\)"/,
   "progress transfer must be available from Settings",
+);
+assert.match(
+  html,
+  /settings-progress-transfer-layout flex flex-wrap[\s\S]*?settings-progress-transfer-copy[\s\S]*?Transfer progress/,
+  "the Settings transfer action should use responsive layout hooks for its title and description",
+);
+assert.match(
+  styles,
+  /@media \(max-width:\s*639px\)\s*\{[\s\S]*?\.settings-progress-transfer-layout\s*\{\s*justify-content:\s*center;\s*\}[\s\S]*?\.settings-progress-transfer-copy\s*\{\s*flex-basis:\s*100%;\s*text-align:\s*center;\s*\}/,
+  "on small screens the wrapped Transfer Progress action should center its text and button",
 );
 assert.doesNotMatch(
   appHeader,

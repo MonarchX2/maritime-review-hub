@@ -23,15 +23,12 @@ The profile form requires last name, first name, and a middle initial formatted
 as any single letter followed by a period; for example, `A.`, `M.`, or `Z.`.
 The browser validates this format before sending the request, and the backend
 validates it again.
-Users are warned that false information will not be entertained and will be
-ignored and deleted, and that their verified Google email must share at least one
-meaningful name part or matching initials with the name they submit. This
-similarity check is a safeguard against major discrepancies, not proof of
-legal identity. Users receive an email when their profile becomes pending or
-an administrator grants or denies access. A user may edit a saved name; if any
-name field changes, the backend saves it and resets `Active` to `FALSE` until
-an administrator confirms the edited profile. Submitting the same name does
-not remove existing approval.
+The browser may warn when the submitted name does not appear to match the
+verified Google email, but this warning does not block submission. All
+submissions start at `Active=FALSE`; an administrator decides whether to grant
+access. A user may edit a saved name; if any name field changes, the backend
+saves it and resets `Active` to `FALSE` until an administrator confirms the
+edited profile. Submitting the same name does not remove existing approval.
 Reviewer notification emails use the display name “Maritime Review Hub” and
 formal status-specific messages. Apps Script sends these messages from the
 authorized script owner's account; sending from a separate address requires
