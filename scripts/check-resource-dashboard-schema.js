@@ -24,6 +24,7 @@ const testedHelpers = new Function(
     extractFunction("getCourseTitle"),
     extractFunction("buildCourseCatalogEntries"),
     extractFunction("getCourseHeading"),
+    extractFunction("getReviewerPdfCourseHeading"),
     extractFunction("extractLeadingOrderNumber"),
     extractFunction("cleanResourceDisplayName"),
     extractFunction("compareResourceOrder"),
@@ -35,6 +36,7 @@ const testedHelpers = new Function(
       getCourseTitle,
       buildCourseCatalogEntries,
       getCourseHeading,
+      getReviewerPdfCourseHeading,
       extractLeadingOrderNumber,
       cleanResourceDisplayName,
       compareResourceOrder,
@@ -50,6 +52,7 @@ const {
   getCourseTitle,
   buildCourseCatalogEntries,
   getCourseHeading,
+  getReviewerPdfCourseHeading,
   extractLeadingOrderNumber,
   cleanResourceDisplayName,
   compareResourceOrder,
@@ -95,6 +98,15 @@ assert.equal(getCourseHeading("ICT"), "ICT1");
 assert.equal(getCourseHeading("NSTP1 (LEC.)"), "ROTC1 (LEC.)");
 assert.equal(getCourseHeading("NSTP3 (LEC.)"), "ROTC3 (LEC.)");
 assert.equal(getCourseHeading("UNKNOWN COURSE"), "UNKNOWN COURSE");
+assert.equal(
+  getReviewerPdfCourseHeading("NAV6"),
+  "NAV6 - OPERATIONAL USE OF ECDIS",
+);
+assert.equal(getReviewerPdfCourseHeading("UNKNOWN COURSE"), "UNKNOWN COURSE");
+assert.equal(
+  getReviewerPdfCourseHeading("NAV3 (LEC.)"),
+  "NAV3 (LEC.) - TERRESTRIAL AND COASTAL NAVIGATION 2 (LEC.)",
+);
 assert.deepEqual(
   buildCourseCatalogEntries([
     { course: "03.1 NAV3" },

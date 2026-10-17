@@ -76,7 +76,11 @@ worker and library are content-hashed and deployable.
    bytes plus the verified account identity.
 3. A dedicated Web Worker validates and watermarks the PDF off the UI thread.
 4. The website displays the prepared PDF in its in-site preview and reuses
-   those same bytes for each download.
+   those same bytes for each download through a native download link. A
+   persistent download link is also shown below the preview in case the
+   embedded PDF viewer fails. On mobile and touch devices, an additional
+   action opens the prepared PDF in a new browser tab for browsers that cannot
+   render PDFs inside the embedded preview.
 
 The source limit is 8 MiB, output limit 12 MiB, and page limit 80. Worker
 startup and document complexity affect local processing time; the 20-page

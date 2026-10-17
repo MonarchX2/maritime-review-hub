@@ -664,8 +664,8 @@ assert.doesNotMatch(
 );
 assert.match(
   index,
-  /id="resource-dashboard-content"[\s\S]*?id="resource-portal-preview"[^>]*hidden[\s\S]*?id="resource-portal-preview-title"[\s\S]*?id="resource-portal-preview-download"[\s\S]*?id="resource-portal-preview-close"[\s\S]*?id="resource-portal-preview-status"[\s\S]*?id="resource-portal-preview-frame"[^>]*referrerpolicy="no-referrer"[^>]*hidden/,
-  "the dashboard must contain a hidden in-site fullscreen preview with download/close controls and accessible status",
+  /id="resource-dashboard-content"[\s\S]*?id="resource-portal-preview"[^>]*hidden[\s\S]*?id="resource-portal-preview-title"[\s\S]*?<a\s+id="resource-portal-preview-download"[^>]*aria-label="Download PDF"[^>]*hidden[\s\S]*?id="resource-portal-preview-mobile-open"[\s\S]*?id="resource-portal-preview-close"[\s\S]*?id="resource-portal-preview-status"[\s\S]*?id="resource-portal-preview-frame"[^>]*referrerpolicy="no-referrer"[^>]*hidden/,
+  "the dashboard must contain a hidden fullscreen preview with download, mobile-open, and close controls and accessible status",
 );
 assert.doesNotMatch(
   index,

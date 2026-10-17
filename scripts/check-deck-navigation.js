@@ -413,6 +413,11 @@ assert.match(
 );
 assert.match(
   appCoreSource,
+  /StorageUtils\.clearCurrentNamespace\(\{ includeLegacy: true \}\);\s*setStudentPortalWelcomeHidden\(false, true\);/,
+  "clearing app data should restore the welcome banner's default visible state",
+);
+assert.match(
+  appCoreSource,
   /function updateStudentPortalWelcomeLayout\(\)[\s\S]*?if \(welcome\.hidden\)[\s\S]*?container\.classList\.add\("is-stacked"\)[\s\S]*?getBoundingClientRect\(\)[\s\S]*?overlapsVertically[\s\S]*?container\.classList\.toggle\("is-stacked", !isSideBySide\)/,
   "welcome centering should respond to whether the portal and banner actually share a row",
 );

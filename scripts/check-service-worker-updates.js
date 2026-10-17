@@ -298,6 +298,7 @@ async function main() {
   assert.match(offlineHtml, /<base href="\/app\/">/);
 
   currentCache.delete(`${appOrigin}${appBasePath}index.html?v=${appVersion}`);
+  currentCache.delete(`${appOrigin}${appBasePath}index.html`);
   let emptyCacheOfflineResponse;
   events.get("fetch")({
     request: {
@@ -322,15 +323,15 @@ async function main() {
     "https://monarchx2.github.io/mrh/",
     "the app-shell fallback should redirect directly to the canonical website",
   );
-  assert.doesNotMatch(
+  assert.match(
     workerSource,
-    /You're offline|offline copy isn't available|retry-button/,
-    "the worker must not display a custom offline screen when automatic redirection is the recovery path",
+    /if \(!isCanonicalAppRequest\)\s*return Response\.redirect\(CANONICAL_APP_URL,\s*302\);[\s\S]*?return new Response\([\s\S]*?<h1>You're offline<\/h1>[\s\S]*?status:\s*503/,
+    "alternate app routes should redirect to the canonical site, which presents the offline recovery page",
   );
   assert.match(
     workerSource,
-    /isCanonicalAppRequest\s*\?\s*Response\.error\(\)\s*:\s*Response\.redirect\(CANONICAL_APP_URL,\s*302\)/,
-    "the canonical offline route should fail as a browser network error rather than redirecting in a loop",
+    /location\.replace\(appUrl\)[\s\S]*?window\.addEventListener\("online", retryApp, \{ once: true \}\)/,
+    "the offline page must retry the canonical website on request or when connectivity returns",
   );
 
   const staticRequest = new Request(

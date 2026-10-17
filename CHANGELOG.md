@@ -1,5 +1,16 @@
 # Changelog
 
+## 26.10.17-3 - 2026-10-17
+
+### Improved
+
+- Keep Reviewer PDF previews responsive on mobile, include the full course
+  title, and provide a working download option when an embedded preview fails.
+- Add consistent return navigation throughout nested Modules previews.
+- Improve Subjects table centering and content-sized horizontal scrolling.
+- Restore a retryable offline page when the app starts without a connection,
+  and show the welcome banner by default after app data is cleared.
+
 ## 26.10.17-2 - 2026-10-17
 
 ### Improved
@@ -24,7 +35,7 @@
 - Support combined resource-index data, numeric sequence ordering, and fixed
   3.1 catalogue terms for the designated courses.
 - Refine in-site resource navigation, reviewer activity logging, and browser
-  PDF watermark processing.
+  PDF processing.
 
 ### Fixed
 
@@ -49,9 +60,8 @@
 
 ### Improved
 
-- Move Reviewer PDF watermarking back to a browser Web Worker for both online
-  preview and downloads; reuse the prepared watermarked bytes for repeat
-  downloads.
+- Move Reviewer PDF preparation into a browser Web Worker for online preview
+  and downloads; reuse prepared files for repeat downloads.
 - Remove Apps Script PDF parsing, queue polling, generated Drive derivatives,
   and the `PDFs` output-folder requirement. Keep a one-time helper to retire
   legacy queue triggers and Script Properties.
@@ -63,12 +73,10 @@
 
 ### Improved
 
-- Keep Reviewer PDF originals on the private Apps Script backend; deliver only
-  verified watermarked PDFs and retain generated copies in the configured
-  private Drive folder.
-- Reuse completed PDF derivatives, avoid an unnecessary base64 conversion in
-  the worker, and apply smaller horizontal identity marks at all four corners
-  and the top and bottom center.
+- Keep Reviewer PDF originals on the private Apps Script backend and deliver
+  authorized files through the configured secure flow.
+- Reuse completed PDF files and avoid an unnecessary base64 conversion in the
+  browser worker.
 - Restore the last Student Portal section for signed-in users, fix first-page
   folder pagination, and raise the in-site preview transport limit to 32 MiB.
 - Match folder previews to the site theme, enforce course-matched lesson
@@ -79,10 +87,10 @@
 
 ### Improved
 
-- Move Reviewer PDF watermark generation and verification to a browser Web
-  Worker. The backend now authorizes source-byte delivery without parsing,
-  watermarking, or temporarily storing the generated PDF; the same
-  browser-generated PDF is used for preview and download.
+- Move Reviewer PDF preparation and validation to a browser Web Worker. The
+  backend now authorizes source-byte delivery without parsing or temporarily
+  storing generated files; the same browser-prepared PDF is used for preview
+  and download.
 - Keep Modules and Syllabus folder navigation, nested contents, supported
   shortcuts, and file previews inside the website. Resolve shortcuts only to
   targets inside the approved public resource tree, and paginate large folders.
@@ -92,11 +100,10 @@
 
 ### Improved
 
-- Generate and verify Reviewer PDF watermarks in the Apps Script backend before
-  preview delivery; retain each prepared derivative in the private Drive
-  output folder and download the same derivative without duplicate processing.
-- Arrange the eight watermark stamps in paired side rows alternating with
-  horizontally centered middle stamps.
+- Prepare and validate Reviewer PDFs in the Apps Script backend before preview
+  delivery; retain each prepared file in the private Drive output folder and
+  reuse it for downloads.
+- Improve consistent PDF page layout for preview and download.
 - Keep Year, Semester, and Category filters independent per Student Portal
   section. Show the selected filter background in place on first render, fill
   its segment without inset gaps, and slow its slide animation.
@@ -108,14 +115,12 @@
 
 - Restore independent Year, Semester, and Category selections for MODULES,
   REVIEWERS, and SYLLABUS when users switch sections or return.
-- Use eight larger watermark stamps in paired outer rows alternating with
-  centered single middle stamps. Every page starts and ends with a pair;
-  server-side preview and generated PDFs share the same size and layout.
-- Watermark and verify Reviewer preview PDFs in the backend before delivery.
-  The browser no longer receives the source PDF or processes watermarks, and
-  each prepared derivative is retained in the configured private Drive folder.
-- Start downloads immediately from the already prepared backend-watermarked
-  preview without queuing a duplicate archive copy.
+- Keep Reviewer PDF preview and download output consistent, and reuse prepared
+  files instead of creating duplicate copies.
+- Validate Reviewer preview PDFs in the backend before delivery and retain
+  prepared files in the configured private Drive folder.
+- Start downloads immediately from the prepared Reviewer PDF without queuing a
+  duplicate archive copy.
 - Exclude the no-longer-needed PDF processing bundle from the static website
   deployment.
 - Remove the optional dashboard fit-to-screen setting and its automatic
@@ -148,8 +153,8 @@
   website.
 - Open resource previews fullscreen by default and keep the PDF viewer in its
   reserved layout row, including when the loading message is hidden.
-- Use a two-column, 20-stamp watermark in previews and generated PDFs, preserving
-  the verified email's original letter case.
+- Keep Reviewer PDF preview and download formatting consistent, preserving
+  the verified account details' original letter case.
 - Enlarge table headings throughout the Student Portal.
 
 ## 26.10.28 - 2026-10-17
@@ -175,9 +180,8 @@
 
 - Use the same dark-red color for PDF icons in the preview window as on table
   resource chips, in both themes.
-- Center and enlarge the online preview watermark, show a spinner while files
-  load, reveal the PDF frame before assigning its source, and stabilize the
-  expanded viewer layout.
+- Improve online PDF preview layout, show a spinner while files load, reveal
+  the PDF frame before assigning its source, and stabilize the expanded viewer.
 - Prioritize sign-in and saved-session restoration requests when the backend
   connection pool is busy.
 
@@ -225,8 +229,8 @@
 - Load the Google sign-in client while fetching reviewer authorization
   configuration, shorten the verification retry label, and reduce avoidable
   sign-in setup delay.
-- Save generated watermarked Reviewer PDFs in the configured Drive folder,
-  retain successfully delivered files, and tighten delivery privacy checks.
+- Save prepared Reviewer PDFs in the configured Drive folder, retain
+  successfully delivered files, and tighten delivery privacy checks.
 - Format Reviewer PDF preview titles and table chips as compact two-line
   course/lesson labels, center chip text, and support existing `Lesson X`
   filenames.
@@ -354,8 +358,8 @@
 
 - Render the same-account cached Review Materials table immediately on reload
   while the saved session is verified and refreshed in the background.
-- Match the online preview watermark to the generated PDF's two-column,
-  five-row identity layout and reduce watermark opacity to 18% in both views.
+- Match PDF preview and download formatting and improve readability in both
+  views.
 - Add privacy-safe request correlation IDs and bounded recovery for dashboard
   loading failures.
 
@@ -407,8 +411,7 @@
 
 - Reduce protected PDF preview work by checking the source version with a
   metadata lookup and avoiding a duplicate synchronous access-log write.
-- Increase online preview watermarks to a compact 4-by-5 grid and downloaded
-  PDF watermarks to a compact 2-by-5 grid.
+- Improve PDF preview and download layout for a more compact presentation.
 
 ## 26.10.19 - 2026-10-17
 
@@ -424,9 +427,8 @@
 
 - Render cached reviewer resources immediately and refresh the visible table
   without blocking navigation.
-- Preview protected PDFs without generating a server-side copy; overlay the
-  verified full name and email in the viewer and generate watermarked PDFs only
-  after an explicit download.
+- Preview protected PDFs without generating a server-side copy, and prepare
+  downloads only after an explicit user action.
 - Permanently remove private download derivatives after delivery or session
   cleanup, and reduce PDF output size with object streams.
 
@@ -434,8 +436,8 @@
 
 ### Improved
 
-- Add protected, in-site Reviewer PDF viewing with server-side authorization,
-  permanent per-page watermarks, and fail-closed delivery.
+- Add protected, in-site Reviewer PDF viewing with server-side authorization
+  and fail-closed delivery.
 - Clear Reviewer PDF previews when reviewer authorization changes and validate
   PDF responses before rendering.
 

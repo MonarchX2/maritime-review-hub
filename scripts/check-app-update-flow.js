@@ -118,6 +118,54 @@ assert.match(
   /currentUrl\.searchParams\.has\(UPDATE_QUERY_PARAMETER\)[\s\S]*?currentUrl\.searchParams\.has\(FACEBOOK_CLICK_ID_PARAMETER\)[\s\S]*?searchParams\.delete\(UPDATE_QUERY_PARAMETER\)[\s\S]*?searchParams\.delete\(FACEBOOK_CLICK_ID_PARAMETER\)[\s\S]*?currentUrl\.pathname\}\$\{currentUrl\.search\}\$\{currentUrl\.hash\}/,
   "startup should remove Facebook click IDs and update flags while preserving other URL parts",
 );
+const normalizedAppEntry = appEntry.replace(/\r\n/g, "\n");
+const urlCleanupStart = normalizedAppEntry.indexOf(
+  "    const currentUrl = new URL(window.location.href);",
+);
+const urlCleanupEnd = normalizedAppEntry.indexOf(
+  "\n  }\n\n  rootScope.__MRH_APP__",
+  urlCleanupStart,
+);
+assert.ok(urlCleanupStart >= 0 && urlCleanupEnd > urlCleanupStart);
+const urlCleanupSource = normalizedAppEntry.slice(
+  urlCleanupStart,
+  urlCleanupEnd,
+);
+function cleanStartupUrl(href) {
+  const calls = [];
+  const window = {
+    location: { href },
+    history: {
+      state: { preserved: true },
+      replaceState(...args) {
+        calls.push(args);
+      },
+    },
+  };
+  vm.runInNewContext(urlCleanupSource, {
+    URL,
+    window,
+    UPDATE_QUERY_PARAMETER: "__mrh_update",
+    FACEBOOK_CLICK_ID_PARAMETER: "fbclid",
+  });
+  return calls;
+}
+assert.deepEqual(
+  cleanStartupUrl(
+    "https://monarchx2.github.io/mrh/?fbclid=first&utm_source=messenger&fbclid=second&__mrh_update=1#resource-portal-preview",
+  ),
+  [[
+    { preserved: true },
+    "",
+    "/mrh/?utm_source=messenger#resource-portal-preview",
+  ]],
+  "startup cleanup should remove every fbclid and update flag while preserving other query values and the hash",
+);
+assert.deepEqual(
+  cleanStartupUrl("https://monarchx2.github.io/mrh/?utm_campaign=course#top"),
+  [],
+  "startup cleanup should leave ordinary URLs untouched",
+);
 assert.match(appEntry, /document\.addEventListener\("visibilitychange"/);
 assert.match(appEntry, /window\.addEventListener\("focus",\s*checkUpdateWhenForegrounded\)/);
 assert.match(appEntry, /window\.addEventListener\("pageshow",\s*checkUpdateWhenForegrounded\)/);

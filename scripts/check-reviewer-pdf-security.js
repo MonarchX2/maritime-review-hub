@@ -23,7 +23,7 @@ const appCorePreview =
   )?.[0] || "";
 const appCoreDownload =
   frontend.match(
-    /async function downloadReviewerPdf\(\)[\s\S]*?\n  \}/,
+    /function downloadReviewerPdf\(event\)[\s\S]*?\n  \}/,
   )?.[0] || "";
 const previewHandler =
   backend.match(
@@ -61,8 +61,8 @@ assert.match(
 );
 assert.match(
   appCoreDownload,
-  /link\.download = activePdf\.downloadFileName/,
-  "the browser must use the backend-provided download filename as-is",
+  /activePdf\?\.downloadFileName[\s\S]*?resourcePortalPreviewObjectUrl[\s\S]*?validDownloadName/,
+  "the native download action must target the prepared PDF and validate the backend filename",
 );
 assert.doesNotMatch(
   backend,
@@ -91,8 +91,23 @@ assert.match(
 );
 assert.match(
   appCoreDownload,
-  /const bytes = activePdf\.bytes[\s\S]*?link\.click\(\)[\s\S]*?reviewerPdfDownloadInFlight = null/,
-  "preview and repeat downloads must reuse the same browser-watermarked bytes",
+  /const bytes = activePdf\?\.bytes[\s\S]*?bytes\.byteLength > REVIEWER_PDF_MAX_OUTPUT_BYTES[\s\S]*?activePdf\.sourceVersion[\s\S]*?resourcePortalPreviewMobileOpened = true/,
+  "native download actions must validate and retain only the prepared, browser-watermarked PDF",
+);
+assert.match(
+  frontend,
+  /downloadButton\.href = resourcePortalPreviewObjectUrl;\s*downloadButton\.download = resourcePortalReviewerPdf\.downloadFileName/,
+  "the visible download control should be a native user-activated link to the prepared PDF",
+);
+assert.doesNotMatch(
+  frontend,
+  /Applying personalized watermark/,
+  "the Reviewer preview must keep the Loading PDF Preview label throughout watermark processing",
+);
+assert.match(
+  frontend,
+  /function renderReviewerPdfDownloadFallback\([\s\S]*?download the PDF[\s\S]*?function downloadReviewerPdf/,
+  "the preview should provide a visible native PDF download link without exposing processing details",
 );
 assert.match(
   worker,

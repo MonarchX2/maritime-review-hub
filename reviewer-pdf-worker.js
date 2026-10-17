@@ -41,7 +41,7 @@ async function createWatermarkedPdf(sourceBuffer, identity) {
     !/^[^<>:"/\\|?*\u0000-\u001f]{1,255}\.pdf$/i.test(downloadFileName)
   )
     throw new Error(
-      "Verified account details and backend filename are required to watermark this PDF.",
+      "Verified account details and backend filename are required to prepare this PDF.",
     );
 
   let pdf;
@@ -84,7 +84,7 @@ async function createWatermarkedPdf(sourceBuffer, identity) {
       )
         selectedFontSize = Math.max(minimum, selectedFontSize - 0.5);
       if (lines.some((line) => textWidth(line, selectedFontSize) > maxWidth))
-        throw new Error("Account details do not fit the watermark area.");
+        throw new Error("Account details exceed the supported PDF limits.");
       return selectedFontSize;
     };
     const drawBlock = (centerX, centerY, angle, blockFontSize) => {
@@ -224,7 +224,7 @@ async function createWatermarkedPdf(sourceBuffer, identity) {
     watermarkedBytes.byteLength > MAX_OUTPUT_BYTES ||
     String.fromCharCode(...watermarkedBytes.slice(0, 5)) !== "%PDF-"
   )
-    throw new Error("The watermarked PDF is invalid or exceeds the 12 MiB limit.");
+    throw new Error("The prepared PDF is invalid or exceeds the 12 MiB limit.");
   return watermarkedBytes;
 }
 
@@ -242,7 +242,7 @@ self.onmessage = async (event) => {
   } catch (error) {
     self.postMessage({
       status: "error",
-      message: String(error?.message || "The PDF could not be watermarked."),
+      message: String(error?.message || "The PDF could not be prepared."),
     });
   }
 };

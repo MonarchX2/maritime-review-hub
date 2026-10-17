@@ -1980,6 +1980,10 @@ button:active:not(:disabled) {
   display: none;
 }
 
+.resource-portal-preview-header .resource-portal-preview-download[hidden] {
+  display: none;
+}
+
 .resource-dashboard-layout {
   --resource-dashboard-font-title: 1.125rem;
   --resource-dashboard-font: 0.875rem;
@@ -2305,15 +2309,13 @@ button:active:not(:disabled) {
 }
 
 .resource-dashboard-subjects-listing .resource-dashboard-table-scroll {
-  display: flex;
-  justify-content: center;
+  display: block;
 }
 
 .resource-dashboard-subjects-listing .resource-dashboard-table-frame {
   width: max-content;
   min-width: 100%;
-  max-width: 100%;
-  margin-inline: auto;
+  margin-inline: 0;
   overflow: clip;
 }
 
@@ -3023,7 +3025,9 @@ button:active:not(:disabled) {
 }
 
 .resource-portal-refresh,
-.resource-portal-preview-header button {
+.resource-portal-preview-header button,
+.resource-portal-preview-header .resource-portal-preview-download,
+.resource-portal-preview-header .resource-portal-preview-mobile-open {
   display: inline-grid;
   flex: 0 0 auto;
   width: 2rem;
@@ -3033,10 +3037,13 @@ button:active:not(:disabled) {
   border-radius: 0.4rem;
   color: #475569;
   background: #fff;
+  text-decoration: none;
 }
 
 .resource-portal-refresh:hover,
-.resource-portal-preview-header button:hover {
+.resource-portal-preview-header button:hover,
+.resource-portal-preview-header .resource-portal-preview-download:hover,
+.resource-portal-preview-header .resource-portal-preview-mobile-open:hover {
   color: #1d4ed8;
   background: #f1f5f9;
 }
@@ -3050,6 +3057,20 @@ button:active:not(:disabled) {
   color: #475569;
   background: #f8fafc;
   font-size: 0.72rem;
+}
+
+.resource-portal-preview-status .resource-portal-preview-download-link {
+  flex: 0 0 auto;
+  color: #1d4ed8;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.resource-portal-preview-status .resource-portal-preview-download-link:focus-visible {
+  border-radius: 0.2rem;
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 
 .resource-portal-preview-status.is-loading {
@@ -3193,7 +3214,14 @@ button:active:not(:disabled) {
   font-size: 0.98rem;
 }
 
-.resource-portal-preview.is-reviewer-pdf .resource-portal-preview-header button {
+.resource-portal-preview.is-reviewer-pdf .resource-portal-preview-header button,
+.resource-portal-preview.is-reviewer-pdf .resource-portal-preview-header .resource-portal-preview-download {
+  width: 2.75rem;
+  height: 2.75rem;
+  font-size: 1.1rem;
+}
+
+.resource-portal-preview.is-reviewer-pdf .resource-portal-preview-mobile-open {
   width: 2.75rem;
   height: 2.75rem;
   font-size: 1.1rem;
@@ -3208,6 +3236,10 @@ button:active:not(:disabled) {
 .resource-portal-preview-frame {
   display: block;
   border: 0;
+}
+
+.resource-portal-preview-mobile-open {
+  display: none !important;
 }
 
 .resource-portal-preview.is-reviewer-pdf,
@@ -3815,7 +3847,8 @@ button:active:not(:disabled) {
 
 .dark .resource-portal-search,
 .dark .resource-portal-refresh,
-.dark .resource-portal-preview-header button {
+.dark .resource-portal-preview-header button,
+.dark .resource-portal-preview-header .resource-portal-preview-mobile-open {
   border-color: #475569;
   color: #cbd5e1;
   background: #0f172a;
@@ -3864,6 +3897,10 @@ button:active:not(:disabled) {
 .dark .resource-portal-preview-status {
   color: #cbd5e1;
   background: #0f172a;
+}
+
+.dark .resource-portal-preview-status .resource-portal-preview-download-link {
+  color: #93c5fd;
 }
 
 .resource-portal-access-screen {
@@ -4110,6 +4147,13 @@ button:active:not(:disabled) {
   .resource-portal-table-head span:last-child,
   .resource-portal-item-modified {
     display: none;
+  }
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  .resource-portal-preview-header
+    a.resource-portal-preview-mobile-open:not([hidden]) {
+    display: inline-grid !important;
   }
 }
 

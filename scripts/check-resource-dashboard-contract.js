@@ -491,8 +491,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /closeButton\.addEventListener\("click", \(\) => \{\s*void closeResourcePreview\(\{ confirmDuringDownload: true \}\);[\s\S]*?async function closeResourcePreview\(\{ confirmDuringDownload = false \} = \{\}\)[\s\S]*?if \(confirmDuringDownload && reviewerPdfDownloadPreparationPending\)[\s\S]*?requestConfirmation\([\s\S]*?watermarked PDF is still being prepared[\s\S]*?if \(!confirmed\) return false/,
-  "the exit button should confirm only while the local watermarked PDF is still being prepared",
+  /closeButton\.addEventListener\("click", \(\) => \{\s*closeResourcePreview\(\);[\s\S]*?function closeResourcePreview\(\)[\s\S]*?releaseResourcePortalPreviewObjectUrl\(\)/,
+  "the preview should close immediately and retain the PDF blob briefly after a native download action",
 );
 assert.match(
   appCore,
@@ -949,6 +949,11 @@ assert.match(
 );
 assert.match(
   resourceStyles,
+  /\.resource-portal-preview-mobile-open\s*\{\s*display:\s*none !important;\s*\}[\s\S]*?@media \(max-width: 640px\), \(pointer: coarse\)[\s\S]*?a\.resource-portal-preview-mobile-open:not\(\[hidden\]\)\s*\{\s*display:\s*inline-grid !important;/,
+  "the PDF new-tab fallback should be visible only on mobile or touch devices",
+);
+assert.match(
+  resourceStyles,
   /\.resource-portal-preview\.is-fullscreen \.resource-portal-preview-frame\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*width:\s*100%;[^}]*height:\s*100%/,
   "the fullscreen PDF frame should fill the visible viewer area",
 );
@@ -959,8 +964,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /status\.classList\.add\("is-loading"\);[\s\S]*?const loadingIcon = document\.createElement\("i"\);[\s\S]*?loadingIcon\.className = "fa-solid fa-spinner fa-spin";[\s\S]*?loadingMessage\.textContent = "Loading PDF preview\.\.\."/,
+  /status\.classList\.add\("is-loading"\);[\s\S]*?const loadingIcon = document\.createElement\("i"\);[\s\S]*?loadingIcon\.className = "fa-solid fa-spinner fa-spin";[\s\S]*?loadingMessage\.textContent = "Loading PDF Preview\.\.\."/,
   "the online preview should show a centered spinner and exact loading label",
+);
+assert.doesNotMatch(
+  appCore,
+  /Applying personalized watermark/,
+  "the loading label must remain unchanged while the protected PDF is watermarked",
 );
 assert.match(
   resourceStyles,
@@ -1003,6 +1013,78 @@ assert.match(
   "Reviewer PDF frames should remain keyboard-focusable for native viewer controls",
 );
 assert.match(
+  indexHtml,
+  /<a\s+id="resource-portal-preview-download"[^>]*aria-label="Download PDF"[^>]*hidden[\s\S]*?<a\s+id="resource-portal-preview-mobile-open"[\s\S]*?aria-label="Open PDF in a new tab"[\s\S]*?target="_blank"[\s\S]*?rel="noopener noreferrer"[\s\S]*?referrerpolicy="no-referrer"[\s\S]*?id="resource-portal-preview-close"/,
+  "the preview should expose a native PDF download action and a mobile-only new-tab action",
+);
+assert.match(
+  appCore,
+  /function renderReviewerPdfDownloadFallback\([\s\S]*?If the preview doesn't load[\s\S]*?download the PDF/,
+  "the preview should offer a direct PDF download if embedded rendering fails without exposing processing details",
+);
+assert.match(
+  appCore,
+  /openMobileLink\.addEventListener\("click", \(event\) => \{[\s\S]*?!resourcePortalPreviewIsReviewer[\s\S]*?!resourcePortalReviewerPdf[\s\S]*?sessionId !== reviewerSessionId[\s\S]*?!resourcePortalPreviewObjectUrl[\s\S]*?event\.preventDefault\(\)[\s\S]*?resourcePortalPreviewMobileOpened = true[\s\S]*?openMobileLink\.href = resourcePortalPreviewObjectUrl/,
+  "the mobile PDF action should require the current reviewer session and use the watermarked native new-tab link",
+);
+assert.match(
+  appCore,
+  /function releaseResourcePortalPreviewObjectUrl\(\) \{[\s\S]*?if \(resourcePortalPreviewMobileOpened\) \{\s*globalScope\.setTimeout\([\s\S]*?URL\.revokeObjectURL\(objectUrl\)[\s\S]*?5 \* 60 \* 1000[\s\S]*?\} else \{\s*URL\.revokeObjectURL\(objectUrl\)/,
+  "the preview URL should remain valid briefly after opening a mobile PDF tab, then be revoked",
+);
+function extractAppFunction(name) {
+  const start = appCore.indexOf(`  function ${name}(`);
+  assert.notEqual(start, -1, `expected app function ${name}`);
+  const end = appCore.indexOf("\n  function ", start + 1);
+  return appCore.slice(start, end < 0 ? appCore.length : end);
+}
+function createPreviewUrlReleaser(opened) {
+  const timers = [];
+  const revoked = [];
+  const mobileLink = {
+    hidden: false,
+    href: "blob:preview",
+    removeAttribute(name) {
+      if (name === "href") this.href = "";
+    },
+  };
+  const globalScope = {
+    setTimeout(callback, delay) {
+      timers.push({ callback, delay });
+    },
+  };
+  const release = new Function(
+    "document",
+    "URL",
+    "globalScope",
+    `
+      let resourcePortalPreviewObjectUrl = "blob:preview";
+      let resourcePortalPreviewMobileOpened = ${opened};
+      ${extractAppFunction("clearResourcePortalPreviewMobileLink")}
+      ${extractAppFunction("releaseResourcePortalPreviewObjectUrl")}
+      return releaseResourcePortalPreviewObjectUrl;
+    `,
+  )(
+    { getElementById: () => mobileLink },
+    { revokeObjectURL: (url) => revoked.push(url) },
+    globalScope,
+  );
+  return { release, timers, revoked, mobileLink };
+}
+const unopenedPreviewUrl = createPreviewUrlReleaser(false);
+unopenedPreviewUrl.release();
+assert.deepEqual(unopenedPreviewUrl.revoked, ["blob:preview"]);
+assert.equal(unopenedPreviewUrl.timers.length, 0);
+assert.equal(unopenedPreviewUrl.mobileLink.hidden, true);
+assert.equal(unopenedPreviewUrl.mobileLink.href, "");
+const openedPreviewUrl = createPreviewUrlReleaser(true);
+openedPreviewUrl.release();
+assert.deepEqual(openedPreviewUrl.revoked, []);
+assert.equal(openedPreviewUrl.timers.length, 1);
+assert.equal(openedPreviewUrl.timers[0].delay, 5 * 60 * 1000);
+openedPreviewUrl.timers[0].callback();
+assert.deepEqual(openedPreviewUrl.revoked, ["blob:preview"]);
+assert.match(
   appCore,
   /preview\.addEventListener\(eventName, \(event\) => \{\s*if \(resourcePortalPreviewIsReviewer\) event\.preventDefault\(\)/,
   "Reviewer PDF previews should suppress text selection and copy/context actions",
@@ -1039,8 +1121,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /const courseLine = document\.createElement\("span"\);[\s\S]*?title\.replaceChildren\(courseLine,\s*lessonLine\)/,
-  "Reviewer preview titles should bold only the first, course-name line",
+  /const reviewerCourseHeading = reviewer\s*\?\s*getReviewerPdfCourseHeading\(course\)\s*:\s*"";[\s\S]*?const courseLine = document\.createElement\("span"\);[\s\S]*?document\.createTextNode\(reviewerCourseHeading\)[\s\S]*?title\.replaceChildren\(courseLine,\s*lessonLine\)/,
+  "Reviewer preview titles should show the course code and full course name on the bold first line",
 );
 assert.match(
   appCore,
@@ -1068,7 +1150,7 @@ assert.doesNotMatch(
   "an expired saved session should keep the Reviewer tab active and show its locked panel",
 );
 assert.doesNotMatch(
-  appCore.match(/async function downloadReviewerPdf\(\)[\s\S]*?\n  function closeReviewerPdfPreview/)?.[0] || "",
+  appCore.match(/function downloadReviewerPdf\(event\)[\s\S]*?\n  function getResourceDashboardFolderPanel/)?.[0] || "",
   /openResourceDashboardTab\("PROFILE"\)/,
   "an expired session during PDF download or preview should preserve the Reviewers tab and show its locked panel",
 );
@@ -1418,8 +1500,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-subjects-listing[\s\S]*?\.resource-dashboard-table-scroll\s*\{\s*display:\s*flex;\s*justify-content:\s*center/,
-  "the Subjects table should center its table frame without changing cell text alignment",
+  /\.resource-dashboard-subjects-listing[\s\S]*?\.resource-dashboard-table-scroll\s*\{\s*display:\s*block;/,
+  "the Subjects table should use the shared horizontally scrollable table container",
 );
 assert.match(
   resourceStyles,
@@ -1463,18 +1545,18 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-subjects-listing \.resource-dashboard-table-frame\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*100%;[^}]*max-width:\s*100%;[^}]*margin-inline:\s*auto;[^}]*overflow:\s*clip;[\s\S]*?\.resource-dashboard-subjects-listing \.resource-dashboard-table\s*\{[^}]*width:\s*max-content;[^}]*margin-inline:\s*auto;/,
-  "the SUBJECTS table should center its content-width text layer in a full-width frame used for row pseudo-design",
+  /\.resource-dashboard-subjects-listing \.resource-dashboard-table-frame\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*100%;[^}]*margin-inline:\s*0;[^}]*overflow:\s*clip;[\s\S]*?\.resource-dashboard-subjects-listing \.resource-dashboard-table\s*\{[^}]*width:\s*max-content;[^}]*margin-inline:\s*auto;/,
+  "the SUBJECTS table should center when it fits, scroll only its content width when wider, and clip row pseudo-background overflow",
 );
 assert.match(
   indexHtml,
   /id="resource-portal-preview-back"[^>]*aria-label="Back to folder"[\s\S]*?id="resource-portal-preview-close"[^>]*aria-label="Close preview"/,
-  "a module file preview should offer a back-to-folder control distinct from close",
+  "the preview should provide a return control distinct from closing the preview",
 );
 assert.match(
   appCore,
-  /resourceDashboardFolderReturn = resourceDashboardFolderListing;[\s\S]*?function closeResourcePreview[\s\S]*?resourceDashboardFolderReturn = null/,
-  "the module preview back control should restore the previous folder while close exits the preview",
+  /if \(!listing\) \{[\s\S]*?resourceDashboardActiveTab === "MODULES"[\s\S]*?closeResourcePreview\(\)[\s\S]*?const panel = getResourceDashboardFolderPanel\(frame\)[\s\S]*?renderResourceDashboardFolderListing\(listing, frame, status\)[\s\S]*?const returningToModules =[\s\S]*?resourceDashboardActiveTab === "MODULES"[\s\S]*?backButton\.hidden = !returningToFolder && !returningToModules/,
+  "the return control should restore the parent folder when applicable and otherwise return from any Modules preview to its listing",
 );
 assert.match(
   appCore,
