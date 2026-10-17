@@ -535,8 +535,8 @@
       allowed: ["type", "sessionId", "appVersion"],
     },
     sign_out_reviewer: {
-      required: ["sessionId"],
-      allowed: ["type", "sessionId", "appVersion"],
+      required: ["sessionId", "eventId"],
+      allowed: ["type", "sessionId", "eventId", "appVersion"],
     },
     get_reviewer_account_status: {
       required: [],
@@ -599,6 +599,7 @@
         "resourceArea",
         "action",
         "detail",
+        "resource",
         "course",
         "year",
         "semester",

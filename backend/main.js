@@ -15,11 +15,7 @@ const BUILDER_LOCK_TIMEOUT_MS = 15000;
 const REVIEWER_SESSION_PROPERTY_PREFIX = "MRH_REVIEWER_SESSION_v1_";
 const REVIEWER_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const REVIEWER_SESSION_LIMIT = 1000;
-const REVIEWER_PDF_JOB_PROPERTY_PREFIX = "MRH_REVIEWER_PDF_JOB_v1_";
-const REVIEWER_PDF_QUEUE_PROPERTY = "MRH_REVIEWER_PDF_QUEUE_v1";
-const REVIEWER_PDF_WORKER_READY_PROPERTY = "MRH_REVIEWER_PDF_WORKER_READY_v1";
-const REVIEWER_PDF_WORKER_SCHEDULE_PROPERTY = "MRH_REVIEWER_PDF_WORKER_SCHEDULED_AT";
-const REVIEWER_PDF_WORKER_HANDLER = "processReviewerPdfQueue";
+const MRH_REVIEWER_PDF_MAX_BYTES = 8 * 1024 * 1024;
 const CACHE_FOLDER_ID_PROPERTY = "MRH_CACHE_FOLDER_ID";
 const BUILD_STATE_FILE_NAME = "MRH_BuildState.json";
 const FILE_INDEX_FILE_NAME = "MRH_FileIndex.json";
@@ -1921,6 +1917,18 @@ function handleRestoreReviewerSessionRequest(data) {
 
 function handleRevokeReviewerSessionRequest(data) {
   var sessionId = String(data && data.sessionId || "").trim();
+  var session = verifyReviewerSession_(sessionId);
+  if (
+    session.valid &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(data && data.eventId || ""),
+    )
+  ) {
+    var account = findMRHAccount_(session.email, true) || {
+      email: session.email,
+    };
+    appendMRHAccessLog_("REVIEWERS", account, data.eventId, "SIGN_OUT");
+  }
   if (!revokeReviewerSession_(sessionId))
     return errorResponse(
       "The access session could not be revoked right now. Try signing out again.",
@@ -2448,45 +2456,6 @@ function reviewerPdfFailure_(data, startedAt, code, message) {
   return errorResponse(message, code);
 }
 
-function reviewerPdfFailure_(data, startedAt, code, message) {
-  Logger.log(JSON.stringify({
-    event: "reviewer_pdf_request_denied",
-    correlationId: String(data && data.eventId || ""),
-    reasonCode: code,
-    durationMs: Date.now() - startedAt,
-  }));
-  return errorResponse(message, code);
-}
-
-function setupReviewerPdfDelivery() {
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000))
-    throw new Error("Reviewer PDF shutdown is busy. Try again.");
-  try {
-    ScriptApp.getProjectTriggers().forEach(function (trigger) {
-      if (trigger.getHandlerFunction() === REVIEWER_PDF_WORKER_HANDLER)
-        ScriptApp.deleteTrigger(trigger);
-    });
-    var properties = getScriptProps();
-    var allProperties = properties.getProperties();
-    Object.keys(allProperties).forEach(function (key) {
-      if (
-        key.indexOf(REVIEWER_PDF_JOB_PROPERTY_PREFIX) === 0 ||
-        key === REVIEWER_PDF_QUEUE_PROPERTY ||
-        key === REVIEWER_PDF_WORKER_READY_PROPERTY ||
-        key === REVIEWER_PDF_WORKER_SCHEDULE_PROPERTY
-      )
-        properties.deleteProperty(key);
-    });
-    return {
-      status: "success",
-      message: "Backend PDF watermarking and Drive output storage are disabled.",
-    };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
 function handleGetReviewerPdfPreviewRequest_(data) {
   var startedAt = Date.now();
   var authorization = authorizeReviewerPdfRequest_(data);
@@ -2497,15 +2466,27 @@ function handleGetReviewerPdfPreviewRequest_(data) {
   var source = getReviewerPdfSource_(fileId);
   if (source.error)
     return reviewerPdfFailure_(data, startedAt, source.error.code, source.error.message);
-  var identity;
-  try {
-    identity = reviewerPdfWatermarkIdentity_(authorization.account, authorization.email);
-  } catch (error) {
+  var fullName = [
+    authorization.account.firstName,
+    authorization.account.middleInitial,
+    authorization.account.lastName,
+  ]
+    .map(function (part) {
+      return String(part || "").trim();
+    })
+    .filter(Boolean)
+    .join(" ")
+    .normalize("NFKC")
+    .replace(/[\u0000-\u001f\u007f|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 160);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(authorization.email) || !fullName) {
     return reviewerPdfFailure_(
       data,
       startedAt,
-      String(error && error.code || "BAD_REQUEST"),
-      String(error && error.message || "Verified account details are required."),
+      "BAD_REQUEST",
+      "Verified account details are required.",
     );
   }
   var cachedSourceVersion = String(data && data.cachedSourceVersion || "");
@@ -2513,11 +2494,11 @@ function handleGetReviewerPdfPreviewRequest_(data) {
     return jsonResponse({
       status: "success",
       cacheHit: true,
-      clientProcessing: true,
+      deliveryMode: "source",
       mimeType: "application/pdf",
       sourceVersion: source.sourceVersion,
-      fullName: identity.fullName,
-      email: identity.email,
+      fullName: fullName,
+      email: authorization.email,
     });
 
   var sourceBytes;
@@ -2553,7 +2534,7 @@ function handleGetReviewerPdfPreviewRequest_(data) {
   appendMRHAccessLog_("REVIEWERS", authorization.account, String(data.eventId || ""), {
     event: "PROTECTED_PDF_VIEW",
     category: "REVIEWERS",
-    resource: source.entry.title + " | " + fileId,
+    resource: source.entry.title,
   });
   Logger.log(JSON.stringify({
     event: "reviewer_pdf_source_delivered",
@@ -2565,19 +2546,24 @@ function handleGetReviewerPdfPreviewRequest_(data) {
     status: "success",
     mimeType: "application/pdf",
     sourceVersion: source.sourceVersion,
-    fullName: identity.fullName,
-    email: identity.email,
-    clientProcessing: true,
+    fullName: fullName,
+    email: authorization.email,
+    deliveryMode: "source",
     data: Utilities.base64Encode(sourceBytes),
   });
 }
 
-function handleGetReviewerPdfRequest(data) {
-  return handleGetReviewerPdfPreviewRequest_(data);
-}
-
 function processReviewerPdfQueue() {
-  Logger.log("Ignoring retired Reviewer PDF queue trigger; watermarking is client-side.");
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return { status: "disabled" };
+  try {
+    ScriptApp.getProjectTriggers().forEach(function (trigger) {
+      if (trigger.getHandlerFunction() === "processReviewerPdfQueue")
+        ScriptApp.deleteTrigger(trigger);
+    });
+  } finally {
+    lock.releaseLock();
+  }
   return { status: "disabled" };
 }
 
@@ -2879,6 +2865,7 @@ function handleLogResourceDashboardActionRequest(data) {
     SYLLABUS: "SYLLABUS",
     MODULES: MRH_MODULE_LOG_SHEET_NAME,
     REVIEWERS: "REVIEWERS",
+    PROFILE: "REVIEWERS",
   };
   if (!logSheetByArea[area])
     return errorResponse("Invalid resource category.", "BAD_REQUEST");
@@ -2886,7 +2873,16 @@ function handleLogResourceDashboardActionRequest(data) {
     .trim()
     .toUpperCase();
   if (
-    ["TAB_OPEN", "FILTER_YEAR", "FILTER_SEMESTER", "FILTER_CATEGORY"]
+    [
+      "TAB_OPEN",
+      "FILTER_YEAR",
+      "FILTER_SEMESTER",
+      "FILTER_CATEGORY",
+      "FOLDER_OPEN",
+      "FOLDER_PAGE",
+      "FOLDER_VIEW",
+      "PDF_DOWNLOAD",
+    ]
       .indexOf(action) < 0
   )
     return errorResponse("Invalid resource action.", "BAD_REQUEST");
@@ -2899,7 +2895,24 @@ function handleLogResourceDashboardActionRequest(data) {
   var token = String(data && data.idToken || "").trim();
   var sessionId = String(data && data.sessionId || "").trim();
   var account = null;
-  if (area === "REVIEWERS" || token || sessionId) {
+  if (area === "REVIEWERS") {
+    if (token || sessionId) {
+      var authorization = authorizeReviewerRequest_(data);
+      if (authorization.error) return authorization.error;
+      account = authorization.account;
+    } else if (action !== "TAB_OPEN") {
+      return errorResponse(
+        "Sign in before recording this Reviewer action.",
+        "UNAUTHORIZED",
+      );
+    }
+  } else if (area === "PROFILE" && sessionId) {
+    var profileSession = verifyReviewerSession_(sessionId);
+    if (profileSession.valid)
+      account = findMRHAccount_(profileSession.email, true) || {
+        email: profileSession.email,
+      };
+  } else if (token || sessionId) {
     var authorization = authorizeReviewerRequest_(data);
     if (authorization.error) return authorization.error;
     account = authorization.account;
@@ -2923,6 +2936,7 @@ function handleLogResourceDashboardActionRequest(data) {
         action === "FILTER_CATEGORY"
           ? detail
           : cleanText(data && data.category, 40) || area,
+      resource: cleanText(data && data.resource, 200),
     },
   );
   return jsonResponse({ status: "success" });
@@ -4948,7 +4962,6 @@ function doPost(e) {
         "request_reviewer_enrollment",
         "get_reviewer_dashboard",
         "get_reviewer_pdf_preview",
-        "get_reviewer_pdf",
         "log_module_access",
         "log_resource_file_click",
         "log_resource_dashboard_action",
@@ -4992,8 +5005,6 @@ function doPost(e) {
       return handleGetReviewerDashboardRequest(data);
     if (requestType === "get_reviewer_pdf_preview")
       return handleGetReviewerPdfPreviewRequest_(data);
-    if (requestType === "get_reviewer_pdf")
-      return handleGetReviewerPdfRequest(data);
     if (requestType === "log_module_access")
       return handleLogModuleAccessRequest(data);
     if (requestType === "log_resource_file_click")

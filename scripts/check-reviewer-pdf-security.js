@@ -46,8 +46,13 @@ assert.match(
 );
 assert.match(
   previewHandler,
-  /authorizeReviewerPdfRequest_\(data\)[\s\S]*?getReviewerPdfSource_\(fileId\)[\s\S]*?DriveApp\.getFileById\(fileId\)\.getBlob\(\)\.getBytes\(\)[\s\S]*?clientProcessing:\s*true[\s\S]*?base64Encode\(sourceBytes\)/,
+  /authorizeReviewerPdfRequest_\(data\)[\s\S]*?getReviewerPdfSource_\(fileId\)[\s\S]*?DriveApp\.getFileById\(fileId\)\.getBlob\(\)\.getBytes\(\)[\s\S]*?deliveryMode:\s*"source"[\s\S]*?base64Encode\(sourceBytes\)/,
   "only the authorized preview route may return validated source bytes for client processing",
+);
+assert.match(
+  previewHandler,
+  /event:\s*"PROTECTED_PDF_VIEW"[\s\S]*?resource:\s*source\.entry\.title/,
+  "protected PDF access logs should identify the resource without recording its Drive ID",
 );
 assert.doesNotMatch(
   backend,
@@ -57,12 +62,12 @@ assert.doesNotMatch(
 assert.match(
   queueHandler,
   /status:\s*"disabled"/,
-  "stale Apps Script triggers must not process or store PDFs",
+  "stale Apps Script triggers must remain harmless and cannot process or store PDFs",
 );
-assert.match(
+assert.doesNotMatch(
   backend,
-  /REVIEWER_PDF_JOB_PROPERTY_PREFIX = "MRH_REVIEWER_PDF_JOB_v1_"[\s\S]*?function setupReviewerPdfDelivery\(\)[\s\S]*?deleteTrigger\(trigger\)[\s\S]*?REVIEWER_PDF_JOB_PROPERTY_PREFIX[\s\S]*?Backend PDF watermarking and Drive output storage are disabled/,
-  "the legacy setup helper must safely retire old triggers and queue state without a Drive folder",
+  /REVIEWER_PDF_JOB_|REVIEWER_PDF_QUEUE_|REVIEWER_PDF_WORKER_|setupReviewerPdfDelivery|watermarkReviewerPdf|reviewerPdfWatermarkIdentity_/,
+  "Apps Script must not retain PDF watermarking, queue, or derivative-setup code",
 );
 assert.doesNotMatch(
   backend,
@@ -71,7 +76,7 @@ assert.doesNotMatch(
 );
 assert.match(
   appCorePreview,
-  /response\.clientProcessing !== true[\s\S]*?watermarkReviewerPdfInWorker\(bytes,[\s\S]*?reviewerPdfPreviewCache\.set/,
+  /response\.deliveryMode !== "source"[\s\S]*?watermarkReviewerPdfInWorker\(bytes,[\s\S]*?reviewerPdfPreviewCache\.set/,
   "the browser must watermark authorized source bytes in a worker and cache only the prepared output",
 );
 assert.match(

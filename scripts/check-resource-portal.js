@@ -5,7 +5,6 @@ const vm = require("node:vm");
 
 const appCore = fs.readFileSync("app-core.js", "utf8");
 const backend = fs.readFileSync("backend/main.js", "utf8");
-const reviewerPdf = fs.readFileSync("backend/ReviewerPdf.gs", "utf8");
 const deckNavigation = fs.readFileSync("deck-nav-core.js", "utf8");
 const index = fs.readFileSync("index.html", "utf8");
 const releaseMetadata = JSON.parse(fs.readFileSync("version.json", "utf8"));
@@ -386,7 +385,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(tabName === "PROFILE"\) \{\s*void initializeReviewerAuth\(\);/,
+  /if \(tabName === "PROFILE"\) \{\s*void logResourceDashboardAction\("PROFILE", "TAB_OPEN"\);\s*void initializeReviewerAuth\(\);/,
   "opening Profile should initialize live name capitalization immediately",
 );
 assert.match(
@@ -1157,7 +1156,6 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(backend, context, { filename: "backend/main.js" });
-vm.runInContext(reviewerPdf, context, { filename: "backend/ReviewerPdf.gs" });
 const readReviewerPdfIndexEntries = context.getReviewerPdfIndexEntries_;
 
 const dashboard = JSON.parse(context.handleGetResourceDashboardRequest().text);
@@ -1385,7 +1383,7 @@ assert.match(
     }).text,
   );
   assert.equal(sourceResponse.status, "success");
-  assert.equal(sourceResponse.clientProcessing, true);
+  assert.equal(sourceResponse.deliveryMode, "source");
   assert.equal(sourceResponse.mimeType, "application/pdf");
   assert.equal(sourceResponse.fullName, "Rita A. Reviewer");
   assert.equal(sourceResponse.email, "reviewer@example.com");
@@ -1402,43 +1400,29 @@ assert.match(
     }).text,
   );
   assert.equal(cachedSourceResponse.cacheHit, true);
-  assert.equal(cachedSourceResponse.clientProcessing, true);
+  assert.equal(cachedSourceResponse.deliveryMode, "source");
   assert.equal(cachedSourceResponse.data, undefined);
   assert.equal(sourceDriveReads, 1, "validated browser cache avoids another source download");
 
-  const scriptProperties = new Map([
-    ["MRH_REVIEWER_PDF_QUEUE_v1", "[]"],
-    ["MRH_REVIEWER_PDF_WORKER_READY_v1", "true"],
-    ["MRH_REVIEWER_PDF_WORKER_SCHEDULED_AT", "123"],
-    ["MRH_REVIEWER_PDF_JOB_v1_old", "{}"],
-  ]);
-  const propertyStore = {
-    getProperties: () => Object.fromEntries(scriptProperties),
-    deleteProperty: (key) => scriptProperties.delete(key),
+  const staleQueueTrigger = {
+    getHandlerFunction: () => "processReviewerPdfQueue",
   };
-  context.getScriptProps = () => propertyStore;
+  let deletedStaleQueueTrigger = false;
   context.LockService = {
     getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }),
   };
-  const scheduledPdfWorkerTriggers = [
-    { getHandlerFunction: () => "processReviewerPdfQueue", getUniqueId: () => "old-trigger" },
-  ];
-  const deletedPdfWorkerTriggers = [];
   context.ScriptApp = {
-    getProjectTriggers: () => scheduledPdfWorkerTriggers.slice(),
-    deleteTrigger(trigger) {
-      deletedPdfWorkerTriggers.push(trigger.getUniqueId());
-      const index = scheduledPdfWorkerTriggers.indexOf(trigger);
-      if (index >= 0) scheduledPdfWorkerTriggers.splice(index, 1);
+    getProjectTriggers: () => [staleQueueTrigger],
+    deleteTrigger: (trigger) => {
+      deletedStaleQueueTrigger = trigger === staleQueueTrigger;
     },
   };
-  const retiredSetup = context.setupReviewerPdfDelivery();
-  assert.equal(retiredSetup.status, "success");
-  assert.match(retiredSetup.message, /watermarking and Drive output storage are disabled/);
-  assert.deepEqual(deletedPdfWorkerTriggers, ["old-trigger"]);
-  assert.equal(scheduledPdfWorkerTriggers.length, 0);
-  assert.equal(scriptProperties.size, 0, "legacy queue state must be cleared without Drive access");
   assert.equal(context.processReviewerPdfQueue().status, "disabled");
+  assert.equal(
+    deletedStaleQueueTrigger,
+    true,
+    "a stale scheduled queue trigger should retire itself without processing PDFs",
+  );
 
   let aclDeleteCount = 0;
   const aclReport = {

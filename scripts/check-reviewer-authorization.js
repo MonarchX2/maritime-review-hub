@@ -966,7 +966,11 @@ assert.equal(
 );
 accountRows[1][4] = originalApprovedStatus;
 assert.equal(
-  post({ type: "sign_out_reviewer", sessionId: approved.sessionId }).status,
+  post({
+    type: "sign_out_reviewer",
+    sessionId: approved.sessionId,
+    eventId: "62345678-1234-4123-8123-123456789abc",
+  }).status,
   "success",
   "explicit sign-out should revoke the application session server-side",
 );
@@ -1424,6 +1428,30 @@ for (const [resourceArea, eventSuffix] of [
     `${resourceArea} tab visits should be recorded in their matching log sheet`,
   );
 }
+const anonymousReviewerTabLog = post({
+  type: "log_resource_dashboard_action",
+  resourceArea: "REVIEWERS",
+  action: "TAB_OPEN",
+  eventId: "71234567-89ab-4cde-8fab-0123456789ab",
+});
+assert.equal(
+  anonymousReviewerTabLog.status,
+  "success",
+  "opening the locked Reviewer tab should be logged without exposing its contents",
+);
+const pendingProfileTabLog = post({
+  type: "log_resource_dashboard_action",
+  resourceArea: "PROFILE",
+  action: "TAB_OPEN",
+  eventId: "81234567-89ab-4cde-8fab-0123456789ab",
+  sessionId: notFound.sessionId,
+});
+assert.equal(pendingProfileTabLog.status, "success");
+assert.equal(
+  appendedRows.REVIEWERS.at(-1)[2],
+  "new-reviewer@example.com",
+  "profile tab views should be attributed to the verified pending account",
+);
 const moduleFilterLog = post({
   type: "log_resource_dashboard_action",
   resourceArea: "MODULES",
@@ -1439,6 +1467,35 @@ assert.deepEqual(
   Array.from(appendedRows.MODULES.at(-1).slice(6, 11)),
   ["FILTER_YEAR", "NAV6", "3", "2", "FINALS"],
   "resource activity should store event, course, year, semester, and category separately",
+);
+const folderOpenLog = post({
+  type: "log_resource_dashboard_action",
+  resourceArea: "MODULES",
+  action: "FOLDER_OPEN",
+  detail: "Crew notes",
+  resource: "Crew notes folder",
+  eventId: "91234567-89ab-4cde-8fab-0123456789ab",
+});
+assert.equal(folderOpenLog.status, "success");
+assert.deepEqual(
+  Array.from(appendedRows.MODULES.at(-1).slice(6, 12)),
+  ["FOLDER_OPEN", "", "", "", "MODULES", "Crew notes folder"],
+  "folder activity should record a user-friendly resource label without a Drive ID",
+);
+const reviewerDownloadLog = post({
+  type: "log_resource_dashboard_action",
+  resourceArea: "REVIEWERS",
+  action: "PDF_DOWNLOAD",
+  detail: "Review guide",
+  resource: "Review guide",
+  idToken: "approved-token",
+  eventId: "a1234567-89ab-4cde-8fab-1123456789ab",
+});
+assert.equal(reviewerDownloadLog.status, "success");
+assert.deepEqual(
+  Array.from(appendedRows.REVIEWERS.at(-1).slice(6, 12)),
+  ["PDF_DOWNLOAD", "", "", "", "REVIEWERS", "Review guide"],
+  "Reviewer PDF downloads should be attributed to the verified account",
 );
 const combinedTermFileLog = post({
   type: "log_resource_file_click",

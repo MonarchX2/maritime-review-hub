@@ -6,7 +6,8 @@ PDF derivatives. No `PDFs` Drive folder is required.
 
 The backend validates the active reviewer session, approval status, indexed
 file ID, PDF type, and protected Drive ancestry, then returns the clean source
-PDF and verified account name/email over HTTPS. The browser worker adds six
+PDF and verified account name/email over HTTPS. It does no PDF parsing or
+transformation. The browser worker adds six
 small horizontal watermarks to each page: one at each corner and one at the
 top and bottom center. The watermarked bytes are used for both online preview
 and repeat downloads.
@@ -52,7 +53,7 @@ worker and library are content-hashed and deployable.
    session, event ID, and indexed file ID.
 2. Apps Script revalidates the account, checks the protected index and Drive
    ancestry, and returns either a source-version cache validation or source
-   bytes plus the verified watermark identity.
+   bytes plus the verified account identity.
 3. A dedicated Web Worker validates and watermarks the PDF off the UI thread.
 4. The website displays the prepared PDF in its in-site preview and reuses
    those same bytes for each download.
@@ -62,8 +63,6 @@ startup and document complexity affect local processing time; the 20-page
 synthetic test is a regression check, not a guarantee for all devices or PDFs.
 Apps Script still performs authorization and source delivery, but no longer
 waits for PDF parsing, watermarking, job polling, or derivative storage.
-
-`setupReviewerPdfDelivery()` is an optional one-time Apps Script cleanup for
-deployments that previously enabled the backend queue. It removes old worker
-triggers and queue properties without accessing or changing Drive folders or
-files. It is not required for regular PDF viewing.
+If an old time-based trigger still calls the retired handler, the compatibility
+stub removes that trigger and returns without processing or saving files. The
+`PDFs` output folder and the former queue cleanup helper are not required.

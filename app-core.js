@@ -5999,6 +5999,7 @@
   let resourceDashboardFolderGeneration = 0;
   let resourceDashboardFolderListing = null;
   let resourceDashboardFolderReturn = null;
+  let resourceDashboardFolderViewMode = "list";
   const reviewerPdfPreviewCache = new Map();
   let reviewerPdfPreviewInFlight = null;
   let reviewerPdfDownloadInFlight = null;
@@ -6914,11 +6915,11 @@
     if (updateNote)
       updateNote.hidden = tabName === "REVIEWERS" && !reviewerSessionId;
     if (tabName === "PROFILE") {
+      void logResourceDashboardAction("PROFILE", "TAB_OPEN");
       void initializeReviewerAuth();
       return true;
     }
-    if (tabName !== "REVIEWERS" || reviewerSessionId)
-      void logResourceDashboardAction(tabName, "TAB_OPEN");
+    void logResourceDashboardAction(tabName, "TAB_OPEN");
     if (tabName === "REVIEWERS") {
       if (!reviewerSessionId) {
         if (!hasExplicitReviewerSignOut()) {
@@ -7056,7 +7057,12 @@
     }
   }
 
-  async function logResourceDashboardAction(resourceArea, action, detail = "") {
+  async function logResourceDashboardAction(
+    resourceArea,
+    action,
+    detail = "",
+    resource = "",
+  ) {
     try {
       const payload = {
         type: "log_resource_dashboard_action",
@@ -7064,6 +7070,7 @@
         resourceArea,
         action,
         detail,
+        resource,
         course: "",
         year:
           action === "FILTER_YEAR"
@@ -7079,6 +7086,11 @@
             : getSelectedResourceCategory(),
       };
       if (reviewerSessionId) payload.sessionId = reviewerSessionId;
+      else if (
+        resourceArea === "PROFILE" &&
+        reviewerPendingEnrollmentSessionId
+      )
+        payload.sessionId = reviewerPendingEnrollmentSessionId;
       await globalScope.AppNetwork.callBackend(payload, {
         timeoutMs: 15000,
         maxRetries: 0,
@@ -7628,6 +7640,12 @@
           const isInSiteDashboardResource =
             resourceDashboardActiveTab === "MODULES" ||
             resourceDashboardActiveTab === "SYLLABUS";
+          const mimeType = String(
+            tab.linkTypes?.[rowIndex]?.[index] || "",
+          );
+          const isFolderResource =
+            isModuleFolderFallback ||
+            mimeType === "application/vnd.google-apps.folder";
           link.href =
             reviewerPdfMatch || isInSiteDashboardResource
               ? "#resource-portal-preview"
@@ -7679,11 +7697,17 @@
               const mimeType = String(
                 tab.linkTypes?.[rowIndex]?.[index] || "",
               );
-              if (mimeType === "application/vnd.google-apps.folder")
+              if (mimeType === "application/vnd.google-apps.folder") {
+                void logResourceDashboardAction(
+                  resourceArea,
+                  "FOLDER_OPEN",
+                  fileName,
+                  fileName,
+                );
                 void previewResourceFile(fileId, fileName, {
                   folderId: fileId,
                 });
-              else void previewResourceFile(fileId, fileName);
+              } else void previewResourceFile(fileId, fileName);
             });
           }
           if (fileId) {
@@ -7724,17 +7748,18 @@
                 });
               }
               const clickedLink = event.currentTarget;
-              void logResourceFileClick(
-                clickedLink.dataset.logResourceArea,
-                clickedLink.dataset.logFileName,
-                clickedLink.dataset.logFileId,
-                {
-                course: clickedLink.dataset.logCourse,
-                year: clickedLink.dataset.logYear,
-                semester: clickedLink.dataset.logSemester,
-                category: clickedLink.dataset.logCategory,
-                },
-              );
+              if (!isFolderResource)
+                void logResourceFileClick(
+                  clickedLink.dataset.logResourceArea,
+                  clickedLink.dataset.logFileName,
+                  clickedLink.dataset.logFileId,
+                  {
+                    course: clickedLink.dataset.logCourse,
+                    year: clickedLink.dataset.logYear,
+                    semester: clickedLink.dataset.logSemester,
+                    category: clickedLink.dataset.logCategory,
+                  },
+                );
             });
           }
           if (showResourceChangeBadge) {
@@ -7787,6 +7812,32 @@
             cell.append(" ", popularIcon);
           }
         }
+        if (
+          columnName === "course" &&
+          resourceDashboardSelectedSemester === "all" &&
+          yearColumnIndex >= 0
+        ) {
+          const yearValue = String(values[yearColumnIndex] || "").trim();
+          const combinedTerm = /^(\d+)\s*[./-]\s*(\d+)$/.exec(yearValue);
+          const year = combinedTerm ? combinedTerm[1] : yearValue;
+          const semester = combinedTerm
+            ? combinedTerm[2]
+            : semesterColumnIndex >= 0
+              ? String(values[semesterColumnIndex] || "").trim()
+              : "";
+          if (/^\d+$/.test(year) && /^\d+$/.test(semester)) {
+            const courseLabel = document.createElement("div");
+            courseLabel.className = "resource-dashboard-course-label";
+            while (cell.firstChild)
+              courseLabel.appendChild(cell.firstChild);
+            const termLabel = createResourceDashboardElement(
+              "span",
+              "resource-dashboard-course-term",
+              `BSMT ${year}.${semester}`,
+            );
+            cell.append(courseLabel, termLabel);
+          }
+        }
         row.appendChild(cell);
       });
       return row;
@@ -7805,12 +7856,12 @@
     }[resourceDashboardSelectedYear];
     const selectedTerm =
       resourceDashboardSelectedYear === "all"
-        ? "All Year Levels"
+        ? "All BSMT Year levels"
         : resourceDashboardSelectedSemester === "all"
           ? selectedYearName
-            ? `${selectedYearName} Year`
-            : `Year Level ${resourceDashboardSelectedYear} (all semesters)`
-          : `Year Level ${resourceDashboardSelectedYear}.${resourceDashboardSelectedSemester}`;
+            ? `BSMT ${selectedYearName} Year`
+            : `BSMT Year ${resourceDashboardSelectedYear}`
+          : `BSMT ${resourceDashboardSelectedYear}.${resourceDashboardSelectedSemester}`;
     if (
       resourceDashboardActiveTab === "REVIEWERS" &&
       !nonEmptyRows.length
@@ -9088,6 +9139,10 @@
     });
     updateReviewerEmailNameWarning();
     if (authStatus) authStatus.textContent = "";
+    if (accountStatus === "TRUE") {
+      void loadReviewerDashboard();
+      if (!resourceDashboardData) void loadResourceDashboard({ silent: true });
+    }
     if (accountStatus !== "TRUE" && resourceDashboardActiveTab === "REVIEWERS")
       openResourceDashboardTab("PROFILE");
     return accountStatus === "TRUE";
@@ -9435,7 +9490,11 @@
       (explicit ? getStoredReviewerSessionId() : "");
     if (explicit && sessionId) {
       void globalScope.AppNetwork.callBackend(
-        { type: "sign_out_reviewer", sessionId },
+        {
+          type: "sign_out_reviewer",
+          sessionId,
+          eventId: createResourceEventId(),
+        },
         { timeoutMs: 15000, maxRetries: 0 },
       ).catch((error) => {
         const status = document.getElementById("resource-reviewer-auth-status");
@@ -10568,6 +10627,12 @@
         document.body.appendChild(link);
         link.click();
         link.remove();
+        void logResourceDashboardAction(
+          "REVIEWERS",
+          "PDF_DOWNLOAD",
+          getReviewerPdfDisplayName(activePdf.fileName),
+          getReviewerPdfDisplayName(activePdf.fileName),
+        );
         globalScope.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
         reviewerPdfDownloadPreparationPending = false;
         globalScope.__MRH_PDF_DOWNLOAD_ACTIVE = false;
@@ -10644,35 +10709,73 @@
     resourceDashboardFolderListing = listing;
     panel.replaceChildren();
 
-    const breadcrumbs = document.createElement("nav");
-    breadcrumbs.className = "resource-dashboard-folder-breadcrumbs";
-    breadcrumbs.setAttribute("aria-label", "Folder path");
-    listing.breadcrumbs.forEach((crumb, index) => {
-      if (index) {
-        const separator = document.createElement("span");
-        separator.textContent = "/";
-        separator.setAttribute("aria-hidden", "true");
-        breadcrumbs.appendChild(separator);
-      }
-      if (index === listing.breadcrumbs.length - 1) {
-        const current = document.createElement("span");
-        current.textContent = crumb.name;
-        current.setAttribute("aria-current", "location");
-        breadcrumbs.appendChild(current);
-      } else {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = crumb.name;
-        button.addEventListener("click", () => {
-          void loadResourceDashboardFolderPreview(crumb.id, frame, status);
-        });
-        breadcrumbs.appendChild(button);
-      }
+    const controls = document.createElement("div");
+    controls.className = "resource-dashboard-folder-controls";
+    if (listing.breadcrumbs.length > 1) {
+      const parentFolder = listing.breadcrumbs[listing.breadcrumbs.length - 2];
+      const backButton = document.createElement("button");
+      backButton.type = "button";
+      backButton.className = "resource-dashboard-folder-back";
+      backButton.textContent = "Up one level";
+      backButton.addEventListener("click", () => {
+        void logResourceDashboardAction(
+          "MODULES",
+          "FOLDER_OPEN",
+          "Up one level",
+          String(parentFolder.name || ""),
+        );
+        void loadResourceDashboardFolderPreview(
+          parentFolder.id,
+          frame,
+          status,
+        );
+      });
+      controls.appendChild(backButton);
+    }
+    const viewToggle = document.createElement("div");
+    viewToggle.className = "resource-dashboard-folder-view-toggle";
+    viewToggle.setAttribute("role", "group");
+    viewToggle.setAttribute("aria-label", "Folder view");
+    [
+      ["list", "List view", "fa-list"],
+      ["grid", "Grid view", "fa-grip"],
+    ].forEach(([mode, label, iconName]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.setAttribute("aria-label", label);
+      button.setAttribute(
+        "aria-pressed",
+        String(resourceDashboardFolderViewMode === mode),
+      );
+      button.classList.toggle(
+        "is-active",
+        resourceDashboardFolderViewMode === mode,
+      );
+      const icon = document.createElement("i");
+      icon.className = `fa-solid ${iconName}`;
+      icon.setAttribute("aria-hidden", "true");
+      button.appendChild(icon);
+      button.addEventListener("click", () => {
+        resourceDashboardFolderViewMode = mode;
+        void logResourceDashboardAction(
+          "MODULES",
+          "FOLDER_VIEW",
+          mode,
+          String(listing.folder?.name || ""),
+        );
+        renderResourceDashboardFolderListing(
+          resourceDashboardFolderListing,
+          frame,
+          status,
+        );
+      });
+      viewToggle.appendChild(button);
     });
-    panel.appendChild(breadcrumbs);
+    controls.appendChild(viewToggle);
+    panel.appendChild(controls);
 
     const items = document.createElement("ul");
-    items.className = "resource-dashboard-folder-items";
+    items.className = `resource-dashboard-folder-items is-${resourceDashboardFolderViewMode}`;
     listing.items.forEach((item) => {
       const row = document.createElement("li");
       const button = document.createElement("button");
@@ -10690,9 +10793,18 @@
       button.addEventListener("click", () => {
         if (button.disabled) return;
         if (item.type === "folder") {
+          void logResourceDashboardAction(
+            "MODULES",
+            "FOLDER_OPEN",
+            item.name,
+            item.name,
+          );
           void loadResourceDashboardFolderPreview(item.id, frame, status);
           return;
         }
+        void logResourceFileClick("MODULES", item.name, item.id, {
+          category: "MODULES",
+        });
         resourceDashboardFolderReturn = resourceDashboardFolderListing;
         void previewResourceFile(item.id, item.name, {
           dashboardFolderFile: true,
@@ -10730,6 +10842,12 @@
       loadMore.className = "resource-dashboard-folder-load-more";
       loadMore.textContent = "Load more";
       loadMore.addEventListener("click", () => {
+        void logResourceDashboardAction(
+          "MODULES",
+          "FOLDER_PAGE",
+          "Load more",
+          String(listing.folder?.name || ""),
+        );
         void loadResourceDashboardFolderPreview(
           listing.folder.id,
           frame,
@@ -11070,7 +11188,7 @@
       if (
         reviewer &&
         (responseMimeType !== "application/pdf" ||
-          (!isReviewerCacheHit && response.clientProcessing !== true))
+          (!isReviewerCacheHit && response.deliveryMode !== "source"))
       )
         throw new Error(
           "The PDF preview service did not authorize browser-side watermarking.",

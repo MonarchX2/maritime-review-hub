@@ -1,7 +1,6 @@
 backend/*
 !backend/main.js
 !backend/appsscript.json
-!backend/ReviewerPdf.gs
 !backend/PDFLib.js
 old/
 tests/

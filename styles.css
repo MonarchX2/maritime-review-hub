@@ -1791,17 +1791,34 @@ button:active:not(:disabled) {
   color: var(--folder-preview-text);
 }
 
-.resource-dashboard-folder-breadcrumbs {
+.resource-dashboard-folder-controls {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0.45rem;
+  justify-content: space-between;
+  gap: 0.75rem;
   margin-bottom: 0.75rem;
-  color: var(--folder-preview-muted);
-  font-size: 0.875rem;
 }
 
-.resource-dashboard-folder-breadcrumbs button,
+.resource-dashboard-folder-view-toggle {
+  display: inline-flex;
+  gap: 0.2rem;
+  margin-left: auto;
+  padding: 0.2rem;
+  border: 1px solid var(--folder-preview-border);
+  border-radius: 0.55rem;
+}
+
+.resource-dashboard-folder-view-toggle button {
+  min-width: 2.25rem;
+  color: var(--folder-preview-muted);
+}
+
+.resource-dashboard-folder-view-toggle button.is-active {
+  color: var(--folder-preview-accent);
+  background: var(--folder-preview-hover);
+}
+
+.resource-dashboard-folder-controls button,
 .resource-dashboard-folder-items button,
 .resource-dashboard-folder-load-more {
   border: 0;
@@ -1813,7 +1830,7 @@ button:active:not(:disabled) {
   cursor: pointer;
 }
 
-.resource-dashboard-folder-breadcrumbs button:hover,
+.resource-dashboard-folder-controls button:hover,
 .resource-dashboard-folder-items button:hover,
 .resource-dashboard-folder-load-more:hover {
   background: var(--folder-preview-hover);
@@ -1855,6 +1872,32 @@ button:active:not(:disabled) {
 
 .resource-dashboard-folder-items li button span {
   overflow-wrap: anywhere;
+}
+
+.resource-dashboard-folder-items.is-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr));
+  gap: 0.75rem;
+}
+
+.resource-dashboard-folder-items.is-grid li {
+  min-height: 7rem;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--folder-preview-border);
+  border-radius: 0.65rem;
+}
+
+.resource-dashboard-folder-items.is-grid li button {
+  align-items: flex-start;
+  width: 100%;
+  padding: 0;
+}
+
+.resource-dashboard-folder-items.is-grid li button i {
+  margin-top: 0.2rem;
 }
 
 .resource-dashboard-folder-item-type {
@@ -3143,6 +3186,18 @@ button:active:not(:disabled) {
 .resource-dashboard-table td.resource-dashboard-column-course {
   text-align: right;
   font-weight: 700;
+}
+
+.resource-dashboard-course-label,
+.resource-dashboard-course-term {
+  display: block;
+  line-height: 1.2;
+}
+
+.resource-dashboard-course-term {
+  margin: 0;
+  font-size: 0.88em;
+  font-weight: 400;
 }
 
 .resource-dashboard-table .resource-dashboard-link-cell {

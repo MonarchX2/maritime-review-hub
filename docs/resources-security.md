@@ -7,7 +7,9 @@ tabs. Folder listing and file preview requests are restricted to descendants
 of the public resource root, exclude protected Reviewer folders, and paginate
 large folders. Drive shortcuts are resolved only when their targets remain
 inside the same public resource tree; shortcuts to protected or out-of-tree
-targets are excluded. Files larger than the 32 MiB in-site preview transport
+targets are excluded. Nested folder previews hide the full breadcrumb path,
+offer one-level-up navigation and list/grid views, and use file-type icons
+instead of requesting external thumbnail URLs. Files larger than the 32 MiB in-site preview transport
 limit remain listed but cannot be previewed. Reviewer dashboard rows are returned only
 after server-side account authorization. A folder name classifies resources;
 it does not authorize anyone to access them.
@@ -135,9 +137,10 @@ derivative writes, but the browser must receive the clean source to watermark
 it. HTTPS encrypts network transit; it does not prevent an authorized user
 from inspecting source bytes in browser developer tools or a modified client.
 Encrypting bytes for the same browser would not change that. The PDF output
-folder is not used or required. `setupReviewerPdfDelivery()` is retained only
-as an optional one-time cleanup helper to remove old queue triggers and stale
-Script Properties; it does not access or change Drive folders or files.
+folder is not used or required. A minimal compatibility handler lets any old
+time-based trigger retire itself, then returns without reading, processing, or
+writing PDF data. The queue, output-folder configuration, and separate cleanup
+helper are removed.
 
 The `pdf-lib` 1.17.1 (MIT licensed) browser worker stamps each page with the
 verified account name and email at six small horizontal placements: the four
@@ -247,6 +250,14 @@ To initialize sign-in and access logging:
    current account status directly, bypassing the short-lived account lookup
    cache. New access-log timestamps display in Philippine local time
    (`Asia/Manila`).
+
+The portal records section opens, filter changes, resource clicks and previews,
+folder navigation/pagination, Reviewer PDF downloads, sign-in, sign-out, and
+profile submissions/updates in the corresponding access-log tabs. Logged-in
+actions are associated with the verified account. Modules and Syllabus are
+available before reviewer sign-in, so actions taken there without a valid
+reviewer session are recorded without an email identity; the website does not
+collect a separate identity merely to use public resources.
 
 If Apps Script asks for OAuth scopes to be entered manually, add one scope per
 line in the Apps Script project manifest's `oauthScopes` array:

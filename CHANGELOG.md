@@ -1,5 +1,19 @@
 # Changelog
 
+## 26.10.35 - 2026-10-17
+
+### Improved
+
+- Preload Reviewer data as soon as approved access is verified, alongside the
+  public Modules and Syllabus dashboard data.
+- Hide full folder paths, add compact Up navigation and list/grid folder views,
+  and show a non-bold BSMT term beneath course names when Semester is All.
+- Expand access logs to include profile views, sign-out, folder navigation and
+  pagination, and Reviewer PDF download actions.
+- Remove the unused backend PDF identity helper, queue setup, legacy route, and
+  duplicate error helper; keep only a small self-retiring stub for stale queue
+  triggers.
+
 ## 26.10.34 - 2026-10-17
 
 ### Improved

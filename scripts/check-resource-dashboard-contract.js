@@ -29,6 +29,11 @@ assert.match(
 );
 assert.match(
   appCore,
+  /if \(accountStatus === "TRUE"\) \{\s*void loadReviewerDashboard\(\);\s*if \(!resourceDashboardData\) void loadResourceDashboard\(\{ silent: true \}\);/,
+  "approved access should start preloading Reviewer data alongside public dashboard data",
+);
+assert.match(
+  appCore,
   /function activateResourceDashboardFilters\(tabName\)[\s\S]*?resourceDashboardSelectedYears\[tabName\][\s\S]*?resourceDashboardSelectedSemesters\[tabName\]/,
   "switching sections should restore that section's own Year and Semester filters",
 );
@@ -170,6 +175,58 @@ assert.match(
   resourceStyles,
   /\.resource-dashboard-segmented-control::before[\s\S]*?left 420ms[\s\S]*?prefers-reduced-motion:\s*reduce[\s\S]*?transition:\s*none/,
   "the active filter highlight should slide at a relaxed speed while respecting reduced-motion settings",
+);
+const folderRenderer =
+  appCore.match(
+    /function renderResourceDashboardFolderListing\(listing, frame, status\)[\s\S]*?\n  \}/,
+  )?.[0] || "";
+assert.match(
+  folderRenderer,
+  /Up one level[\s\S]*?aria-label", "Folder view"[\s\S]*?\["list", "List view"[\s\S]*?\["grid", "Grid view"/,
+  "folder previews should hide the full path while retaining parent navigation and list/grid controls",
+);
+assert.doesNotMatch(
+  folderRenderer,
+  /listing\.breadcrumbs\.forEach/,
+  "folder previews must not render the full breadcrumb path",
+);
+assert.match(
+  appCore,
+  /resourceDashboardSelectedSemester === "all"[\s\S]*?resource-dashboard-course-term[\s\S]*?`BSMT \$\{year\}\.\$\{semester\}`/,
+  "course rows should show their BSMT term as a secondary line when Semester is All",
+);
+assert.match(
+  appCore,
+  /"All BSMT Year levels"[\s\S]*?`BSMT \$\{selectedYearName\} Year`[\s\S]*?`BSMT \$\{resourceDashboardSelectedYear\}\.\$\{resourceDashboardSelectedSemester\}`/,
+  "filter summaries should use the requested BSMT year and term labels",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-course-term\s*\{[^}]*font-weight:\s*400;/,
+  "the BSMT subtitle should be non-bold",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-folder-items\.is-grid/,
+  "folder grid mode should be styled",
+);
+["FOLDER_OPEN", "FOLDER_PAGE", "FOLDER_VIEW", "PDF_DOWNLOAD"].forEach(
+  (action) => {
+    assert.ok(
+      appCore.includes(`"${action}"`),
+      `Student Portal action ${action} should be logged`,
+    );
+  },
+);
+assert.match(
+  backend,
+  /"FOLDER_OPEN"[\s\S]*?"FOLDER_PAGE"[\s\S]*?"FOLDER_VIEW"[\s\S]*?"PDF_DOWNLOAD"[\s\S]*?resource: cleanText\(data && data\.resource, 200\)/,
+  "the backend must accept and persist detailed Student Portal action events",
+);
+assert.match(
+  backend,
+  /function handleRevokeReviewerSessionRequest\(data\)[\s\S]*?appendMRHAccessLog_\("REVIEWERS", account, data\.eventId, "SIGN_OUT"\)/,
+  "successful reviewer sign-out attempts should be audited in the access logs",
 );
 const fileIdHelper = appCore.match(
   /function getResourceDashboardFileId\(value\) \{[\s\S]*?\n  \}/,
@@ -1255,13 +1312,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /resourceDashboardSelectedYear === "all"\s*\?\s*"All Year Levels"/,
-  "the dashboard status should say All Year Levels instead of all.1",
+  /resourceDashboardSelectedYear === "all"\s*\?\s*"All BSMT Year levels"/,
+  "the dashboard status should use the requested All BSMT Year levels label",
 );
 assert.match(
   appCore,
-  /const selectedYearName = \{\s*1: "First",\s*2: "Second",\s*3: "Third",\s*\}\[resourceDashboardSelectedYear\][\s\S]*?\?\s*`\$\{selectedYearName\} Year`/,
-  "all-semester status should use First, Second, or Third Year labels",
+  /const selectedYearName = \{\s*1: "First",\s*2: "Second",\s*3: "Third",\s*\}\[resourceDashboardSelectedYear\][\s\S]*?\?\s*`BSMT \$\{selectedYearName\} Year`/,
+  "all-semester status should use BSMT First, Second, or Third Year labels",
 );
 assert.match(
   appCore,
@@ -1390,7 +1447,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /resourceDashboardActiveTab = tabName;[\s\S]*?dashboardContent\.hidden = tabName === "PROFILE"[\s\S]*?profileScreen\.hidden = tabName !== "PROFILE"[\s\S]*?lockedPanel\.hidden = tabName !== "REVIEWERS"[\s\S]*?if \(tabName === "PROFILE"\) \{\s*void initializeReviewerAuth\(\)[\s\S]*?if \(tabName === "REVIEWERS"\) \{\s*if \(!reviewerSessionId\) \{[\s\S]*?lockedPanel\.hidden = false[\s\S]*?setResourceDashboardStatus\(""\)/,
+  /resourceDashboardActiveTab = tabName;[\s\S]*?dashboardContent\.hidden = tabName === "PROFILE"[\s\S]*?profileScreen\.hidden = tabName !== "PROFILE"[\s\S]*?lockedPanel\.hidden = tabName !== "REVIEWERS"[\s\S]*?if \(tabName === "PROFILE"\) \{\s*void logResourceDashboardAction\("PROFILE", "TAB_OPEN"\);\s*void initializeReviewerAuth\(\)[\s\S]*?if \(tabName === "REVIEWERS"\) \{\s*if \(!reviewerSessionId\) \{[\s\S]*?lockedPanel\.hidden = false[\s\S]*?setResourceDashboardStatus\(""\)/,
   "signed-out users should see the locked Reviewer message in place without being redirected or shown a busy icon",
 );
 assert.match(
@@ -2062,8 +2119,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function renderResourceDashboardFolderListing\([\s\S]*?const breadcrumbs = document\.createElement\("nav"\)[\s\S]*?resource-dashboard-folder-load-more/,
-  "the in-site folder viewer must provide breadcrumbs and load-more navigation",
+  /function renderResourceDashboardFolderListing\([\s\S]*?Up one level[\s\S]*?resource-dashboard-folder-load-more/,
+  "the in-site folder viewer must hide the full path, retain parent navigation, and support pagination",
 );
 assert.match(
   backend,
@@ -2323,8 +2380,8 @@ assert.match(
 );
 assert.match(
   network,
-  /restore_reviewer_session:[\s\S]*?required: \["sessionId"\][\s\S]*?sign_out_reviewer:[\s\S]*?required: \["sessionId"\]/,
-  "the backend client contract should expose validated session restore and revocation",
+  /restore_reviewer_session:[\s\S]*?required: \["sessionId"\][\s\S]*?sign_out_reviewer:[\s\S]*?required: \["sessionId", "eventId"\]/,
+  "the backend client contract should expose validated session restore and auditable revocation",
 );
 const backendPath = require("node:path").join(
   __dirname,
