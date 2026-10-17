@@ -145,7 +145,10 @@ four corners and the top and bottom centers. Generated watermarked files are
 kept in the configured Drive output folder as requested; job metadata expires
 after ten minutes, but does not delete those archived PDFs.
 `setupReviewerPdfDelivery()` verifies that the output folder is private to the
-script owner before enabling the worker. Browser POSTs use `cache: "no-store"`;
+script owner before enabling the worker. If setup rejects the folder,
+`auditReviewerPdfOutputFolderPrivacy()` reports effective permissions on the
+configured folder and each ancestor without modifying access; remove
+unintended Drive sharing and rerun the audit before setup. Browser POSTs use `cache: "no-store"`;
 personalized output is not placed in shared Apps Script or dashboard caches.
 
 The backend currently limits source files to 8 MiB, watermarked output to

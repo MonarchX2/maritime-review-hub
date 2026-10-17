@@ -114,8 +114,8 @@ assert.match(
 );
 assert.match(
   setupHandler,
-  /reviewerPdfOutputFolderIsPrivate_\(\)[\s\S]*?setProperty\(REVIEWER_PDF_WORKER_READY_PROPERTY, "true"\)/,
-  "the worker setup must verify the private output folder before enabling PDF delivery",
+  /reviewerPdfOutputFolderPrivacyReport_\(\)[\s\S]*?privacyReport\.private[\s\S]*?auditReviewerPdfOutputFolderPrivacy\(\)[\s\S]*?setProperty\(REVIEWER_PDF_WORKER_READY_PROPERTY, "true"\)/,
+  "worker setup must run the diagnostic privacy report and remain disabled if it fails",
 );
 assert.match(
   backend,
@@ -149,8 +149,8 @@ assert.match(
 );
 assert.match(
   backend,
-  /function reviewerPdfOutputFolderIsPrivate_\(\)[\s\S]*?function isOwnerOnly\(targetId\)[\s\S]*?permissions\.length === 1[\s\S]*?permission\.type === "user"[\s\S]*?permission\.role === "owner"/,
-  "the configured Drive folder and its ancestors must be owner-only",
+  /function reviewerPdfOutputFolderPrivacyReport_\(\)[\s\S]*?listReviewerPdfPermissions_\(folderId\)[\s\S]*?permission\.type === "user"[\s\S]*?permission\.role === "owner"[\s\S]*?Unexpected[\s\S]*?function reviewerPdfOutputFolderIsPrivate_\(\)[\s\S]*?reviewerPdfOutputFolderPrivacyReport_\(\)\.private/,
+  "the configured Drive folder and its ancestors must be owner-only and report offending permissions",
 );
 assert.match(
   backend,

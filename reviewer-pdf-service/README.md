@@ -57,9 +57,14 @@ Watermarks and disabled page-level selection deter casual copying but cannot
 prevent screenshots, screen recording, or all behavior of native PDF viewers.
 
 The output folder must be private to the Apps Script execution owner.
-`setupReviewerPdfDelivery()` verifies that condition and enables the
-background worker; run it as the script owner after deployment. If the folder
-is not private, setup fails and PDF delivery remains disabled. Generated
+`auditReviewerPdfOutputFolderPrivacy()` returns the output folder and each
+ancestor's effective Drive permissions, identifying the folder and any
+unexpected user, domain, or public access. Run it as the script owner when
+setup reports a privacy failure, remove unwanted sharing in Drive, then rerun
+the audit. The helper is read-only; it does not change permissions.
+`setupReviewerPdfDelivery()` independently verifies that condition and enables
+the background worker; run it as the script owner after the audit passes. If
+the folder is not private, setup fails and PDF delivery remains disabled. Generated
 derivatives are intentionally persistent to preserve the requested Drive
 archive; job metadata expires after ten minutes but does not delete the saved
 PDF.

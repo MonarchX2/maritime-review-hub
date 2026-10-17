@@ -2354,17 +2354,18 @@ function listReviewerPdfPermissions_(fileId) {
   return permissions;
 }
 
-function reviewerPdfOutputFolderIsPrivate_() {
+function reviewerPdfOutputFolderPrivacyReport_() {
   var outputOwner = String(Session.getEffectiveUser().getEmail() || "").toLowerCase();
-  if (!outputOwner) return false;
-  function isOwnerOnly(targetId) {
-    var permissions = listReviewerPdfPermissions_(targetId);
-    return permissions.length === 1 &&
-      permissions.every(function (permission) {
-        return permission.type === "user" &&
-          String(permission.emailAddress || "").toLowerCase() === outputOwner &&
-          permission.role === "owner";
-      });
+  var report = {
+    status: "error",
+    private: false,
+    expectedOwner: outputOwner,
+    folders: [],
+    problems: [],
+  };
+  if (!outputOwner) {
+    report.problems.push("The Apps Script execution owner email is unavailable.");
+    return report;
   }
   var pendingFolderIds = [REVIEWER_PDF_OUTPUT_FOLDER_ID];
   var visitedFolderIds = Object.create(null);
@@ -2373,22 +2374,100 @@ function reviewerPdfOutputFolderIsPrivate_() {
     if (visitedFolderIds[folderId]) continue;
     visitedFolderIds[folderId] = true;
     var folder = Drive.Files.get(folderId, {
-      fields: "id,mimeType,parents,trashed",
+      fields: "id,name,mimeType,parents,trashed,driveId,owners(emailAddress)",
       supportsAllDrives: true,
     });
+    var folderReport = {
+      id: String(folder && folder.id || folderId),
+      name: String(folder && folder.name || ""),
+      driveId: String(folder && folder.driveId || ""),
+      mimeType: String(folder && folder.mimeType || ""),
+      trashed: Boolean(folder && folder.trashed),
+      owners: (folder && folder.owners || []).map(function (owner) {
+        return String(owner.emailAddress || "").toLowerCase();
+      }),
+      permissions: [],
+      problems: [],
+    };
+    report.folders.push(folderReport);
+    if (!folder || folder.trashed) {
+      folderReport.problems.push("Folder is missing or trashed.");
+    } else if (folder.mimeType !== "application/vnd.google-apps.folder") {
+      folderReport.problems.push("Item is not a Drive folder.");
+    }
+    if (folder && folder.driveId)
+      folderReport.problems.push("Folder is in a shared drive, not the owner's private My Drive.");
+
+    var permissions = listReviewerPdfPermissions_(folderId).filter(
+      function (permission) {
+        return permission.deleted !== true;
+      },
+    );
+    folderReport.permissions = permissions.map(function (permission) {
+      var permissionDetails = permission.permissionDetails || [];
+      var ownerPermission =
+        permission.type === "user" &&
+        String(permission.emailAddress || "").toLowerCase() === outputOwner &&
+        permission.role === "owner";
+      var details = {
+        type: String(permission.type || ""),
+        role: String(permission.role || ""),
+        emailAddress: String(permission.emailAddress || "").toLowerCase(),
+        domain: String(permission.domain || "").toLowerCase(),
+        inherited: permissionDetails.some(function (detail) {
+          return detail.inherited === true;
+        }),
+        inheritedFrom: permissionDetails.map(function (detail) {
+          return String(detail.inheritedFrom || "");
+        }).filter(Boolean),
+      };
+      if (!ownerPermission) {
+        var accessLabel = details.type === "user"
+          ? "user " + (details.emailAddress || "(email unavailable)")
+          : details.type + (details.domain ? " " + details.domain : "");
+        folderReport.problems.push(
+          "Unexpected " + details.role + " access for " + accessLabel +
+          (details.inherited ? " (inherited)." : "."),
+        );
+      }
+      return details;
+    });
     if (
-      !folder ||
-      folder.trashed ||
-      folder.mimeType !== "application/vnd.google-apps.folder" ||
-      !isOwnerOnly(folderId)
+      folderReport.permissions.filter(function (permission) {
+        return permission.type === "user" &&
+          permission.emailAddress === outputOwner &&
+          permission.role === "owner";
+      }).length !== 1
     )
-      return false;
-    (folder.parents || []).forEach(function (parentId) {
+      folderReport.problems.push("Expected exactly one owner permission for the Apps Script execution owner.");
+    if (folderReport.problems.length)
+      report.problems = report.problems.concat(
+        folderReport.problems.map(function (problem) {
+          return folderReport.name + " (" + folderReport.id + "): " + problem;
+        }),
+      );
+    (folder && folder.parents || []).forEach(function (parentId) {
       if (!visitedFolderIds[parentId])
         pendingFolderIds.push(String(parentId));
     });
   }
-  return pendingFolderIds.length === 0;
+  if (pendingFolderIds.length)
+    report.problems.push("Folder ancestry exceeds the 100-folder safety limit or contains a cycle.");
+  report.private = report.problems.length === 0 &&
+    report.folders.length > 0 &&
+    pendingFolderIds.length === 0;
+  report.status = report.private ? "success" : "error";
+  return report;
+}
+
+function reviewerPdfOutputFolderIsPrivate_() {
+  return reviewerPdfOutputFolderPrivacyReport_().private;
+}
+
+function auditReviewerPdfOutputFolderPrivacy() {
+  var report = reviewerPdfOutputFolderPrivacyReport_();
+  Logger.log(JSON.stringify(report));
+  return report;
 }
 
 function reviewerPdfOutputIsPrivate_(fileId) {
@@ -2562,8 +2641,14 @@ function setupReviewerPdfDelivery() {
   if (!lock.tryLock(10000))
     throw new Error("Reviewer PDF setup is busy. Try again.");
   try {
-    if (!reviewerPdfOutputFolderIsPrivate_())
-      throw new Error("The configured PDF output folder must be private to the script owner.");
+    var privacyReport = reviewerPdfOutputFolderPrivacyReport_();
+    if (!privacyReport.private)
+      throw new Error(
+        "The configured PDF output folder must be private to the script owner. " +
+        "Run auditReviewerPdfOutputFolderPrivacy() and remove the listed non-owner sharing " +
+        "from the output folder and any parent folders. Details: " +
+        privacyReport.problems.slice(0, 10).join(" "),
+      );
     ScriptApp.getProjectTriggers().forEach(function (trigger) {
       if (trigger.getHandlerFunction() === REVIEWER_PDF_WORKER_HANDLER)
         ScriptApp.deleteTrigger(trigger);

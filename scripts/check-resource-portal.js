@@ -1455,12 +1455,45 @@ assert.match(
   const enabledSetup = context.setupReviewerPdfDelivery();
   assert.equal(enabledSetup.status, "success");
   assert.match(enabledSetup.message, /processing is enabled/);
+  const privateFolderAudit = context.auditReviewerPdfOutputFolderPrivacy();
+  assert.equal(privateFolderAudit.private, true);
+  assert.equal(privateFolderAudit.folders.length, 1);
   assert.ok(
     [...scriptProperties.keys()].some((key) => /WORKER_READY/.test(key)),
     "setup must enable the worker only after the private output folder check",
   );
   assert.equal(scheduledPdfWorkerTriggers.length, 0);
   assert.deepEqual(deletedPdfWorkerTriggers, ["old-trigger"]);
+  context.Drive.Permissions.list = () => ({
+    permissions: [
+      {
+        type: "user",
+        emailAddress: "owner@example.com",
+        role: "owner",
+      },
+      {
+        type: "anyone",
+        role: "reader",
+      },
+    ],
+  });
+  const sharedFolderAudit = context.auditReviewerPdfOutputFolderPrivacy();
+  assert.equal(sharedFolderAudit.private, false);
+  assert.match(
+    sharedFolderAudit.problems.join(" "),
+    /\(10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl\): Unexpected reader access for anyone/i,
+    "the audit should identify the folder ID and broad permission type",
+  );
+  assert.throws(
+    () => context.setupReviewerPdfDelivery(),
+    /Run auditReviewerPdfOutputFolderPrivacy\(\)/,
+    "setup should direct the owner to the permission diagnostic",
+  );
+  assert.equal(
+    [...scriptProperties.keys()].some((key) => /WORKER_READY/.test(key)),
+    false,
+    "a failing privacy check must leave PDF delivery disabled",
+  );
 
   let aclDeleteCount = 0;
   const aclReport = {
