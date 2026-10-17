@@ -1,5 +1,15 @@
 # Changelog
 
+## 26.10.17-11 - 2026-10-17
+
+### Improved
+
+- Reuse recently previewed Reviewer PDF bytes within the current tab after
+  reauthorizing the reviewer and verifying the source version.
+- Disable Reviewer category filters that have no resources for the selected
+  year and semester, and avoid showing a misleading filtered-results empty
+  state.
+
 ## 26.10.17-10 - 2026-10-17
 
 ### Fixed

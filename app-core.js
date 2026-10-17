@@ -6025,6 +6025,7 @@
   let resourcePortalPreviewObjectUrl = "";
   let resourcePortalPreviewIsReviewer = false;
   let resourcePortalReviewerPdf = null;
+  const reviewerPdfPreviewCache = new Map();
   let reviewerPdfPreviewInFlight = null;
   let reviewerPdfDownloadInFlight = null;
   let resourceDashboardData = null;
@@ -7039,60 +7040,10 @@
     const hasCategoryFilter = ["MODULES", "REVIEWERS"].includes(
       resourceDashboardActiveTab,
     );
-    const availableCategories = new Set(
-      Object.entries(phaseColumnIndexes)
-        .filter(([, columnIndex]) =>
-          nonEmptyRows.some(({ values, rowIndex }) =>
-            hasCellValue(values, rowIndex, columnIndex),
-          ),
-        )
-        .map(([category]) => category),
-    );
     const showCategoryFilter =
       hasCategoryFilter || resourceDashboardActiveTab === "SYLLABUS";
-    let selectedCategory = getSelectedResourceCategory();
-    if (
-      !resourceDashboardCategorySelectionMade[resourceDashboardActiveTab] &&
-      hasCategoryFilter &&
-      availableCategories.size > 0
-    ) {
-      selectedCategory =
-        ["FINALS", "MIDTERMS", "PRELIMS"].find((category) =>
-          availableCategories.has(category),
-        ) || "all";
-      resourceDashboardSelectedCategories[resourceDashboardActiveTab] =
-        selectedCategory;
-      resourceDashboardCategorySelectionMade[resourceDashboardActiveTab] =
-        true;
-    } else if (
-      selectedCategory !== "all" &&
-      !availableCategories.has(selectedCategory)
-    ) {
-      selectedCategory =
-        ["FINALS", "MIDTERMS", "PRELIMS"].find((category) =>
-          availableCategories.has(category),
-        ) || "all";
-      resourceDashboardSelectedCategories[resourceDashboardActiveTab] =
-        selectedCategory;
-    }
     if (categoryFilterContainer)
       categoryFilterContainer.hidden = !showCategoryFilter;
-    if (categoryFilterControl)
-      categoryFilterControl
-        .querySelectorAll("[data-category]")
-        .forEach((button) => {
-          const categoryAvailable =
-            button.dataset.category === "all" ||
-            availableCategories.has(button.dataset.category);
-          button.disabled = !hasCategoryFilter || !categoryAvailable;
-          if (button.dataset.reviewerLoadingDisabled !== undefined)
-            button.dataset.reviewerLoadingDisabled = String(button.disabled);
-          button.setAttribute("aria-disabled", String(button.disabled));
-          const selected =
-            button.dataset.category === selectedCategory;
-          button.setAttribute("aria-pressed", String(selected));
-          button.classList.toggle("is-active", selected);
-        });
     const termValues = new Set();
     if (yearColumnIndex >= 0) {
       nonEmptyRows.forEach(({ values }) => {
@@ -7254,21 +7205,7 @@
       );
     }
 
-    const selectedPhaseColumnIndex =
-      !hasCategoryFilter || selectedCategory === "all"
-        ? -1
-        : phaseColumnIndexes[selectedCategory];
-    const visibleRows = nonEmptyRows.filter(({ values, rowIndex }) => {
-      if (hasCategoryFilter && selectedCategory !== "all") {
-        if (selectedPhaseColumnIndex === undefined) return false;
-        const phaseValue = String(
-          values[selectedPhaseColumnIndex] ?? "",
-        ).trim();
-        const phaseLink = String(
-          tab.links?.[rowIndex]?.[selectedPhaseColumnIndex] || phaseValue,
-        );
-        if (!phaseValue && !isResourceDashboardLink(phaseLink)) return false;
-      }
+    const matchesSelectedTerm = (values) => {
       if (!hasTermFilter || resourceDashboardSelectedYear === "all")
         return true;
       const yearValue = String(values[yearColumnIndex] || "").trim();
@@ -7284,6 +7221,77 @@
         (resourceDashboardSelectedSemester === "all" ||
           semester === resourceDashboardSelectedSemester)
       );
+    };
+    const termFilteredRows = nonEmptyRows.filter(({ values }) =>
+      matchesSelectedTerm(values),
+    );
+    const availableCategories = new Set(
+      Object.entries(phaseColumnIndexes)
+        .filter(([, columnIndex]) =>
+          termFilteredRows.some(({ values, rowIndex }) =>
+            hasCellValue(values, rowIndex, columnIndex),
+          ),
+        )
+        .map(([category]) => category),
+    );
+    let selectedCategory = getSelectedResourceCategory();
+    if (
+      !resourceDashboardCategorySelectionMade[resourceDashboardActiveTab] &&
+      hasCategoryFilter &&
+      availableCategories.size > 0
+    ) {
+      selectedCategory =
+        ["FINALS", "MIDTERMS", "PRELIMS"].find((category) =>
+          availableCategories.has(category),
+        ) || "all";
+      resourceDashboardSelectedCategories[resourceDashboardActiveTab] =
+        selectedCategory;
+      resourceDashboardCategorySelectionMade[resourceDashboardActiveTab] =
+        true;
+    } else if (
+      selectedCategory !== "all" &&
+      !availableCategories.has(selectedCategory)
+    ) {
+      selectedCategory =
+        ["FINALS", "MIDTERMS", "PRELIMS"].find((category) =>
+          availableCategories.has(category),
+        ) || "all";
+      resourceDashboardSelectedCategories[resourceDashboardActiveTab] =
+        selectedCategory;
+    }
+    if (categoryFilterControl)
+      categoryFilterControl
+        .querySelectorAll("[data-category]")
+        .forEach((button) => {
+          const categoryAvailable =
+            button.dataset.category === "all" ||
+            availableCategories.has(button.dataset.category);
+          button.disabled = !hasCategoryFilter || !categoryAvailable;
+          if (button.dataset.reviewerLoadingDisabled !== undefined)
+            button.dataset.reviewerLoadingDisabled = String(button.disabled);
+          button.setAttribute("aria-disabled", String(button.disabled));
+          const selected =
+            button.dataset.category === selectedCategory;
+          button.setAttribute("aria-pressed", String(selected));
+          button.classList.toggle("is-active", selected);
+        });
+    const selectedPhaseColumnIndex =
+      !hasCategoryFilter || selectedCategory === "all"
+        ? -1
+        : phaseColumnIndexes[selectedCategory];
+    const visibleRows = nonEmptyRows.filter(({ values, rowIndex }) => {
+      if (!matchesSelectedTerm(values)) return false;
+      if (hasCategoryFilter && selectedCategory !== "all") {
+        if (selectedPhaseColumnIndex === undefined) return false;
+        const phaseValue = String(
+          values[selectedPhaseColumnIndex] ?? "",
+        ).trim();
+        const phaseLink = String(
+          tab.links?.[rowIndex]?.[selectedPhaseColumnIndex] || phaseValue,
+        );
+        if (!phaseValue && !isResourceDashboardLink(phaseLink)) return false;
+      }
+      return true;
     });
     const populatedColumnIndices = tab.columns
       .map((_, columnIndex) => columnIndex)
@@ -7573,10 +7581,11 @@
             ? `${selectedYearName} Year`
             : `Year Level ${resourceDashboardSelectedYear} (all semesters)`
           : `Year Level ${resourceDashboardSelectedYear}.${resourceDashboardSelectedSemester}`;
-    if (resourceDashboardActiveTab === "REVIEWERS" && !visibleRows.length) {
-      status.textContent = nonEmptyRows.length
-        ? "No review materials match the selected filters."
-        : "No review materials are currently available.";
+    if (
+      resourceDashboardActiveTab === "REVIEWERS" &&
+      !nonEmptyRows.length
+    ) {
+      status.textContent = "No review materials are currently available.";
     } else {
       if (hasTermFilter) {
         const summary = createResourceDashboardElement(
@@ -8769,6 +8778,8 @@
             input.dataset.savedValue !== undefined &&
             input.value !== input.dataset.savedValue,
         ));
+    if (reviewerSessionId && reviewerSessionId !== sessionId)
+      reviewerPdfPreviewCache.clear();
     reviewerAuthorizedEmail = response.email;
     if (!reviewerVerificationRetryToken)
       reviewerVerificationRetryAvailable = false;
@@ -8781,6 +8792,7 @@
       reviewerPendingEnrollmentSessionId = "";
     } else {
       reviewerSessionId = "";
+      reviewerPdfPreviewCache.clear();
       reviewerPendingEnrollmentSessionId = sessionId;
       clearReviewerResourceRows();
     }
@@ -9202,6 +9214,7 @@
       }
     }
     reviewerSessionId = "";
+    reviewerPdfPreviewCache.clear();
     reviewerPendingEnrollmentSessionId = "";
     if (!preserveStoredSession) clearStoredReviewerSession();
     closeReviewerPdfPreview();
@@ -10357,6 +10370,13 @@
     const reviewerRequestKey = reviewer
       ? `${reviewerSessionId}:${String(fileId || "")}`
       : "";
+    let cachedReviewerPdf = reviewer
+      ? reviewerPdfPreviewCache.get(reviewerRequestKey)
+      : null;
+    if (cachedReviewerPdf && cachedReviewerPdf.expiresAt <= Date.now()) {
+      reviewerPdfPreviewCache.delete(reviewerRequestKey);
+      cachedReviewerPdf = null;
+    }
     if (reviewer && reviewerPdfPreviewInFlight?.key === reviewerRequestKey)
       return false;
     const reviewerRequest = reviewer ? { key: reviewerRequestKey } : null;
@@ -10410,15 +10430,20 @@
               sessionId: reviewerSessionId,
               eventId: createResourceEventId(),
               fileId,
+              ...(cachedReviewerPdf
+                ? { cachedSourceVersion: cachedReviewerPdf.sourceVersion }
+                : {}),
             }
           : { type: "get_resource_preview", fileId },
         { timeoutMs: 60000, maxRetries: 0 },
       );
       if (previewGeneration !== resourcePortalPreviewGeneration) return false;
+      const isReviewerCacheHit = reviewer && response?.cacheHit === true;
       if (
         response?.status !== "success" ||
-        typeof response.data !== "string" ||
-        !/^[A-Za-z0-9+/]*={0,2}$/.test(response.data)
+        (!isReviewerCacheHit &&
+          (typeof response.data !== "string" ||
+            !/^[A-Za-z0-9+/]*={0,2}$/.test(response.data)))
       ) {
         throw new Error(
           response?.message ||
@@ -10430,16 +10455,26 @@
       if (
         reviewer &&
         (responseMimeType !== "application/pdf" ||
-          response.data.length >
-            Math.ceil(REVIEWER_PDF_MAX_SOURCE_BYTES / 3) * 4)
+          !/^[a-f0-9]{64}$/i.test(String(response.sourceVersion || "")) ||
+          (isReviewerCacheHit &&
+            (!cachedReviewerPdf ||
+              cachedReviewerPdf.sourceVersion !== response.sourceVersion)) ||
+          (!isReviewerCacheHit &&
+            response.data.length >
+              Math.ceil(REVIEWER_PDF_MAX_SOURCE_BYTES / 3) * 4))
       )
         throw new Error(
           "The PDF service returned an invalid or oversized PDF.",
         );
-      const binary = atob(response.data);
-      const bytes = Uint8Array.from(binary, (character) =>
-        character.charCodeAt(0),
-      );
+      let bytes;
+      if (isReviewerCacheHit) {
+        bytes = cachedReviewerPdf.bytes;
+      } else {
+        const binary = atob(response.data);
+        bytes = Uint8Array.from(binary, (character) =>
+          character.charCodeAt(0),
+        );
+      }
       if (
         reviewer &&
         (bytes.byteLength > REVIEWER_PDF_MAX_SOURCE_BYTES ||
@@ -10453,6 +10488,18 @@
         throw new Error(
           "The PDF service returned invalid content.",
         );
+      if (reviewer && !isReviewerCacheHit) {
+        reviewerPdfPreviewCache.delete(reviewerRequestKey);
+        reviewerPdfPreviewCache.set(reviewerRequestKey, {
+          bytes,
+          sourceVersion: response.sourceVersion,
+          expiresAt: Date.now() + 10 * 60 * 1000,
+        });
+        while (reviewerPdfPreviewCache.size > 2)
+          reviewerPdfPreviewCache.delete(
+            reviewerPdfPreviewCache.keys().next().value,
+          );
+      }
       const isSafeInlineType =
         responseMimeType === "application/pdf" ||
         responseMimeType === "text/plain" ||

@@ -83,6 +83,11 @@ assert.match(
   /function handleGetReviewerPdfPreviewRequest_\(data\)[\s\S]*?Drive\.Files\.get\(fileId[\s\S]*?reviewerPdfSourceVersion_\([\s\S]*?latestSourceVersion !== source\.sourceVersion/,
   "preview should verify the source with one metadata lookup instead of rechecking its full Drive hierarchy",
 );
+assert.match(
+  backend,
+  /function handleGetReviewerPdfPreviewRequest_\(data\)[\s\S]*?authorizeReviewerPdfRequest_\(data\)[\s\S]*?getReviewerPdfSource_\(fileId\)[\s\S]*?cachedSourceVersion === source\.sourceVersion[\s\S]*?cacheHit: true[\s\S]*?DriveApp\.getFileById\(fileId\)\.getBlob\(\)\.getBytes\(\)/,
+  "a repeat preview may skip PDF transfer only after fresh authorization and current source-version validation",
+);
 assert.doesNotMatch(
   backend.match(
     /function handleGetReviewerPdfPreviewRequest_\(data\)[\s\S]*?\n\}/,
@@ -284,6 +289,11 @@ assert.match(
 );
 assert.match(
   reviewerPreview,
+  /cachedSourceVersion: cachedReviewerPdf\.sourceVersion[\s\S]*?isReviewerCacheHit[\s\S]*?cachedReviewerPdf\.sourceVersion !== response\.sourceVersion[\s\S]*?expiresAt: Date\.now\(\) \+ 10 \* 60 \* 1000/,
+  "repeat opens may reuse only short-lived tab-memory bytes after server source-version validation",
+);
+assert.match(
+  reviewerPreview,
   /bytes\.byteLength > REVIEWER_PDF_MAX_SOURCE_BYTES[\s\S]*?bytes\[0\] !== 0x25[\s\S]*?bytes\[4\] !== 0x2d/,
   "preview responses must be bounded and begin with a PDF signature before rendering",
 );
@@ -326,6 +336,11 @@ assert.match(
   frontend,
   /function signOutReviewer\([\s\S]*?closeReviewerPdfPreview\(\)/,
   "sign-out must clear the displayed Reviewer PDF and revoke its object URL",
+);
+assert.match(
+  frontend,
+  /function signOutReviewer\([\s\S]*?reviewerPdfPreviewCache\.clear\(\)/,
+  "sign-out must clear cached Reviewer PDF bytes from tab memory",
 );
 assert.match(
   reviewerPreview,

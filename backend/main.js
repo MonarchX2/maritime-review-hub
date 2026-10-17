@@ -2656,6 +2656,39 @@ function handleGetReviewerPdfPreviewRequest_(data) {
       source.error.code,
       source.error.message,
     );
+  var identity;
+  try {
+    identity = reviewerPdfWatermarkIdentity_(
+      authorization.account,
+      authorization.email,
+    );
+  } catch (error) {
+    return reviewerPdfFailure_(
+      data,
+      startedAt,
+      String(error && error.code || "BAD_REQUEST"),
+      String(error && error.message || "Verified account details are required."),
+    );
+  }
+  var cachedSourceVersion = String(data && data.cachedSourceVersion || "");
+  if (
+    /^[a-f0-9]{64}$/i.test(cachedSourceVersion) &&
+    cachedSourceVersion === source.sourceVersion
+  ) {
+    Logger.log(JSON.stringify({
+      event: "reviewer_pdf_preview_cache_validated",
+      correlationId: String(data.eventId || ""),
+      durationMs: Date.now() - startedAt,
+    }));
+    return jsonResponse({
+      status: "success",
+      cacheHit: true,
+      mimeType: "application/pdf",
+      sourceVersion: source.sourceVersion,
+      fullName: identity.fullName,
+      email: identity.email,
+    });
+  }
   var sourceBytes = DriveApp.getFileById(fileId).getBlob().getBytes();
   if (
     !sourceBytes.length ||
@@ -2698,20 +2731,6 @@ function handleGetReviewerPdfPreviewRequest_(data) {
       "PDF_SOURCE_CHANGED",
       "The PDF changed while the preview was being loaded. Try again.",
     );
-  var identity;
-  try {
-    identity = reviewerPdfWatermarkIdentity_(
-      authorization.account,
-      authorization.email,
-    );
-  } catch (error) {
-    return reviewerPdfFailure_(
-      data,
-      startedAt,
-      String(error && error.code || "BAD_REQUEST"),
-      String(error && error.message || "Verified account details are required."),
-    );
-  }
   Logger.log(JSON.stringify({
     event: "reviewer_pdf_preview_delivered",
     correlationId: String(data.eventId || ""),

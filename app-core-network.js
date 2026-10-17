@@ -558,7 +558,14 @@
     },
     get_reviewer_pdf_preview: {
       required: ["sessionId", "eventId", "fileId"],
-      allowed: ["type", "sessionId", "eventId", "fileId", "appVersion"],
+      allowed: [
+        "type",
+        "sessionId",
+        "eventId",
+        "fileId",
+        "cachedSourceVersion",
+        "appVersion",
+      ],
     },
     get_reviewer_pdf_job: {
       required: ["sessionId", "eventId", "jobId"],

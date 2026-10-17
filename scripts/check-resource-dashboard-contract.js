@@ -422,8 +422,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(resourceDashboardActiveTab === "REVIEWERS" && !visibleRows\.length\) \{\s*status\.textContent = nonEmptyRows\.length\s*\?\s*"No review materials match the selected filters\."\s*:\s*"No review materials are currently available\."/,
-  "loaded Reviewer tables without rows should use an explicit empty state instead of a zero-row count",
+  /if \(\s*resourceDashboardActiveTab === "REVIEWERS" &&\s*!nonEmptyRows\.length\s*\) \{\s*status\.textContent = "No review materials are currently available\."/,
+  "Reviewer tables with no resources should show an empty state, while unavailable filters are disabled",
+);
+assert.doesNotMatch(
+  appCore,
+  /No review materials match the selected filters/,
+  "the dashboard should prevent empty category selections instead of showing a filtered-results message",
 );
 assert.doesNotMatch(
   appCore.match(/async function loadReviewerDashboard\([\s\S]*?\n  \}/)?.[0] ||
@@ -634,7 +639,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /if \(resourceDashboardActiveTab === "REVIEWERS" && !visibleRows\.length\) \{\s*status\.textContent = nonEmptyRows\.length\s*\?\s*"No review materials match the selected filters\."\s*:\s*"No review materials are currently available\."/,
+  /if \(\s*resourceDashboardActiveTab === "REVIEWERS" &&\s*!nonEmptyRows\.length\s*\) \{\s*status\.textContent = "No review materials are currently available\."/,
   "a successfully loaded empty Reviewer table should show an explicit empty state instead of a zero-row count",
 );
 assert.match(
@@ -739,8 +744,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /availableCategories = new Set\([\s\S]*?showCategoryFilter =\s*hasCategoryFilter \|\| resourceDashboardActiveTab === "SYLLABUS"[\s\S]*?button\.disabled = !hasCategoryFilter \|\| !categoryAvailable[\s\S]*?button\.setAttribute\("aria-pressed", String\(selected\)\)/,
-  "unavailable category choices should remain visible and disabled",
+  /const termFilteredRows = nonEmptyRows\.filter\(\(\{ values \}\) =>\s*matchesSelectedTerm\(values\),?\s*\)[\s\S]*?const availableCategories = new Set\([\s\S]*?termFilteredRows\.some\([\s\S]*?button\.disabled = !hasCategoryFilter \|\| !categoryAvailable[\s\S]*?button\.setAttribute\("aria-pressed", String\(selected\)\)/,
+  "category choices without resources for the selected year and semester should remain visible and disabled",
 );
 assert.match(
   appCore,
