@@ -11,7 +11,12 @@ if (fs.existsSync(outputDir)) {
   throw new Error(`Output directory already exists: ${outputDir}`);
 }
 
-const excludedDirectories = new Set([".git", ".github", "node_modules"]);
+const excludedDirectories = new Set([
+  ".git",
+  ".github",
+  "node_modules",
+  "reviewer-pdf-service",
+]);
 const textExtensions = new Set([
   ".css",
   ".html",
@@ -44,14 +49,7 @@ function getHashedAssets(directory, relativeDirectory = "") {
     const relativePath = path.posix.join(relativeDirectory, entry.name);
     const absolutePath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
-      if (!relativeDirectory && entry.name === "reviewer-pdf-service") {
-        assets.push(
-          ...getHashedAssets(
-            path.join(absolutePath, "vendor"),
-            "reviewer-pdf-service/vendor",
-          ),
-        );
-      } else if (relativeDirectory || entry.name === "qr-vendor") {
+      if (relativeDirectory || entry.name === "qr-vendor") {
         assets.push(...getHashedAssets(absolutePath, relativePath));
       }
       continue;
@@ -77,11 +75,6 @@ function getHashedAssets(directory, relativeDirectory = "") {
       assets.push(relativePath);
     } else if (
       relativeDirectory === "qr-vendor" &&
-      extension === ".js"
-    ) {
-      assets.push(relativePath);
-    } else if (
-      relativeDirectory === "reviewer-pdf-service/vendor" &&
       extension === ".js"
     ) {
       assets.push(relativePath);

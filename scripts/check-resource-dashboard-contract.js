@@ -8,18 +8,167 @@ const indexHtml = fs.readFileSync("index.html", "utf8");
 const resourceStyles = fs.readFileSync("styles.css", "utf8");
 assert.match(
   appCore,
-  /const RESOURCE_DASHBOARD_FILTERS_KEY =\s*"mrh_resource_dashboard_filters_v1";[\s\S]*?function loadResourceDashboardFilters\(\)[\s\S]*?localStorage\.getItem\(RESOURCE_DASHBOARD_FILTERS_KEY\)[\s\S]*?function saveResourceDashboardFilters\(\)[\s\S]*?localStorage\.setItem\(\s*RESOURCE_DASHBOARD_FILTERS_KEY/,
-  "Student Portal filter selections should be restored and persisted in local storage",
+  /const RESOURCE_DASHBOARD_FILTERS_KEY =\s*"mrh_resource_dashboard_filters_v1";[\s\S]*?function loadResourceDashboardFilters\(\)[\s\S]*?localStorage\.getItem\(RESOURCE_DASHBOARD_FILTERS_KEY\)[\s\S]*?saved\.sections\?\.\[tabName\][\s\S]*?function saveResourceDashboardFilters\(\)[\s\S]*?localStorage\.setItem\(\s*RESOURCE_DASHBOARD_FILTERS_KEY,[\s\S]*?sections:\s*Object\.fromEntries/,
+  "each Student Portal section's filters should be independently restored and persisted",
 );
 assert.match(
   appCore,
-  /resourceDashboardSelectedCategories\[tabName\] = category;[\s\S]*?resourceDashboardCategorySelectionMade\[tabName\] = true;/,
-  "restored per-tab categories should be retained instead of replaced with the automatic default",
+  /const resourceDashboardSelectedYears = \{\s*MODULES: "3",\s*REVIEWERS: "3",\s*SYLLABUS: "3"/,
+  "each Student Portal section should have a separate saved year selection",
 );
+assert.match(
+  appCore,
+  /const resourceDashboardSelectedSemesters = \{\s*MODULES: "2",\s*REVIEWERS: "2",\s*SYLLABUS: "2"/,
+  "each Student Portal section should have a separate saved semester selection",
+);
+assert.match(
+  appCore,
+  /resourceDashboardSelectedCategories = \{\s*MODULES: "all",\s*REVIEWERS: "all",\s*SYLLABUS: "all"/,
+  "each Student Portal section should have a separate saved category selection",
+);
+assert.match(
+  appCore,
+  /function activateResourceDashboardFilters\(tabName\)[\s\S]*?resourceDashboardSelectedYears\[tabName\][\s\S]*?resourceDashboardSelectedSemesters\[tabName\]/,
+  "switching sections should restore that section's own Year and Semester filters",
+);
+assert.match(
+  appCore,
+  /saveResourceDashboardFilters\(\);\s*if \(tabName !== "REVIEWERS"\) closeReviewerPdfPreview\(\);\s*resourceDashboardActiveTab = tabName;\s*activateResourceDashboardFilters\(tabName\);/,
+  "section switches should save the previous filters before activating the destination section's values",
+);
+const dashboardFilterStateStart = appCore.indexOf(
+  '  let resourceDashboardSelectedYear = "3";',
+);
+const dashboardFilterStateEnd = appCore.indexOf(
+  "\n  function isDefinitivelyInvalidReviewerCredential",
+  dashboardFilterStateStart,
+);
+assert.ok(
+  dashboardFilterStateStart >= 0 &&
+    dashboardFilterStateEnd > dashboardFilterStateStart,
+  "the per-section filter persistence implementation should be extractable",
+);
+const dashboardFilterStateSource = appCore.slice(
+  dashboardFilterStateStart,
+  dashboardFilterStateEnd,
+);
+const createDashboardFilterState = new Function(
+  "globalScope",
+  "RESOURCE_DASHBOARD_FILTERS_KEY",
+  `
+    let resourceDashboardActiveTab = "PROFILE";
+    ${dashboardFilterStateSource}
+    return {
+      activate(tabName) {
+        saveResourceDashboardFilters();
+        resourceDashboardActiveTab = tabName;
+        activateResourceDashboardFilters(tabName);
+      },
+      set(year, semester, category) {
+        resourceDashboardSelectedYear = year;
+        resourceDashboardSelectedSemester = semester;
+        resourceDashboardSelectedCategories[resourceDashboardActiveTab] = category;
+        resourceDashboardCategorySelectionMade[resourceDashboardActiveTab] = true;
+        saveResourceDashboardFilters();
+      },
+      get() {
+        return {
+          year: resourceDashboardSelectedYear,
+          semester: resourceDashboardSelectedSemester,
+          category: resourceDashboardSelectedCategories[resourceDashboardActiveTab],
+        };
+      },
+    };
+  `,
+);
+const dashboardFilterStorage = new Map();
+const dashboardFilterStorageApi = {
+  getItem(key) {
+    return dashboardFilterStorage.get(key) || null;
+  },
+  setItem(key, value) {
+    dashboardFilterStorage.set(key, value);
+  },
+};
+const dashboardFilterState = createDashboardFilterState(
+  { localStorage: dashboardFilterStorageApi, DebugUtils: console },
+  "student-portal-filter-test",
+);
+dashboardFilterState.activate("MODULES");
+dashboardFilterState.set("1", "1", "PRELIMS");
+dashboardFilterState.activate("REVIEWERS");
+dashboardFilterState.set("2", "2", "MIDTERMS");
+dashboardFilterState.activate("SYLLABUS");
+dashboardFilterState.set("3", "1", "FINALS");
+dashboardFilterState.activate("MODULES");
+assert.deepEqual(dashboardFilterState.get(), {
+  year: "1",
+  semester: "1",
+  category: "PRELIMS",
+});
+dashboardFilterState.activate("REVIEWERS");
+assert.deepEqual(dashboardFilterState.get(), {
+  year: "2",
+  semester: "2",
+  category: "MIDTERMS",
+});
+dashboardFilterState.activate("SYLLABUS");
+assert.deepEqual(dashboardFilterState.get(), {
+  year: "3",
+  semester: "1",
+  category: "FINALS",
+});
+const restoredDashboardFilterState = createDashboardFilterState(
+  { localStorage: dashboardFilterStorageApi, DebugUtils: console },
+  "student-portal-filter-test",
+);
+restoredDashboardFilterState.activate("MODULES");
+assert.deepEqual(restoredDashboardFilterState.get(), {
+  year: "1",
+  semester: "1",
+  category: "PRELIMS",
+});
+restoredDashboardFilterState.activate("REVIEWERS");
+assert.deepEqual(restoredDashboardFilterState.get(), {
+  year: "2",
+  semester: "2",
+  category: "MIDTERMS",
+});
+restoredDashboardFilterState.activate("SYLLABUS");
+assert.deepEqual(restoredDashboardFilterState.get(), {
+  year: "3",
+  semester: "1",
+  category: "FINALS",
+});
 assert.match(
   appCore,
   /resourceDashboardSelectedYear = button\.dataset\.filterValue;[\s\S]*?saveResourceDashboardFilters\(\);[\s\S]*?resourceDashboardSelectedSemester = button\.dataset\.filterValue;[\s\S]*?saveResourceDashboardFilters\(\);[\s\S]*?resourceDashboardSelectedCategories\[resourceDashboardActiveTab\] =\s*button\.dataset\.category;[\s\S]*?saveResourceDashboardFilters\(\)/,
   "year, semester, and category changes should be saved as soon as the user selects them",
+);
+assert.doesNotMatch(
+  `${appCore}\n${indexHtml}\n${resourceStyles}`,
+  /dashboard-auto-fit|DASHBOARD_AUTO_FIT_STORAGE_KEY|toggle-dashboard-auto-fit|Fit dashboard to screen/,
+  "the dashboard fit-to-screen setting and scaling implementation should be fully removed",
+);
+assert.match(
+  appCore,
+  /function updateResourceDashboardFilterIndicators\(\)[\s\S]*?getBoundingClientRect\(\)[\s\S]*?selectedRect\.left - controlRect\.left - control\.clientLeft[\s\S]*?selectedRect\.top - controlRect\.top - control\.clientTop[\s\S]*?"--filter-indicator-height"[\s\S]*?if \(!control\.classList\.contains\("has-filter-indicator"\)\)[\s\S]*?requestAnimationFrame\(revealIndicator\)[\s\S]*?setTimeout\(revealIndicator, 0\)/,
+  "the active filter highlight should align to the selected segment inside the bordered control and animate only after initial render",
+);
+assert.match(
+  appCore,
+  /status\.classList\?\.remove\("resource-dashboard-status-stacked"\);\s*updateResourceDashboardFilterIndicators\(\);/,
+  "the active filter indicator should recalculate after a section is rendered",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-segmented-control\s*\{[^}]*gap:\s*0;[^}]*padding:\s*0;/,
+  "the active filter highlight should fill its segment without inset gaps",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-dashboard-segmented-control::before[\s\S]*?left 420ms[\s\S]*?prefers-reduced-motion:\s*reduce[\s\S]*?transition:\s*none/,
+  "the active filter highlight should slide at a relaxed speed while respecting reduced-motion settings",
 );
 const fileIdHelper = appCore.match(
   /function getResourceDashboardFileId\(value\) \{[\s\S]*?\n  \}/,
@@ -277,8 +426,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /closeButton\.addEventListener\("click", \(\) => \{\s*void closeResourcePreview\(\{ confirmDuringDownload: true \}\);[\s\S]*?async function closeResourcePreview\(\{ confirmDuringDownload = false \} = \{\}\)[\s\S]*?if \(confirmDuringDownload && reviewerPdfDownloadInFlight\)[\s\S]*?requestConfirmation\([\s\S]*?PDF download is being prepared[\s\S]*?if \(!confirmed\) return false/,
-  "the exit button should confirm while PDF preparation is active, without interrupting other preview navigation",
+  /closeButton\.addEventListener\("click", \(\) => \{\s*void closeResourcePreview\(\{ confirmDuringDownload: true \}\);[\s\S]*?async function closeResourcePreview\(\{ confirmDuringDownload = false \} = \{\}\)[\s\S]*?if \(confirmDuringDownload && reviewerPdfDownloadPreparationPending\)[\s\S]*?requestConfirmation\([\s\S]*?watermarked PDF is still being prepared[\s\S]*?if \(!confirmed\) return false/,
+  "the exit button should confirm only while the local watermarked PDF is still being prepared",
 );
 assert.match(
   appCore,
@@ -693,8 +842,8 @@ assert.match(
 );
 assert.match(
   fs.readFileSync("backend/ReviewerPdf.gs", "utf8"),
-  /email = reviewerPdfSafeText_\(identity && identity\.email, 254\);[\s\S]*?Math\.min\(size\.width, size\.height\) \* 0\.3[\s\S]*?Math\.min\(18,[\s\S]*?\[0\.25, 0\.14\][\s\S]*?\[0\.75, 0\.14\][\s\S]*?\[0\.32, 0\.26\][\s\S]*?\[0\.25, 0\.38\][\s\S]*?\[0\.75, 0\.38\][\s\S]*?\[0\.68, 0\.5\][\s\S]*?\[0\.25, 0\.62\][\s\S]*?\[0\.75, 0\.62\][\s\S]*?\[0\.32, 0\.74\][\s\S]*?\[0\.25, 0\.86\][\s\S]*?\[0\.75, 0\.86\][\s\S]*?opacity:\s*0\.18/,
-  "generated PDFs should preserve email case and use the same two-column and staggered-center watermark layout",
+  /email = reviewerPdfSafeText_\(identity && identity\.email, 254\);[\s\S]*?Math\.min\(size\.width, size\.height\) \* 0\.4[\s\S]*?Math\.min\(24,[\s\S]*?\[0\.25, 0\.15\][\s\S]*?\[0\.75, 0\.15\][\s\S]*?\[0\.5, 0\.325\][\s\S]*?\[0\.25, 0\.5\][\s\S]*?\[0\.75, 0\.5\][\s\S]*?\[0\.5, 0\.675\][\s\S]*?\[0\.25, 0\.85\][\s\S]*?\[0\.75, 0\.85\][\s\S]*?opacity:\s*0\.18/,
+  "generated PDFs should preserve email case and use paired side stamps alternating with centered middle stamps",
 );
 assert.match(
   resourceStyles,
@@ -718,8 +867,13 @@ assert.match(
 );
 assert.match(
   appCore,
-  /const loadingIcon = document\.createElement\("i"\);[\s\S]*?loadingIcon\.className = "fa-solid fa-spinner fa-spin";[\s\S]*?loadingMessage\.textContent = "Loading online preview…"/,
-  "the online preview loading status should show a spinner before its text",
+  /status\.classList\.add\("is-loading"\);[\s\S]*?const loadingIcon = document\.createElement\("i"\);[\s\S]*?loadingIcon\.className = "fa-solid fa-spinner fa-spin";[\s\S]*?loadingMessage\.textContent = "Loading PDF preview\.\.\."/,
+  "the online preview should show a centered spinner and exact loading label",
+);
+assert.match(
+  resourceStyles,
+  /\.resource-portal-preview-status\.is-loading\s*\{[^}]*display:\s*grid;[^}]*justify-items:\s*center;[\s\S]*?\.resource-portal-preview-status\.is-loading \.fa-spinner\s*\{[^}]*font-size:\s*2\.5rem;[\s\S]*?\.resource-portal-preview\.is-fullscreen[\s\S]*?\.resource-portal-preview-status\.is-loading\s*\{[^}]*top:\s*50%;[^}]*left:\s*50%;[^}]*transform:\s*translate\(-50%, -50%\)/,
+  "the preview spinner and message should be large and centered over the fullscreen viewer",
 );
 assert.match(
   resourceStyles,
@@ -1138,8 +1292,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.resource-dashboard-segmented-control button\.is-active\s*\{[^}]*color:\s*#fff;[^}]*background:\s*#2563eb;[\s\S]*?\.dark \.resource-dashboard-segmented-control\s*\{[^}]*background:\s*#334155;/,
-  "the segmented category selection should use the website's blue accent in both themes",
+  /\.resource-dashboard-segmented-control::before\s*\{[^}]*background:\s*#2563eb;[^}]*transition:[\s\S]*?\.resource-dashboard-segmented-control button\.is-active\s*\{[^}]*color:\s*#fff;[^}]*background:\s*transparent;[\s\S]*?\.dark \.resource-dashboard-segmented-control\s*\{[^}]*background:\s*#334155;[\s\S]*?\.dark \.resource-dashboard-segmented-control button\.is-active\s*\{[^}]*background:\s*transparent;/,
+  "the segmented category selection should use an animated blue indicator in both themes",
 );
 assert.match(
   resourceStyles,
@@ -1904,8 +2058,8 @@ assert.match(
 );
 assert.match(
   appCore,
-  /resourceDashboardSelectedCategories = \{\s*MODULES: "all",\s*REVIEWERS: "all",\s*\}[\s\S]*?resourceDashboardCategorySelectionMade = \{\s*MODULES: false,\s*REVIEWERS: false,\s*\}[\s\S]*?!resourceDashboardCategorySelectionMade\[resourceDashboardActiveTab\][\s\S]*?hasCategoryFilter[\s\S]*?availableCategories\.size > 0[\s\S]*?selectedCategory =\s*\["FINALS", "MIDTERMS", "PRELIMS"\]\.find/,
-  "Modules and Reviewers should independently default to Finals and fall back through Midterms and Prelims",
+  /resourceDashboardSelectedCategories = \{\s*MODULES: "all",\s*REVIEWERS: "all",\s*SYLLABUS: "all",\s*\}[\s\S]*?resourceDashboardCategorySelectionMade = \{\s*MODULES: false,\s*REVIEWERS: false,\s*SYLLABUS: false,\s*\}[\s\S]*?!resourceDashboardCategorySelectionMade\[resourceDashboardActiveTab\][\s\S]*?hasCategoryFilter[\s\S]*?availableCategories\.size > 0[\s\S]*?selectedCategory =\s*\["FINALS", "MIDTERMS", "PRELIMS"\]\.find/,
+  "each section should independently retain its category selection and choose a valid default",
 );
 assert.match(
   appCore,

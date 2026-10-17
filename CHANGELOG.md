@@ -1,23 +1,56 @@
 # Changelog
 
+## 26.10.31 - 2026-10-17
+
+### Improved
+
+- Generate and verify Reviewer PDF watermarks in the Apps Script backend before
+  preview delivery; retain each prepared derivative in the private Drive
+  output folder and download the same derivative without duplicate processing.
+- Arrange the eight watermark stamps in paired side rows alternating with
+  horizontally centered middle stamps.
+- Keep Year, Semester, and Category filters independent per Student Portal
+  section. Show the selected filter background in place on first render, fill
+  its segment without inset gaps, and slow its slide animation.
+- Exclude the unused PDF processing bundle from the static website payload.
+
 ## 26.10.30 - 2026-10-17
 
 ### Improved
 
-- Restore each user's Student Portal Year, Semester, and per-section Category
-  filters when they return.
-- Generate zoom-safe Reviewer preview watermarks in the browser, loading the
-  locally hosted PDF library only when a Reviewer PDF is opened.
-- Use eleven watermark stamps in two columns, with the three center stamps
-  alternating clearly between 32% and 68% page width. Browser previews and
-  generated PDFs share the same layout.
-- Keep the PDF viewer interactive for scrolling and zoom while retaining
-  selection restrictions on the site preview container.
+- Restore independent Year, Semester, and Category selections for MODULES,
+  REVIEWERS, and SYLLABUS when users switch sections or return.
+- Use eight larger watermark stamps in paired outer rows alternating with
+  centered single middle stamps. Every page starts and ends with a pair;
+  server-side preview and generated PDFs share the same size and layout.
+- Watermark and verify Reviewer preview PDFs in the backend before delivery.
+  The browser no longer receives the source PDF or processes watermarks, and
+  each prepared derivative is retained in the configured private Drive folder.
+- Start downloads immediately from the already prepared backend-watermarked
+  preview without queuing a duplicate archive copy.
+- Exclude the no-longer-needed PDF processing bundle from the static website
+  deployment.
+- Remove the optional dashboard fit-to-screen setting and its automatic
+  scaling behavior.
+- Animate the active filter indicator when restoring a section's saved filter.
+- Show the active filter indicator in place on initial Student Portal render;
+  reserve its slide transition for later filter and section changes.
+- Slow the filter indicator's slide animation on wide controls.
+- Remove padding and gaps around the selected filter background so it fills
+  its segment.
+- Align the indicator to the control's inner border edge to eliminate the
+  remaining border-width inset.
+- Accept PDF sources up to 8 MiB and generated outputs up to 12 MiB, while
+  retaining explicit memory and page-count limits.
+- Center the PDF preview spinner and its “Loading PDF preview...” label.
+- Enlarge the Reviewer PDF preview header and apply page-level text-selection
+  and copy restrictions around the embedded preview.
 - Keep previews fullscreen without a fullscreen toggle, hide the native PDF
   toolbar where supported, and hide HOME on narrow dashboard layouts instead
   of replacing it with an icon.
 - Keep table chips uniform and show change badges until their resource is
-  opened. Confirm preview exit while a PDF download is preparing.
+  opened. Confirm preview exit only while the local PDF is still preparing;
+  PDF processing no longer keeps the exit blocked after download starts.
 
 ## 26.10.29 - 2026-10-17
 

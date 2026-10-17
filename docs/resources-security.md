@@ -114,29 +114,26 @@ source ancestry before processing.
 
 The original PDF remains in Drive and is read only by the existing Apps
 Script execution identity. Online preview uses the authenticated
-`get_reviewer_pdf_preview` route to return the original bytes without invoking
-PDF processing or creating a Drive derivative. The browser displays the PDF
-with a dynamic two-column by ten-row (20-stamp) overlay containing the verified
-full name and email on separate lines. The route checks the protected
-hierarchy once, then verifies the source version with a single Drive metadata
-lookup after reading the content; it does not block preview delivery on a
-spreadsheet access-log write.
+`get_reviewer_pdf_preview` route to queue server-side watermarking. The
+asynchronous worker watermarks and verifies every page, saves the derivative in
+the configured private Drive output folder, and returns only that derivative
+to the browser. A cache hit is allowed only when the server has freshly
+authorized the user and confirmed the source version is unchanged. The client
+polls the session-bound job and checks the response marker, output size, MIME
+type, and PDF signature before displaying it. The same saved derivative is
+downloaded locally; downloading does not enqueue a duplicate archive job.
 Reviewer preview surfaces request non-selectable content from the browser with
 `user-select: none`. The native PDF renderer is browser-controlled and may not
 honor page styles in every browser; this is a copying deterrent, not a security
 boundary. The frame and object URL are cleared when the preview closes,
 approval is lost, or the session ends.
 
-Only the explicit Download action calls `get_reviewer_pdf`. It creates a
-session-bound job for the asynchronous watermark worker; the worker rechecks
-the session and stored Active value (`TRUE`), current index membership, Drive
-MIME type, protected-root ancestry, and source version. The `pdf-lib` 1.17.1
-(MIT licensed) helper uses two lines (full name and email) in a compact
-two-column by ten-row pattern on each physical page and verifies every stamp
-after saving. The verified email's capitalization is preserved. The browser
-polls `get_reviewer_pdf_job`, which reauthorizes and revalidates the source
-before delivery. Verified derivatives are saved in the configured private output
-folder (`10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl`) and read back from that folder for
+The `pdf-lib` 1.17.1 (MIT licensed) helper uses two lines (full name and email)
+in the current paired-and-offset watermark pattern on each physical page and
+verifies every stamp after saving. The verified email's capitalization is
+preserved. The job-status endpoint reauthorizes and revalidates the source
+before delivery. Verified derivatives are saved in the configured private
+output folder (`10IQyKdYYX5_jP1hQHVjoSEml4FxAlGCl`) and read back from that folder for
 the response; successful output files are retained there. The worker checks
 that each generated file and every folder in its parent chain has only the
 execution owner's permission, so the output folder must not grant inherited or
@@ -149,10 +146,10 @@ The index payload is cached by Drive file ID and last-modified timestamp.
 `setupReviewerPdfDelivery()` must be run by the Apps Script project owner to
 install the worker trigger.
 
-The code rejects sources over 2 MiB, derivatives over 4 MiB, and files over
+The code rejects sources over 8 MiB, derivatives over 12 MiB, and files over
 80 pages. These are implementation guards, not validated Apps Script service
-limits. A 4 MiB derivative expands to at most 5,592,408 base64 characters
-(about 5.33 MiB) before JSON; maximum-size and actual `ContentService`
+limits. A 12 MiB derivative expands to at most 16,777,216 base64 characters
+(16 MiB) before JSON; maximum-size and actual `ContentService`
 response behavior, time-trigger execution/recovery, and large download
 delivery remain untested against a representative protected file. The
 configured output folder's live ACL has not been validated in Drive; the worker

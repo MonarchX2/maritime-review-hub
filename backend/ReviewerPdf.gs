@@ -1,5 +1,5 @@
-var MRH_REVIEWER_PDF_MAX_BYTES = 2 * 1024 * 1024;
-var MRH_REVIEWER_PDF_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
+var MRH_REVIEWER_PDF_MAX_BYTES = 8 * 1024 * 1024;
+var MRH_REVIEWER_PDF_MAX_OUTPUT_BYTES = 12 * 1024 * 1024;
 var MRH_REVIEWER_PDF_MAX_PAGES = 80;
 var setTimeout =
   typeof setTimeout === "function"
@@ -54,7 +54,7 @@ async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
     !sourceBytes.length ||
     sourceBytes.length > MRH_REVIEWER_PDF_MAX_BYTES
   )
-    throw reviewerPdfError_("The source PDF exceeds the 2 MiB limit.", "FILE_TOO_LARGE");
+    throw reviewerPdfError_("The source PDF exceeds the 8 MiB limit.", "FILE_TOO_LARGE");
 
   var unsignedBytes = Uint8Array.from(sourceBytes, function (byte) {
     return Number(byte) & 255;
@@ -104,11 +104,11 @@ async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
       var size = page.getSize();
       var maxWidth = Math.max(
         40,
-        Math.min(size.width, size.height) * 0.3,
+        Math.min(size.width, size.height) * 0.4,
       );
       var fontSize = Math.max(
-        8,
-        Math.min(18, Math.min(size.width, size.height) * 0.04),
+        10,
+        Math.min(24, Math.min(size.width, size.height) * 0.05),
       );
       while (
         watermarkLines.some(function (line) {
@@ -129,17 +129,14 @@ async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
       if (blockHeight > size.height * 0.25)
         throw reviewerPdfError_("Account details do not fit the watermark area.", "WATERMARK_TEXT_TOO_LONG");
       [
-        [0.25, 0.14],
-        [0.75, 0.14],
-        [0.32, 0.26],
-        [0.25, 0.38],
-        [0.75, 0.38],
-        [0.68, 0.5],
-        [0.25, 0.62],
-        [0.75, 0.62],
-        [0.32, 0.74],
-        [0.25, 0.86],
-        [0.75, 0.86],
+        [0.25, 0.15],
+        [0.75, 0.15],
+        [0.5, 0.325],
+        [0.25, 0.5],
+        [0.75, 0.5],
+        [0.5, 0.675],
+        [0.25, 0.85],
+        [0.75, 0.85],
       ].forEach(function (placement) {
         var columnFraction = placement[0];
         var rowFraction = placement[1];
@@ -174,7 +171,7 @@ async function watermarkReviewerPdfBytes_(sourceBytes, identity) {
     savedBytes.length > MRH_REVIEWER_PDF_MAX_OUTPUT_BYTES ||
     String.fromCharCode.apply(null, Array.from(savedBytes.slice(0, 5))) !== "%PDF-"
   )
-    throw reviewerPdfError_("The watermarked PDF exceeds the 4 MiB delivery limit.", "OUTPUT_TOO_LARGE");
+    throw reviewerPdfError_("The watermarked PDF exceeds the 12 MiB delivery limit.", "OUTPUT_TOO_LARGE");
   return {
     bytes: Array.prototype.map.call(savedBytes, function (byte) {
       return byte > 127 ? byte - 256 : byte;
@@ -224,8 +221,8 @@ async function verifyReviewerPdfWatermarks_(bytes, identity) {
       emailCount += streamText.split(email).length - 1;
     });
     if (
-      fullNameCount < 11 ||
-      emailCount < 11
+      fullNameCount < 8 ||
+      emailCount < 8
     )
       throw reviewerPdfError_("A page is missing the verified identity watermark.", "WATERMARK_VERIFICATION_FAILED");
     pagesWithWatermarks += 1;

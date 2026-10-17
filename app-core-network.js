@@ -943,7 +943,7 @@
     const requestId = createRequestId();
     const versionedPayload = { ...payload, appVersion, requestId };
     validateBackendPayload(versionedPayload);
-
+    const serializedPayload = JSON.stringify(versionedPayload);
     return defaultConnectionPool.request(
       async () => {
         let response = null;
@@ -957,10 +957,10 @@
                 Accept: "application/json",
                 ...(options.headers || {}),
               },
-              body: JSON.stringify(versionedPayload),
+              body: serializedPayload,
               redirect: "follow",
               cache: "no-store",
-              keepalive: true,
+              keepalive: serializedPayload.length <= 60000,
               signal: options.signal,
             },
             Number(options.timeoutMs) > 0

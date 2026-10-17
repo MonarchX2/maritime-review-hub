@@ -125,10 +125,10 @@ test("the bundled library runs without Node or browser-only globals", async () =
     runtime,
   );
   delete runtime.__reviewerPdfBytes;
-  assert.equal(firstPageText.split(expectedWatermarkName).length - 1, 11);
+  assert.equal(firstPageText.split(expectedWatermarkName).length - 1, 8);
   assert.equal(
     firstPageText.split("Test.Reviewer@Example.com").length - 1,
-    11,
+    8,
   );
   assert.doesNotMatch(firstPageText, /AUTHORIZED USER:|Student Portal|\|/);
   assert.equal(

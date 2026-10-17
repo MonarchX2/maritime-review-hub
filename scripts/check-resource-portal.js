@@ -639,7 +639,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /resourceDashboardSelectedCategories = \{\s*MODULES: "all",\s*REVIEWERS: "all",\s*\}/,
+  /resourceDashboardSelectedCategories = \{\s*MODULES: "all",\s*REVIEWERS: "all",\s*SYLLABUS: "all",\s*\}/,
   "the category filter should default to All",
 );
 assert.match(
@@ -1645,6 +1645,8 @@ pdfJobProperties.set(
     eventId: "62345678-1234-4123-8123-123456789abc",
     fileId: "reviewerPdf_123456",
     sourceVersion: "test-source-version",
+    fullName: "Rita A. Reviewer",
+    email: "reviewer@example.com",
     status: "queued",
     createdAt: Date.now(),
     expiresAt: Date.now() + 10 * 60 * 1000,
@@ -1654,7 +1656,7 @@ pdfJobProperties.set(
   "MRH_REVIEWER_PDF_QUEUE_v1",
   JSON.stringify([workerJobId]),
 );
-context.MRH_REVIEWER_PDF_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
+context.MRH_REVIEWER_PDF_MAX_OUTPUT_BYTES = 12 * 1024 * 1024;
 let derivativeFile = null;
 context.LockService = {
   getScriptLock: () => ({
@@ -1944,8 +1946,11 @@ const deliveredPdfJob = JSON.parse(
     sessionId: workerSessionId,
   }).text,
 );
-assert.equal(deliveredPdfJob.status, "success");
+assert.equal(deliveredPdfJob.status, "success", JSON.stringify(deliveredPdfJob));
 assert.equal(deliveredPdfJob.mimeType, "application/pdf");
+assert.equal(deliveredPdfJob.watermarked, true);
+assert.equal(deliveredPdfJob.fullName, "Rita A. Reviewer");
+assert.equal(deliveredPdfJob.email, "reviewer@example.com");
 assert.equal(
   Buffer.from(deliveredPdfJob.data, "base64").toString("hex"),
   Buffer.from(workerPdfBytes).toString("hex"),

@@ -2384,7 +2384,7 @@ async function runReviewerPdfWatermarkProofOfConcept() {
     generatedSource.length > MRH_REVIEWER_PDF_MAX_BYTES
   )
     throw new Error(
-      "The generated proof PDF does not fit the current 2 MiB source limit.",
+      "The generated proof PDF does not fit the current 8 MiB source limit.",
     );
 
   var signedSource = Array.prototype.map.call(generatedSource, function (byte) {
@@ -2599,7 +2599,7 @@ function getReviewerPdfSource_(fileId) {
     return {
       error: {
         code: "FILE_TOO_LARGE",
-        message: "This PDF exceeds the 2 MiB Apps Script processing limit.",
+        message: "This PDF exceeds the current 8 MiB preview size limit.",
       },
     };
   return {
@@ -2742,67 +2742,17 @@ function handleGetReviewerPdfPreviewRequest_(data) {
     return jsonResponse({
       status: "success",
       cacheHit: true,
+      watermarked: true,
       mimeType: "application/pdf",
       sourceVersion: source.sourceVersion,
       fullName: identity.fullName,
       email: identity.email,
     });
   }
-  var sourceBytes = DriveApp.getFileById(fileId).getBlob().getBytes();
-  if (
-    !sourceBytes.length ||
-    sourceBytes.length > MRH_REVIEWER_PDF_MAX_BYTES ||
-    !sourceBytes.slice(0, 1024).some(function (byte, index, bytes) {
-      return String.fromCharCode(byte) === "%" &&
-        String.fromCharCode(bytes[index + 1] || 0) === "P" &&
-        String.fromCharCode(bytes[index + 2] || 0) === "D" &&
-        String.fromCharCode(bytes[index + 3] || 0) === "F" &&
-        String.fromCharCode(bytes[index + 4] || 0) === "-";
-    })
-  )
-    return reviewerPdfFailure_(
-      data,
-      startedAt,
-      "INVALID_PDF",
-      "The source PDF is invalid or too large.",
-    );
-  var latestFile = Drive.Files.get(fileId, {
-    fields: "id,mimeType,parents,trashed,size,modifiedTime,headRevisionId,md5Checksum",
-    supportsAllDrives: true,
-  });
-  var latestSourceVersion =
-    latestFile &&
-    !latestFile.trashed &&
-    String(latestFile.mimeType || "").toLowerCase() === "application/pdf"
-      ? reviewerPdfSourceVersion_({
-          id: String(latestFile.id),
-          size: Number(latestFile.size || 0),
-          modifiedTime: String(latestFile.modifiedTime || ""),
-          headRevisionId: String(latestFile.headRevisionId || ""),
-          md5Checksum: String(latestFile.md5Checksum || ""),
-          parents: (latestFile.parents || []).map(String),
-        })
-      : "";
-  if (latestSourceVersion !== source.sourceVersion)
-    return reviewerPdfFailure_(
-      data,
-      startedAt,
-      "PDF_SOURCE_CHANGED",
-      "The PDF changed while the preview was being loaded. Try again.",
-    );
-  Logger.log(JSON.stringify({
-    event: "reviewer_pdf_preview_delivered",
-    correlationId: String(data.eventId || ""),
-    durationMs: Date.now() - startedAt,
-    sourceBytes: sourceBytes.length,
-  }));
-  return jsonResponse({
-    status: "success",
-    mimeType: "application/pdf",
-    sourceVersion: source.sourceVersion,
-    fullName: identity.fullName,
-    email: identity.email,
-    data: Utilities.base64Encode(sourceBytes),
+  return enqueueReviewerPdfRequest_(data, {
+    authorization: authorization,
+    source: source,
+    watermarkIdentity: identity,
   });
 }
 
@@ -2883,13 +2833,15 @@ function permanentlyDeleteReviewerPdfOutput_(fileId) {
   Drive.Files.delete(normalizedId, { supportsAllDrives: true });
 }
 
-function enqueueReviewerPdfRequest_(data) {
+function enqueueReviewerPdfRequest_(data, previewContext) {
   if (!/^[a-f0-9]{96}$/i.test(String(data && data.sessionId || "")))
     return errorResponse(
       "A valid access session is required for PDF delivery.",
       "SESSION_INVALID",
     );
-  var authorization = authorizeReviewerPdfRequest_(data);
+  var authorization = previewContext
+    ? previewContext.authorization
+    : authorizeReviewerPdfRequest_(data);
   if (authorization.error) return authorization.error;
   if (!reviewerPdfQueueConfigured_())
     return errorResponse(
@@ -2900,9 +2852,24 @@ function enqueueReviewerPdfRequest_(data) {
   var fileId = String(data && data.fileId || "").trim();
   if (!/^[A-Za-z0-9_-]{10,200}$/.test(fileId))
     return errorResponse("A valid PDF ID is required.", "BAD_REQUEST");
-  var source = getReviewerPdfSource_(fileId);
+  var source = previewContext
+    ? previewContext.source
+    : getReviewerPdfSource_(fileId);
   if (source.error)
     return errorResponse(source.error.message, source.error.code);
+  var watermarkIdentity = previewContext && previewContext.watermarkIdentity;
+  try {
+    if (!watermarkIdentity)
+      watermarkIdentity = reviewerPdfWatermarkIdentity_(
+        authorization.account,
+        authorization.email,
+      );
+  } catch (error) {
+    return errorResponse(
+      String(error && error.message || "Verified account details are required."),
+      String(error && error.code || "BAD_REQUEST"),
+    );
+  }
 
   var now = Date.now();
   var lock = LockService.getScriptLock();
@@ -2940,6 +2907,8 @@ function enqueueReviewerPdfRequest_(data) {
       fileId: fileId,
       fileName: String(source.driveFile.name || "Reviewer PDF"),
       sourceVersion: source.sourceVersion,
+      fullName: watermarkIdentity.fullName,
+      email: watermarkIdentity.email,
       status: "queued",
       createdAt: now,
       expiresAt: now + REVIEWER_PDF_JOB_TTL_MS,
@@ -2959,7 +2928,14 @@ function enqueueReviewerPdfRequest_(data) {
         "PDF_PROCESSOR_UNAVAILABLE",
       );
     }
-    return jsonResponse({ status: "pending", jobId: jobId });
+    return jsonResponse({
+      status: "pending",
+      jobId: jobId,
+      sourceVersion: source.sourceVersion,
+      fullName: watermarkIdentity.fullName,
+      email: watermarkIdentity.email,
+      watermarked: true,
+    });
   } finally {
     lock.releaseLock();
   }
@@ -3092,6 +3068,10 @@ function getReviewerPdfJobStatus_(data) {
       status: "success",
       mimeType: "application/pdf",
       data: encodedOutput,
+      sourceVersion: job.sourceVersion,
+      fullName: String(job.fullName || ""),
+      email: String(job.email || authorization.email || ""),
+      watermarked: Boolean(job.fullName && job.email),
     });
   } catch (error) {
     Logger.log("[getReviewerPdfJobStatus_] Output delivery failed: " + String(
