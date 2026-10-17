@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const vm = require("node:vm");
+const { isDateVersion } = require("./date-version");
 
 const rootDir = path.resolve(__dirname, "..");
 const appEntry = fs.readFileSync(path.join(rootDir, "app-entry.js"), "utf8");
@@ -18,6 +19,11 @@ const manifest = JSON.parse(
 );
 const release = JSON.parse(
   fs.readFileSync(path.join(rootDir, "version.json"), "utf8"),
+);
+assert.deepEqual(
+  Object.keys(release),
+  ["version"],
+  "version.json must store one canonical version value",
 );
 const workflow = fs.readFileSync(
   path.join(rootDir, ".github", "workflows", "deploy.yml"),
@@ -55,24 +61,21 @@ assert.deepEqual(
   markdownChangelogVersions,
   "every About changelog release should match CHANGELOG.md in order",
 );
-const appVersion = appEntry.match(/^  const APP_VERSION = "([^"]+)";$/m)?.[1];
-const appDisplayVersion = appEntry.match(
-  /^  const APP_DISPLAY_VERSION = "([^"]+)";$/m,
-)?.[1];
-const workerVersion = worker.match(/^const APP_VERSION = "([^"]+)";$/m)?.[1];
-assert.ok(appVersion, "app entry must declare its release version");
-assert.match(
-  appDisplayVersion || "",
-  /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
-  "app entry must declare a human-readable display version",
+const appDisplayVersion = release.version;
+assert.ok(
+  appEntry.includes('new URL("version.json"'),
+  "app entry must load its release version from version.json",
 );
-assert.equal(workerVersion, appVersion);
-assert.equal(release.version, appDisplayVersion);
-assert.equal(release.buildVersion, appVersion);
+assert.match(
+  worker,
+  /APP_VERSION = `mrh-\$\{release\.version\}`/,
+  "the service worker must derive its cache version from version.json",
+);
+assert.equal(isDateVersion(appDisplayVersion), true);
 assert.equal(
   appDisplayVersion,
-  JSON.parse(fs.readFileSync(path.join(rootDir, "version.json"), "utf8")).version,
-  "version.json must be the authoritative semantic application version",
+  release.version,
+  "version.json must be the authoritative date-based application version",
 );
 assert.equal(
   JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf8")).version,
@@ -81,8 +84,8 @@ assert.equal(
 );
 assert.equal(
   manifest.icons[0].src,
-  `icon.svg?v=${appVersion}`,
-  "the installed-app icon must use the release asset version",
+  "icon.svg",
+  "the installed-app icon must not contain a duplicated release version",
 );
 
 const versionedLocalAssets = [
@@ -90,8 +93,12 @@ const versionedLocalAssets = [
     /href="((?:manifest\.json|icon\.svg|tailwind\.generated\.css|styles\.css))\?v=([^"]+)"/g,
   ),
 ];
-assert.equal(versionedLocalAssets.length, 7);
-assert.ok(versionedLocalAssets.every((match) => match[2] === appVersion));
+assert.equal(versionedLocalAssets.length, 0);
+assert.doesNotMatch(
+  html,
+  /id="site-version"[^>]*>Version \d{2}\.\d{2}\.\d{2}-\d+/,
+  "the visible current version must be populated from version.json",
+);
 assert.match(html, /<script src="app-entry\.js" defer><\/script>/);
 assert.doesNotMatch(
   html,
@@ -288,8 +295,8 @@ assert.match(worker, /cleanupOldCachesWhenSafe/);
 assert.match(worker, /getAssetFetchCacheMode/);
 assert.match(worker, /\?\s*"force-cache"/);
 assert.match(worker, /verifyCurrentReleaseMetadata/);
-assert.match(worker, /Release metadata mismatch/);
-assert.doesNotMatch(worker, /"\\.\/version\.json"/);
+assert.match(worker, /Release metadata contains an invalid website version/);
+assert.match(worker, /new URL\("version\.json", APP_BASE_URL\)/);
 assert.match(
   html,
   /id="app-update-notice"[\s\S]*?role="status"[\s\S]*?aria-live="polite"/,
@@ -332,16 +339,16 @@ assert.match(
 );
 assert.match(
   workflow,
-  /- name: Sync About changelog\s+run: node scripts\/sync-about-changelog\.js[\s\S]*?- name: Resolve semantic release version/,
+  /- name: Sync About changelog\s+run: node scripts\/sync-about-changelog\.js[\s\S]*?- name: Resolve date-based release version/,
   "the deployment job must generate the About changelog before publishing the site",
 );
 assert.match(
   workflow,
-  /Resolve semantic release version[\s\S]*?RELEASE_VERSION:\s*\$\{\{\s*steps\.release\.outputs\.release_version\s*\}\}[\s\S]*?DISPLAY_VERSION:\s*\$\{\{\s*steps\.release\.outputs\.display_version\s*\}\}/,
-  "deployments must stamp both unique build and SemVer display versions",
+  /Resolve date-based release version[\s\S]*?DISPLAY_VERSION:\s*\$\{\{\s*steps\.release\.outputs\.display_version\s*\}\}/,
+  "deployments must stamp the canonical YY.MM.DD-Patch version",
 );
 assert.match(workflow, /fetch-depth:\s*0/);
-assert.match(workflow, /Tag semantic release[\s\S]*?git push origin "\$RELEASE_TAG"/);
+assert.match(workflow, /Tag date-based release[\s\S]*?git push origin "\$RELEASE_TAG"/);
 assert.match(
   workflow,
   /Prepare content-hashed Pages assets[\s\S]*?upload-pages-artifact[\s\S]*?path:\s*\$\{\{\s*runner\.temp\s*\}\}\/mrh-pages/,
@@ -378,12 +385,21 @@ try {
       path.join(tempRoot, "scripts", file),
     );
   }
+  fs.copyFileSync(
+    path.join(rootDir, "scripts", "date-version.js"),
+    path.join(tempRoot, "scripts", "date-version.js"),
+  );
 
-  const nextVersion = "mrh-check-release-stamp";
-  const nextDisplayVersion = "14.9.1-2";
+  const nextDisplayVersion = "26.10.17-8";
+  const stampedFiles = ["app-entry.js", "sw.js", "index.html", "manifest.json"];
+  const stampedSources = new Map(
+    stampedFiles.map((file) => [
+      file,
+      fs.readFileSync(path.join(tempRoot, file), "utf8"),
+    ]),
+  );
   const env = {
     ...process.env,
-    RELEASE_VERSION: nextVersion,
     DISPLAY_VERSION: nextDisplayVersion,
   };
   execFileSync(
@@ -400,54 +416,34 @@ try {
     fs.readFileSync(path.join(tempRoot, "version.json"), "utf8"),
   );
   assert.equal(stampedVersionMetadata.version, nextDisplayVersion);
-  assert.equal(stampedVersionMetadata.buildVersion, nextVersion);
-
-  const stampedAppEntry = fs.readFileSync(
-    path.join(tempRoot, "app-entry.js"),
-    "utf8",
+  assert.deepEqual(
+    Object.keys(stampedVersionMetadata),
+    ["version"],
+    "version.json must contain the sole canonical website version",
   );
-  assert.match(
-    stampedAppEntry,
-    new RegExp(`const APP_DISPLAY_VERSION = "${nextDisplayVersion}"`),
-    "release stamping must write the SemVer display version",
-  );
+  for (const file of stampedFiles) {
+    assert.equal(
+      fs.readFileSync(path.join(tempRoot, file), "utf8"),
+      stampedSources.get(file),
+      `${file} must derive the release version instead of storing a duplicate`,
+    );
+  }
   fs.writeFileSync(
     path.join(tempRoot, "app-entry.js"),
-    `!function(){const a="${nextVersion}";document.textContent="Version ${nextDisplayVersion}"}();`,
+    fs
+      .readFileSync(path.join(tempRoot, "app-entry.js"), "utf8")
+      .replaceAll("releaseMetadata", "a"),
+  );
+  fs.writeFileSync(
+    path.join(tempRoot, "sw.js"),
+    fs
+      .readFileSync(path.join(tempRoot, "sw.js"), "utf8")
+      .replaceAll("release", "b"),
   );
   execFileSync(
     process.execPath,
     [path.join(tempRoot, "scripts", "verify-release-version.js")],
     { cwd: tempRoot, env, stdio: "pipe" },
-  );
-
-  const stampedHtml = fs.readFileSync(
-    path.join(tempRoot, "index.html"),
-    "utf8",
-  );
-  const minifiedHtml = stampedHtml.replace(
-    `<p id="site-version" class="site-version">Version ${nextDisplayVersion}</p>`,
-    `<p id=site-version class=site-version>Version ${nextDisplayVersion}`,
-  );
-  fs.writeFileSync(path.join(tempRoot, "index.html"), minifiedHtml);
-  execFileSync(
-    process.execPath,
-    [path.join(tempRoot, "scripts", "verify-release-version.js")],
-    { cwd: tempRoot, env, stdio: "pipe" },
-  );
-
-  const stampedAssetVersions = [
-    ...stampedHtml.matchAll(
-      /href="(?:manifest\.json|icon\.svg|tailwind\.generated\.css|styles\.css)\?v=([^"]+)"/g,
-    ),
-  ];
-  assert.equal(stampedAssetVersions.length, 7);
-  assert.ok(stampedAssetVersions.every((match) => match[1] === nextVersion));
-  assert.ok(
-    stampedHtml.includes(
-      `<p id="site-version" class="site-version">Version ${nextDisplayVersion}</p>`,
-    ),
-    "release stamping must update the visible site version",
   );
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });

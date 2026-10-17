@@ -8,6 +8,13 @@ const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 const MAX_OUTPUT_BYTES = 12 * 1024 * 1024;
 const MAX_PAGES = 80;
 
+function timingNow() {
+  return typeof performance !== "undefined" &&
+    typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
+}
+
 function sanitizeWatermarkText(value, maxLength) {
   return String(value || "")
     .normalize("NFKC")
@@ -18,6 +25,7 @@ function sanitizeWatermarkText(value, maxLength) {
 }
 
 async function createWatermarkedPdf(sourceBuffer, identity) {
+  const startedAt = timingNow();
   if (typeof PDFLib === "undefined" || !PDFLib.PDFDocument)
     throw new Error("The PDF processor could not be loaded.");
   const source = new Uint8Array(sourceBuffer);
@@ -47,6 +55,7 @@ async function createWatermarkedPdf(sourceBuffer, identity) {
     );
 
   let pdf;
+  const parseStartedAt = timingNow();
   try {
     pdf = await PDFLib.PDFDocument.load(source, {
       ignoreEncryption: false,
@@ -55,14 +64,19 @@ async function createWatermarkedPdf(sourceBuffer, identity) {
   } catch {
     throw new Error("The source PDF could not be safely processed.");
   }
+  const pdfParseMs = timingNow() - parseStartedAt;
 
   const pages = pdf.getPages();
   if (!pages.length) throw new Error("The PDF has no pages.");
   if (pages.length > MAX_PAGES)
     throw new Error("The PDF exceeds the 80-page processing limit.");
 
+  const watermarkStartedAt = timingNow();
   const lines = [fullName, email];
   const font = await pdf.embedFont(PDFLib.StandardFonts.HelveticaBold);
+  const encodedLines = new Map(
+    lines.map((line) => [line, font.encodeText(line)]),
+  );
   const widthCache = new Map();
   const textWidth = (text, size) => {
     const key = `${size}\n${text}`;
@@ -209,7 +223,7 @@ async function createWatermarkedPdf(sourceBuffer, identity) {
       operators.push(
         PDFLib.setFontAndSize(fontKey, blockFontSize),
         PDFLib.setTextMatrix(...matrix),
-        PDFLib.showText(font.encodeText(line)),
+        PDFLib.showText(encodedLines.get(line)),
       );
     });
     operators.push(PDFLib.endText(), PDFLib.popGraphicsState());
@@ -220,27 +234,48 @@ async function createWatermarkedPdf(sourceBuffer, identity) {
   pdf.setTitle(downloadFileName);
   pdf.setSubject(email);
   pdf.setKeywords([fullName, email]);
-  const watermarkedBytes = await pdf.save({ useObjectStreams: true });
+  const watermarkLayoutMs = timingNow() - watermarkStartedAt;
+  const serializeStartedAt = timingNow();
+  const watermarkedBytes = await pdf.save({
+    useObjectStreams: true,
+    objectsPerTick: 1000,
+  });
+  const pdfSerializeMs = timingNow() - serializeStartedAt;
   if (
     watermarkedBytes.byteLength < 5 ||
     watermarkedBytes.byteLength > MAX_OUTPUT_BYTES ||
     String.fromCharCode(...watermarkedBytes.slice(0, 5)) !== "%PDF-"
   )
     throw new Error("The prepared PDF is invalid or exceeds the 12 MiB limit.");
-  return watermarkedBytes;
+  return {
+    bytes: watermarkedBytes,
+    metrics: {
+      sourceByteLength: source.byteLength,
+      outputByteLength: watermarkedBytes.byteLength,
+      pageCount: pages.length,
+      pdfParseMs: pdfParseMs,
+      watermarkLayoutMs: watermarkLayoutMs,
+      pdfSerializeMs: pdfSerializeMs,
+      workerTotalMs: timingNow() - startedAt,
+    },
+  };
 }
 
 self.onmessage = async (event) => {
   try {
-    const bytes = await createWatermarkedPdf(
+    const result = await createWatermarkedPdf(
       event.data?.sourceBuffer,
       event.data?.identity,
     );
+    const bytes = result.bytes;
     const resultBuffer = bytes.buffer.slice(
       bytes.byteOffset,
       bytes.byteOffset + bytes.byteLength,
     );
-    self.postMessage({ status: "success", resultBuffer }, [resultBuffer]);
+    self.postMessage(
+      { status: "success", resultBuffer, metrics: result.metrics },
+      [resultBuffer],
+    );
   } catch (error) {
     self.postMessage({
       status: "error",

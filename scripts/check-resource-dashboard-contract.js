@@ -924,7 +924,7 @@ const watermarkWorker = fs.readFileSync("reviewer-pdf-worker.js", "utf8");
   "drawBlock(size.width * 0.5, y, 0, smallFontSize)",
   "perimeterFontSize * 0.7",
   "PDFLib.setTextMatrix(...matrix)",
-  "PDFLib.showText(font.encodeText(line))",
+  "PDFLib.showText(encodedLines.get(line))",
   "page.pushOperators(...operators)",
   "pdf.setAuthor(fullName)",
   "pdf.setTitle(downloadFileName)",
@@ -1036,7 +1036,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /function openBlobResourceViewer\([\s\S]*?Return to Website[\s\S]*?<a href="\$\{blobUrl\}" download="\$\{downloadName\}">Download<\/a>[\s\S]*?preview\.classList\.add\("is-blob-viewer"\)[\s\S]*?frame\.src = viewerUrl/,
+  /function openBlobResourceViewer\([\s\S]*?Return to Website[\s\S]*?<a id="pdf-download"\$\{blobUrl \? ` href="\$\{blobUrl\}" download="\$\{downloadName\}"`[\s\S]*?preview\.classList\.add\("is-blob-viewer"\)[\s\S]*?frame\.src = viewerUrl/,
   "the Blob viewer should use local PDF.js for mobile PDFs and retain return and download actions",
 );
 assert.match(appCore, /new URL\("pdfjs-5\.4\.394\.min\.mjs", baseUrl\)/);
@@ -1079,6 +1079,21 @@ assert.match(
 );
 assert.match(
   appCore,
+  /function isMobileReviewerPdfDevice\([\s\S]*?userAgentData\?\.mobile[\s\S]*?Android\|iPhone\|iPod\|iPad\|Mobile\|Windows Phone[\s\S]*?\(pointer: coarse\)/,
+  "mobile detection should cover mobile user agents, Client Hints, and coarse-pointer devices",
+);
+assert.match(
+  appCore,
+  /const isPdfResource =[\s\S]*?if \(reviewer && isPdfResource && isMobileReviewerPdfDevice\(\)\) \{[\s\S]*?forcePdfJs:\s*true[\s\S]*?const isInlineResourceType[\s\S]*?AppNetwork\.callBackend/,
+  "mobile Reviewer PDF.js preview should open before the backend request and watermarking finish",
+);
+assert.match(
+  appCore,
+  /function sendReviewerPdfBytesToBlobViewer\([\s\S]*?MRH_PDF_VIEWER_DATA[\s\S]*?downloadUrl:[\s\S]*?function showReviewerPdfBlobViewerError/,
+  "the early mobile viewer shell should receive the prepared PDF and download link when ready",
+);
+assert.match(
+  appCore,
   /const isModulesSection =\s*resourceDashboardActiveTab === "MODULES" && !reviewer;[\s\S]*?const isModulesFile = isModulesSection;[\s\S]*?const isSyllabusPdf =\s*resourceDashboardActiveTab === "SYLLABUS" &&\s*responseMimeType === "application\/pdf"[\s\S]*?openBlobResourceViewer\(previewTitle/,
   "all Modules files and Syllabus PDFs should use the native Blob viewer",
 );
@@ -1089,7 +1104,7 @@ assert.match(
 );
 assert.match(
   appCore,
-  /event\.source !== frame\.contentWindow[\s\S]*?event\.data\?\.type === "MRH_PDF_VIEWER_READY"[\s\S]*?MRH_PDF_VIEWER_DATA[\s\S]*?event\.data\?\.type !== "MRH_RESOURCE_PREVIEW_RETURN"[\s\S]*?backButton\.click\(\)/,
+  /event\.source !== frame\.contentWindow[\s\S]*?event\.data\?\.type === "MRH_PDF_VIEWER_READY"[\s\S]*?sendReviewerPdfBytesToBlobViewer\(\)[\s\S]*?event\.data\?\.type !== "MRH_RESOURCE_PREVIEW_RETURN"[\s\S]*?backButton\.click\(\)/,
   "PDF bytes and return actions should only be handled from the active preview frame",
 );
 assert.match(
@@ -1225,11 +1240,14 @@ const blobViewer = new Function(
   "URL",
   "Blob",
   "globalScope",
+  "isMobileReviewerPdfDevice",
   "reviewerSessionId",
   "resourcePortalPreviewObjectUrl",
   "resourcePortalPreviewUrlOpened",
   "resourcePortalPreviewBlobViewerUrl",
   "resourcePortalPreviewPdfBytes",
+  "resourcePortalPreviewBlobViewerReady",
+  "resourcePortalPreviewBlobViewerError",
   `${extractAppFunction("openBlobResourceViewer")}; ${extractAppFunction("openMobileReviewerPdfBlobViewer")}; return openMobileReviewerPdfBlobViewer;`,
 )(
   escapeTestHtml,
@@ -1237,7 +1255,7 @@ const blobViewer = new Function(
   TestBlob,
   {
     matchMedia: (query) => ({
-      matches: query === "(max-width: 640px), (pointer: coarse)",
+      matches: query === "(pointer: coarse)",
     }),
     location: {
       href: 'https://example.test/mrh/?return=<safe&x="y"',
@@ -1245,11 +1263,14 @@ const blobViewer = new Function(
     },
     __MRH_APP_BASE_PATH: "/mrh/",
   },
+  () => true,
   "active-session",
   "blob:prepared-pdf",
   false,
   "",
   null,
+  false,
+  "",
 );
 const blobViewerPreview = {
   classList: {
@@ -1295,11 +1316,21 @@ assert.match(
 );
 assert.match(
   blobViewerState.created[0].content,
+  /grid-template-rows: auto minmax\(0, 1fr\);[\s\S]*?#pdf-status \{ position: fixed;/,
+  "the PDF status overlay must not create an implicit grid row that pushes the PDF offscreen",
+);
+assert.match(
+  blobViewerState.created[0].content,
+  /@media \(max-width: 640px\)[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)[\s\S]*?white-space: normal/,
+  "mobile viewer title and actions must wrap and fit within the viewport",
+);
+assert.match(
+  blobViewerState.created[0].content,
   /<h1>NAV6 - &lt;Unsafe&gt; Course<\/h1>/,
 );
 assert.match(
   blobViewerState.created[0].content,
-  /<a href="blob:prepared-pdf" download="course\.pdf">Download<\/a>/,
+  /<a id="pdf-download" href="blob:prepared-pdf" download="course\.pdf">Download<\/a>/,
 );
 assert.match(
   blobViewerState.created[0].content,
@@ -1308,6 +1339,69 @@ assert.match(
 assert.match(
   blobViewerState.created[0].content,
   /<main id="pdf-pages" aria-label="PDF pages"><\/main>[\s\S]*?pdfjs\.getDocument/,
+);
+const openImmediateBlobViewer = new Function(
+  "escapeHTML",
+  "URL",
+  "Blob",
+  "globalScope",
+  "isMobileReviewerPdfDevice",
+  "resourcePortalPreviewObjectUrl",
+  "resourcePortalPreviewUrlOpened",
+  "resourcePortalPreviewBlobViewerUrl",
+  "resourcePortalPreviewPdfBytes",
+  "resourcePortalPreviewBlobViewerReady",
+  "resourcePortalPreviewBlobViewerError",
+  `${extractAppFunction("openBlobResourceViewer")}; return openBlobResourceViewer;`,
+)(
+  escapeTestHtml,
+  TestURL,
+  TestBlob,
+  {
+    matchMedia: () => ({ matches: true }),
+    location: {
+      href: "https://example.test/mrh/",
+      origin: "https://example.test",
+    },
+    __MRH_APP_BASE_PATH: "/mrh/",
+  },
+  () => true,
+  "",
+  false,
+  "",
+  null,
+  false,
+  "",
+);
+const earlyViewerFrame = { hidden: true, src: "" };
+assert.equal(
+  openImmediateBlobViewer("NAV6 - Full Course Name", {
+    preview: blobViewerPreview,
+    frame: earlyViewerFrame,
+    status: blobViewerStatus,
+    mobileOnly: true,
+    forcePdfJs: true,
+  }),
+  true,
+  "the mobile PDF.js shell should open before source bytes or a Blob URL are available",
+);
+assert.equal(earlyViewerFrame.src, "blob:viewer");
+assert.match(
+  blobViewerState.created[1].content,
+  /<main id="pdf-pages" aria-label="PDF pages"><\/main>[\s\S]*?Loading PDF Preview[\s\S]*?import\("https:\/\/example\.test\/mrh\/pdfjs-5\.4\.394\.min\.mjs"\)/,
+  "the immediate mobile viewer should start loading PDF.js while authorization and watermarking run",
+);
+assert.match(
+  blobViewerState.created[1].content,
+  /<a id="pdf-download" aria-disabled="true" tabindex="-1">Download<\/a>/,
+  "download must remain unavailable until the authorized, watermarked PDF is ready",
+);
+assert.ok(
+  blobViewerState.created[1].content.indexOf(
+    'window.addEventListener("message", (event) => {',
+  ) <
+    blobViewerState.created[1].content.indexOf("const observer ="),
+  "the early PDF preparation error listener must be registered before page rendering starts",
 );
 assert.doesNotMatch(
   blobViewerState.created[0].content,

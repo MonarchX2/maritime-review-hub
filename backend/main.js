@@ -2474,6 +2474,7 @@ function logReviewerPdfRequestTiming_(data, startedAt, timings, outcome) {
     base64EncodeMs: timings.base64EncodeMs,
     responseBuildMs: timings.responseBuildMs,
     sourceBytes: timings.sourceBytes,
+    base64Bytes: timings.base64Bytes,
   }));
 }
 
@@ -2528,6 +2529,7 @@ function handleGetReviewerPdfPreviewRequest_(data) {
     base64EncodeMs: 0,
     responseBuildMs: 0,
     sourceBytes: 0,
+    base64Bytes: 0,
   };
   var authorizationStartedAt = Date.now();
   var authorization;
@@ -2582,6 +2584,7 @@ function handleGetReviewerPdfPreviewRequest_(data) {
       source.error.message,
       timings,
     );
+  timings.sourceBytes = Number(source.driveFile.size || 0);
   var fullName = [
     authorization.account.firstName,
     authorization.account.middleInitial,
@@ -2707,6 +2710,7 @@ function handleGetReviewerPdfPreviewRequest_(data) {
   var base64EncodeStartedAt = Date.now();
   var encodedSource = Utilities.base64Encode(sourceBytes);
   timings.base64EncodeMs = Date.now() - base64EncodeStartedAt;
+  timings.base64Bytes = encodedSource.length;
   var responseBuildStartedAt = Date.now();
   var output = jsonResponse({
     status: "success",

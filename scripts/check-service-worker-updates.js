@@ -13,10 +13,12 @@ const calls = {
 const cachedEntries = new Map();
 const workerSource = fs.readFileSync("sw.js", "utf8");
 const releaseMetadata = JSON.parse(fs.readFileSync("version.json", "utf8"));
-const appVersionMatch = workerSource.match(/^const APP_VERSION = "([^"]+)";$/m);
-assert.ok(appVersionMatch, "service worker must declare its release version");
-const appVersion = appVersionMatch[1];
-assert.equal(releaseMetadata.buildVersion, appVersion);
+const appVersion = `mrh-${releaseMetadata.version}`;
+assert.match(
+  workerSource,
+  /APP_VERSION = `mrh-\$\{release\.version\}`/,
+  "the service worker must derive its release version from version.json",
+);
 const webcrypto = require("node:crypto").webcrypto;
 const appOrigin = "https://example.test";
 const appBasePath = "/app/";
@@ -143,7 +145,6 @@ const context = {
       return new Response(
         JSON.stringify({
           version: releaseMetadata.version,
-          buildVersion: parsedUrl.searchParams.get("check"),
         }),
         { headers: { "Content-Type": "application/json" } },
       );
@@ -197,12 +198,6 @@ async function main() {
     filename: "sw.js",
   });
 
-  assert.equal(
-    self.__MRH_SW__.CACHE_NAME,
-    `mrh-cache-${appVersion}`,
-    "cache version must come from the worker release, not the page's old query",
-  );
-
   cachedEntries.set(
     "mrh-cache-mrh-release-old-open-tab",
     new Map(),
@@ -210,6 +205,11 @@ async function main() {
   cachedEntries.set("mrh-cache-unused-release", new Map());
   await captureWaitUntil(events.get("install"), {});
   assert.ok(skippedWaiting, "successfully precached workers must activate promptly");
+  assert.equal(
+    self.__MRH_SW__.CACHE_NAME,
+    `mrh-cache-${appVersion}`,
+    "cache version must derive from version.json, not the page's old query",
+  );
   assert.equal(
     calls.requests[0].request.cache,
     "no-store",
@@ -351,6 +351,7 @@ async function main() {
       staticRefresh = promise;
     },
   });
+  await Promise.resolve();
   assert.ok(staticRefresh, "cached static refresh must extend worker lifetime");
   staticRefresh.then(() => {
     staticRefreshComplete = true;
@@ -417,17 +418,12 @@ async function main() {
     "nested app-shell assets must preserve their paths when normalized for cache lookup",
   );
 
-  const incompleteVersion = `${appVersion}-incomplete`;
-  const incompleteSource = workerSource.replace(
-    `const APP_VERSION = "${appVersion}";`,
-    `const APP_VERSION = "${incompleteVersion}";`,
-  );
   const incompleteEvents = new Map();
   let incompleteWorkerSkippedWaiting = false;
   const incompleteSelf = {
     ...self,
     location: {
-      href: `${appOrigin}${appBasePath}sw.js?v=${incompleteVersion}`,
+      href: `${appOrigin}${appBasePath}sw.js?v=${appVersion}`,
       origin: appOrigin,
     },
     addEventListener(name, handler) {
@@ -448,7 +444,7 @@ async function main() {
       return context.fetch(request, options);
     },
   };
-  vm.runInNewContext(incompleteSource, incompleteContext, {
+  vm.runInNewContext(workerSource, incompleteContext, {
     filename: "sw-incomplete.js",
   });
   let incompleteInstall;
@@ -472,13 +468,12 @@ async function main() {
     "the previous working app cache must remain available after failed install",
   );
 
-  const staleMetadataVersion = `${appVersion}-stale-metadata`;
   const staleMetadataEvents = new Map();
   let staleMetadataWorkerSkippedWaiting = false;
   const staleMetadataSelf = {
     ...self,
     location: {
-      href: `${appOrigin}${appBasePath}sw.js?v=${staleMetadataVersion}`,
+      href: `${appOrigin}${appBasePath}sw.js?v=${appVersion}`,
       origin: appOrigin,
     },
     addEventListener(name, handler) {
@@ -496,8 +491,7 @@ async function main() {
       if (new URL(url).pathname.endsWith("/version.json")) {
         return new Response(
           JSON.stringify({
-            version: releaseMetadata.version,
-            buildVersion: appVersion,
+            version: "invalid-version",
           }),
           { headers: { "Content-Type": "application/json" } },
         );
@@ -506,10 +500,7 @@ async function main() {
     },
   };
   vm.runInNewContext(
-    workerSource.replace(
-      `const APP_VERSION = "${appVersion}";`,
-      `const APP_VERSION = "${staleMetadataVersion}";`,
-    ),
+    workerSource,
     staleMetadataContext,
     { filename: "sw-stale-metadata.js" },
   );
@@ -521,13 +512,50 @@ async function main() {
   });
   await assert.rejects(
     staleMetadataInstall,
-    /Release metadata mismatch/,
-    "a worker from a different deployment must not install against stale release metadata",
+    /Release metadata contains an invalid website version/,
+    "a worker must reject malformed canonical release metadata",
   );
   assert.equal(
     staleMetadataWorkerSkippedWaiting,
     false,
     "stale deployment metadata must leave the previous worker active",
+  );
+
+  const restartedEvents = new Map();
+  const restartedSelf = {
+    ...self,
+    addEventListener(name, handler) {
+      restartedEvents.set(name, handler);
+    },
+  };
+  const restartedContext = {
+    ...context,
+    self: restartedSelf,
+  };
+  vm.runInNewContext(workerSource, restartedContext, {
+    filename: "sw-restarted.js",
+  });
+  let restartedResponse;
+  let restartedRefresh;
+  restartedEvents.get("fetch")({
+    request: new Request(`${appOrigin}${appBasePath}version.json`),
+    respondWith(promise) {
+      restartedResponse = promise;
+    },
+    waitUntil(promise) {
+      restartedRefresh = promise;
+    },
+  });
+  assert.equal(
+    (await (await restartedResponse).json()).version,
+    releaseMetadata.version,
+    "a restarted worker must initialize its cache version before serving cached metadata",
+  );
+  await restartedRefresh;
+  assert.equal(
+    restartedSelf.__MRH_SW__.CACHE_NAME,
+    `mrh-cache-${appVersion}`,
+    "a restarted service worker must recover its release metadata before handling requests",
   );
 
   console.log("Service-worker update lifecycle checks passed.");

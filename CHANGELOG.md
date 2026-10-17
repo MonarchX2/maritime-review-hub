@@ -322,6 +322,17 @@
 
 ## 26.10.17-8 - 2026-10-17
 
+### Improved
+
+- Start initial and background summary sync from one elected tab before
+  session-restoration prompts; pause polling and retries while hidden, and
+  broadcast confirmed sync status so cached follower tabs show the correct
+  connection state without redundant requests.
+- Open the mobile Reviewer PDF.js viewer immediately, keep its controls within
+  the screen, and show authorized, watermarked content as soon as it is ready.
+- Measure PDF worker and backend processing stages, reuse the warmed worker,
+  and reduce serialization overhead for larger PDFs.
+
 ### Fixed
 
 - Automatically retry temporary saved Reviewer-session restoration failures

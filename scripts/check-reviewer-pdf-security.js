@@ -56,7 +56,7 @@ assert.match(
 );
 assert.match(
   backend,
-  /function logReviewerPdfRequestTiming_\([\s\S]*?authorizationMs:[\s\S]*?indexLookupMs:[\s\S]*?driveHierarchyMs:[\s\S]*?sourceReadMs:[\s\S]*?accessLogMs:[\s\S]*?base64EncodeMs:/,
+  /function logReviewerPdfRequestTiming_\([\s\S]*?authorizationMs:[\s\S]*?indexLookupMs:[\s\S]*?driveHierarchyMs:[\s\S]*?sourceReadMs:[\s\S]*?accessLogMs:[\s\S]*?base64EncodeMs:[\s\S]*?base64Bytes:/,
   "Reviewer PDF requests must log backend authorization, Drive, audit, and encoding phase timings",
 );
 assert.match(
@@ -164,6 +164,11 @@ assert.match(
   /authorizationAndSourceRoundTripMs[\s\S]*?decodeMs[\s\S]*?watermarkMs[\s\S]*?previewSetupMs/,
   "Reviewer preview timing must report request, decode, watermark, and preview setup phases",
 );
+assert.match(
+  frontend,
+  /pdfParseMs:[\s\S]*?watermarkLayoutMs:[\s\S]*?pdfSerializeMs:[\s\S]*?workerStartupMs:[\s\S]*?sourceByteLength:[\s\S]*?outputByteLength:[\s\S]*?pageCount:[\s\S]*?correlationId/,
+  "browser timing must report worker processing phases, PDF size/page count, and a backend correlation ID",
+);
 assert.ok(
   frontend.includes("MRH_PDF_VIEWER_FIRST_PAGE_RENDERED") &&
     frontend.includes("firstPageRenderMs") &&
@@ -195,7 +200,7 @@ assert.match(
   "const diagonalAngle = -25",
   "const localX = -textWidth(line, blockFontSize) / 2",
   "PDFLib.setTextMatrix(...matrix)",
-  "PDFLib.showText(font.encodeText(line))",
+  "PDFLib.showText(encodedLines.get(line))",
   "page.pushOperators(...operators)",
   "interiorFontSize",
   "smallFontSize",
@@ -207,7 +212,7 @@ assert.match(
 });
 assert.match(
   worker,
-  /pdf\.setAuthor\(fullName\);[\s\S]*?pdf\.setTitle\(downloadFileName\);[\s\S]*?pdf\.setSubject\(email\);[\s\S]*?pdf\.setKeywords\(\[fullName, email\]\);[\s\S]*?pdf\.save/,
+  /pdf\.setAuthor\(fullName\);[\s\S]*?pdf\.setTitle\(downloadFileName\);[\s\S]*?pdf\.setSubject\(email\);[\s\S]*?pdf\.setKeywords\(\[fullName, email\]\);[\s\S]*?pdf\.save\(\{[\s\S]*?useObjectStreams:\s*true,[\s\S]*?objectsPerTick:\s*1000/,
   "watermarked PDFs should include the backend-provided filename, verified name, and email in metadata before saving",
 );
 assert.match(

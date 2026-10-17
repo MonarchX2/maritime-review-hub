@@ -1,8 +1,31 @@
 (async function () {
   "use strict";
 
-  const APP_VERSION = "mrh-26.11.3-20261017";
-  const APP_DISPLAY_VERSION = "26.11.3";
+  const scriptUrl =
+    typeof window !== "undefined"
+      ? document.currentScript?.src ||
+        navigator.serviceWorker?.controller?.scriptURL ||
+        window.location.href
+      : globalThis.location?.href;
+  if (!scriptUrl) {
+    throw new Error("Unable to determine the app base URL for release metadata.");
+  }
+  const versionUrl = new URL("version.json", new URL(".", scriptUrl));
+  const versionResponse = await fetch(versionUrl, {
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+  if (!versionResponse.ok) {
+    throw new Error(
+      `Release metadata request failed with HTTP ${versionResponse.status}.`,
+    );
+  }
+  const releaseMetadata = await versionResponse.json();
+  const APP_DISPLAY_VERSION = releaseMetadata?.version;
+  if (!/^\d{2}\.\d{2}\.\d{2}-(?:0|[1-9]\d*)$/.test(APP_DISPLAY_VERSION || "")) {
+    throw new Error("Release metadata contains an invalid website version.");
+  }
+  const APP_VERSION = `mrh-${APP_DISPLAY_VERSION}`;
   const UPDATE_QUERY_PARAMETER = "__mrh_update";
   const FACEBOOK_CLICK_ID_PARAMETER = "fbclid";
   const LEGACY_PAGES_BASE_PATH = "/maritime-review-hub/";
@@ -20,10 +43,6 @@
   const PENDING_UPDATE_RETRY_INTERVAL_MS = 15 * 1000;
 
   if (typeof window !== "undefined") {
-    const scriptUrl =
-      document.currentScript?.src ||
-      navigator.serviceWorker?.controller?.scriptURL ||
-      window.location.href;
     const scriptPath = new URL(".", scriptUrl).pathname;
     rootScope.__MRH_APP_BASE_PATH = scriptPath.endsWith("/")
       ? scriptPath
@@ -276,11 +295,11 @@
         return response.json();
       })
       .then(async (release) => {
+        const releaseVersion = `mrh-${release?.version || ""}`;
         if (
-          typeof release?.buildVersion !== "string" ||
-          !/^mrh-[A-Za-z0-9._-]+$/.test(release.buildVersion) ||
-          release.buildVersion === APP_VERSION ||
-          release.buildVersion === pendingAppUpdateVersion
+          !/^\d{2}\.\d{2}\.\d{2}-(?:0|[1-9]\d*)$/.test(release?.version || "") ||
+          releaseVersion === APP_VERSION ||
+          releaseVersion === pendingAppUpdateVersion
         ) {
           return;
         }
@@ -294,8 +313,8 @@
         if (serviceWorkerRegistration) return;
         if (!serviceWorkerRegistrationFailed) return;
 
-        await verifyDeployedReleaseAssets(release.buildVersion);
-        markAppUpdateAvailable(release.buildVersion);
+        await verifyDeployedReleaseAssets(releaseVersion);
+        markAppUpdateAvailable(releaseVersion);
       })
       .catch((error) => {
         bootstrapLogger().warn("Deployed app version check failed:", error);
@@ -358,7 +377,7 @@
       }
       if (name === "app-entry.js") {
         const source = await response.text();
-        if (!source.includes(`const APP_VERSION = "${version}"`)) {
+        if (!source.includes('new URL("version.json"')) {
           throw new Error("The entry script does not match the release version.");
         }
       }

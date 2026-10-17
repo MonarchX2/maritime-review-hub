@@ -2,19 +2,20 @@ const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const vm = require("node:vm");
+const { isDateVersion } = require("./date-version");
 
 const appCore = fs.readFileSync("app-core.js", "utf8");
 const backend = fs.readFileSync("backend/main.js", "utf8");
 const deckNavigation = fs.readFileSync("deck-nav-core.js", "utf8");
 const index = fs.readFileSync("index.html", "utf8");
 const releaseMetadata = JSON.parse(fs.readFileSync("version.json", "utf8"));
-const appVersion = releaseMetadata.buildVersion;
+const appVersion = `mrh-${releaseMetadata.version}`;
 const resourceStyles = fs.readFileSync("styles.css", "utf8");
 
-assert.match(
-  releaseMetadata.version,
-  /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
-  "version.json must define the editable semantic app version",
+assert.equal(
+  isDateVersion(releaseMetadata.version),
+  true,
+  "version.json must define the editable YY.MM.DD-Patch app version",
 );
 assert.match(
   appCore,
@@ -73,7 +74,7 @@ assert.match(
 assert.match(
   appVersion,
   /^mrh-[A-Za-z0-9._-]+$/,
-  "version.json must define a valid generated release build identifier",
+  "the app cache identifier must derive from the canonical version",
 );
 assert.match(
   resourceStyles,

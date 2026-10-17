@@ -2,15 +2,36 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 
+const appCoreSource = fs.readFileSync("app-core.js", "utf8");
 assert.match(
-  fs.readFileSync("app-core.js", "utf8"),
+  appCoreSource,
   /const SYNC_STATUS_STORAGE_KEY = "mrh_last_applied_sync_status_timestamp";/,
   "sync must not trust timestamps saved before a summary was applied",
 );
 assert.match(
-  fs.readFileSync("app-core.js", "utf8"),
+  appCoreSource,
   /window\.addEventListener\(\s*"online"[\s\S]*?syncScheduler\.handleVisibility\(false\)/,
   "the elected foreground tab should resume background sync when connectivity returns",
+);
+assert.match(
+  appCoreSource,
+  /function scheduleStartupSync\(\) \{[\s\S]*?!isLeaderTab[\s\S]*?optimizedBackgroundSync\(\)/,
+  "only the elected tab should perform the initial summary sync",
+);
+assert.match(
+  appCoreSource,
+  /startCacheVersionChecking\(\);\s*scheduleStartupSync\(\);\s*const sessionRoute/,
+  "startup synchronization should begin before session-restore prompts",
+);
+assert.match(
+  appCoreSource,
+  /async function refreshFromBackendPayloadBroadcast\(\) \{[\s\S]*?getDeckSyncSnapshot\([\s\S]*?syncPrefetchedSnapshot\(snapshot\)/,
+  "payload-change notifications should reuse one atomic snapshot for local application",
+);
+assert.match(
+  appCoreSource,
+  /onSyncSuccess:\s*broadcastBackendSyncStatus[\s\S]*?type:\s*"backend_sync_status"[\s\S]*?function handleBackendSyncStatusBroadcast[\s\S]*?updateSyncStatus\([\s\S]*?"success"/,
+  "leader sync completion should update follower connection indicators without redundant requests",
 );
 
 const timeoutCallbacks = new Map();
@@ -66,6 +87,7 @@ const context = {
   Math,
   Promise,
   console,
+  document: { hidden: false },
   LifecycleUtils: lifecycle,
 };
 vm.createContext(context);
@@ -403,6 +425,85 @@ async function main() {
   controller.cleanup();
   assert.equal(timeoutCallbacks.size, 0);
   assert.equal(intervalCallbacks.size, 0);
+
+  let visibilitySnapshotRequests = 0;
+  const visibilityController = context.SyncCore.createController({
+    state: { categorySummary: [{ Subject: "COLREGS" }] },
+    lifecycle,
+    appConfig: {
+      syncIntervalMs: 60000,
+      syncRetryIntervalMs: 3000,
+      backendPayloadSchemaVersion: 2,
+    },
+    network: {
+      async getDeckSyncSnapshot() {
+        visibilitySnapshotRequests += 1;
+        if (visibilitySnapshotRequests === 1)
+          throw new Error("temporary network failure");
+        return {
+          status: "ok",
+          payloadSchemaVersion: 2,
+          syncTimestamp: "visibility-stamp",
+          cacheVersion: "visibility-cache",
+          notModified: true,
+        };
+      },
+      async getSyncStatus() {
+        assert.fail("Snapshot sync should not issue a separate status request.");
+      },
+      async getDeckSummary() {
+        assert.fail("An unchanged snapshot should not download the summary.");
+      },
+    },
+    logger: { warn() {}, error() {}, info() {} },
+    isLeader: () => true,
+    hasActiveSession: () => false,
+    isImmediateUpdateMode: () => true,
+    setSyncConnected() {},
+    setColdStart() {},
+    normalizeSummaryData: (summary) => summary,
+    readStoredSyncStatusTimestamp: () => "visibility-stamp",
+    readStoredSyncStatusCacheVersion: () => "visibility-cache",
+    persistSyncStatusTimestamp() {},
+    async persistSummaryData() {
+      return true;
+    },
+    applySummaryData() {},
+    setAccessMetadata() {},
+    sanitizeDeletedDeckReferences() {},
+    updateSyncStatus() {},
+    setGlobalLoadingState() {},
+    hideConnectionStatusAfterDelay() {},
+    renderCategoryProgress() {},
+    showColdStartNotification() {},
+    getSummarySignature: (summary) => JSON.stringify(summary),
+    async refreshPendingPayloads() {},
+  });
+  context.document.hidden = true;
+  await visibilityController.optimizedBackgroundSync();
+  assert.equal(
+    timeoutCallbacks.size,
+    0,
+    "failed background sync must not schedule retries while the page is hidden",
+  );
+  assert.equal(
+    intervalCallbacks.size,
+    0,
+    "hidden pages must not keep retry countdown timers running",
+  );
+  context.document.hidden = false;
+  await visibilityController.handleVisibility(false);
+  assert.equal(visibilitySnapshotRequests, 2);
+  assert.equal(
+    timeoutCallbacks.size,
+    1,
+    "the visible page should immediately resume background sync and normal polling",
+  );
+  context.document.hidden = true;
+  visibilityController.handleVisibility(true);
+  assert.equal(timeoutCallbacks.size, 0);
+  assert.equal(intervalCallbacks.size, 0);
+  visibilityController.cleanup();
   console.log("Sync timestamp recovery checks passed.");
 }
 

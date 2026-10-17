@@ -23,23 +23,23 @@ const context = {
     },
   },
 };
-const currentReleaseVersion = fs
-  .readFileSync("CHANGELOG.md", "utf8")
-  .match(/^## (\d+\.\d+\.\d+-\d+) - /m)?.[1];
+const currentReleaseVersion = JSON.parse(
+  fs.readFileSync("version.json", "utf8"),
+).version;
 const backendSource = fs.readFileSync("backend/main.js", "utf8");
 const minimumReleaseVersion = backendSource.match(
   /const MINIMUM_SUPPORTED_CLIENT_VERSION = "([^"]+)";/,
 )?.[1];
 assert.ok(currentReleaseVersion, "the current release must be listed in CHANGELOG.md");
 assert.ok(minimumReleaseVersion, "the backend must define a minimum client release");
-const minimumReleaseParts = /^(\d+\.\d+\.\d+)-(\d+)$/.exec(
+const minimumReleaseParts = /^(\d{2}\.(?:0[1-9]|1[0-2])\.(?:0[1-9]|[12]\d|3[01]))-(0|[1-9]\d*)$/.exec(
   minimumReleaseVersion,
 );
 assert.ok(minimumReleaseParts, "the backend minimum must be a date-based release");
 const belowMinimumReleaseVersion = `${minimumReleaseParts[1]}-${
   Number(minimumReleaseParts[2]) - 1
 }`;
-const currentClientVersion = `mrh-release-${currentReleaseVersion}`;
+const currentClientVersion = `mrh-${currentReleaseVersion}`;
 vm.createContext(context);
 vm.runInContext(
   fs.readFileSync("backend/main.js", "utf8"),
@@ -303,8 +303,8 @@ assert.equal(
 assert.equal(lastDriveListOptions.pageSize, 1000);
 assert.equal(
   lastDriveListOptions.fields,
-  "nextPageToken,files(id,name,mimeType,modifiedTime,shortcutDetails(targetId,targetMimeType))",
-  "Drive listing calls should request only fields needed to render public resources and resolve shortcuts",
+  "nextPageToken,files(id,name,mimeType,modifiedTime,thumbnailLink,shortcutDetails(targetId,targetMimeType))",
+  "Drive listing calls should include the public thumbnail URL and shortcut fields needed to render resources",
 );
 assert.equal(lastDriveListOptions.corpora, "user");
 assert.equal(
@@ -440,7 +440,7 @@ assert.equal(
 );
 assert.equal(
   Array.from(resourceCache.keys()).some((key) =>
-    key.startsWith("mrh_resource_listing_v2_"),
+    key.startsWith("mrh_resource_listing_v3_"),
   ),
   true,
   "short-lived folder metadata may be cached to speed up repeated browsing",

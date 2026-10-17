@@ -7,41 +7,34 @@ const {
   calculateNextVersion,
   getReleaseContext,
 } = require("./resolve-semver-version");
+const { isDateVersion } = require("./date-version");
 
 assert.equal(
-  calculateNextVersion("14.8.0", ["feat: add a feature"]),
-  "14.9.0",
+  calculateNextVersion("26.10.17-8", ["feat: add a feature"]),
+  "26.10.17-9",
 );
 assert.equal(
-  calculateNextVersion("14.8.0", ["fix(sync): retry failed uploads"]),
-  "14.8.1",
+  calculateNextVersion("26.10.17-8", ["fix(sync): retry failed uploads"]),
+  "26.10.17-9",
 );
 assert.equal(
-  calculateNextVersion("14.8.0", ["feat!: replace the storage API"]),
-  "15.0.0",
+  calculateNextVersion("26.10.17-8", ["feat!: replace the storage API"]),
+  "26.10.17-9",
 );
 assert.equal(
-  calculateNextVersion("14.8.0", [
+  calculateNextVersion("26.10.17-8", [
     "fix: correct response",
     "docs: update guide\n\nBREAKING CHANGE: remove legacy docs",
   ]),
-  "15.0.0",
+  "26.10.17-9",
 );
 assert.equal(
-  calculateNextVersion("14.8.0", ["perf: reduce render work", "chore: cleanup"]),
-  "14.8.1",
+  calculateNextVersion("26.10.17-8", ["perf: reduce render work", "chore: cleanup"]),
+  "26.10.17-9",
 );
 assert.equal(
-  calculateNextVersion("14.8.0", ["docs: update guide", "chore: cleanup"]),
-  "14.8.0",
-);
-assert.equal(
-  calculateNextVersion("10.15.26-2", ["docs: update guide"]),
-  "10.15.26-2",
-);
-assert.equal(
-  calculateNextVersion("10.15.26-2", ["fix: correct layout"]),
-  "10.15.27",
+  calculateNextVersion("26.10.17-8", ["docs: update guide", "chore: cleanup"]),
+  "26.10.17-8",
 );
 assert.equal(
   calculateNextVersion("26.10.15-6", ["fix(resources): remove portal commentary"]),
@@ -49,8 +42,8 @@ assert.equal(
   "date-based release fixes should increment the daily patch sequence",
 );
 assert.equal(
-  calculateNextVersion("09.12.31-2", ["fix: correct layout"]),
-  "09.12.31-3",
+  calculateNextVersion("25.12.31-2", ["fix: correct layout"]),
+  "25.12.31-3",
   "date-based release sequences should work for two-digit years across the full calendar",
 );
 assert.equal(
@@ -67,7 +60,18 @@ assert.equal(
   calculateNextVersion("26.10.15-6", ["docs: update guide"]),
   "26.10.15-6",
 );
-assert.throws(() => calculateNextVersion("14.8", []), /Invalid SemVer version/);
+assert.equal(
+  calculateNextVersion("26.12.31-8", ["feat!: replace the storage API"]),
+  "26.12.31-9",
+  "breaking changes must never roll the date-based version format forward",
+);
+assert.equal(isDateVersion("26.10.17-8"), true);
+assert.equal(isDateVersion("26.02.30-1"), false);
+assert.equal(isDateVersion("26.10.17"), false);
+assert.throws(
+  () => calculateNextVersion("14.8.0", []),
+  /Invalid date-based version/,
+);
 
 const repositoryRoot = path.resolve(__dirname, "..");
 const currentVersion = JSON.parse(
@@ -124,9 +128,13 @@ fs.copyFileSync(
   path.join(repositoryRoot, "scripts", "sync-package-version.js"),
   path.join(packageSyncFixture, "scripts", "sync-package-version.js"),
 );
+fs.copyFileSync(
+  path.join(repositoryRoot, "scripts", "date-version.js"),
+  path.join(packageSyncFixture, "scripts", "date-version.js"),
+);
 fs.writeFileSync(
   path.join(packageSyncFixture, "version.json"),
-  JSON.stringify({ version: "9.8.7" }),
+  JSON.stringify({ version: "25.12.31-2" }),
 );
 execFileSync(
   process.execPath,
@@ -137,14 +145,14 @@ assert.equal(
   JSON.parse(
     fs.readFileSync(path.join(packageSyncFixture, "package.json"), "utf8"),
   ).version,
-  "9.8.7",
+  "25.12.31-2",
   "package metadata must synchronize from version.json",
 );
 const synchronizedLockfile = JSON.parse(
   fs.readFileSync(path.join(packageSyncFixture, "package-lock.json"), "utf8"),
 );
-assert.equal(synchronizedLockfile.version, "9.8.7");
-assert.equal(synchronizedLockfile.packages[""].version, "9.8.7");
+assert.equal(synchronizedLockfile.version, "25.12.31-2");
+assert.equal(synchronizedLockfile.packages[""].version, "25.12.31-2");
 
 function git(args) {
   return execFileSync("git", args, {
@@ -160,50 +168,48 @@ try {
   git(["config", "user.email", "semver-test@example.invalid"]);
   fs.writeFileSync(
     path.join(fixture, "version.json"),
-    JSON.stringify({ version: "1.2.3" }),
+    JSON.stringify({ version: "25.01.02-0" }),
   );
   git(["add", "version.json"]);
   git(["commit", "-m", "chore: initialize baseline"]);
-  git(["tag", "v1.2.3"]);
+  git(["tag", "v25.01.02-0"]);
   fs.writeFileSync(path.join(fixture, "change.txt"), "feature\n");
   git(["add", "change.txt"]);
   git(["commit", "-m", "feat: add fixture change"]);
 
-  const featureSha = git(["rev-parse", "HEAD"]);
-  const featureRelease = getReleaseContext(fixture, featureSha);
-  assert.equal(featureRelease.displayVersion, "1.3.0");
-  assert.equal(featureRelease.releaseVersion, `mrh-1.3.0-${featureSha.slice(0, 12)}`);
-  assert.equal(featureRelease.releaseTag, "v1.3.0");
+  const featureRelease = getReleaseContext(fixture);
+  assert.equal(featureRelease.displayVersion, "25.01.02-1");
+  assert.equal(featureRelease.releaseTag, "v25.01.02-1");
   assert.equal(featureRelease.shouldTag, true);
 
   fs.writeFileSync(
     path.join(fixture, "version.json"),
-    JSON.stringify({ version: "1.3.1" }),
+    JSON.stringify({ version: "25.01.02-2" }),
   );
   git(["add", "version.json"]);
-  git(["commit", "-m", "chore: bump version to 1.3.1"]);
+  git(["commit", "-m", "chore: bump version to 25.01.02-2"]);
   const explicitVersionRelease = getReleaseContext(fixture);
-  assert.equal(explicitVersionRelease.displayVersion, "1.3.1");
-  assert.equal(explicitVersionRelease.releaseTag, "v1.3.1");
+  assert.equal(explicitVersionRelease.displayVersion, "25.01.02-2");
+  assert.equal(explicitVersionRelease.releaseTag, "v25.01.02-2");
   assert.equal(explicitVersionRelease.shouldTag, true);
 
-  git(["tag", "v1.3.1"]);
+  git(["tag", "v25.01.02-2"]);
   fs.writeFileSync(path.join(fixture, "fix.txt"), "fix\n");
   git(["add", "fix.txt"]);
   git(["commit", "-m", "fix: correct fixture"]);
   const fixRelease = getReleaseContext(fixture);
-  assert.equal(fixRelease.displayVersion, "1.3.2");
+  assert.equal(fixRelease.displayVersion, "25.01.02-3");
   assert.equal(fixRelease.shouldTag, true);
 
   fs.writeFileSync(
     path.join(fixture, "version.json"),
-    JSON.stringify({ version: "1.3.2-2" }),
+    JSON.stringify({ version: "25.01.02-4" }),
   );
   git(["add", "version.json"]);
-  git(["commit", "-m", "chore: bump version to 1.3.2-2"]);
+  git(["commit", "-m", "chore: bump version to 25.01.02-4"]);
   const prereleaseRelease = getReleaseContext(fixture);
-  assert.equal(prereleaseRelease.displayVersion, "1.3.2-2");
-  assert.equal(prereleaseRelease.releaseTag, "v1.3.2-2");
+  assert.equal(prereleaseRelease.displayVersion, "25.01.02-4");
+  assert.equal(prereleaseRelease.releaseTag, "v25.01.02-4");
   assert.equal(prereleaseRelease.shouldTag, true);
 
   fs.writeFileSync(
@@ -236,4 +242,4 @@ try {
   fs.rmSync(fixture, { recursive: true, force: true });
 }
 
-console.log("Conventional Commit SemVer checks passed.");
+console.log("Date-based release version checks passed.");

@@ -1,13 +1,14 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { isDateVersion } = require("./date-version");
 
 const rootDir = path.resolve(__dirname, "..");
 const versionFile = path.join(rootDir, "version.json");
 const packageFile = path.join(rootDir, "package.json");
 const lockFile = path.join(rootDir, "package-lock.json");
 const version = JSON.parse(fs.readFileSync(versionFile, "utf8")).version;
-if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(version)) {
-  throw new Error("version.json must contain a valid SemVer version.");
+if (!isDateVersion(version)) {
+  throw new Error("version.json must contain a YY.MM.DD-Patch version.");
 }
 
 const packageJson = JSON.parse(fs.readFileSync(packageFile, "utf8"));

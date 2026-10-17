@@ -10,6 +10,8 @@ let storedCacheVersion = "cache-v1";
 let snapshotRequests = 0;
 let summaryApplied = 0;
 let pendingPayloadRefreshes = 0;
+const syncSuccesses = [];
+const syncStatusUpdates = [];
 const nextSummary = [
   {
     Subject: "COLREGS",
@@ -102,6 +104,9 @@ const controller = context.SyncCore.createController({
     },
   },
   logger: { warn() {}, error() {}, info() {} },
+  onSyncSuccess(status) {
+    syncSuccesses.push(status);
+  },
   isLeader: () => true,
   hasActiveSession: () => false,
   isImmediateUpdateMode: () => true,
@@ -121,7 +126,9 @@ const controller = context.SyncCore.createController({
   },
   setAccessMetadata() {},
   sanitizeDeletedDeckReferences() {},
-  updateSyncStatus() {},
+  updateSyncStatus(message, tone) {
+    syncStatusUpdates.push({ message, tone });
+  },
   setGlobalLoadingState() {},
   hideConnectionStatusAfterDelay() {},
   renderCategoryProgress() {},
@@ -138,11 +145,29 @@ async function main() {
   assert.equal(summaryApplied, 1);
   assert.equal(storedTimestamp, "2026-10-15T00:00:00.000Z");
   assert.equal(storedCacheVersion, "cache-v2");
+  assert.equal(
+    JSON.stringify(syncSuccesses[0]),
+    JSON.stringify({
+      syncTimestamp: "2026-10-15T00:00:00.000Z",
+      cacheVersion: "cache-v2",
+      payloadSchemaVersion: 2,
+    }),
+  );
 
   await controller.optimizedBackgroundSync();
   assert.equal(snapshotRequests, 2);
   assert.equal(summaryApplied, 1);
   assert.equal(pendingPayloadRefreshes, 1);
+  assert.equal(
+    syncSuccesses.length,
+    2,
+    "unchanged backend snapshots should still publish a connected state",
+  );
+  assert.equal(
+    syncStatusUpdates.at(-1).tone,
+    "success",
+    "an unchanged startup snapshot must clear the loading sync indicator",
+  );
 
   storedCacheVersion = "cache-v1";
   await controller.optimizedBackgroundSync();
@@ -234,6 +259,81 @@ async function main() {
   assert.equal(initialSyncComplete, true);
   assert.equal(categoryProgressRenders, 1);
   cachedController.cleanup();
+  assert.equal(timerCallbacks.size, 0);
+
+  let redundantSnapshotRequests = 0;
+  let prefetchedSummaryApplications = 0;
+  let prefetchedSyncTimestamp = "";
+  let prefetchedSyncSuccesses = 0;
+  const prefetchedController = context.SyncCore.createController({
+    state: { categorySummary: [] },
+    lifecycle: context.LifecycleUtils,
+    appConfig: { backendPayloadSchemaVersion: 2 },
+    network: {
+      async getDeckSyncSnapshot() {
+        redundantSnapshotRequests += 1;
+        throw new Error("A prefetched snapshot must not be fetched again.");
+      },
+      async getSyncStatus() {
+        assert.fail("A prefetched snapshot must not request status separately.");
+      },
+      async getDeckSummary() {
+        assert.fail("A prefetched snapshot must not request summary separately.");
+      },
+    },
+    logger: { warn() {}, error() {}, info() {} },
+    onSyncSuccess() {
+      prefetchedSyncSuccesses += 1;
+    },
+    isLeader: () => false,
+    hasActiveSession: () => false,
+    isImmediateUpdateMode: () => true,
+    setSyncConnected() {},
+    setColdStart() {},
+    normalizeSummaryData: (summary) => summary,
+    readStoredSyncStatusTimestamp: () => "",
+    persistSyncStatusTimestamp(timestamp) {
+      prefetchedSyncTimestamp = timestamp;
+    },
+    persistSummaryData: async () => true,
+    applySummaryData() {
+      prefetchedSummaryApplications += 1;
+    },
+    setAccessMetadata() {},
+    sanitizeDeletedDeckReferences() {},
+    updateSyncStatus() {},
+    setGlobalLoadingState() {},
+    hideConnectionStatusAfterDelay() {},
+    renderCategoryProgress() {},
+    showColdStartNotification() {},
+    getSummarySignature: (summary) => JSON.stringify(summary),
+  });
+  await prefetchedController.syncPrefetchedSnapshot({
+    status: "ok",
+    payloadSchemaVersion: 2,
+    syncTimestamp: "snapshot-stamp",
+    cacheVersion: "snapshot-cache",
+    summary: nextSummary,
+  });
+  assert.equal(redundantSnapshotRequests, 0);
+  assert.equal(prefetchedSummaryApplications, 1);
+  assert.equal(prefetchedSyncTimestamp, "snapshot-stamp");
+  assert.equal(prefetchedSyncSuccesses, 1);
+  await prefetchedController.syncPrefetchedSnapshot({
+    status: "ok",
+    payloadSchemaVersion: 2,
+    syncTimestamp: "snapshot-stamp",
+    cacheVersion: "snapshot-cache",
+    notModified: true,
+  });
+  assert.equal(redundantSnapshotRequests, 0);
+  assert.equal(
+    prefetchedSummaryApplications,
+    1,
+    "a prefetched not-modified snapshot should not attempt a second summary request",
+  );
+  assert.equal(prefetchedSyncSuccesses, 2);
+  prefetchedController.cleanup();
   assert.equal(timerCallbacks.size, 0);
   console.log("Fast sync snapshot checks passed.");
 }

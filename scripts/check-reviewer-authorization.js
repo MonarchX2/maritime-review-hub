@@ -507,9 +507,9 @@ assert.equal(
 );
 
 const clientId = "1234567890-example.apps.googleusercontent.com";
-const appVersion = JSON.parse(
-  fs.readFileSync("version.json", "utf8"),
-).buildVersion;
+const appVersion = `mrh-${
+  JSON.parse(fs.readFileSync("version.json", "utf8")).version
+}`;
 assert.equal(
   context.isSupportedClientVersion(appVersion),
   true,

@@ -16,6 +16,7 @@ function createRuntime() {
     console,
     setTimeout,
     clearTimeout,
+    performance,
     TextEncoder,
     TextDecoder,
   });
@@ -36,7 +37,7 @@ function createRuntime() {
   return context;
 }
 
-async function buildPdf(context, dimensions) {
+async function buildPdf(context, dimensions, attachmentByteLength = 0) {
   const pdf = await context.PDFLib.PDFDocument.create();
   const font = await pdf.embedFont(context.PDFLib.StandardFonts.Helvetica);
   const runtimeDimensions = vm.runInContext(JSON.stringify(dimensions), context);
@@ -48,6 +49,25 @@ async function buildPdf(context, dimensions) {
       font,
       size: 14,
     });
+  }
+  if (attachmentByteLength > 0) {
+    context.__benchmarkAttachmentSize = attachmentByteLength;
+    const attachmentBytes = vm.runInContext(
+      `(function () {
+        var bytes = new Uint8Array(__benchmarkAttachmentSize);
+        var value = 0x9e3779b9;
+        for (var index = 0; index < bytes.length; index += 1) {
+          value ^= value << 13;
+          value ^= value >>> 17;
+          value ^= value << 5;
+          bytes[index] = value & 255;
+        }
+        return bytes;
+      })()`,
+      context,
+    );
+    delete context.__benchmarkAttachmentSize;
+    await pdf.attach(attachmentBytes, "benchmark.bin");
   }
   return new Uint8Array(await pdf.save({ useObjectStreams: false }));
 }
@@ -442,5 +462,49 @@ test("browser worker processes a mixed-orientation 20-page PDF", async () => {
   const result = await runWorker(runtime, original, identity);
   const elapsedMs = performance.now() - startedAt;
   assert.equal(result.status, "success");
+  assert.equal(result.metrics.pageCount, 20);
+  assert.equal(result.metrics.sourceByteLength, original.byteLength);
+  assert.equal(result.metrics.outputByteLength, result.resultBuffer.byteLength);
+  assert.ok(result.metrics.pdfParseMs >= 0);
+  assert.ok(result.metrics.watermarkLayoutMs >= 0);
+  assert.ok(result.metrics.pdfSerializeMs >= 0);
+  assert.ok(result.metrics.workerTotalMs >= result.metrics.pdfParseMs);
   assert.ok(elapsedMs < 30000, `20-page browser worker run took ${elapsedMs} ms`);
+});
+
+test("warmed worker reports timings for small, typical, and maximum-page PDFs", async () => {
+  const runtime = createRuntime();
+  const scenarios = [
+    { label: "small", pageCount: 1 },
+    { label: "typical", pageCount: 20, attachmentBytes: 512 * 1024 },
+    { label: "large", pageCount: 80, attachmentBytes: 2 * 1024 * 1024 },
+  ];
+  const results = [];
+
+  for (const scenario of scenarios) {
+    const original = await buildPdf(
+      runtime,
+      Array.from({ length: scenario.pageCount }, (_, index) =>
+        index % 2 === 0 ? [612, 792] : [792, 612],
+      ),
+      scenario.attachmentBytes,
+    );
+    const result = await runWorker(runtime, original, identity);
+    assert.equal(result.status, "success");
+    assert.equal(result.metrics.pageCount, scenario.pageCount);
+    assert.equal(result.metrics.sourceByteLength, original.byteLength);
+    assert.equal(result.metrics.outputByteLength, result.resultBuffer.byteLength);
+    results.push({
+      label: scenario.label,
+      pageCount: result.metrics.pageCount,
+      sourceBytes: result.metrics.sourceByteLength,
+      outputBytes: result.metrics.outputByteLength,
+      pdfParseMs: Number(result.metrics.pdfParseMs.toFixed(2)),
+      watermarkLayoutMs: Number(result.metrics.watermarkLayoutMs.toFixed(2)),
+      pdfSerializeMs: Number(result.metrics.pdfSerializeMs.toFixed(2)),
+      workerTotalMs: Number(result.metrics.workerTotalMs.toFixed(2)),
+    });
+  }
+
+  console.log("Warmed Reviewer PDF worker benchmark:", JSON.stringify(results));
 });

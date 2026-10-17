@@ -55,7 +55,7 @@ jobs:
       - name: Check protected PDF preview and download
         run: npm run check:reviewer-pdf-security
 
-      - name: Check Conventional Commit SemVer versioning
+      - name: Check date-based release versioning
         run: npm run check:semver-version
 
       - name: Check question answer UX
@@ -96,15 +96,14 @@ jobs:
       - name: Sync About changelog
         run: node scripts/sync-about-changelog.js
 
-      - name: Resolve semantic release version
+      - name: Resolve date-based release version
         id: release
         run: node scripts/resolve-semver-version.js
 
       - name: Stamp release version
         env:
-          RELEASE_VERSION: ${{ steps.release.outputs.release_version }}
           DISPLAY_VERSION: ${{ steps.release.outputs.display_version }}
-        run: node scripts/stamp-release-version.js
+        run: node scripts/stamp-release-version.js && npm run sync:version
 
       - name: Check stamped JavaScript syntax
         run: node --check app-entry.js && node --check sw.js
@@ -134,7 +133,6 @@ jobs:
 
       - name: Verify deployed release version
         env:
-          RELEASE_VERSION: ${{ steps.release.outputs.release_version }}
           DISPLAY_VERSION: ${{ steps.release.outputs.display_version }}
         run: node scripts/verify-release-version.js
 
@@ -153,7 +151,7 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: Tag semantic release
+      - name: Tag date-based release
         if: steps.release.outputs.should_tag == 'true'
         env:
           RELEASE_TAG: ${{ steps.release.outputs.release_tag }}

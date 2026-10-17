@@ -77,27 +77,40 @@ worker and library are content-hashed and deployable.
 3. A dedicated Web Worker validates and watermarks the PDF off the UI thread.
 4. The website displays the prepared PDF in its in-site preview and reuses
    those same bytes for each download through a native download link. The
-   fallback download prompt appears only if the PDF frame errors or fails to
-   signal that it loaded within eight seconds. On mobile and touch devices,
-   the site opens a same-tab Blob-based viewer with Return to Website and
-   Download actions. It renders the prepared PDF with the bundled PDF.js
-   renderer rather than an embedded browser PDF plug-in.
+   fallback download prompt appears only if the desktop PDF frame errors or
+   fails to signal that it loaded within eight seconds. On mobile and
+   touch-primary devices, the site opens the same-tab Blob-based PDF.js viewer
+   as soon as the PDF is selected, while authorization and watermarking run.
+   The viewer shows a loading state until the authorized, watermarked PDF is
+   ready; its Download action is enabled only after those bytes arrive.
 
 Opening the REVIEWERS tab starts the watermark worker and loads its PDF library
 while the reviewer browses, so selecting a PDF does not pay that startup cost.
 The worker stays available until the reviewer leaves that tab. Browser console
 timings report authorization/source request round-trip duration, base64 decoding,
-watermark processing, preview setup, and the PDF.js first-page render on mobile.
+PDF parsing, watermark layout, PDF serialization, worker startup, source/output
+byte sizes, page count, preview setup, and the PDF.js first-page render on mobile.
+The request event ID is included as a correlation ID so browser timing can be
+matched to the Apps Script log. On mobile, the PDF.js viewer shell opens
+immediately on selection and its module loads in parallel with backend access
+and watermark preparation.
 On desktop, the native PDF frame-load timing is reported separately because
 the browser's built-in PDF viewer does not expose its actual first-page render.
 Apps Script logs `reviewer_pdf_request_timing` with authorization, index lookup,
 Drive ancestry, source read/validation, synchronous access logging, base64
-encoding, response construction, and total handler durations. These server
-measurements help distinguish backend time from browser/network transfer time.
+encoding, response construction, source and base64 sizes, and total handler
+durations. These server measurements help distinguish backend time from
+browser/network transfer time.
 
 The source limit is 8 MiB, output limit 12 MiB, and page limit 80. Worker
-startup and document complexity affect local processing time; the 20-page
-synthetic test is a regression check, not a guarantee for all devices or PDFs.
+startup and document complexity affect local processing time. The test suite
+prints warmed-worker measurements for 1-, 20-, and 80-page mixed-orientation
+synthetic documents. These are repeatable local comparisons, not guarantees for
+real files, mobile hardware, Drive latency, or network throughput. For a slow
+production preview, compare browser and server timing records by correlation ID.
+Large browser request round-trip with small server `totalMs` indicates
+transfer/transport delay; parse/layout/serialization and first-page-render
+metrics isolate browser processing.
 Apps Script still performs authorization and source delivery, but no longer
 waits for PDF parsing, watermarking, job polling, or derivative storage.
 If an old time-based trigger still calls the retired handler, the compatibility

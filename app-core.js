@@ -741,6 +741,18 @@
       getSyncController().handleVisibility(isHidden),
   };
 
+  function markInitialSyncCompleteFromCache() {
+    if (
+      isInitialSyncComplete ||
+      !Array.isArray(state.categorySummary) ||
+      state.categorySummary.length === 0
+    )
+      return false;
+    isInitialSyncComplete = true;
+    renderCategoryProgress();
+    return true;
+  }
+
   function scheduleSinglePollLoop() {
     if (!isLeaderTab) {
       return;
@@ -768,17 +780,8 @@
       setSyncConnected: (value) => {
         syncConnected = value;
       },
-      markInitialSyncCompleteFromCache: () => {
-        if (
-          isInitialSyncComplete ||
-          !Array.isArray(state.categorySummary) ||
-          state.categorySummary.length === 0
-        )
-          return false;
-        isInitialSyncComplete = true;
-        renderCategoryProgress();
-        return true;
-      },
+      markInitialSyncCompleteFromCache,
+      onSyncSuccess: broadcastBackendSyncStatus,
       setColdStart: (value) => {
         isColdStart = value;
       },
@@ -1087,36 +1090,24 @@
     return signature;
   }
 
+  let startupSyncStarted = false;
   function scheduleStartupSync() {
-    const runStartupSync = () => {
-      if (typeof window === "undefined") return;
+    if (
+      typeof window === "undefined" ||
+      !isLeaderTab ||
+      startupSyncStarted
+    )
+      return;
+    startupSyncStarted = true;
 
-      const runIdleTasks = () => {
-        if (typeof fetchAccessMetadata === "function") {
-          fetchAccessMetadata().catch((error) => {
-            appLogger.warn(
-              "Initial access metadata fetch failed, will retry:",
-              error,
-            );
-          });
-        }
-
-        if (typeof syncDatabase === "function") {
-          syncDatabase(false, true).catch((error) => {
-            appLogger.warn("Background startup sync was skipped:", error);
-          });
-        }
-      };
-
-      if (typeof window.requestIdleCallback === "function") {
-        window.requestIdleCallback(runIdleTasks, { timeout: 2000 });
-        return;
-      }
-
-      lifecycle.setTimeout(runIdleTasks, 250);
-    };
-
-    runStartupSync();
+    if (typeof fetchAccessMetadata === "function") {
+      fetchAccessMetadata().catch((error) => {
+        appLogger.warn("Initial access metadata refresh failed:", error);
+      });
+    }
+    optimizedBackgroundSync().catch((error) => {
+      appLogger.warn("Background startup sync was skipped:", error);
+    });
   }
 
   // REMOVED: mergeAccessMetadataIntoSummary - NOT USED
@@ -1211,16 +1202,20 @@
     return changedSubjects;
   }
 
-  function broadcastBackendPayloadChange() {
+  function broadcastBackendSyncStatus(status = {}) {
     if (!isLeaderTab || !cacheInvalidationChannel) return;
     try {
       cacheInvalidationChannel.postMessage({
         protocol: BROADCAST_PROTOCOL,
-        type: "backend_payload_changed",
+        type: "backend_sync_status",
+        status: "ok",
+        syncTimestamp: String(status.syncTimestamp || "").trim(),
+        cacheVersion: String(status.cacheVersion || "").trim(),
+        payloadSchemaVersion: Number(status.payloadSchemaVersion),
       });
     } catch (error) {
       appLogger.warn(
-        "[CACHE] Unable to notify other tabs about updated backend payloads.",
+        "[SYNC] Unable to broadcast the successful backend sync status.",
         error,
       );
     }
@@ -1296,7 +1291,6 @@
         );
       },
     );
-    if (changed) broadcastBackendPayloadChange();
     if (!hasActiveContentSession()) {
       populateFilters();
       renderCategoryProgress();
@@ -1473,11 +1467,13 @@
     isRetry = false,
     isBackgroundCheck = false,
     expectedSyncTimestamp = "",
+    prefetchedSnapshot = null,
   ) {
     return getSyncController().syncDatabase(
       isRetry,
       isBackgroundCheck,
       expectedSyncTimestamp,
+      prefetchedSnapshot,
     );
   }
 
@@ -1491,6 +1487,7 @@
     isRetry = false,
     isBackgroundCheck = false,
     expectedSyncTimestamp = "",
+    prefetchedSnapshot = null,
   ) {
     const bootstrapStatus =
       typeof window !== "undefined" ? window.__MRH_BOOTSTRAP__?.status : null;
@@ -1510,6 +1507,7 @@
       isRetry,
       isBackgroundCheck,
       expectedSyncTimestamp,
+      prefetchedSnapshot,
     );
   }
 
@@ -5465,31 +5463,73 @@
   }
 
   async function refreshFromBackendPayloadBroadcast() {
-    if (isLeaderTab || !AppNetwork?.getSyncStatus) return;
+    if (isLeaderTab || !AppNetwork?.getDeckSyncSnapshot) return;
     try {
-      const status = await AppNetwork.getSyncStatus({
+      const storedTimestamp = readStoredSyncStatusTimestamp();
+      const storedCacheVersion = readStoredSyncStatusCacheVersion();
+      const hasCachedSummary =
+        Array.isArray(state.categorySummary) &&
+        state.categorySummary.length > 0;
+      const snapshot = await AppNetwork.getDeckSyncSnapshot({
+        since: hasCachedSummary ? storedTimestamp : "",
+        sinceCacheVersion: hasCachedSummary ? storedCacheVersion : "",
         timeoutMs: 20000,
         maxRetries: 0,
       });
       if (
-        status?.status !== "ok" ||
-        status.isColdStart === true ||
-        Number(status.payloadSchemaVersion) !==
+        snapshot?.status !== "ok" ||
+        snapshot.isColdStart === true ||
+        Number(snapshot.payloadSchemaVersion) !==
           Number(appConfig.backendPayloadSchemaVersion ?? 2)
       ) {
         appLogger.warn(
           "[CACHE] Ignoring an update notification with unavailable or incompatible backend data.",
-          status,
+          snapshot,
         );
         return;
       }
-      await syncDatabase(true, true, String(status.syncTimestamp || "").trim());
+      await getSyncController().syncPrefetchedSnapshot(snapshot);
     } catch (error) {
       appLogger.warn(
         "[CACHE] Unable to synchronize the notified backend payload update.",
         error,
       );
     }
+  }
+
+  function handleBackendSyncStatusBroadcast(data) {
+    if (
+      isLeaderTab ||
+      data.status !== "ok" ||
+      Number(data.payloadSchemaVersion) !==
+        Number(appConfig.backendPayloadSchemaVersion ?? 2)
+    )
+      return;
+
+    const hasCachedSummary =
+      Array.isArray(state.categorySummary) && state.categorySummary.length > 0;
+    const syncTimestamp = String(data.syncTimestamp || "").trim();
+    const cacheVersion = String(data.cacheVersion || "").trim();
+    if (
+      hasCachedSummary &&
+      syncTimestamp &&
+      syncTimestamp === readStoredSyncStatusTimestamp() &&
+      cacheVersion &&
+      cacheVersion === readStoredSyncStatusCacheVersion()
+    ) {
+      syncConnected = true;
+      isColdStart = false;
+      persistDeckCacheTimestamp(Date.now());
+      markInitialSyncCompleteFromCache();
+      updateSyncStatus(
+        '<i class="fa-solid fa-check mr-1"></i> Connected. Database is up to date.',
+        "success",
+        false,
+      );
+      return;
+    }
+
+    void refreshFromBackendPayloadBroadcast();
   }
 
   function setupCacheInvalidationListener() {
@@ -5506,6 +5546,10 @@
           isValidBroadcastMessage(event?.data, "backend_payload_changed")
         ) {
           refreshFromBackendPayloadBroadcast();
+        } else if (
+          isValidBroadcastMessage(event?.data, "backend_sync_status")
+        ) {
+          handleBackendSyncStatusBroadcast(event.data);
         }
       };
     } catch (e) {
@@ -5575,6 +5619,12 @@
         isLeaderTab = isLeader;
         if (isLeader && typeof scheduleNextPolling === "function") {
           scheduleNextPolling();
+          if (__mrhAppReady) {
+            if (startupSyncStarted) syncScheduler.handleVisibility(false);
+            else scheduleStartupSync();
+          }
+        } else {
+          syncScheduler.cancel();
         }
       },
     });
@@ -5883,6 +5933,10 @@
           document.documentElement.setAttribute("data-app-ready", "true");
         }
 
+        setupCacheInvalidationListener();
+        startCacheVersionChecking();
+        scheduleStartupSync();
+
         const sessionRoute = globalScope.getSessionNavigationFromUrl?.();
         if (sessionRoute) {
           const hasProgress = hasSessionRestoreProgress(sessionRoute);
@@ -5948,11 +6002,7 @@
 
         invalidateCategoryProgressRenderSignature();
         renderCategoryProgress();
-        setupCacheInvalidationListener();
-        startCacheVersionChecking();
         initDetailsExclusivity();
-
-        scheduleStartupSync();
 
         lifecycle.setTimeout(() => {
           applyTitleMode();
@@ -5997,6 +6047,8 @@
   let resourcePortalPreviewObjectUrl = "";
   let resourcePortalPreviewBlobViewerUrl = "";
   let resourcePortalPreviewPdfBytes = null;
+  let resourcePortalPreviewBlobViewerReady = false;
+  let resourcePortalPreviewBlobViewerError = "";
   let resourcePortalPreviewRequest = null;
   let resourcePortalPreviewUrlOpened = false;
   let resourcePortalPreviewIsReviewer = false;
@@ -6013,6 +6065,7 @@
   let reviewerPdfWorkerReadyResolve = null;
   let reviewerPdfWorkerReadyReject = null;
   let reviewerPdfWorkerReadyTimer = 0;
+  let reviewerPdfWorkerStartupMs = null;
   let reviewerPdfWorkerOperation = null;
   let resourceDashboardData = null;
   let resourceDashboardActiveTab = "PROFILE";
@@ -11400,7 +11453,10 @@
     resourcePortalPreviewObjectUrl = "";
     resourcePortalPreviewBlobViewerUrl = "";
     if (blobViewerUrl) URL.revokeObjectURL(blobViewerUrl);
-    if (!objectUrl) return;
+    if (!objectUrl) {
+      resourcePortalPreviewUrlOpened = false;
+      return;
+    }
     if (resourcePortalPreviewUrlOpened) {
       globalScope.setTimeout(
         () => URL.revokeObjectURL(objectUrl),
@@ -11410,6 +11466,59 @@
       URL.revokeObjectURL(objectUrl);
     }
     resourcePortalPreviewUrlOpened = false;
+  }
+
+  function isMobileReviewerPdfDevice() {
+    const navigator = globalScope.navigator || {};
+    if (navigator.userAgentData?.mobile === true) return true;
+    if (
+      /Android|iPhone|iPod|iPad|Mobile|Windows Phone/i.test(
+        String(navigator.userAgent || ""),
+      )
+    )
+      return true;
+    return (
+      typeof globalScope.matchMedia === "function" &&
+      (globalScope.matchMedia("(pointer: coarse)").matches ||
+        globalScope.matchMedia("(max-width: 640px)").matches)
+    );
+  }
+
+  function sendReviewerPdfBytesToBlobViewer() {
+    const frame = document.getElementById("resource-portal-preview-frame");
+    if (
+      !resourcePortalPreviewBlobViewerReady ||
+      !(resourcePortalPreviewPdfBytes instanceof Uint8Array) ||
+      !frame?.contentWindow ||
+      !resourcePortalPreviewObjectUrl ||
+      !resourcePortalReviewerPdf
+    )
+      return false;
+    const bytes = resourcePortalPreviewPdfBytes.slice();
+    frame.contentWindow.postMessage(
+      {
+        type: "MRH_PDF_VIEWER_DATA",
+        bytes: bytes.buffer,
+        downloadUrl: resourcePortalPreviewObjectUrl,
+        downloadName: resourcePortalReviewerPdf.downloadFileName,
+      },
+      globalScope.location.origin,
+      [bytes.buffer],
+    );
+    return true;
+  }
+
+  function showReviewerPdfBlobViewerError(message) {
+    resourcePortalPreviewBlobViewerError = String(message || "");
+    if (!resourcePortalPreviewBlobViewerReady) return;
+    const frame = document.getElementById("resource-portal-preview-frame");
+    frame?.contentWindow?.postMessage(
+      {
+        type: "MRH_PDF_VIEWER_ERROR",
+        message: resourcePortalPreviewBlobViewerError,
+      },
+      globalScope.location.origin,
+    );
   }
 
   function openBlobResourceViewer(
@@ -11422,17 +11531,18 @@
       returnLabel = "Return to Website",
       mobileOnly = false,
       pdfBytes = null,
+      forcePdfJs = false,
     } = {},
   ) {
+    if (mobileOnly && !isMobileReviewerPdfDevice()) return false;
     if (
-      mobileOnly &&
-      (typeof globalScope.matchMedia !== "function" ||
-        !globalScope.matchMedia("(max-width: 640px), (pointer: coarse)").matches)
+      (!resourcePortalPreviewObjectUrl && !forcePdfJs) ||
+      !preview ||
+      !frame
     )
       return false;
-    if (!resourcePortalPreviewObjectUrl || !preview || !frame) return false;
 
-    const blobUrl = escapeHTML(resourcePortalPreviewObjectUrl);
+    const blobUrl = escapeHTML(resourcePortalPreviewObjectUrl || "");
     const baseUrl = new URL(
       globalScope.__MRH_APP_BASE_PATH || "./",
       globalScope.location.origin,
@@ -11448,9 +11558,8 @@
     const downloadName = escapeHTML(downloadFileName || "download");
     const safeReturnLabel = escapeHTML(returnLabel);
     const usePdfJs =
-      pdfBytes instanceof Uint8Array &&
-      typeof globalScope.matchMedia === "function" &&
-      globalScope.matchMedia("(max-width: 640px), (pointer: coarse)").matches;
+      forcePdfJs ||
+      (pdfBytes instanceof Uint8Array && isMobileReviewerPdfDevice());
     const fileContent = usePdfJs
       ? `<main id="pdf-pages" aria-label="PDF pages"></main>
     <p id="pdf-status" role="status" aria-live="polite">Loading PDF Preview</p>`
@@ -11472,6 +11581,19 @@
         )
           return;
         try {
+          const downloadLink = document.getElementById("pdf-download");
+          if (
+            downloadLink &&
+            typeof event.data.downloadUrl === "string" &&
+            event.data.downloadUrl.startsWith("blob:")
+          ) {
+            downloadLink.href = event.data.downloadUrl;
+            downloadLink.download = String(
+              event.data.downloadName || "download.pdf",
+            );
+            downloadLink.removeAttribute("aria-disabled");
+            downloadLink.removeAttribute("tabindex");
+          }
           const pdfjs = await pdfRenderer;
           const pdf = await pdfjs.getDocument({
             data: new Uint8Array(event.data.bytes),
@@ -11533,6 +11655,18 @@
             status.hidden = false;
             console.error("Unable to render PDF preview.", error);
           };
+          window.addEventListener("message", (event) => {
+            if (
+              event.source !== window.parent ||
+              event.origin !== location.origin ||
+              event.data?.type !== "MRH_PDF_VIEWER_ERROR"
+            )
+              return;
+            status.textContent =
+              String(event.data.message || "").trim() ||
+              "Unable to prepare this PDF. Return to the website and try again.";
+            status.hidden = false;
+          });
           const observer =
             typeof IntersectionObserver === "function"
               ? new IntersectionObserver(
@@ -11609,6 +11743,8 @@
       body {
         display: grid;
         grid-template-rows: auto minmax(0, 1fr);
+        min-width: 0;
+        min-height: 0;
         overflow: hidden;
         background: #f1f5f9;
         color: #0f172a;
@@ -11626,7 +11762,7 @@
         border-bottom: 1px solid #cbd5e1;
         background: #fff;
       }
-      h1 { min-width: 0; margin: 0; overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+      h1 { flex: 1 1 auto; min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 14px; font-weight: 600; }
       nav { display: flex; flex: 0 0 auto; gap: 8px; }
       a {
         display: inline-flex;
@@ -11643,16 +11779,19 @@
         white-space: nowrap;
       }
       a:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
-      iframe, #pdf-pages { display: block; width: 100%; height: 100%; border: 0; background: #64748b; }
+      a[aria-disabled="true"] { opacity: 0.55; pointer-events: none; }
+      iframe, #pdf-pages { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; border: 0; background: #64748b; }
       #pdf-pages { overflow: auto; padding: 12px; background: #475569; }
-      .pdf-page { max-width: 100%; margin: 0 auto 12px; background: #fff; box-shadow: 0 2px 12px #0f172a66; }
-      .pdf-page canvas { display: block; max-width: 100%; }
-      #pdf-status { position: absolute; z-index: 2; inset: 50% auto auto 50%; max-width: calc(100% - 32px); margin: 0; padding: 12px 16px; border-radius: 8px; background: #fff; color: #0f172a; text-align: center; transform: translate(-50%, -50%); }
+      .pdf-page { width: min(100%, 100%); max-width: 100%; margin: 0 auto 12px; background: #fff; box-shadow: 0 2px 12px #0f172a66; }
+      .pdf-page canvas { display: block; width: 100%; max-width: 100%; height: auto; }
+      #pdf-status { position: fixed; z-index: 2; top: 50%; left: 50%; width: max-content; max-width: calc(100vw - 32px); margin: 0; padding: 12px 16px; border-radius: 8px; background: #fff; color: #0f172a; text-align: center; transform: translate(-50%, -50%); }
       #pdf-status[hidden] { display: none; }
-      @media (max-width: 520px) {
-        header { align-items: flex-start; flex-direction: column; gap: 6px; }
-        nav { width: 100%; }
-        nav a { flex: 1 1 0; padding-inline: 8px; font-size: 12px; }
+      @media (max-width: 640px) {
+        header { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); }
+        h1 { width: 100%; white-space: normal; }
+        nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: 8px; }
+        nav a { min-width: 0; padding-inline: 6px; font-size: 12px; text-align: center; white-space: normal; overflow-wrap: anywhere; }
+        #pdf-pages { padding: 8px; }
       }
     </style>
   </head>
@@ -11661,7 +11800,7 @@
       <h1>${safeTitle}</h1>
       <nav aria-label="File actions">
         <a id="return-to-site" href="${returnUrl}" target="_top">${safeReturnLabel}</a>
-        <a href="${blobUrl}" download="${downloadName}">Download</a>
+        <a id="pdf-download"${blobUrl ? ` href="${blobUrl}" download="${downloadName}"` : ' aria-disabled="true" tabindex="-1"'}>Download</a>
       </nav>
     </header>
     ${fileContent}
@@ -11685,6 +11824,8 @@
     try {
       resourcePortalPreviewUrlOpened = true;
       resourcePortalPreviewPdfBytes = usePdfJs ? pdfBytes : null;
+      resourcePortalPreviewBlobViewerReady = false;
+      resourcePortalPreviewBlobViewerError = "";
       preview.classList.add("is-blob-viewer");
       frame.title = title || "PDF Preview";
       frame.hidden = false;
@@ -11695,9 +11836,11 @@
       }
     } catch (error) {
       preview.classList.remove("is-blob-viewer");
+      resourcePortalPreviewBlobViewerReady = false;
+      resourcePortalPreviewBlobViewerError = "";
       resourcePortalPreviewBlobViewerUrl = "";
       resourcePortalPreviewPdfBytes = null;
-      resourcePortalPreviewUrlOpened = false;
+      resourcePortalPreviewUrlOpened = mobileReviewerViewerOpened;
       URL.revokeObjectURL(viewerUrl);
       throw error;
     }
@@ -11901,6 +12044,7 @@
     reviewerPdfWorkerReadyPromise = null;
     reviewerPdfWorkerReadyResolve = null;
     reviewerPdfWorkerReadyReject = null;
+    reviewerPdfWorkerStartupMs = null;
     reviewerPdfWorkerOperation = null;
     rejectReady?.(error);
   }
@@ -11921,6 +12065,7 @@
       new URL(basePath, globalScope.location.origin),
     );
     const worker = new globalScope.Worker(workerUrl);
+    const workerStartedAt = getReviewerPdfTimingNow();
     reviewerPdfWorker = worker;
     reviewerPdfWorkerReadyPromise = new Promise((resolve, reject) => {
       reviewerPdfWorkerReadyResolve = resolve;
@@ -11932,6 +12077,8 @@
           globalScope.clearTimeout(reviewerPdfWorkerReadyTimer);
           reviewerPdfWorkerReadyTimer = 0;
         }
+        reviewerPdfWorkerStartupMs =
+          getReviewerPdfTimingNow() - workerStartedAt;
         reviewerPdfWorkerReadyResolve?.();
         reviewerPdfWorkerReadyResolve = null;
         reviewerPdfWorkerReadyReject = null;
@@ -11942,7 +12089,13 @@
       if (event.data?.status === "success" && event.data.resultBuffer) {
         operation.finish(
           operation.resolve,
-          new Uint8Array(event.data.resultBuffer),
+          {
+            bytes: new Uint8Array(event.data.resultBuffer),
+            metrics:
+              event.data.metrics && typeof event.data.metrics === "object"
+                ? event.data.metrics
+                : {},
+          },
         );
         return;
       }
@@ -12055,10 +12208,20 @@
     (globalScope.DebugUtils || console).info(
       "Reviewer PDF preview timings.",
       {
+        correlationId: timings.correlationId,
         authorizationAndSourceRoundTripMs:
           timings.authorizationAndSourceRoundTripMs,
         decodeMs: timings.decodeMs,
         watermarkMs: timings.watermarkMs,
+        pdfParseMs: timings.pdfParseMs,
+        watermarkLayoutMs: timings.watermarkLayoutMs,
+        pdfSerializeMs: timings.pdfSerializeMs,
+        workerTotalMs: timings.workerTotalMs,
+        workerStartupMs: timings.workerStartupMs,
+        sourceByteLength: timings.sourceByteLength,
+        sourceBase64Chars: timings.sourceBase64Chars,
+        outputByteLength: timings.outputByteLength,
+        pageCount: timings.pageCount,
         previewSetupMs: timings.previewSetupMs,
         cacheHit,
       },
@@ -12579,6 +12742,8 @@
       options: requestOptions,
     };
     preview.classList.remove("is-blob-viewer");
+    resourcePortalPreviewBlobViewerReady = false;
+    resourcePortalPreviewBlobViewerError = "";
     reviewerPdfRenderCheckCleanup?.();
     reviewerPdfWorkerCancel?.();
     const closeButton = document.getElementById(
@@ -12614,13 +12779,18 @@
         )
           return;
         if (event.data?.type === "MRH_PDF_VIEWER_READY") {
-          if (!(resourcePortalPreviewPdfBytes instanceof Uint8Array)) return;
-          const bytes = resourcePortalPreviewPdfBytes.slice();
-          frame.contentWindow.postMessage(
-            { type: "MRH_PDF_VIEWER_DATA", bytes: bytes.buffer },
-            event.origin,
-            [bytes.buffer],
-          );
+          resourcePortalPreviewBlobViewerReady = true;
+          if (resourcePortalPreviewBlobViewerError) {
+            showReviewerPdfBlobViewerError(
+              resourcePortalPreviewBlobViewerError,
+            );
+            return;
+          }
+          sendReviewerPdfBytesToBlobViewer();
+          return;
+        }
+        if (event.data?.type === "MRH_PDF_VIEWER_ERROR") {
+          showReviewerPdfBlobViewerError(event.data.message);
           return;
         }
         if (
@@ -12633,8 +12803,18 @@
             {
               authorizationAndSourceRoundTripMs:
                 timings.authorizationAndSourceRoundTripMs,
+              correlationId: timings.correlationId,
               decodeMs: timings.decodeMs,
               watermarkMs: timings.watermarkMs,
+              pdfParseMs: timings.pdfParseMs,
+              watermarkLayoutMs: timings.watermarkLayoutMs,
+              pdfSerializeMs: timings.pdfSerializeMs,
+              workerTotalMs: timings.workerTotalMs,
+              workerStartupMs: timings.workerStartupMs,
+              sourceByteLength: timings.sourceByteLength,
+              sourceBase64Chars: timings.sourceBase64Chars,
+              outputByteLength: timings.outputByteLength,
+              pageCount: timings.pageCount,
               previewSetupMs: timings.previewSetupMs,
               firstPageRenderMs:
                 getReviewerPdfTimingNow() - timings.previewStartedAt,
@@ -12686,6 +12866,7 @@
         if (!panel) return;
         reviewerPdfWorkerCancel?.();
         resourcePortalPreviewGeneration += 1;
+        resourcePortalPreviewBlobViewerReady = false;
         resourceDashboardFolderGeneration += 1;
         resourceDashboardFolderReturn = null;
         resourcePortalPreviewIsReviewer = false;
@@ -12758,13 +12939,24 @@
       dashboardFolderFile && !reviewer && !folderId,
     );
     const previewGeneration = ++resourcePortalPreviewGeneration;
+    let mobileReviewerViewerOpened = false;
     const reviewerPdfTimings = reviewer
       ? {
           authorizationAndSourceRoundTripMs: 0,
           decodeMs: 0,
           watermarkMs: 0,
+          pdfParseMs: 0,
+          watermarkLayoutMs: 0,
+          pdfSerializeMs: 0,
+          workerTotalMs: 0,
+          workerStartupMs: reviewerPdfWorkerStartupMs || 0,
+          sourceByteLength: 0,
+          sourceBase64Chars: 0,
+          outputByteLength: 0,
+          pageCount: 0,
           previewSetupMs: 0,
           previewStartedAt: 0,
+          correlationId: "",
         }
       : null;
     resourceDashboardFolderGeneration += 1;
@@ -12858,6 +13050,15 @@
       const requestedMimeType = String(mimeType || "").toLowerCase();
       const isPdfResource =
         requestedMimeType === "application/pdf" || /\.pdf$/i.test(fileName);
+      if (reviewer && isPdfResource && isMobileReviewerPdfDevice()) {
+        mobileReviewerViewerOpened = openBlobResourceViewer(previewTitle, {
+          preview,
+          frame,
+          status,
+          mobileOnly: true,
+          forcePdfJs: true,
+        });
+      }
       const isInlineResourceType =
         requestedMimeType === "application/pdf" ||
         requestedMimeType === "text/plain" ||
@@ -12885,12 +13086,15 @@
       const reviewerRequestStartedAt = reviewer
         ? getReviewerPdfTimingNow()
         : 0;
+      let reviewerRequestEventId = reviewer
+        ? createResourceEventId()
+        : "";
       let response = await globalScope.AppNetwork.callBackend(
         reviewer
           ? {
               type: "get_reviewer_pdf_preview",
               sessionId: reviewerSessionId,
-              eventId: createResourceEventId(),
+              eventId: reviewerRequestEventId,
               fileId,
               ...(cachedReviewerPdf
                 ? { cachedSourceVersion: cachedReviewerPdf.sourceVersion }
@@ -12919,7 +13123,7 @@
           {
             type: "get_reviewer_pdf_preview",
             sessionId: reviewerSessionId,
-            eventId: createResourceEventId(),
+            eventId: (reviewerRequestEventId = createResourceEventId()),
             fileId,
           },
           { timeoutMs: 90000, maxRetries: 0 },
@@ -12928,6 +13132,8 @@
       if (reviewer)
         reviewerPdfTimings.authorizationAndSourceRoundTripMs =
           getReviewerPdfTimingNow() - reviewerRequestStartedAt;
+      if (reviewer)
+        reviewerPdfTimings.correlationId = reviewerRequestEventId;
       if (previewGeneration !== resourcePortalPreviewGeneration) return false;
       const previewFolderPanel = getResourceDashboardFolderPanel(frame);
       if (previewFolderPanel) previewFolderPanel.hidden = true;
@@ -13014,7 +13220,14 @@
         bytes = cachedReviewerPdf.bytes;
         reviewerPdfTimings.decodeMs = 0;
         reviewerPdfTimings.watermarkMs = 0;
+        reviewerPdfTimings.sourceByteLength =
+          cachedReviewerPdf.sourceByteLength || 0;
+        reviewerPdfTimings.sourceBase64Chars = 0;
+        reviewerPdfTimings.outputByteLength = bytes.byteLength;
+        reviewerPdfTimings.pageCount = cachedReviewerPdf.pageCount || 0;
       } else {
+        if (reviewer)
+          reviewerPdfTimings.sourceBase64Chars = response.data.length;
         if (
           !reviewer &&
           response.data.length > RESOURCE_PREVIEW_MAX_BASE64_LENGTH
@@ -13024,9 +13237,11 @@
           ? getReviewerPdfTimingNow()
           : 0;
         bytes = decodeBase64Bytes(response.data);
-        if (reviewer)
+        if (reviewer) {
           reviewerPdfTimings.decodeMs =
             getReviewerPdfTimingNow() - decodeStartedAt;
+          reviewerPdfTimings.sourceByteLength = bytes.byteLength;
+        }
         response.data = "";
         if (
           reviewer &&
@@ -13041,13 +13256,17 @@
           throw new Error("The PDF service returned an invalid source PDF.");
         if (reviewer) {
           const watermarkStartedAt = getReviewerPdfTimingNow();
-          bytes = await watermarkReviewerPdfInWorker(bytes, {
+          const preparedPdf = await watermarkReviewerPdfInWorker(bytes, {
             fullName: String(response.fullName || ""),
             email: String(response.email || ""),
             downloadFileName: String(response.downloadFileName || ""),
           });
+          bytes = preparedPdf.bytes;
           reviewerPdfTimings.watermarkMs =
             getReviewerPdfTimingNow() - watermarkStartedAt;
+          Object.assign(reviewerPdfTimings, preparedPdf.metrics);
+          reviewerPdfTimings.workerStartupMs =
+            reviewerPdfWorkerStartupMs || 0;
           if (previewGeneration !== resourcePortalPreviewGeneration)
             return false;
         }
@@ -13072,6 +13291,8 @@
         reviewerPdfPreviewCache.set(reviewerRequestKey, {
           bytes,
           sourceVersion: response.sourceVersion,
+          sourceByteLength: reviewerPdfTimings.sourceByteLength,
+          pageCount: reviewerPdfTimings.pageCount,
           fullName: String(response.fullName || ""),
           firstName: String(response.firstName || ""),
           lastName: String(response.lastName || ""),
@@ -13130,6 +13351,17 @@
         }
         if (reviewerPdfTimings)
           reviewerPdfTimings.previewStartedAt = getReviewerPdfTimingNow();
+        if (mobileReviewerViewerOpened) {
+          resourcePortalPreviewPdfBytes = bytes;
+          sendReviewerPdfBytesToBlobViewer();
+          reviewerPdfTimings.previewSetupMs =
+            getReviewerPdfTimingNow() - reviewerPdfTimings.previewReadyAt;
+          logReviewerPdfPreviewTimings(
+            reviewerPdfTimings,
+            isReviewerCacheHit,
+          );
+          return true;
+        }
         if (
           openMobileReviewerPdfBlobViewer(
             resourcePortalReviewerPdf,
@@ -13214,6 +13446,10 @@
       return true;
     } catch (error) {
       if (previewGeneration !== resourcePortalPreviewGeneration) return false;
+      if (mobileReviewerViewerOpened)
+        showReviewerPdfBlobViewerError(
+          `Unable to load file preview: ${String(error?.message || error)}`,
+        );
       status?.classList.remove("is-loading");
       const preparedReviewerPdf =
         reviewer && resourcePortalReviewerPdf && resourcePortalPreviewObjectUrl
@@ -13305,6 +13541,8 @@
     reviewerPdfRenderCheckCleanup?.();
     reviewerPdfWorkerCancel?.();
     resourcePortalPreviewGeneration += 1;
+    resourcePortalPreviewBlobViewerReady = false;
+    resourcePortalPreviewBlobViewerError = "";
     resourceDashboardFolderGeneration += 1;
     reviewerPdfPreviewInFlight = null;
     const preview = document.getElementById("resource-portal-preview");

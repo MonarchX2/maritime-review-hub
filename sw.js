@@ -2,15 +2,15 @@ importScripts("./debug-utils.js");
 
 const swLogger = self.DebugUtils || console;
 const CACHE_PREFIX = "mrh-cache";
-const APP_VERSION = "mrh-26.11.3-20261017";
+let APP_VERSION = "";
 const CANONICAL_APP_URL = "https://monarchx2.github.io/mrh/";
 
 function getRuntimeCacheVersion() {
   return APP_VERSION;
 }
 
-const CACHE_VERSION = getRuntimeCacheVersion();
-const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
+let CACHE_VERSION = "";
+let CACHE_NAME = "";
 const CLIENT_VERSION_QUERY_TIMEOUT_MS = 1500;
 let clientVersionRequestSequence = 0;
 let pendingClientVersionRequests = new Map();
@@ -69,10 +69,11 @@ function getAppShellNavigationPaths() {
 
 const APP_SHELL_NAVIGATION_PATHS = getAppShellNavigationPaths();
 
-const APP_SHELL = [
+const APP_SHELL_PATHS = [
   "./index.html",
   "./manifest.json",
   "./icon.svg",
+  "./version.json",
   "./tailwind.generated.css",
   "./styles.css",
   "./app-entry.js",
@@ -99,11 +100,13 @@ const APP_SHELL = [
   "./rendering-core.js",
   "./storage-utils.js",
   "./text-utils.js",
-].map(resolveAppUrl);
-
-const APP_SHELL_RESOURCE_NAMES = new Set(
-  APP_SHELL.map((url) => getAppResourceName(url)),
+];
+const APP_SHELL_RESOURCE_PATHS = new Set(
+  APP_SHELL_PATHS.map((path) => path.replace(/^\.\//, "")),
 );
+
+let APP_SHELL = [];
+let APP_SHELL_RESOURCE_NAMES = new Set();
 
 const APP_SHELL_INTEGRITY = Object.create(null);
 
@@ -163,7 +166,9 @@ self.__MRH_SW__ = {
   getRuntimeCacheVersion,
   getAppBasePath,
   resolveAppUrl,
-  CACHE_NAME,
+  get CACHE_NAME() {
+    return CACHE_NAME;
+  },
 };
 
 const CDN_ORIGINS = new Set([
@@ -224,7 +229,8 @@ function isStaticRequest(request) {
   // therefore pass through untouched.
   return (
     STATIC_DESTINATIONS.has(request.destination) ||
-    APP_SHELL_RESOURCE_NAMES.has(getAppResourceName(url))
+    APP_SHELL_RESOURCE_NAMES.has(getAppResourceName(url)) ||
+    APP_SHELL_RESOURCE_PATHS.has(getAppResourceName(url))
   );
 }
 
@@ -355,7 +361,7 @@ async function precacheAppShell() {
 
 async function verifyCurrentReleaseMetadata() {
   const versionUrl = new URL("version.json", APP_BASE_URL);
-  versionUrl.searchParams.set("check", CACHE_VERSION);
+  versionUrl.searchParams.set("check", "release");
   const response = await fetch(
     new Request(versionUrl, {
       method: "GET",
@@ -370,11 +376,28 @@ async function verifyCurrentReleaseMetadata() {
   }
 
   const release = await response.json();
-  if (release?.buildVersion !== APP_VERSION) {
-    throw new Error(
-      `Release metadata mismatch: expected ${APP_VERSION}, got ${release?.buildVersion}.`,
-    );
+  if (!/^\d{2}\.\d{2}\.\d{2}-(?:0|[1-9]\d*)$/.test(release?.version || "")) {
+    throw new Error("Release metadata contains an invalid website version.");
   }
+  APP_VERSION = `mrh-${release.version}`;
+  CACHE_VERSION = getRuntimeCacheVersion();
+  CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
+  APP_SHELL = APP_SHELL_PATHS.map(resolveAppUrl);
+  APP_SHELL_RESOURCE_NAMES = new Set(
+    APP_SHELL.map((url) => getAppResourceName(url)),
+  );
+}
+
+let releaseMetadataPromise = null;
+function ensureCurrentReleaseMetadata() {
+  if (APP_VERSION) return Promise.resolve();
+  if (!releaseMetadataPromise) {
+    releaseMetadataPromise = verifyCurrentReleaseMetadata().catch((error) => {
+      releaseMetadataPromise = null;
+      throw error;
+    });
+  }
+  return releaseMetadataPromise;
 }
 
 function isAppClient(client) {
@@ -685,7 +708,7 @@ function staleWhileRevalidateStatic(request, event) {
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
-      await verifyCurrentReleaseMetadata();
+      await ensureCurrentReleaseMetadata();
       await precacheAppShell();
 
       // Activate the new worker as soon as its installation succeeds.
@@ -697,6 +720,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
+      await ensureCurrentReleaseMetadata();
       await notifyAppClientsUpdateAvailable();
     })(),
   );
@@ -717,7 +741,9 @@ self.addEventListener("message", (event) => {
   }
 
   if (message.type === "MRH_CLIENT_VERSION") {
-    event.waitUntil(cleanupOldCachesWhenSafe());
+    event.waitUntil(
+      ensureCurrentReleaseMetadata().then(() => cleanupOldCachesWhenSafe()),
+    );
   }
 });
 
@@ -741,19 +767,18 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Application navigation:
-  // NETWORK FIRST -> CACHE FALLBACK
-  if (isAppShellNavigation(request)) {
-    event.respondWith(networkFirstNavigation(event));
-    return;
-  }
-
-  // Static resources: cached response first, with a background refresh.
-  if (isStaticRequest(request)) {
+  if (isAppShellNavigation(request) || isStaticRequest(request)) {
     event.respondWith(
-      staleWhileRevalidateStatic(getAppShellResourceRequest(request), event),
+      ensureCurrentReleaseMetadata().then(() => {
+        if (isAppShellNavigation(request)) {
+          return networkFirstNavigation(event);
+        }
+        return staleWhileRevalidateStatic(
+          getAppShellResourceRequest(request),
+          event,
+        );
+      }),
     );
-    return;
   }
 
   // API, fetch(), XHR, JSON, database/network requests, etc.

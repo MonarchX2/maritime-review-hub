@@ -32,6 +32,7 @@
   /** @typedef {Object} SyncCoreController */
   /** @property {(isRetry?: boolean, isBackgroundCheck?: boolean) => Promise<boolean>} SyncCoreController.syncDatabase */
   /** @property {() => Promise<void>} SyncCoreController.optimizedBackgroundSync */
+  /** @property {(snapshot: Object) => Promise<boolean>} SyncCoreController.syncPrefetchedSnapshot */
   /** @typedef {boolean} SyncCoreResult */
 
   /**
@@ -197,6 +198,15 @@
       const baseDelay = Math.pow(2, Math.min(retryCount, 5)) * 1000;
       return baseDelay + Math.random() * baseDelay * 0.5;
     };
+    const notifySyncSuccess = (status = {}) => {
+      options.onSyncSuccess?.({
+        syncTimestamp: String(status.syncTimestamp || "").trim(),
+        cacheVersion: String(status.cacheVersion || "").trim(),
+        payloadSchemaVersion: Number(status.payloadSchemaVersion),
+      });
+    };
+    const isPageHidden = () =>
+      typeof document !== "undefined" && document.hidden;
 
     function cancelPoll() {
       lifecycle.clearTimeout(pollTimer);
@@ -204,7 +214,8 @@
     }
 
     function schedulePoll() {
-      if (disposed || !options.isLeader()) return cancelPoll();
+      if (disposed || !options.isLeader() || isPageHidden())
+        return cancelPoll();
       if (pollTimer !== null) return;
       const activeToken = ++pollLoopToken;
       pollTimer = lifecycle.setTimeout(() => {
@@ -221,17 +232,24 @@
     function scheduleRetry(showOverlay = true) {
       if (disposed || !options.isLeader()) return;
       cancelPoll();
+      if (isPageHidden()) {
+        lifecycle.clearTimeout(retryTimer);
+        retryTimer = null;
+        lifecycle.clearInterval(countdownTimer);
+        countdownTimer = null;
+      }
       if (retryTimer !== null) return;
       retryAttempt += 1;
+      const wasConnected = connected;
+      const effectiveShowOverlay = showOverlay && !options.hasActiveSession();
+      setConnected(false);
+      if (wasConnected) options.renderCategoryProgress();
+      if (isPageHidden()) return;
       const delay = Math.min(
         retryMaxDelayMs,
         Math.max(retryIntervalMs, backoffDelay(retryAttempt - 1)),
       );
       const retryAt = Date.now() + delay;
-      const wasConnected = connected;
-      const effectiveShowOverlay = showOverlay && !options.hasActiveSession();
-      setConnected(false);
-      if (wasConnected) options.renderCategoryProgress();
       const renderCountdown = () => {
         const seconds = Math.max(0, Math.ceil((retryAt - Date.now()) / 1000));
         options.updateSyncStatus(
@@ -247,7 +265,7 @@
         retryTimer = null;
         lifecycle.clearInterval(countdownTimer);
         countdownTimer = null;
-        if (!options.isLeader()) return;
+        if (!options.isLeader() || isPageHidden()) return;
         syncDatabase(true, !effectiveShowOverlay);
       }, delay);
     }
@@ -377,6 +395,12 @@
             setConnected(true);
             setIsColdStart(false);
             await options.refreshPendingPayloads?.();
+            options.updateSyncStatus(
+              '<i class="fa-solid fa-check mr-1"></i> Connected. Using the latest applied database data.',
+              "success",
+              false,
+            );
+            notifySyncSuccess(status);
             schedulePoll();
             return;
           }
@@ -388,6 +412,12 @@
             setConnected(true);
             setIsColdStart(false);
             await options.refreshPendingPayloads?.();
+            options.updateSyncStatus(
+              '<i class="fa-solid fa-check mr-1"></i> Connected. Database is up to date.',
+              "success",
+              false,
+            );
+            notifySyncSuccess(status);
             schedulePoll();
             return;
           }
@@ -399,6 +429,12 @@
             if (options.hasActiveSession()) {
               setConnected(true);
               setIsColdStart(false);
+              options.updateSyncStatus(
+                '<i class="fa-solid fa-check mr-1"></i> Connected. An update is waiting until your session ends.',
+                "success",
+                false,
+              );
+              notifySyncSuccess(status);
               schedulePoll();
               return;
             }
@@ -437,6 +473,87 @@
         }
       })();
       return backgroundPromise;
+    }
+
+    async function syncPrefetchedSnapshot(snapshot) {
+      if (disposed) return false;
+      if (backgroundPromise) return backgroundPromise;
+      if (inFlightPromise) return inFlightPromise;
+      if (!snapshot || typeof snapshot !== "object" || snapshot.status !== "ok")
+        throw new Error("Backend sync snapshot is invalid.");
+      if (snapshot.isColdStart === true) {
+        setIsColdStart(true);
+        scheduleRetry(!isCached());
+        return false;
+      }
+      if (Number(snapshot.payloadSchemaVersion) !== payloadSchemaVersion)
+        throw new Error("Backend data format is incompatible with this app.");
+      const timestamp = String(snapshot?.syncTimestamp || "").trim();
+      const cacheVersion = String(snapshot?.cacheVersion || "").trim();
+      const storedTimestamp = options.readStoredSyncStatusTimestamp();
+      const storedCacheVersion =
+        options.readStoredSyncStatusCacheVersion?.() || "";
+      const timestampMs = Date.parse(timestamp);
+      const storedTimestampMs = Date.parse(storedTimestamp);
+
+      if (
+        storedTimestamp &&
+        timestamp &&
+        Number.isFinite(timestampMs) &&
+        Number.isFinite(storedTimestampMs) &&
+        timestampMs < storedTimestampMs &&
+        (!cacheVersion || cacheVersion === storedCacheVersion)
+      ) {
+        options.logger.warn(
+          "[SYNC] Ignoring an older backend sync timestamp.",
+          { timestamp, storedTimestamp },
+        );
+        setConnected(true);
+        setIsColdStart(false);
+        await options.refreshPendingPayloads?.();
+        options.updateSyncStatus(
+          '<i class="fa-solid fa-check mr-1"></i> Connected. Using the latest applied database data.',
+          "success",
+          false,
+        );
+        notifySyncSuccess(snapshot);
+        schedulePoll();
+        return true;
+      }
+
+      if (
+        timestamp &&
+        pendingSyncTimestamp === timestamp &&
+        pendingSyncCacheVersion === cacheVersion &&
+        options.hasActiveSession()
+      ) {
+        setConnected(true);
+        setIsColdStart(false);
+        options.updateSyncStatus(
+          '<i class="fa-solid fa-check mr-1"></i> Connected. An update is waiting until your session ends.',
+          "success",
+          false,
+        );
+        notifySyncSuccess(snapshot);
+        schedulePoll();
+        return true;
+      }
+
+      const synchronized = await syncDatabase(
+        true,
+        true,
+        timestamp,
+        snapshot,
+      );
+      if (timestamp && synchronized) {
+        if (pendingSummaryData) {
+          pendingSyncTimestamp = timestamp;
+          pendingSyncCacheVersion = cacheVersion;
+        } else {
+          options.persistSyncStatusTimestamp(timestamp, cacheVersion);
+        }
+      }
+      return synchronized;
     }
 
     function getDecision(summary, wasConnected) {
@@ -503,9 +620,11 @@
               signal: requestController.signal,
               maxRetries: 0,
             });
-            if (syncSnapshot?.status !== "ok") {
+          }
+          if (syncSnapshot) {
+            if (syncSnapshot.status !== "ok") {
               throw new Error(
-                syncSnapshot?.message || "Backend sync snapshot is invalid.",
+                syncSnapshot.message || "Backend sync snapshot is invalid.",
               );
             }
             if (syncSnapshot.isColdStart === true) {
@@ -534,6 +653,7 @@
                 false,
               );
               options.setGlobalLoadingState(false);
+              notifySyncSuccess(syncSnapshot);
               schedulePoll();
               return true;
             }
@@ -623,6 +743,13 @@
               "success",
               !silent && !initialSuccessShown,
             );
+            notifySyncSuccess({
+              syncTimestamp:
+                syncSnapshot?.syncTimestamp || expectedSyncTimestamp,
+              cacheVersion: syncSnapshot?.cacheVersion || "",
+              payloadSchemaVersion:
+                syncSnapshot?.payloadSchemaVersion ?? payloadSchemaVersion,
+            });
             options.setGlobalLoadingState(false);
             if (!silent && !initialSuccessShown) {
               initialSuccessShown = true;
@@ -685,6 +812,7 @@
     return {
       syncDatabase,
       optimizedBackgroundSync,
+      syncPrefetchedSnapshot,
       checkSyncStatusLightweight,
       scheduleSyncPoll: schedulePoll,
       scheduleSyncRetry: scheduleRetry,
@@ -692,9 +820,16 @@
       cancel: cancelPoll,
       handleVisibility(isHidden) {
         cancelPoll();
-        if (!isHidden)
-          optimizedBackgroundSync().finally(() => {
-            if (options.isLeader() && !document.hidden) schedulePoll();
+        if (isHidden) {
+          lifecycle.clearTimeout(retryTimer);
+          retryTimer = null;
+          lifecycle.clearInterval(countdownTimer);
+          countdownTimer = null;
+          return;
+        }
+        if (!isPageHidden())
+          return optimizedBackgroundSync().finally(() => {
+            if (options.isLeader() && !isPageHidden()) schedulePoll();
           });
       },
       confirmPendingSummaryApplied() {
@@ -705,6 +840,11 @@
             pendingSyncTimestamp,
             pendingSyncCacheVersion,
           );
+          notifySyncSuccess({
+            syncTimestamp: pendingSyncTimestamp,
+            cacheVersion: pendingSyncCacheVersion,
+            payloadSchemaVersion,
+          });
           pendingSyncTimestamp = "";
           pendingSyncCacheVersion = "";
         }

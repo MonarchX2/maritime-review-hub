@@ -1,23 +1,26 @@
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
+const {
+  formatDateVersion,
+  parseDateVersion,
+} = require("./date-version");
 
 const rootDir = path.resolve(__dirname, "..");
-const semverPattern =
+const historicalTagPattern =
   /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
 function parseVersion(version) {
-  const match = semverPattern.exec(version);
-  if (!match) throw new Error(`Invalid SemVer version: ${version}`);
-  return match.slice(1).map(Number);
+  const parsed = parseDateVersion(version);
+  if (!parsed)
+    throw new Error(
+      `Invalid date-based version: ${version}. Expected YY.MM.DD-Patch.`,
+    );
+  return parsed;
 }
 
 function calculateNextVersion(baseVersion, commitMessages) {
-  const [major, minor, patch] = parseVersion(baseVersion);
-  const dateVersion =
-    /^(\d{2})\.(0[1-9]|1[0-2])\.(0[1-9]|[12]\d|3[01])-(\d+)$/.exec(
-      baseVersion,
-    );
+  const dateVersion = parseVersion(baseVersion);
   let bump = 0;
 
   for (const message of commitMessages) {
@@ -40,14 +43,8 @@ function calculateNextVersion(baseVersion, commitMessages) {
     }
   }
 
-  if (dateVersion && bump > 0) {
-    return `${dateVersion[1]}.${dateVersion[2]}.${dateVersion[3]}-${Number(
-      dateVersion[4],
-    ) + 1}`;
-  }
-  if (bump === 3) return `${major + 1}.0.0`;
-  if (bump === 2) return `${major}.${minor + 1}.0`;
-  if (bump === 1) return `${major}.${minor}.${patch + 1}`;
+  if (bump > 0)
+    return formatDateVersion({ ...dateVersion, patch: dateVersion.patch + 1 });
   return baseVersion;
 }
 
@@ -88,7 +85,7 @@ function getVersionBumpCommit(repositoryDir, version, previousTag) {
     }
 
     if (
-      semverPattern.test(parentVersion) &&
+      historicalTagPattern.test(parentVersion) &&
       parentVersion !== version
     )
       return commit;
@@ -97,7 +94,7 @@ function getVersionBumpCommit(repositoryDir, version, previousTag) {
   return "";
 }
 
-function getReleaseContext(repositoryDir = rootDir, commitSha = process.env.GITHUB_SHA) {
+function getReleaseContext(repositoryDir = rootDir) {
   const tags = execFileSync(
     "git",
     ["tag", "--merged", "HEAD", "--list", "v[0-9]*", "--sort=-version:refname"],
@@ -112,6 +109,7 @@ function getReleaseContext(repositoryDir = rootDir, commitSha = process.env.GITH
   const versionJson = JSON.parse(
     fs.readFileSync(path.join(repositoryDir, "version.json"), "utf8"),
   );
+  parseVersion(versionJson.version);
   const taggedVersion = previousTag ? previousTag.slice(1) : versionJson.version;
   const versionBumpCommit = previousTag
     ? getVersionBumpCommit(repositoryDir, versionJson.version, previousTag)
@@ -131,20 +129,10 @@ function getReleaseContext(repositoryDir = rootDir, commitSha = process.env.GITH
         .filter((message) => message.trim())
     : [];
   const displayVersion = calculateNextVersion(baseVersion, commitMessages);
-  const sha = (
-    commitSha ||
-    execFileSync("git", ["rev-parse", "HEAD"], {
-      cwd: repositoryDir,
-      encoding: "utf8",
-    })
-  )
-    .trim()
-    .slice(0, 12);
 
   return {
     baseVersion,
     displayVersion,
-    releaseVersion: `mrh-${displayVersion}-${sha}`,
     releaseTag: `v${displayVersion}`,
     shouldTag:
       displayVersion !== taggedVersion &&
@@ -156,7 +144,6 @@ if (require.main === module) {
   const release = getReleaseContext();
   const outputs = [
     `display_version=${release.displayVersion}`,
-    `release_version=${release.releaseVersion}`,
     `release_tag=${release.releaseTag}`,
     `should_tag=${release.shouldTag}`,
   ];
