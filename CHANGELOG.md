@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.10.17-18 - 2026-10-17
+
+### Fixed
+
+- Keep PDF icons on all table resource chips dark red in both themes, without
+  changing the preview-window icon.
+
 ## 26.10.17-17 - 2026-10-17
 
 ### Fixed

@@ -589,8 +589,8 @@ assert.match(
 );
 assert.match(
   resourceStyles,
-  /\.dark \.resource-dashboard-table \.resource-dashboard-link-icon\.fa-file-pdf\s*\{\s*color:\s*#fca5a5;/,
-  "PDF icons on the table chips should use the preview icon's dark-theme color",
+  /\.dark \.resource-dashboard-table \.resource-dashboard-link-icon\.fa-file-pdf\s*\{\s*color:\s*#dc2626;/,
+  "all PDF icons on the table chips should remain dark red in dark theme",
 );
 assert.match(
   resourceStyles,
